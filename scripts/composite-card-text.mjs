@@ -70,7 +70,7 @@ async function compositeObjective(card) {
   const boxX = Math.round(img.width * 0.05);
   const boxW = img.width - boxX * 2;
   const boxY = Math.round(img.height * 0.13);
-  const boxH = Math.round(img.height * 0.20);
+  const boxH = Math.round(img.height * 0.24);
 
   // Match the printed card's look: opaque cream/off-white background,
   // thin dark border, black text. The card's original PNG already has a
