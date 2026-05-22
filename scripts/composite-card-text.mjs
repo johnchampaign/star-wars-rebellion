@@ -24,7 +24,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 const ASSETS = join(ROOT, 'assets');
-const CARDS_DIR = join(ROOT, 'public', 'dev-assets', 'cards');
+// Read source PNGs from the pristine vmod extract so re-runs are
+// idempotent (never composite on top of a previous composite).
+const CARDS_SRC = join(ROOT, 'vmod_extracted', 'images');
+const CARDS_DST = join(ROOT, 'public', 'dev-assets', 'cards');
 
 const objectives = JSON.parse(readFileSync(join(ASSETS, 'objectives.json'), 'utf8')).objectives;
 
@@ -50,35 +53,40 @@ function wrapText(ctx, text, maxWidth) {
 
 async function compositeObjective(card) {
   if (!card.image || !card.rulesText) return false;
-  const path = join(CARDS_DIR, card.image);
-  if (!existsSync(path)) {
-    console.warn(`[composite] skip ${card.id}: missing ${card.image}`);
+  const srcPath = join(CARDS_SRC, card.image);
+  const dstPath = join(CARDS_DST, card.image);
+  if (!existsSync(srcPath)) {
+    console.warn(`[composite] skip ${card.id}: missing source ${card.image}`);
     return false;
   }
-  const img = await loadImage(path);
+  const img = await loadImage(srcPath);
   const canvas = createCanvas(img.width, img.height);
   const ctx = canvas.getContext('2d');
   ctx.drawImage(img, 0, 0);
 
-  // Overlay box sits in the middle/lower section of the card, ABOVE the
-  // yellow title banner. We pick a band roughly 35-78% down the card.
-  const boxX = Math.round(img.width * 0.06);
+  // Overlay box sits in the white textbox area at the top of the card,
+  // below the rep number / timing badge and ABOVE the art. Matches the
+  // canonical FFG objective-card layout (see "Defend the People" etc).
+  const boxX = Math.round(img.width * 0.05);
   const boxW = img.width - boxX * 2;
-  const boxY = Math.round(img.height * 0.50);
-  const boxH = Math.round(img.height * 0.28);
+  const boxY = Math.round(img.height * 0.13);
+  const boxH = Math.round(img.height * 0.20);
 
-  // Translucent dark backdrop so text stays legible against bright art.
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.78)';
+  // Match the printed card's look: opaque cream/off-white background,
+  // thin dark border, black text. The card's original PNG already has a
+  // small "table" there (LFL/FFG branding strip is just below it); we
+  // paint over the whole region so the text reads cleanly.
+  ctx.fillStyle = 'rgba(245, 240, 225, 0.97)';
   ctx.fillRect(boxX, boxY, boxW, boxH);
-  ctx.strokeStyle = 'rgba(255, 213, 74, 0.6)'; // soft gold border
+  ctx.strokeStyle = 'rgba(60, 50, 30, 0.7)';
   ctx.lineWidth = 1;
   ctx.strokeRect(boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1);
 
   // Text. Scale font with card width so it renders consistently across
   // any source resolution.
-  const fontSize = Math.max(9, Math.round(img.width * 0.052));
+  const fontSize = Math.max(9, Math.round(img.width * 0.058));
   ctx.font = `${fontSize}px sans-serif`;
-  ctx.fillStyle = '#fff';
+  ctx.fillStyle = '#1a1410';
   ctx.textBaseline = 'top';
 
   const pad = Math.round(img.width * 0.025);
@@ -101,7 +109,7 @@ async function compositeObjective(card) {
   }
 
   const out = canvas.toBuffer('image/png');
-  writeFileSync(path, out);
+  writeFileSync(dstPath, out);
   return true;
 }
 
