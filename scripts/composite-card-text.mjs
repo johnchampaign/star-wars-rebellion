@@ -1,20 +1,23 @@
-// Composite rules text onto card PNGs whose source art lacks it.
+// Composite either rules text OR an FFG-policy notice onto objective
+// card PNGs whose VASSAL-sourced art has the text blacked out.
 //
-// VASSAL strips card rules text from its exported PNGs because the live
-// module renders text from data at runtime. For our digital port we need
-// the text baked in (or a sidecar — see HandTip's typeset fallback).
-// This script does the bake: it reads each card catalog (objectives,
-// missions, actions, tactics) and, for any card whose PNG visibly lacks
-// its rules text, draws a semi-transparent text overlay on the lower
-// portion of the card.
+// Background: the VASSAL module author intentionally redacts objective
+// rules text per FFG's informal "block out text on key cards" policy
+// for fan-made tools, expecting players to own the cards. This script
+// supports two modes:
 //
-// For now only OBJECTIVE cards get composited — those are the ones with
-// text stripped. Mission and action cards in our extract already carry
-// their text. Re-run this script after re-extracting from a fresh .vmod
-// to regenerate.
+//   default (no flag)  — bake the verbatim rulesText from the catalog.
+//                         This is the LOCAL-PLAY build. The output dir
+//                         (`public/dev-assets/cards/`) is gitignored so
+//                         this never ships from this repo.
+//   --notice           — bake a small notice into the same textbox
+//                         explaining why the text is redacted, with
+//                         link/encouragement to buy the game. This is
+//                         the PUBLIC-DEPLOY build (if the site is ever
+//                         hosted publicly).
 //
-// Output: public/dev-assets/cards/ (overwrites the existing PNG in-place).
-// `public/dev-assets/` is gitignored so this stays local-only.
+// Re-run after `npm run copy-assets` (which re-extracts the pristine
+// source PNGs from vmod_extracted/).
 
 import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
@@ -30,6 +33,13 @@ const CARDS_SRC = join(ROOT, 'vmod_extracted', 'images');
 const CARDS_DST = join(ROOT, 'public', 'dev-assets', 'cards');
 
 const objectives = JSON.parse(readFileSync(join(ASSETS, 'objectives.json'), 'utf8')).objectives;
+
+// Pick mode from CLI flag.
+const NOTICE_MODE = process.argv.includes('--notice');
+
+// Notice text used in --notice mode. Kept short so it fits the textbox
+// at a readable size; sized to roughly match a 4-line rules card.
+const NOTICE_TEXT = 'Text redacted: FFG has an informal policy allowing fan tools if text on key cards is blocked out. Buy the game to reference the actual cards.';
 
 // Word-wrap helper. Returns an array of lines that fit within maxWidth
 // at the given font size.
@@ -52,7 +62,10 @@ function wrapText(ctx, text, maxWidth) {
 }
 
 async function compositeObjective(card) {
-  if (!card.image || !card.rulesText) return false;
+  if (!card.image) return false;
+  // In notice mode we don't need rulesText; in default mode we do.
+  if (!NOTICE_MODE && !card.rulesText) return false;
+  const textToBake = NOTICE_MODE ? NOTICE_TEXT : card.rulesText;
   const srcPath = join(CARDS_SRC, card.image);
   const dstPath = join(CARDS_DST, card.image);
   if (!existsSync(srcPath)) {
@@ -79,7 +92,7 @@ async function compositeObjective(card) {
   ctx.font = `${fontSize}px sans-serif`;
   ctx.textBaseline = 'top';
   const pad = Math.round(img.width * 0.025);
-  const lines = wrapText(ctx, card.rulesText, boxW - pad * 2);
+  const lines = wrapText(ctx, textToBake, boxW - pad * 2);
   const lineH = Math.round(fontSize * 1.18);
 
   // If text would overflow boxHMax, shrink font until it fits (long-text
@@ -90,7 +103,7 @@ async function compositeObjective(card) {
   while (actualLineH * actualLines.length > boxHMax - pad * 2 && actualFontSize > 7) {
     actualFontSize -= 1;
     ctx.font = `${actualFontSize}px sans-serif`;
-    actualLines = wrapText(ctx, card.rulesText, boxW - pad * 2);
+    actualLines = wrapText(ctx, textToBake, boxW - pad * 2);
     actualLineH = Math.round(actualFontSize * 1.18);
   }
 
@@ -129,7 +142,7 @@ async function main() {
     const ok = await compositeObjective(card);
     if (ok) composited++; else skipped++;
   }
-  console.log(`[composite] objectives: ${composited} updated, ${skipped} skipped`);
+  console.log(`[composite] mode=${NOTICE_MODE ? 'notice' : 'rules-text'}: ${composited} updated, ${skipped} skipped`);
 }
 
 main().catch((err) => {

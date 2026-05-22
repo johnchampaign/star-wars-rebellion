@@ -63,6 +63,27 @@ SWR_BUGREPORT_REPO=johnchampaign/star-wars-rebellion
 
 The token needs `contents:write` and `issues:write`. `.env` is gitignored.
 
+## FFG IP policy
+
+Per the policy followed by the VASSAL module this project builds on:
+**objective card text is redacted in the source PNGs**. FFG has had an
+informal policy of permitting fan-made tools that block out text on key
+cards, so players who own the game can reference their physical cards.
+
+This project provides two ways to bake text onto those redacted PNGs:
+
+- `npm run composite-card-text` — bakes the verbatim rules text. **Local
+  play only.** Output lives in `public/dev-assets/cards/`, which is
+  gitignored — it never ships from this repo.
+- `npm run composite-card-notice` — bakes a short notice on each
+  objective explaining the redaction and asking the player to buy the
+  game. **Use this for any public deploy** (GitHub Pages, etc.) where
+  the dist folder includes the card images.
+
+If you're cloning to play locally, run the first one. If you ever set
+up a public host of the built site, switch to the second one before
+running `npm run build`.
+
 ## License
 
 Code is MIT (see `LICENSE` once added). All game content (rules, card text,
