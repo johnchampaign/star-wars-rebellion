@@ -30,7 +30,11 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
   const decisionSide: Side | null =
     pc?.kind === 'CombatAttackerTactics' ? pc.side :
     pc?.kind === 'CombatDefenderTactics' ? pc.side :
-    pc?.kind === 'CombatAssignDamage'    ? pc.side : null;
+    pc?.kind === 'CombatAssignDamage'    ? pc.side :
+    pc?.kind === 'YodaReroll'            ? pc.side :
+    pc?.kind === 'SpecialDieSpend'       ? pc.side :
+    pc?.kind === 'CombatStartActionCards' ? pc.side :
+    pc?.kind === 'RetreatDecision'       ? pc.side : null;
   const isHumanDecision = decisionSide === humanSide;
   const waitingForAI = decisionSide !== null && !isHumanDecision;
 
@@ -86,6 +90,18 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
         )}
         {pc?.kind === 'CombatAssignDamage' && isHumanDecision && (
           <AssignDamagePanel G={G} choice={pc} c={c} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'YodaReroll' && isHumanDecision && (
+          <YodaRerollPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'SpecialDieSpend' && isHumanDecision && (
+          <SpecialDieSpendPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'CombatStartActionCards' && isHumanDecision && (
+          <StartOfCombatPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'RetreatDecision' && isHumanDecision && (
+          <RetreatPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {!pc && (
           <div style={{ color: '#666', fontStyle: 'italic' }}>
@@ -499,5 +515,200 @@ function btn(bg: string): React.CSSProperties {
     padding: '6px 14px', background: bg, color: '#000',
     border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600, fontSize: 12,
   };
+}
+
+// ---------- Yoda reroll ----------
+
+function YodaRerollPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'YodaReroll' }>;
+  onPersist: () => void;
+}) {
+  const submit = (idx: number | null) => {
+    const r = combat.resolveYodaReroll(G, idx);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  const holderName = G.catalog.leaders[choice.holderLeaderId]?.name ?? choice.holderLeaderId;
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>Yoda reroll</b> ({holderName} is here) — pick one blank die to reroll, or skip.
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        {choice.blankIndices.map((idx) => (
+          <button key={idx} onClick={() => submit(idx)} style={btn(SIDE_COLOR.Rebel)}>
+            Reroll die #{idx + 1}
+          </button>
+        ))}
+        <button onClick={() => submit(null)} style={btn('#2a2c33')}>Skip</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Special-die spend ----------
+
+function SpecialDieSpendPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'SpecialDieSpend' }>;
+  onPersist: () => void;
+}) {
+  const max = choice.specialCount;
+  const [draws, setDraws] = useState(0);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const spent = draws + picked.size;
+  const submit = () => {
+    const r = combat.resolveSpecialDieSpend(G, {
+      draws,
+      playCardIds: Array.from(picked),
+    });
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  const cardName = (cid: string) => G.catalog.tactics[cid]?.name ?? cid;
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>Spend specials:</b> {choice.specialCount} ◈ available
+        ({spent} / {max} spent).
+        Each special draws 1 tactic card OR plays one special-requiring card.
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+          Draws:
+          <input
+            type="number"
+            min={0}
+            max={max - picked.size}
+            value={draws}
+            onChange={(e) => setDraws(Math.max(0, Math.min(max - picked.size, Number(e.target.value) || 0)))}
+            style={{ width: 50, background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '2px 4px' }}
+          />
+        </label>
+        {choice.specialCards.length > 0 && <span style={{ color: '#aaa', fontSize: 11 }}>·</span>}
+        {choice.specialCards.map((cid) => (
+          <label key={cid} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+            <input
+              type="checkbox"
+              checked={picked.has(cid)}
+              disabled={!picked.has(cid) && spent >= max}
+              onChange={(e) => {
+                setPicked((prev) => {
+                  const next = new Set(prev);
+                  if (e.target.checked) next.add(cid); else next.delete(cid);
+                  return next;
+                });
+              }}
+            />
+            {cardName(cid)}
+          </label>
+        ))}
+        <div style={{ marginLeft: 'auto' }}>
+          <button onClick={submit} disabled={spent > max} style={btn(SIDE_COLOR[choice.side])}>
+            Apply ({spent} spent)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Start-of-combat action cards ----------
+
+function StartOfCombatPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'CombatStartActionCards' }>;
+  onPersist: () => void;
+}) {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const submit = () => {
+    const r = combat.resolveCombatStartActionCards(G, Array.from(picked));
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  const cardName = (cid: string) => G.catalog.actions[cid]?.name ?? cid;
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>Start-of-combat action cards</b> — play 0 or more from your hand.
+      </div>
+      {choice.playable.length === 0 ? (
+        <div style={{ color: '#666', fontStyle: 'italic', fontSize: 12 }}>(no playable cards)</div>
+      ) : (
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+          {choice.playable.map((cid) => (
+            <label key={cid} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={picked.has(cid)}
+                onChange={(e) => {
+                  setPicked((prev) => {
+                    const next = new Set(prev);
+                    if (e.target.checked) next.add(cid); else next.delete(cid);
+                    return next;
+                  });
+                }}
+              />
+              {cardName(cid)}
+            </label>
+          ))}
+        </div>
+      )}
+      <div style={{ marginTop: 8, textAlign: 'right' }}>
+        <button onClick={submit} style={btn(SIDE_COLOR[choice.side])}>
+          {picked.size === 0 ? 'Skip' : `Play ${picked.size} card${picked.size === 1 ? '' : 's'}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Retreat decision ----------
+
+function RetreatPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'RetreatDecision' }>;
+  onPersist: () => void;
+}) {
+  const [dest, setDest] = useState<string | null>(choice.legalDestinations[0] ?? null);
+  const submit = (destSystemId: string | null) => {
+    const r = combat.resolveRetreatDecision(G, destSystemId, null);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  const sysName = (sid: string) => G.catalog.systems[sid]?.name ?? sid;
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>Retreat?</b> {choice.availableUnits.length} unit{choice.availableUnits.length === 1 ? '' : 's'} can withdraw
+        to a friendly adjacent system. (Once per combat.)
+      </div>
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        {choice.legalDestinations.length === 0 ? (
+          <span style={{ color: '#666', fontStyle: 'italic', fontSize: 12 }}>(no legal destinations)</span>
+        ) : (
+          <>
+            <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+              Retreat to:
+              <select
+                value={dest ?? ''}
+                onChange={(e) => setDest(e.target.value || null)}
+                style={{ background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '2px 4px', fontSize: 12 }}
+              >
+                {choice.legalDestinations.map((sid) => (
+                  <option key={sid} value={sid}>{sysName(sid)}</option>
+                ))}
+              </select>
+            </label>
+            <button onClick={() => submit(dest)} disabled={!dest} style={btn(SIDE_COLOR[choice.side])}>
+              Retreat all
+            </button>
+          </>
+        )}
+        <button onClick={() => submit(null)} style={btn('#2a2c33')}>Stay and fight</button>
+      </div>
+    </div>
+  );
 }
 

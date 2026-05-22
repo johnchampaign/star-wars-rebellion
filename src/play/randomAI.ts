@@ -42,6 +42,18 @@ export function stepOnce(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'CombatAssignDamage' && G.pendingChoice.side === side) {
     return handleCombatAssignDamage(G);
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'YodaReroll' && G.pendingChoice.side === side) {
+    return handleYodaReroll(G);
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'SpecialDieSpend' && G.pendingChoice.side === side) {
+    return handleSpecialDieSpend(G);
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'CombatStartActionCards' && G.pendingChoice.side === side) {
+    return handleCombatStartActionCards(G);
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'RetreatDecision' && G.pendingChoice.side === side) {
+    return handleRetreatDecision(G);
+  }
 
   // From here on, only act on our own turn.
   if (G.currentPlayer !== side) return false;
@@ -281,5 +293,44 @@ function handleCombatAssignDamage(G: GameState): boolean {
     }
   }
   const r = combat.resolveCombatAssignDamage(G, assignments);
+  return r.ok;
+}
+
+/** AI: always take the Yoda reroll if available. Reroll the first blank. */
+function handleYodaReroll(G: GameState): boolean {
+  const c = G.pendingChoice as Extract<NonNullable<GameState['pendingChoice']>, { kind: 'YodaReroll' }>;
+  const idx = c.blankIndices.length > 0 ? c.blankIndices[0] : null;
+  const r = combat.resolveYodaReroll(G, idx);
+  return r.ok;
+}
+
+/** AI: spend every available special on drawing tactic cards. Doesn't play
+ *  any special-required cards (we'd need card-by-card logic). */
+function handleSpecialDieSpend(G: GameState): boolean {
+  const c = G.pendingChoice as Extract<NonNullable<GameState['pendingChoice']>, { kind: 'SpecialDieSpend' }>;
+  const r = combat.resolveSpecialDieSpend(G, { draws: c.specialCount, playCardIds: [] });
+  return r.ok;
+}
+
+/** AI: skip Start-of-Combat action cards (effects aren't wired anyway). */
+function handleCombatStartActionCards(G: GameState): boolean {
+  const r = combat.resolveCombatStartActionCards(G, []);
+  return r.ok;
+}
+
+/** AI retreat heuristic: retreat only if outnumbered ≥2:1 in either theater.
+ *  Take all units. */
+function handleRetreatDecision(G: GameState): boolean {
+  const c = G.pendingChoice as Extract<NonNullable<GameState['pendingChoice']>, { kind: 'RetreatDecision' }>;
+  const ss = G.map.systems[c.systemId];
+  const my = ss?.units.filter((u) => u.side === c.side).length ?? 0;
+  const opp = ss?.units.filter((u) => u.side !== c.side).length ?? 0;
+  const shouldRetreat = my > 0 && opp >= my * 2 && c.legalDestinations.length > 0;
+  if (!shouldRetreat) {
+    const r = combat.resolveRetreatDecision(G, null, null);
+    return r.ok;
+  }
+  // Pick the first legal destination.
+  const r = combat.resolveRetreatDecision(G, c.legalDestinations[0], null);
   return r.ok;
 }

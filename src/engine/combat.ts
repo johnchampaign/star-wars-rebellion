@@ -9,7 +9,7 @@
 
 import type {
   GameState, Side, SystemId, UnitInstance, Theater, DieColor, DieResult,
-  CombatState, CombatReport, CombatAttackReport,
+  CombatState, CombatReport, CombatAttackReport, LeaderId,
 } from './types';
 import * as M from './mechanics';
 import { rollDie, shuffle } from './rng';
@@ -39,31 +39,9 @@ function bothSidesPresent(G: GameState, sysId: SystemId): boolean {
   return bothSidesHaveTheater(G, sysId, 'space') || bothSidesHaveTheater(G, sysId, 'ground');
 }
 
-/** Yoda ring reroll in combat (RR Seek Yoda). Once per game round, the Yoda
- *  holder rerolls 1 die when in a system with a mission or combat. Returns
- *  the (possibly modified) dice array. Picks the first blank to reroll. */
-function tryYodaRerollCombat(G: GameState, side: Side, sysId: SystemId, dice: DieResult[]): DieResult[] {
-  if (side !== 'Rebel') return dice;
-  if (G.yodaRerollUsedThisRound) return dice;
-  if (!G.leaderAttachments) return dice;
-  let yoda: string | null = null;
-  for (const lid of Object.keys(G.leaderAttachments)) {
-    if (G.leaderAttachments[lid].includes('yoda')) { yoda = lid; break; }
-  }
-  if (!yoda) return dice;
-  const here = G.rebel.leadersOnBoard[sysId] ?? [];
-  if (!here.includes(yoda)) return dice;
-  const idx = dice.findIndex((d) => d.face === 'blank');
-  if (idx < 0) return dice;
-  const fresh = rollDie(G.rng, dice[idx].color);
-  log(G, { kind: 'yoda-reroll', side: 'Rebel', payload: {
-    holder: yoda, systemId: sysId, color: dice[idx].color, oldFace: 'blank', newFace: fresh.face,
-  }});
-  const out = [...dice];
-  out[idx] = fresh;
-  G.yodaRerollUsedThisRound = true;
-  return out;
-}
+// (tryYodaRerollCombat removed — Yoda reroll in combat is now a player
+//  choice queued via the YodaReroll ChoiceRequest. Missions still use the
+//  auto-reroll path in phases.ts; that's untouched.)
 
 function leaderTacticValueIn(G: GameState, side: Side, sysId: SystemId, theater: Theater): number {
   const f = side === 'Rebel' ? G.rebel : G.empire;
@@ -180,6 +158,25 @@ export function runCombat(G: GameState): void {
     c.step = 'Round';
   }
 
+  // Step 2.5: Start-of-Combat action-card window. Each side may play one
+  // or more action cards with timing 'StartOfCombat' (RR pp.4-5). Posted
+  // once per combat, before round 1.
+  if (!c.startOfCombatActionsDone) {
+    for (const side of [c.attackerSide, other(c.attackerSide)] as const) {
+      const playable = listStartOfCombatPlayable(G, c, side);
+      if (playable.length === 0) continue;
+      G.pendingChoice = {
+        kind: 'CombatStartActionCards',
+        side, systemId: c.systemId, playable,
+      };
+      log(G, { kind: 'choice-request', side, payload: {
+        kind: 'CombatStartActionCards', playable: playable.length,
+      }});
+      return;
+    }
+    c.startOfCombatActionsDone = true;
+  }
+
   // Step 3: Combat rounds, until end condition. Loop is resumable across
   // tactic-choice pauses: re-entering runCombat picks up at the next
   // not-yet-done theater of the current round.
@@ -212,8 +209,27 @@ export function runCombat(G: GameState): void {
       c.roundTheatersDone.push('ground');
     }
 
-    // Retreat decision (auto: defender retreats if outnumbered in any theater)
-    // Skip for v1; both sides stay in.
+    // Retreat decision (RR pp.5-6) — each side may retreat at most once
+    // per combat. Defender goes first per RAW; then attacker.
+    if (!c.retreatStepDoneThisRound) {
+      for (const side of [other(c.attackerSide), c.attackerSide] as const) {
+        if (c.retreated.includes(side)) continue; // already retreated this combat
+        const dests = legalRetreatDestinations(G, c, side);
+        const hasUnits = unitsOf(G, side, c.systemId).length > 0;
+        if (dests.length === 0 || !hasUnits) continue;
+        G.pendingChoice = {
+          kind: 'RetreatDecision',
+          side, systemId: c.systemId,
+          legalDestinations: dests,
+          availableUnits: unitsOf(G, side, c.systemId).map((u) => u.instanceId),
+        };
+        log(G, { kind: 'choice-request', side, payload: {
+          kind: 'RetreatDecision', destinations: dests.length,
+        }});
+        return; // wait for resolveRetreatDecision
+      }
+      c.retreatStepDoneThisRound = true;
+    }
 
     // End check: do both sides still have units in some shared theater?
     const continues =
@@ -224,6 +240,7 @@ export function runCombat(G: GameState): void {
     } else {
       c.round++;
       c.roundTheatersDone = undefined; // reset for next round
+      c.retreatStepDoneThisRound = false;
     }
   }
 
@@ -291,34 +308,187 @@ function beginAttack(G: GameState, c: CombatState, side: Side, theater: Theater)
   black = Math.min(5, black);
 
   // Roll dice.
-  let dice: DieResult[] = [];
+  const dice: DieResult[] = [];
   for (let i = 0; i < red; i++) dice.push(rollDie(G.rng, 'red' as DieColor));
   for (let i = 0; i < black; i++) dice.push(rollDie(G.rng, 'black' as DieColor));
 
-  // Yoda ring auto-applies (once per round, can't be human-chosen — RR text).
-  dice = tryYodaRerollCombat(G, side, c.systemId, dice);
-
-  // Stash the in-flight attack and queue the attacker-tactics choice.
+  // Stash the in-flight attack. The phase will be set by advanceAttackToTactics
+  // based on which pre-tactic pause point (Yoda / Special) applies first.
   c.pendingAttack = {
     side, theater,
-    phase: 'awaitingAttackerTactics',
+    phase: 'awaitingYodaReroll', // placeholder; advanceAttackToTactics may change it
     dice,
     attackerUnits: myUnits.length,
     bonusDamage: 0,
     tacticsPlayed: [],
   };
-  const hand = (side === c.attackerSide ? c.attackerHand : c.defenderHand)
-    .filter((cid) => G.catalog.tactics[cid]?.theater === theater);
+  advanceAttackToTactics(G, c);
+}
+
+/** Walk the pre-AttackerTactics pause points (Yoda reroll, Special-die
+ *  spend). Queues whichever applies first. If none apply, falls through to
+ *  queueing CombatAttackerTactics. Called from beginAttack and from each
+ *  pre-tactic resolver. */
+function advanceAttackToTactics(G: GameState, c: CombatState): void {
+  const pa = c.pendingAttack;
+  if (!pa) return;
+
+  // 1) Yoda reroll — Rebel only, once per round, requires Yoda holder
+  //    at the system, requires at least one blank die.
+  if (canQueueYodaReroll(G, c, pa.side)) {
+    const blanks = pa.dice
+      .map((d, i) => d.face === 'blank' ? i : -1)
+      .filter((i) => i >= 0);
+    if (blanks.length > 0) {
+      const yodaHolder = findYodaHolder(G);
+      if (yodaHolder) {
+        pa.phase = 'awaitingYodaReroll';
+        G.pendingChoice = {
+          kind: 'YodaReroll',
+          side: 'Rebel', theater: pa.theater, systemId: c.systemId,
+          blankIndices: blanks, holderLeaderId: yodaHolder,
+        };
+        log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+          kind: 'YodaReroll', blanks: blanks.length,
+        }});
+        return;
+      }
+    }
+  }
+
+  // 2) Special-die spend — only for the attacker, only if specials present.
+  const specials = pa.dice.filter((d) => d.face === 'special').length;
+  if (specials > 0 && !pa.specialsResolved) {
+    const hand = pa.side === c.attackerSide ? c.attackerHand : c.defenderHand;
+    const specialCards = hand.filter((cid) => {
+      const card = G.catalog.tactics[cid];
+      if (!card) return false;
+      if (card.theater !== pa.theater) return false;
+      return /special/i.test(card.rulesText ?? '');
+    });
+    pa.phase = 'awaitingSpecialSpend';
+    G.pendingChoice = {
+      kind: 'SpecialDieSpend',
+      side: pa.side, theater: pa.theater, systemId: c.systemId,
+      specialCount: specials, specialCards,
+    };
+    log(G, { kind: 'choice-request', side: pa.side, payload: {
+      kind: 'SpecialDieSpend', count: specials, playable: specialCards.length,
+    }});
+    return;
+  }
+
+  // 3) Default — queue CombatAttackerTactics.
+  pa.phase = 'awaitingAttackerTactics';
+  const hand = (pa.side === c.attackerSide ? c.attackerHand : c.defenderHand)
+    .filter((cid) => G.catalog.tactics[cid]?.theater === pa.theater);
   G.pendingChoice = {
     kind: 'CombatAttackerTactics',
-    side, theater, dice,
+    side: pa.side, theater: pa.theater, dice: pa.dice,
     hand,
-    attackerUnits: myUnits.length,
+    attackerUnits: pa.attackerUnits,
     systemId: c.systemId,
   };
-  log(G, { kind: 'choice-request', side, payload: {
-    kind: 'CombatAttackerTactics', theater, dice: dice.length, hits: dice.filter((d) => d.face === 'hit' || d.face === 'direct-hit').length, hand: hand.length,
+  log(G, { kind: 'choice-request', side: pa.side, payload: {
+    kind: 'CombatAttackerTactics', theater: pa.theater,
+    dice: pa.dice.length,
+    hits: pa.dice.filter((d) => d.face === 'hit' || d.face === 'direct-hit').length,
+    hand: hand.length,
   }});
+}
+
+/** Return true if Yoda reroll is currently available for this side. */
+function canQueueYodaReroll(G: GameState, c: CombatState, side: Side): boolean {
+  if (side !== 'Rebel') return false;
+  if (c.yodaRerollUsedRound === c.round) return false;
+  if (G.yodaRerollUsedThisRound) return false;
+  const holder = findYodaHolder(G);
+  if (!holder) return false;
+  const here = G.rebel.leadersOnBoard[c.systemId] ?? [];
+  return here.includes(holder);
+}
+
+function findYodaHolder(G: GameState): LeaderId | null {
+  if (!G.leaderAttachments) return null;
+  for (const lid of Object.keys(G.leaderAttachments)) {
+    if (G.leaderAttachments[lid].includes('yoda')) return lid as LeaderId;
+  }
+  return null;
+}
+
+/** Resolve the Yoda reroll choice. `rerollIndex` is the dice index to
+ *  reroll, or null to decline. */
+export function resolveYodaReroll(
+  G: GameState, rerollIndex: number | null
+): { ok: boolean; reason?: string } {
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  const pa = c.pendingAttack;
+  if (!pa || pa.phase !== 'awaitingYodaReroll') return { ok: false, reason: 'no-yoda-phase' };
+  if (!G.pendingChoice || G.pendingChoice.kind !== 'YodaReroll') return { ok: false, reason: 'no-choice' };
+
+  if (rerollIndex !== null) {
+    if (rerollIndex < 0 || rerollIndex >= pa.dice.length) return { ok: false, reason: 'bad-index' };
+    if (pa.dice[rerollIndex].face !== 'blank') return { ok: false, reason: 'not-blank' };
+    const fresh = rollDie(G.rng, pa.dice[rerollIndex].color);
+    log(G, { kind: 'yoda-reroll', side: 'Rebel', payload: {
+      holder: G.pendingChoice.holderLeaderId, systemId: c.systemId,
+      color: pa.dice[rerollIndex].color, oldFace: 'blank', newFace: fresh.face,
+    }});
+    pa.dice[rerollIndex] = fresh;
+    c.yodaRerollUsedRound = c.round;
+    G.yodaRerollUsedThisRound = true;
+  }
+  G.pendingChoice = undefined;
+  advanceAttackToTactics(G, c);
+  return { ok: true };
+}
+
+/** Resolve the special-die spend choice. `draws` is the count of specials
+ *  spent on drawing tactic cards (each draw spends 1 special); `playCardIds`
+ *  is the list of special-requiring cards to play (each spends 1 special).
+ *  Total spent must be ≤ specialCount. */
+export function resolveSpecialDieSpend(
+  G: GameState,
+  plays: { draws: number; playCardIds: string[] }
+): { ok: boolean; reason?: string } {
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  const pa = c.pendingAttack;
+  if (!pa || pa.phase !== 'awaitingSpecialSpend') return { ok: false, reason: 'no-special-phase' };
+  if (!G.pendingChoice || G.pendingChoice.kind !== 'SpecialDieSpend') return { ok: false, reason: 'no-choice' };
+  const ch = G.pendingChoice;
+  const totalSpent = plays.draws + plays.playCardIds.length;
+  if (totalSpent > ch.specialCount) return { ok: false, reason: 'over-spend' };
+  if (plays.draws < 0) return { ok: false, reason: 'bad-draws' };
+
+  const hand = pa.side === c.attackerSide ? c.attackerHand : c.defenderHand;
+
+  // Draws — pull from the theater deck.
+  for (let i = 0; i < plays.draws; i++) {
+    const deck = pa.theater === 'space' ? G.spaceTacticDeck : G.groundTacticDeck;
+    const drawn = deck.shift();
+    if (!drawn) break;
+    hand.push(drawn);
+    pa.tacticsPlayed.push({ card: drawn, detail: `drew via special` });
+    log(G, { kind: 'combat-special-draw', side: pa.side, payload: { card: drawn } });
+  }
+
+  // Special-required card plays — discard each, log it. The actual rules
+  // text effect (bonus damage / etc.) is left to per-card handlers in a
+  // future pass; for now, just acknowledge the play.
+  for (const cid of plays.playCardIds) {
+    if (!ch.specialCards.includes(cid)) return { ok: false, reason: `not-special-card:${cid}` };
+    if (!hand.includes(cid)) return { ok: false, reason: `not-in-hand:${cid}` };
+    discardCard(G, hand, cid);
+    pa.tacticsPlayed.push({ card: cid, detail: 'played (special required)' });
+    log(G, { kind: 'combat-tactic', side: pa.side, payload: { card: cid, viaSpecial: true } });
+  }
+
+  pa.specialsResolved = true;
+  G.pendingChoice = undefined;
+  advanceAttackToTactics(G, c);
+  return { ok: true };
 }
 
 /** Resume attack after attacker's tactic-card plays. Apply rerolls/bonus,
@@ -641,6 +811,149 @@ function discardCard(G: GameState, hand: string[], cardId: string): void {
 // ============================================================================
 // End of combat
 // ============================================================================
+
+// ============================================================================
+// Start-of-Combat action cards + Retreat helpers
+// ============================================================================
+
+/** Action-card IDs in `side`'s hand that have timing === 'StartOfCombat'
+ *  and whose leaderRequirement (if any) is satisfied by leaders at the
+ *  combat system. */
+function listStartOfCombatPlayable(G: GameState, c: CombatState, side: Side): string[] {
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  const leadersHere = new Set(f.leadersOnBoard[c.systemId] ?? []);
+  return f.actionHand.filter((cid) => {
+    const card = G.catalog.actions[cid];
+    if (!card || card.timing !== 'StartOfCombat') return false;
+    const req = card.leaderRequirement ?? [];
+    if (req.length === 0) return true;
+    return req.some((lid) => leadersHere.has(lid));
+  });
+}
+
+/** Resolve the Start-of-Combat action-card window for one side. `cardIds`
+ *  are the cards the side chooses to play (each is discarded; effect
+ *  invocation is best-effort via the handler registry — cards without
+ *  registered handlers just discard with a 'no-handler' note). */
+export function resolveCombatStartActionCards(
+  G: GameState, cardIds: string[]
+): { ok: boolean; reason?: string } {
+  if (!G.pendingCombat) return { ok: false, reason: 'no-pending-combat' };
+  const c = G.pendingCombat;
+  if (!G.pendingChoice || G.pendingChoice.kind !== 'CombatStartActionCards') {
+    return { ok: false, reason: 'no-choice' };
+  }
+  const ch = G.pendingChoice;
+  const side = ch.side;
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+
+  for (const cid of cardIds) {
+    if (!ch.playable.includes(cid)) return { ok: false, reason: `not-playable:${cid}` };
+    if (!f.actionHand.includes(cid)) return { ok: false, reason: `not-in-hand:${cid}` };
+    // Discard from hand → action discard pile.
+    f.actionHand.splice(f.actionHand.indexOf(cid), 1);
+    f.actionDiscard.push(cid);
+    log(G, { kind: 'combat-action-card', side, payload: { card: cid } });
+    // Effect handlers are out of scope for this MVP — most start-of-combat
+    // action cards modify dice / draw cards / etc. and are deferred. The
+    // play is recorded for the report and the card is consumed.
+  }
+
+  G.pendingChoice = undefined;
+  // Continue with the OTHER side's start-of-combat window if any, then
+  // mark startOfCombatActionsDone and proceed to round 1.
+  const otherSide = other(side);
+  if (otherSide !== side) {
+    const other_playable = listStartOfCombatPlayable(G, c, otherSide);
+    if (other_playable.length > 0) {
+      G.pendingChoice = {
+        kind: 'CombatStartActionCards',
+        side: otherSide, systemId: c.systemId, playable: other_playable,
+      };
+      log(G, { kind: 'choice-request', side: otherSide, payload: {
+        kind: 'CombatStartActionCards', playable: other_playable.length,
+      }});
+      return { ok: true };
+    }
+  }
+  c.startOfCombatActionsDone = true;
+  runCombat(G);
+  return { ok: true };
+}
+
+/** Compute the legal retreat destinations for `side`. RAW:
+ *  - The attacker may only retreat to the system they moved from.
+ *  - The defender may retreat to any adjacent system (and not into
+ *    the attacker's source if the attacker still controls it — they
+ *    might, since attacker just left there). The RR text we have is
+ *    "any adjacent system." We don't filter by attacker source for the
+ *    defender (we leave that to expansion / FAQ if needed). */
+function legalRetreatDestinations(G: GameState, c: CombatState, side: Side): SystemId[] {
+  // Rebel Base space is a special abstract system — can't retreat to it
+  // unless the base is hidden and the side is Rebel.
+  const adj = G.catalog.adjacency[c.systemId] ?? [];
+  if (side === c.attackerSide) {
+    // Attacker may retreat to source — if it's still adjacent (which it
+    // always is by construction) AND not destroyed.
+    const src = c.attackerSourceSystemId;
+    if (!src) return [];
+    const ss = G.map.systems[src];
+    if (!ss || ss.destroyed) return [];
+    // RAW: can't retreat into a system the opponent has units in.
+    const opp = other(side);
+    if (ss.units.some((u) => u.side === opp)) return [];
+    return [src];
+  }
+  // Defender may retreat to any adjacent system without enemy units.
+  const opp = other(side);
+  return adj.filter((sid) => {
+    if (sid === c.attackerSourceSystemId) return false; // can't retreat through attacker's source
+    const ss = G.map.systems[sid];
+    if (!ss || ss.destroyed) return false;
+    if (ss.units.some((u) => u.side === opp)) return false;
+    if (G.catalog.systems[sid]?.isRemote) return false;
+    return true;
+  });
+}
+
+/** Resolve the retreat decision. `destSystemId === null` means decline to
+ *  retreat. `unitInstanceIds` is the list of units to take (or null /
+ *  empty for "take all"). Transport-capacity is NOT enforced in this MVP
+ *  — TODO once unit movement is fully rules-faithful. */
+export function resolveRetreatDecision(
+  G: GameState, destSystemId: SystemId | null, unitInstanceIds: string[] | null
+): { ok: boolean; reason?: string } {
+  if (!G.pendingCombat) return { ok: false, reason: 'no-pending-combat' };
+  const c = G.pendingCombat;
+  if (!G.pendingChoice || G.pendingChoice.kind !== 'RetreatDecision') {
+    return { ok: false, reason: 'no-choice' };
+  }
+  const ch = G.pendingChoice;
+  const side = ch.side;
+
+  if (destSystemId === null) {
+    // Decline — log and continue.
+    log(G, { kind: 'combat-retreat-decline', side, payload: { systemId: c.systemId } });
+    G.pendingChoice = undefined;
+    runCombat(G);
+    return { ok: true };
+  }
+  if (!ch.legalDestinations.includes(destSystemId)) {
+    return { ok: false, reason: `illegal-dest:${destSystemId}` };
+  }
+  const toMove = (unitInstanceIds ?? ch.availableUnits).filter((uid) =>
+    ch.availableUnits.includes(uid)
+  );
+  for (const uid of toMove) {
+    M.moveUnit(G, uid, c.systemId, destSystemId);
+  }
+  c.retreated.push(side);
+  log(G, { kind: 'combat-retreat', side, payload: { from: c.systemId, to: destSystemId, units: toMove.length } });
+
+  G.pendingChoice = undefined;
+  runCombat(G);
+  return { ok: true };
+}
 
 function endCombat(G: GameState): void {
   if (!G.pendingCombat) return;

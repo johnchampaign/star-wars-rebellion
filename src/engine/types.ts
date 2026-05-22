@@ -194,6 +194,57 @@ export type ChoiceRequest =
       }[];
     }
   | {
+      // Rebel may reroll one blank die via Yoda's ring (once per round, only
+      // if the Yoda holder is at this system). Posted after the dice roll
+      // but before tactic-card windows.
+      kind: 'YodaReroll';
+      side: Side;        // always 'Rebel' but kept for consistency
+      theater: Theater;
+      systemId: SystemId;
+      // Indices into the in-flight pendingAttack.dice that are still blank.
+      blankIndices: number[];
+      holderLeaderId: LeaderId;
+    }
+  | {
+      // RR p.5 "Combat Actions": each special die produced by an attacker's
+      // attack may be spent to (a) draw 1 tactic card from a theater deck,
+      // or (b) play a tactic card from hand that requires a special icon.
+      // `specialCount` is the number of specials available to spend.
+      kind: 'SpecialDieSpend';
+      side: Side;
+      theater: Theater;
+      systemId: SystemId;
+      specialCount: number;
+      // Tactic-card IDs in the side's hand whose text references "Special"
+      // (the engine treats these as the spend-to-play candidates).
+      specialCards: string[];
+    }
+  | {
+      // Each side may play one or more action cards with timing
+      // 'StartOfCombat' (RR pp.4-5). Posted after AddLeader + DrawTactics
+      // but before round 1's first theater step.
+      kind: 'CombatStartActionCards';
+      side: Side;
+      systemId: SystemId;
+      // Action-card IDs in the side's hand whose timing is StartOfCombat
+      // AND whose leaderRequirement is satisfied by leaders at the system.
+      playable: string[];
+    }
+  | {
+      // End-of-round retreat choice (RR pp.5-6). The attacker may retreat
+      // to the system they moved from; the defender may retreat to any
+      // adjacent system (and not the attacker's source). Each side may
+      // retreat at most once per combat — tracked via c.retreated.
+      kind: 'RetreatDecision';
+      side: Side;
+      systemId: SystemId;
+      // System IDs the side may retreat to (filtered for legality).
+      legalDestinations: SystemId[];
+      // Unit instance IDs the side currently has in the combat system
+      // (split into space + ground by the UI).
+      availableUnits: UnitInstanceId[];
+    }
+  | {
       // Attacker assigns each attack hit to a specific enemy unit (RR p.5).
       // Posted after both sides' tactic-card windows close. `hits` is the
       // ordered list of dice that produced damage (red/black hit, direct-hit,
@@ -239,11 +290,14 @@ export type CombatState = {
   pendingAttack?: {
     side: Side;          // who's currently attacking
     theater: Theater;
-    phase: 'awaitingAttackerTactics' | 'awaitingDefenderTactics' | 'awaitingDamageAssignment';
+    phase: 'awaitingYodaReroll' | 'awaitingSpecialSpend' | 'awaitingAttackerTactics' | 'awaitingDefenderTactics' | 'awaitingDamageAssignment';
     dice: DieResult[];   // current dice (may be modified by reroll)
     attackerUnits: number;
     bonusDamage: number; // accumulated from damage-boost tactics
     tacticsPlayed: { card: string; detail: string }[];
+    // True once the SpecialDieSpend window has been resolved for this
+    // attack, so re-entry doesn't queue it again.
+    specialsResolved?: boolean;
     // Set when entering 'awaitingDamageAssignment'. Frozen list of hits
     // the attacker must assign (post-blocks), and the legal targets per
     // hit (computed when the choice is queued).
@@ -271,6 +325,15 @@ export type CombatState = {
   // the start of each new round. Lets the resumable round loop skip
   // already-finished theater steps after a tactic-choice pause.
   roundTheatersDone?: Theater[];
+  // Whether the Start-of-Combat action-card window has been resolved.
+  // Set after both sides confirm their picks (or skip); never re-prompted.
+  startOfCombatActionsDone?: boolean;
+  // Whether the end-of-round retreat window has been resolved for the
+  // current round. Reset at the start of each new round.
+  retreatStepDoneThisRound?: boolean;
+  // Sides that have used their Yoda reroll during the current round
+  // (resets each round, mirrors G.yodaRerollUsedThisRound semantics).
+  yodaRerollUsedRound?: number;
 };
 
 // ---------- Combat reports (display layer) ----------
