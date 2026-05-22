@@ -113,7 +113,7 @@ const infiltration: EffectHandler = (G, ctx) => {
   }
   const a = G.rebel.objectiveDeck.shift()!;
   const b = G.rebel.objectiveDeck.shift()!;
-  G.pendingChoice = { kind: 'InfiltrationPick', missionId: ctx.source.id, topId: a, bottomId: b };
+  G.pendingChoice = { kind: 'InfiltrationPick', missionId: ctx.card.id, topId: a, bottomId: b };
   log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'InfiltrationPick', candidates: [a, b] } });
   return true;
 };
@@ -860,7 +860,7 @@ const stolenPlans: EffectHandler = (G, ctx) => {
   }
   G.pendingChoice = {
     kind: 'StolenPlansReorder',
-    missionId: ctx.source.id,
+    missionId: ctx.card.id,
     remaining: drawn,
     orderedTop: [],
   };
