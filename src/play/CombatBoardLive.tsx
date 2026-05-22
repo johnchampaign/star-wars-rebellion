@@ -177,50 +177,97 @@ function TheaterPanel({ G, c, theater, attacker, defender, dice, rolling }: {
   );
 }
 
+/** Per-instance, damage-lane unit panel. Inspired by the OSD BMV Battle Mat
+ *  layout (independent implementation): the panel is a row of columns, one
+ *  per damage level (0 / 1 / 2 / 3+). Each unit instance sits in the column
+ *  matching its current damage. Wounded units visibly slide right as combat
+ *  progresses. Squares are color-tinted by the unit's health colour
+ *  (red-health vs black-health) so unit-class is legible at a glance. */
 function SidePanel({ G, side, units, leaderIds, align }: {
   G: GameState; side: Side; units: UnitInstance[]; leaderIds: string[]; align: 'left' | 'right';
 }) {
   const color = SIDE_COLOR[side];
-  // Group identical unit types and render damage on each instance individually.
-  const grouped = new Map<string, UnitInstance[]>();
+  // Find the highest single-unit HP we need to show (decides how many
+  // damage lanes to render). Cap at 5 (the SSD's max HP).
+  const maxHp = Math.max(1, ...units.map((u) => G.catalog.unitTypes[u.typeId]?.health.value ?? 1));
+  const lanes = Math.min(5, maxHp); // 0..maxHp-1 damage shown; >=maxHp dies
+  // Bucket each instance into its damage lane (0 = pristine).
+  const buckets: UnitInstance[][] = Array.from({ length: lanes }, () => []);
   for (const u of units) {
-    const arr = grouped.get(u.typeId) ?? [];
-    arr.push(u);
-    grouped.set(u.typeId, arr);
+    const dmg = Math.min(u.damage ?? 0, lanes - 1);
+    buckets[dmg].push(u);
   }
+
   return (
     <div style={{
       display: 'flex', flexDirection: 'column',
       alignItems: align === 'right' ? 'flex-end' : 'flex-start',
       gap: 4,
+      minWidth: 0,
     }}>
-      <div style={{ color, fontSize: 12, fontWeight: 700, marginBottom: 4 }}>{side}</div>
+      <div style={{ color, fontSize: 12, fontWeight: 700 }}>{side}</div>
       {leaderIds.length > 0 && (
         <div style={{ fontSize: 11, color: '#ccc' }}>
           ★ {leaderIds.map((lid) => G.catalog.leaders[lid]?.name ?? lid).join(', ')}
         </div>
       )}
-      {grouped.size === 0 && (
+      {units.length === 0 ? (
         <div style={{ color: '#555', fontSize: 11, fontStyle: 'italic' }}>(no units)</div>
+      ) : (
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: `repeat(${lanes}, minmax(56px, 1fr))`,
+          gap: 4, marginTop: 2,
+        }}>
+          {/* Lane headers */}
+          {buckets.map((_, lane) => (
+            <div key={`h-${lane}`} style={{
+              fontSize: 9, color: '#666', textAlign: 'center',
+              textTransform: 'uppercase', letterSpacing: 0.4,
+            }}>
+              {lane === 0 ? 'undmg' : `${lane} dmg`}
+            </div>
+          ))}
+          {/* Lane contents — per-instance icons */}
+          {buckets.map((bucket, lane) => (
+            <div key={`b-${lane}`} style={{
+              display: 'flex', flexWrap: 'wrap', gap: 2,
+              justifyContent: 'center', alignItems: 'flex-start',
+              minHeight: 30,
+              background: lane === 0 ? 'transparent' : `rgba(255,80,80,${0.05 * lane})`,
+              border: lane === 0 ? '1px dashed #2a2d34' : '1px dashed #4a3333',
+              borderRadius: 3, padding: 3,
+            }}>
+              {bucket.map((u) => <UnitIcon key={u.instanceId} G={G} unit={u} />)}
+            </div>
+          ))}
+        </div>
       )}
-      {Array.from(grouped.entries()).map(([typeId, instances]) => {
-        const t = G.catalog.unitTypes[typeId];
-        const maxHp = t?.health.value ?? 1;
-        return (
-          <div key={typeId} style={{ fontSize: 12, color: '#e8e8ea', textAlign: align }}>
-            <strong>{t?.name ?? typeId}</strong> ×{instances.length}
-            {instances.some((u) => (u.damage ?? 0) > 0) && (
-              <span style={{ marginLeft: 6, fontSize: 10, color: '#ff8a80' }}>
-                {instances.map((u, i) => (
-                  (u.damage ?? 0) > 0
-                    ? <span key={i} style={{ marginRight: 4 }}>[{maxHp - (u.damage ?? 0)}/{maxHp}]</span>
-                    : null
-                ))}
-              </span>
-            )}
-          </div>
-        );
-      })}
+    </div>
+  );
+}
+
+function UnitIcon({ G, unit }: { G: GameState; unit: UnitInstance }) {
+  const t = G.catalog.unitTypes[unit.typeId];
+  const name = t?.name ?? unit.typeId;
+  const hc = t?.health.color;
+  // Health-color tint: red-health units get a red border, black-health
+  // units get a gray border. Death Star (color=null) is unbordered.
+  const border = hc === 'red' ? '2px solid #c4423a'
+              : hc === 'black' ? '2px solid #888'
+              : '1px dotted #555';
+  // Two-letter abbreviation derived from the type ID for a quick visual.
+  const abbr = (t?.id ?? unit.typeId).split('-').map((s) => s[0]?.toUpperCase()).join('').slice(0, 3);
+  return (
+    <div
+      title={`${name}${(unit.damage ?? 0) > 0 ? ` — ${(t?.health.value ?? 1) - (unit.damage ?? 0)}/${t?.health.value ?? 1} hp` : ''}`}
+      style={{
+        width: 22, height: 22, background: '#0c0d10', border,
+        borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 9, fontWeight: 700, color: '#e8e8ea',
+      }}
+    >
+      {abbr}
     </div>
   );
 }

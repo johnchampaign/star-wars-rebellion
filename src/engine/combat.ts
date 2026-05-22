@@ -12,6 +12,7 @@ import type {
   CombatState, CombatReport, CombatAttackReport, LeaderId,
 } from './types';
 import * as M from './mechanics';
+import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
 
@@ -214,6 +215,7 @@ export function runCombat(G: GameState): void {
     if (!c.retreatStepDoneThisRound) {
       for (const side of [other(c.attackerSide), c.attackerSide] as const) {
         if (c.retreated.includes(side)) continue; // already retreated this combat
+        if (c.flags?.cannotRetreatThisRound?.[side]) continue; // No Escape
         const dests = legalRetreatDestinations(G, c, side);
         const hasUnits = unitsOf(G, side, c.systemId).length > 0;
         if (dests.length === 0 || !hasUnits) continue;
@@ -241,6 +243,8 @@ export function runCombat(G: GameState): void {
       c.round++;
       c.roundTheatersDone = undefined; // reset for next round
       c.retreatStepDoneThisRound = false;
+      // No Escape only lasts the round it was played.
+      if (c.flags?.cannotRetreatThisRound) c.flags.cannotRetreatThisRound = {};
     }
   }
 
@@ -279,6 +283,9 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
 
   // Apply destructions (RR p.5 — end of theater step).
   finalizeTheaterDestructions(G, c, theater);
+
+  // Clear "cannot block until step end" flags — they only last this step.
+  if (c.flags?.cannotBlockUntilStepEnd) c.flags.cannotBlockUntilStepEnd = {};
 
   // Clear theater-step state.
   c.activeTheater = undefined;
@@ -474,15 +481,13 @@ export function resolveSpecialDieSpend(
     log(G, { kind: 'combat-special-draw', side: pa.side, payload: { card: drawn } });
   }
 
-  // Special-required card plays — discard each, log it. The actual rules
-  // text effect (bonus damage / etc.) is left to per-card handlers in a
-  // future pass; for now, just acknowledge the play.
+  // Special-required card plays — discard each and apply the card's effect
+  // where we know it. Unknown special cards still discard with a logged note.
   for (const cid of plays.playCardIds) {
     if (!ch.specialCards.includes(cid)) return { ok: false, reason: `not-special-card:${cid}` };
     if (!hand.includes(cid)) return { ok: false, reason: `not-in-hand:${cid}` };
     discardCard(G, hand, cid);
-    pa.tacticsPlayed.push({ card: cid, detail: 'played (special required)' });
-    log(G, { kind: 'combat-tactic', side: pa.side, payload: { card: cid, viaSpecial: true } });
+    applySpecialTacticEffect(G, c, pa.side, cid);
   }
 
   pa.specialsResolved = true;
@@ -561,12 +566,16 @@ export function resolveCombatAttackerTactics(
   const stagedSet = new Set(c.theaterStaged ?? []);
   const liveTargets = unitsOf(G, defenderSide, c.systemId, pa.theater)
     .filter((u) => !stagedSet.has(u.instanceId));
-  if (incomingHits === 0 || liveTargets.length === 0) {
-    // Skip defender-tactics window; finalise this attack with zero damage.
-    // (No hits / no targets → no damage-assignment choice queued either.)
+  // Unstoppable Assault: defender forfeits the block window this attack.
+  const blocked = c.flags?.cannotBlockUntilStepEnd?.[defenderSide] ?? false;
+  if (incomingHits === 0 || liveTargets.length === 0 || blocked) {
+    // Skip defender-tactics window; finalise this attack with zero blocks.
+    if (blocked) {
+      log(G, { kind: 'combat-tactic-effect', side: pa.side, payload: { effect: 'unstoppable-assault-prevents-block' } });
+    }
     G.pendingChoice = undefined;
     finalizeAttack(G, c, /*blocks*/0);
-    if (G.pendingChoice) return { ok: true }; // defensive — shouldn't happen
+    if (G.pendingChoice) return { ok: true }; // damage-assignment may have queued
     runCombat(G);
     return { ok: true };
   }
@@ -813,6 +822,82 @@ function discardCard(G: GameState, hand: string[], cardId: string): void {
 // ============================================================================
 
 // ============================================================================
+// Tactic-card effects (special-die spend path)
+// ============================================================================
+
+/** Apply the rules-text effect of a special-requiring tactic card. Best-effort
+ *  per-card dispatch by ID substring. Unknown cards just log a "played" note. */
+function applySpecialTacticEffect(G: GameState, c: CombatState, side: Side, cardId: string): void {
+  const pa = c.pendingAttack!;
+  if (cardId.includes('brilliant-strategy')) {
+    // "Draw 2 tactic cards from either deck, or 1 from each." MVP: draw 1
+    // from each (mixed-deck split). Side's hand grows by 2.
+    const hand = side === c.attackerSide ? c.attackerHand : c.defenderHand;
+    const space = G.spaceTacticDeck.shift();
+    const ground = G.groundTacticDeck.shift();
+    if (space) hand.push(space);
+    if (ground) hand.push(ground);
+    pa.tacticsPlayed.push({ card: cardId, detail: `Brilliant Strategy: +${(space ? 1 : 0) + (ground ? 1 : 0)} cards` });
+    log(G, { kind: 'combat-tactic', side, payload: { card: cardId, drew: [space, ground].filter(Boolean) } });
+    return;
+  }
+  if (cardId.includes('bombardment')) {
+    // "Deal damage equal to the red attack value of 1 of your ships."
+    // MVP: pick the ship with the highest red attack value and apply that
+    // many bonus-damage direct-hits to the pendingAttack. Damage falls
+    // through to the defender via the regular CombatAssignDamage queue.
+    const ss = G.map.systems[c.systemId];
+    const ships = (ss?.units ?? []).filter((u) => {
+      const t = G.catalog.unitTypes[u.typeId];
+      return u.side === side && t?.theater === 'space';
+    });
+    let bestRed = 0;
+    for (const u of ships) {
+      const t = G.catalog.unitTypes[u.typeId];
+      if ((t?.attack.red ?? 0) > bestRed) bestRed = t!.attack.red;
+    }
+    pa.bonusDamage += bestRed;
+    pa.tacticsPlayed.push({ card: cardId, detail: `Bombardment: +${bestRed} damage` });
+    log(G, { kind: 'combat-tactic', side, payload: { card: cardId, bombardment: bestRed } });
+    return;
+  }
+  if (cardId.includes('unstoppable-assault')) {
+    // "During this [theater] battle step, your opponent cannot block damage."
+    // Set the defender-cannot-block flag — applied at end of this attack's
+    // defender-tactics step.
+    const opp = other(side);
+    G.pendingCombat!.flags ??= {};
+    G.pendingCombat!.flags.cannotBlockUntilStepEnd ??= {};
+    G.pendingCombat!.flags.cannotBlockUntilStepEnd[opp] = true;
+    pa.tacticsPlayed.push({ card: cardId, detail: 'Unstoppable Assault: opponent cannot block' });
+    log(G, { kind: 'combat-tactic', side, payload: { card: cardId, suppressesBlock: true } });
+    return;
+  }
+  if (cardId.includes('no-escape')) {
+    // "Your opponent cannot retreat from combat this round."
+    const opp = other(side);
+    G.pendingCombat!.flags ??= {};
+    G.pendingCombat!.flags.cannotRetreatThisRound ??= {};
+    G.pendingCombat!.flags.cannotRetreatThisRound[opp] = true;
+    pa.tacticsPlayed.push({ card: cardId, detail: 'No Escape: opponent cannot retreat this round' });
+    log(G, { kind: 'combat-tactic', side, payload: { card: cardId, suppressesRetreat: true } });
+    return;
+  }
+  if (cardId.includes('escape-plan')) {
+    // "When you retreat, your units do not need to be transported."
+    G.pendingCombat!.flags ??= {};
+    G.pendingCombat!.flags.retreatIgnoresTransport ??= {};
+    G.pendingCombat!.flags.retreatIgnoresTransport[side] = true;
+    pa.tacticsPlayed.push({ card: cardId, detail: 'Escape Plan: retreat ignores transport' });
+    log(G, { kind: 'combat-tactic', side, payload: { card: cardId, retreatTransport: false } });
+    return;
+  }
+  // Unknown special card — log only.
+  pa.tacticsPlayed.push({ card: cardId, detail: 'played (effect not yet wired)' });
+  log(G, { kind: 'combat-tactic', side, payload: { card: cardId, viaSpecial: true } });
+}
+
+// ============================================================================
 // Start-of-Combat action cards + Retreat helpers
 // ============================================================================
 
@@ -1023,5 +1108,30 @@ function endCombat(G: GameState): void {
   G.combatReports.push(c.report);
 
   log(G, { kind: 'combat-end', payload: { systemId: c.systemId, rounds: c.round, winner: c.report.winner } });
+
+  // Combat-timed Rebel objectives — auto-play any whose triggers fire,
+  // grant their reputation, and either discard or return-to-deck per
+  // the card's rules. Done before clearing pendingCombat so the report
+  // sees the combat that triggered them.
+  const fired = objectives.combatObjectivesTriggered(G, c.report);
+  for (const oid of fired) {
+    const card = G.catalog.objectives[oid];
+    if (!card) continue;
+    const rep = objectives.objectiveReputationGain(G, oid);
+    M.gainReputation(G, rep);
+    // Remove from hand.
+    const hand = G.rebel.objectiveHand ?? [];
+    const idx = hand.indexOf(oid);
+    if (idx >= 0) hand.splice(idx, 1);
+    // Return to deck or box per the card's rule.
+    if (objectives.objectiveReturnsToDeck(G, oid)) {
+      (G.rebel.objectiveDeck ??= []).push(oid);
+    }
+    log(G, { kind: 'objective-played', side: 'Rebel', payload: {
+      objectiveId: oid, reputation: rep, timing: 'Combat',
+    }});
+    if (G.isGameOver) break;
+  }
+
   G.pendingCombat = undefined;
 }

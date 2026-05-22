@@ -920,7 +920,21 @@ function buildRefreshReport(G: GameState, logStart: number): void {
         reputation: (p.reputation as number) ?? 0,
       });
     } else if (k === 'recruit-leader' && sideOf) {
-      pick(sideOf).recruits.push({ cardId: '', leaderId: (p.leaderId as string) ?? null });
+      pick(sideOf).recruits.push({
+        cardId: (p.cardId as string) ?? '',
+        leaderId: (p.leaderId as string) ?? null,
+      });
+    } else if (k === 'recruit-action-only' && sideOf) {
+      // Player drew an action card but no leader (either by choice or by
+      // all candidates being already-recruited).
+      pick(sideOf).recruits.push({
+        cardId: (p.cardId as string) ?? '',
+        leaderId: null,
+      });
+    } else if (k === 'refresh-retrieve' && sideOf) {
+      const ids = (p.leaderIds as string[] | undefined) ?? [];
+      const f = pick(sideOf);
+      f.retrievedLeaders = [...f.retrievedLeaders, ...ids];
     } else if (k === 'build-queue' && sideOf) {
       pick(sideOf).builds.push({
         systemId: ((p.sourceSystemId as string) ?? 'rebel-base') as SystemId | 'rebel-base',
@@ -971,13 +985,14 @@ function refreshPlayStartOfRefreshObjectives(G: GameState): void {
 }
 
 function refreshRetrieveLeaders(G: GameState): void {
-  // (Optional: Rebel may play one StartOfRefresh objective before retrieve.)
   for (const side of ['Rebel', 'Empire'] as const) {
     const f = faction(G, side);
+    const retrieved: string[] = [];
     // Leaders on missions return without revealing (rr p.9).
     for (const a of f.leadersOnMissions) {
       for (const lid of a.leaderIds) {
         if (!f.leaderPool.includes(lid)) f.leaderPool.push(lid);
+        retrieved.push(lid);
       }
       f.missionHand.push(a.missionId);
     }
@@ -986,11 +1001,14 @@ function refreshRetrieveLeaders(G: GameState): void {
     for (const list of Object.values(f.leadersOnBoard)) {
       for (const lid of list) {
         if (!f.leaderPool.includes(lid)) f.leaderPool.push(lid);
+        retrieved.push(lid);
       }
     }
     f.leadersOnBoard = {};
+    if (retrieved.length > 0) {
+      log(G, { kind: 'refresh-retrieve', side, payload: { leaderIds: retrieved } });
+    }
   }
-  log(G, { kind: 'refresh-retrieve-leaders' });
 }
 
 function refreshDrawMissions(G: GameState): void {
@@ -1041,12 +1059,19 @@ function refreshRecruitIfApplicable(G: GameState): void {
     // Pick the leader on the first card — recruit them.
     const cardId = drawn[0];
     const card = G.catalog.actions[cardId];
+    let recruited = false;
     if (card?.leaderRequirement && card.leaderRequirement.length > 0) {
       const pick = card.leaderRequirement[0];
       if (G.catalog.leaders[pick] && !f.leaderPool.includes(pick) && !f.eliminatedLeaders.includes(pick)) {
         f.leaderPool.push(pick);
-        log(G, { kind: 'recruit-leader', side, payload: { leaderId: pick } });
+        log(G, { kind: 'recruit-leader', side, payload: { leaderId: pick, cardId } });
+        recruited = true;
       }
+    }
+    if (!recruited) {
+      // Drew a card but couldn't recruit (no leader requirement, or
+      // already recruited / eliminated). Note for the report modal.
+      log(G, { kind: 'recruit-action-only', side, payload: { cardId } });
     }
     f.actionHand.push(cardId);
     // The other card goes to the bottom of the deck unrevealed.

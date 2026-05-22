@@ -8,7 +8,7 @@
 // need per-combat state tracking (was the Rebel the attacker, what was
 // destroyed) which is a separate piece of infra.
 
-import type { GameState, SystemId } from './types';
+import type { GameState, SystemId, Side } from './types';
 
 /** Return true if the given objective's condition is satisfied in the
  *  current state. Caller should already have verified the timing matches. */
@@ -99,6 +99,98 @@ export function objectiveConditionMet(G: GameState, objectiveId: string): boolea
     }
   }
   return false;
+}
+
+/** Evaluate combat-timed Rebel objectives against a just-finished combat.
+ *  Returns the IDs of objectives in the Rebel's hand whose triggers fire,
+ *  in priority order. Caller (combat.endCombat) auto-plays each in turn
+ *  and grants the rep. */
+export function combatObjectivesTriggered(
+  G: GameState, report: import('./types').CombatReport
+): string[] {
+  const hand = G.rebel.objectiveHand ?? [];
+  if (hand.length === 0) return [];
+  const rebelInitiated = report.attackerSide === 'Rebel';
+  const rebelWonOverall = report.winner === 'Rebel';
+
+  // Aggregate destruction info from the report. Each round.attacks[].destroyed
+  // entries have { typeId, instanceId }; we sum by side via attack.side.
+  const empGroundHpLost = sumDestroyedHp(G, report, 'Empire', 'ground');
+  const empShipsHpLost = sumDestroyedHp(G, report, 'Empire', 'space');
+  const empSDLost = countDestroyed(report, ['star-destroyer', 'super-star-destroyer']);
+  const fired: string[] = [];
+
+  const has = (oid: string) => hand.includes(oid);
+
+  // crippling-blow-1 — 3+ health of Imperial GROUND units destroyed in
+  // a combat YOU initiated.
+  if (has('crippling-blow-1') && rebelInitiated && empGroundHpLost >= 3) {
+    fired.push('crippling-blow-1');
+  }
+  // rebel-assault-1 — Star Destroyer or SSD destroyed in a combat you initiated.
+  if (has('rebel-assault-1') && rebelInitiated && empSDLost >= 1) {
+    fired.push('rebel-assault-1');
+  }
+  // liberation-2 — Win a ground battle in a subjugated system.
+  if (has('liberation-2') && rebelWonOverall) {
+    const sys = G.map.systems[report.systemId];
+    const groundFought = report.rounds.some((r) =>
+      r.attacks.some((a) => a.theater === 'ground' && a.damageApplied > 0)
+    );
+    if (sys?.subjugated && groundFought) fired.push('liberation-2');
+  }
+  // major-victory-3 — 3+ health of Imperial SHIPS destroyed in a combat
+  // you initiated.
+  if (has('major-victory-3') && rebelInitiated && empShipsHpLost >= 3) {
+    fired.push('major-victory-3');
+  }
+  // return-of-the-jedi-3 — After winning a battle in Vader's or
+  // Palpatine's system. (Luke-Jedi sub-effect skipped — needs Jedi
+  // flag we don't track yet.)
+  if (has('return-of-the-jedi-3') && rebelWonOverall) {
+    const sys = report.systemId;
+    const vaderHere = (G.empire.leadersOnBoard[sys] ?? []).includes('darth-vader');
+    const empHere = (G.empire.leadersOnBoard[sys] ?? []).includes('emperor-palpatine');
+    if (vaderHere || empHere) fired.push('return-of-the-jedi-3');
+  }
+  // death-star-plans-2 / -3 — "If there is at least 1 fighter after the
+  // space battle step, reveal this card to roll 3 dice; on direct-hit
+  // play and destroy a Death Star in this system." Stochastic & destructive
+  // — leave to a follow-up so we don't surprise players. NOT fired here.
+
+  return fired;
+}
+
+function sumDestroyedHp(
+  G: GameState, report: import('./types').CombatReport,
+  destroyedSide: Side, theater: import('./types').Theater
+): number {
+  let hp = 0;
+  for (const round of report.rounds) {
+    for (const atk of round.attacks) {
+      // Destroyed units belong to the side that wasn't the attacker.
+      const destroyedSideOfAtk: Side = atk.side === 'Rebel' ? 'Empire' : 'Rebel';
+      if (destroyedSideOfAtk !== destroyedSide) continue;
+      if (atk.theater !== theater) continue;
+      for (const d of atk.destroyed) {
+        const t = G.catalog.unitTypes[d.typeId];
+        hp += t?.health.value ?? 1;
+      }
+    }
+  }
+  return hp;
+}
+
+function countDestroyed(report: import('./types').CombatReport, typeIds: string[]): number {
+  let n = 0;
+  for (const round of report.rounds) {
+    for (const atk of round.attacks) {
+      for (const d of atk.destroyed) {
+        if (typeIds.includes(d.typeId)) n++;
+      }
+    }
+  }
+  return n;
 }
 
 /** Effective reputation gain for an objective (handles variable-rep cards). */

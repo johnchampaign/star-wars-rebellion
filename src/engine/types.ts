@@ -334,6 +334,20 @@ export type CombatState = {
   // Sides that have used their Yoda reroll during the current round
   // (resets each round, mirrors G.yodaRerollUsedThisRound semantics).
   yodaRerollUsedRound?: number;
+  // Per-side flags from active tactic cards. Reset where appropriate.
+  // - cannotBlockUntilStepEnd[side]: defender (side) cannot play any
+  //   block cards for the remainder of the current theater step.
+  //   Cleared at end of step. Set by Unstoppable Assault.
+  // - cannotRetreatThisRound[side]: side cannot retreat this round.
+  //   Cleared at end of round. Set by No Escape.
+  // - retreatIgnoresTransport[side]: side's next retreat ignores
+  //   transport-capacity (relevant once transport is enforced; logged
+  //   regardless for the combat report). Set by Escape Plan.
+  flags?: {
+    cannotBlockUntilStepEnd?: Partial<Record<Side, boolean>>;
+    cannotRetreatThisRound?: Partial<Record<Side, boolean>>;
+    retreatIgnoresTransport?: Partial<Record<Side, boolean>>;
+  };
 };
 
 // ---------- Combat reports (display layer) ----------
