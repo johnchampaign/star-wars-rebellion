@@ -39,6 +39,9 @@ export function stepOnce(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'BuildPick' && G.pendingChoice.side === side) {
     return handleBuildPick(G);
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'CombatAssignDamage' && G.pendingChoice.side === side) {
+    return handleCombatAssignDamage(G);
+  }
 
   // From here on, only act on our own turn.
   if (G.currentPlayer !== side) return false;
@@ -238,5 +241,45 @@ function handleBuildPick(G: GameState): boolean {
   const c = G.pendingChoice as Extract<NonNullable<GameState['pendingChoice']>, { kind: 'BuildPick' }>;
   const choices = c.picks.map((p) => p.legalUnitTypes[0]);
   const r = phases.resolveBuildPicks(G, choices);
+  return r.ok;
+}
+
+/** AI damage-assignment heuristic — for each incoming hit, pick the
+ *  weakest legal target (lowest current effective HP, ties broken by
+ *  smaller tier first). Tracks already-staged targets across hits so we
+ *  don't waste damage on the same instance. */
+function handleCombatAssignDamage(G: GameState): boolean {
+  const c = G.pendingChoice as Extract<NonNullable<GameState['pendingChoice']>, { kind: 'CombatAssignDamage' }>;
+  const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+  const assigned = new Map<string, number>(); // instanceId → damage already queued
+  const assignments: (string | null)[] = [];
+
+  // Find the live unit instance from catalog data + current map state.
+  const ss = G.map.systems[c.systemId] ?? G.map.rebelBaseSpace;
+  for (let i = 0; i < c.hits.length; i++) {
+    const targets = c.targetsByHit[i];
+    if (targets.length === 0) { assignments.push(null); continue; }
+    let best: { id: string; remaining: number; tier: number } | null = null;
+    for (const tid of targets) {
+      const u = ss?.units.find((x) => x.instanceId === tid);
+      if (!u) continue;
+      const t = G.catalog.unitTypes[u.typeId];
+      if (!t) continue;
+      const queued = assigned.get(tid) ?? 0;
+      const remaining = (t.health.value ?? 1) - (u.damage ?? 0) - queued;
+      if (remaining <= 0) continue; // already dead under queued damage
+      const tier = tierRank[t.tier ?? 'square'] ?? 9;
+      if (!best || remaining < best.remaining || (remaining === best.remaining && tier < best.tier)) {
+        best = { id: tid, remaining, tier };
+      }
+    }
+    if (best) {
+      assignments.push(best.id);
+      assigned.set(best.id, (assigned.get(best.id) ?? 0) + 1);
+    } else {
+      assignments.push(null);
+    }
+  }
+  const r = combat.resolveCombatAssignDamage(G, assignments);
   return r.ok;
 }

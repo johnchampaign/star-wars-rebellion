@@ -393,9 +393,10 @@ export function resolveCombatAttackerTactics(
     .filter((u) => !stagedSet.has(u.instanceId));
   if (incomingHits === 0 || liveTargets.length === 0) {
     // Skip defender-tactics window; finalise this attack with zero damage.
-    finalizeAttack(G, c, /*blocks*/0);
+    // (No hits / no targets → no damage-assignment choice queued either.)
     G.pendingChoice = undefined;
-    // Continue the combat loop.
+    finalizeAttack(G, c, /*blocks*/0);
+    if (G.pendingChoice) return { ok: true }; // defensive — shouldn't happen
     runCombat(G);
     return { ok: true };
   }
@@ -452,65 +453,147 @@ export function resolveCombatDefenderTactics(
       log(G, { kind: 'combat-tactic', side: defenderSide, payload: { card: cid, blocked: 1, discarded: sacrifice } });
     }
   }
+  // Clear the defender-tactics choice before finalizeAttack runs — it may
+  // queue a new CombatAssignDamage choice on top.
+  G.pendingChoice = undefined;
   finalizeAttack(G, c, blocks);
+  // If finalizeAttack queued damage assignment, return now and wait for
+  // resolveCombatAssignDamage. Otherwise (no hits / no targets), the
+  // attack already finished and we can continue the combat loop.
+  if (G.pendingChoice) return { ok: true };
+  runCombat(G);
+  return { ok: true };
+}
+
+/** Queue the damage-assignment choice (RR p.5 — attacker chooses which
+ *  defender units take each hit, subject to color matching). When the
+ *  attacker is the human, the UI prompts; AI auto-resolves via heuristic.
+ *  If there's nothing to assign (no hits or no targets), records the
+ *  report and finishes the attack inline. */
+function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): void {
+  const pa = c.pendingAttack!;
+
+  // Build the full hit list (rolled hits + bonus damage from tactics).
+  type Hit = { color: 'red' | 'black' | null; face: 'hit' | 'direct-hit' };
+  const rawHits: Hit[] = [];
+  for (const d of pa.dice) {
+    if (d.face === 'hit' || d.face === 'direct-hit') {
+      rawHits.push({ color: d.color as 'red' | 'black', face: d.face });
+    }
+  }
+  for (let i = 0; i < pa.bonusDamage; i++) {
+    // Bonus damage from take-it-down / critical-hit / onslaught acts as
+    // direct-hit on any colour.
+    rawHits.push({ color: null, face: 'direct-hit' });
+  }
+
+  // Defender's blocks knock off the first N hits.
+  const applicableHits = rawHits.slice(blocksApplied);
+
+  // Compute eligible targets (color-matched, not already staged for death,
+  // skip Death Star which has health.color === null).
+  const stagedSet = new Set(c.theaterStaged ?? []);
+  const liveTargets = unitsOf(G, other(pa.side), c.systemId, pa.theater)
+    .filter((u) => !stagedSet.has(u.instanceId));
+
+  const isLegalTarget = (h: Hit, u: UnitInstance): boolean => {
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t || t.health.color === null) return false; // undamageable
+    if (h.face === 'direct-hit') return true;
+    return h.color !== null && t.health.color === h.color;
+  };
+
+  const targetsByHit: string[][] = applicableHits.map(
+    (h) => liveTargets.filter((u) => isLegalTarget(h, u)).map((u) => u.instanceId)
+  );
+
+  // No work to do → record report and finish.
+  if (applicableHits.length === 0 || targetsByHit.every((t) => t.length === 0)) {
+    pushAttackReport(G, c, blocksApplied, 0);
+    c.theaterAttackersDone!.push(pa.side);
+    c.pendingAttack = undefined;
+    return;
+  }
+
+  // Pause for the attacker to pick targets per hit.
+  pa.phase = 'awaitingDamageAssignment';
+  pa.pendingAssignment = { blocksApplied, applicableHits };
+  G.pendingChoice = {
+    kind: 'CombatAssignDamage',
+    side: pa.side,
+    theater: pa.theater,
+    systemId: c.systemId,
+    hits: applicableHits,
+    targetsByHit,
+  };
+  log(G, { kind: 'choice-request', side: pa.side, payload: {
+    kind: 'CombatAssignDamage', theater: pa.theater, hits: applicableHits.length,
+  }});
+}
+
+/** Apply the attacker's per-hit target picks, then push the attack report
+ *  and continue combat. `assignments[i]` is the instanceId to hit with
+ *  `hits[i]`, or null to skip (no legal target / chosen to waste). */
+export function resolveCombatAssignDamage(
+  G: GameState, assignments: (string | null)[]
+): { ok: boolean; reason?: string } {
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  const pa = c.pendingAttack;
+  if (!pa || pa.phase !== 'awaitingDamageAssignment' || !pa.pendingAssignment) {
+    return { ok: false, reason: 'no-pending-assignment' };
+  }
+  if (!G.pendingChoice || G.pendingChoice.kind !== 'CombatAssignDamage') {
+    return { ok: false, reason: 'no-choice' };
+  }
+  const choice = G.pendingChoice;
+  if (assignments.length !== choice.hits.length) {
+    return { ok: false, reason: 'assignment-count-mismatch' };
+  }
+
+  let damageApplied = 0;
+  const stagedSet = new Set(c.theaterStaged ?? []);
+  for (let i = 0; i < assignments.length; i++) {
+    const target = assignments[i];
+    if (target === null) continue;
+    if (!choice.targetsByHit[i].includes(target)) {
+      return { ok: false, reason: `illegal-target-at-hit-${i}:${target}` };
+    }
+    if (stagedSet.has(target)) {
+      // Target is already dead from an earlier hit this same assignment.
+      // Skip the hit (the engine doesn't auto-redirect — that's the
+      // attacker's responsibility in RAW; we don't pick for them).
+      continue;
+    }
+    const dead = M.damageUnit(G, target, 1);
+    damageApplied++;
+    if (dead) {
+      stagedSet.add(target);
+      (c.theaterStaged ??= []).push(target);
+    }
+  }
+
+  pushAttackReport(G, c, pa.pendingAssignment.blocksApplied, damageApplied);
+  c.theaterAttackersDone!.push(pa.side);
+  c.pendingAttack = undefined;
   G.pendingChoice = undefined;
   runCombat(G);
   return { ok: true };
 }
 
-/** Apply damage from the in-flight attack, write the attack report, mark
- *  the attacker done, clear pendingAttack. */
-function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): void {
+/** Helper: build the CombatAttackReport for the just-finished attack and
+ *  push it into the current round bucket. */
+function pushAttackReport(G: GameState, c: CombatState, blocksApplied: number, damageApplied: number): void {
   const pa = c.pendingAttack!;
-  const stagedSet = new Set(c.theaterStaged ?? []);
-  const targets = unitsOf(G, other(pa.side), c.systemId, pa.theater)
-    .filter((u) => !stagedSet.has(u.instanceId));
-
-  const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
-  const sorted = [...targets].sort((a, b) => {
-    const ta = G.catalog.unitTypes[a.typeId];
-    const tb = G.catalog.unitTypes[b.typeId];
-    const ha = ta?.health.value ?? 99;
-    const hb = tb?.health.value ?? 99;
-    if (ha !== hb) return ha - hb;
-    return (tierRank[ta?.tier ?? 'square'] ?? 9) - (tierRank[tb?.tier ?? 'square'] ?? 9);
-  });
-
-  // Build hit queue.
-  const hits: { d: DieResult }[] = pa.dice
-    .filter((d) => d.face === 'hit' || d.face === 'direct-hit')
-    .map((d) => ({ d }));
-  for (let i = 0; i < pa.bonusDamage; i++) {
-    hits.push({ d: { color: 'black', face: 'direct-hit' } });
-  }
-
-  // Apply hits, skipping `blocksApplied` of them (defender's blocks).
-  let blocksRemaining = blocksApplied;
-  let damageApplied = 0;
-  const stagedMap = new Map<string, true>();
-  for (const sid of stagedSet) stagedMap.set(sid, true);
-  for (const h of hits) {
-    if (G.isGameOver) break;
-    if (blocksRemaining > 0) { blocksRemaining--; continue; }
-    const t = pickTarget(G, h.d, sorted, stagedMap);
-    if (!t) continue;
-    const dead = M.damageUnit(G, t.instanceId, 1);
-    damageApplied++;
-    if (dead) {
-      stagedMap.set(t.instanceId, true);
-      (c.theaterStaged ??= []).push(t.instanceId);
-    }
-  }
-
-  // Record the attack report.
+  const rawHitsCount = pa.dice.filter((d) => d.face === 'hit' || d.face === 'direct-hit').length;
   const report: CombatAttackReport = {
     side: pa.side, theater: pa.theater,
     attackerUnits: pa.attackerUnits,
     dice: pa.dice.map((d) => ({ color: d.color, face: d.face })),
     tacticsPlayed: pa.tacticsPlayed,
-    hitsRolled: pa.dice.filter((d) => d.face === 'hit' || d.face === 'direct-hit').length,
+    hitsRolled: rawHitsCount,
     bonusDamage: pa.bonusDamage,
-    blockedDamage: Math.min(blocksApplied, hits.length),
+    blockedDamage: Math.min(blocksApplied, rawHitsCount + pa.bonusDamage),
     damageApplied,
     destroyed: [],
   };
@@ -518,8 +601,6 @@ function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): vo
   if (bucketIdx !== undefined && c.report.rounds[bucketIdx]) {
     c.report.rounds[bucketIdx].attacks.push(report);
   }
-  c.theaterAttackersDone!.push(pa.side);
-  c.pendingAttack = undefined;
 }
 
 /** Apply this theater step's staged destructions and attribute to reports. */
@@ -554,22 +635,8 @@ function discardCard(G: GameState, hand: string[], cardId: string): void {
   else G.groundTacticDiscard.push(cardId);
 }
 
-function pickTarget(
-  G: GameState, d: DieResult, sorted: UnitInstance[], staged: Map<string, true>
-): UnitInstance | null {
-  for (const u of sorted) {
-    if (staged.has(u.instanceId)) continue;
-    const t = G.catalog.unitTypes[u.typeId];
-    if (!t) continue;
-    if (t.health.color === null) continue; // Death Star — undamageable
-    if (d.face === 'hit') {
-      if (t.health.color === d.color) return u;
-    } else if (d.face === 'direct-hit') {
-      return u;
-    }
-  }
-  return null;
-}
+// (pickTarget removed — damage assignment is now player-driven via the
+//  CombatAssignDamage choice; the engine no longer picks targets.)
 
 // ============================================================================
 // End of combat

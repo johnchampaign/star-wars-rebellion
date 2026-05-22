@@ -192,6 +192,25 @@ export type ChoiceRequest =
         iconShape: 'triangle' | 'circle' | 'square';
         legalUnitTypes: UnitTypeId[];
       }[];
+    }
+  | {
+      // Attacker assigns each attack hit to a specific enemy unit (RR p.5).
+      // Posted after both sides' tactic-card windows close. `hits` is the
+      // ordered list of dice that produced damage (red/black hit, direct-hit,
+      // or "bonus" from damage-boost tactics). For each hit, `targetsByHit[i]`
+      // lists the legal target unit instance IDs the attacker may pick.
+      kind: 'CombatAssignDamage';
+      side: Side;          // attacker (the side picking targets)
+      theater: Theater;
+      systemId: SystemId;
+      hits: {
+        color: 'red' | 'black' | null; // null = bonus damage from tactic
+        face: 'hit' | 'direct-hit';
+      }[];
+      // Per-hit list of eligible defender unit instance IDs (already filtered
+      // for color matching and "not already staged for destruction"). Same
+      // length as `hits`.
+      targetsByHit: UnitInstanceId[][];
     };
 
 export type CombatActionOption =
@@ -220,11 +239,18 @@ export type CombatState = {
   pendingAttack?: {
     side: Side;          // who's currently attacking
     theater: Theater;
-    phase: 'awaitingAttackerTactics' | 'awaitingDefenderTactics';
+    phase: 'awaitingAttackerTactics' | 'awaitingDefenderTactics' | 'awaitingDamageAssignment';
     dice: DieResult[];   // current dice (may be modified by reroll)
     attackerUnits: number;
     bonusDamage: number; // accumulated from damage-boost tactics
     tacticsPlayed: { card: string; detail: string }[];
+    // Set when entering 'awaitingDamageAssignment'. Frozen list of hits
+    // the attacker must assign (post-blocks), and the legal targets per
+    // hit (computed when the choice is queued).
+    pendingAssignment?: {
+      blocksApplied: number;
+      applicableHits: { color: 'red' | 'black' | null; face: 'hit' | 'direct-hit' }[];
+    };
   };
   // Unit instance IDs already destroyed earlier in the current theater step.
   // Excluded from damage-target picking (can't kill the same unit twice) but

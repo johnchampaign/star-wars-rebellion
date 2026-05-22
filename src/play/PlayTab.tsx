@@ -18,6 +18,7 @@ const useUnitStyle = () => useContext(UnitStyleContext);
 import { createGame } from '../engine/setup';
 import * as phases from '../engine/phases';
 import * as combat from '../engine/combat';
+import { CombatBoardLive } from './CombatBoardLive';
 import { encode, decode, canEncode } from '../engine/codec';
 import type { GameState, Side } from '../engine/types';
 import type { System, MaskRect } from '../types';
@@ -514,21 +515,15 @@ export default function PlayTab() {
         />
       )}
 
-      {G.pendingChoice?.kind === 'CombatAttackerTactics' && G.pendingChoice.side === humanSide
-        && (!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && (!G.refreshReports || G.refreshReports.length === 0) && (
-        <CombatAttackerTacticsModal
+      {/* The live combat board absorbs all in-combat decisions — attacker
+          tactics, defender tactics, damage assignment. Renders whenever
+          combat is active (G.pendingCombat set) so the player can see
+          units / leaders / dice / hands continuously. */}
+      {G.pendingCombat && (
+        <CombatBoardLive
           G={G}
-          choice={G.pendingChoice}
-          onSubmit={(concentrateFire, damageBoosts) => {
-            const r = combat.resolveCombatAttackerTactics(G, {
-              concentrateFireCardId: concentrateFire,
-              damageBoostCardIds: damageBoosts,
-            });
-            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
-            persist(); refresh();
-          }}
+          humanSide={humanSide}
+          onPersist={() => { persist(); refresh(); }}
         />
       )}
 
@@ -547,23 +542,6 @@ export default function PlayTab() {
         />
       )}
 
-      {G.pendingChoice?.kind === 'CombatDefenderTactics' && G.pendingChoice.side === humanSide
-        && (!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && (!G.refreshReports || G.refreshReports.length === 0) && (
-        <CombatDefenderTacticsModal
-          G={G}
-          choice={G.pendingChoice}
-          onSubmit={(blocks, sacrifices) => {
-            const r = combat.resolveCombatDefenderTactics(G, {
-              blockCardIds: blocks,
-              sacrificeCardIds: sacrifices,
-            });
-            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
-            persist(); refresh();
-          }}
-        />
-      )}
     </div>
     </UnitStyleContext.Provider>
   );
