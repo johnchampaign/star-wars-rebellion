@@ -926,13 +926,18 @@ function Quiet({ children }: { children: React.ReactNode }) {
 
 /** Card-count cell that reveals the card images on hover. Only rendered when
  *  the side matches the human player (so we never leak hidden info). Names
- *  fall back when no image is available. */
+ *  and rules text fall back when no image is available, and are surfaced
+ *  alongside the image regardless so the small embedded text on the card
+ *  art has a legible copy. */
 function HandTip({ count, cards }: {
   count: number;
-  cards: { name: string; image?: string }[];
+  cards: { name: string; image?: string; rulesText?: string }[];
 }) {
   const [open, setOpen] = useState(false);
   if (count === 0) return <>0 cards</>;
+  // Width of each card tile in the popup. 260px makes the embedded rules
+  // text on the card art legible at native rendering.
+  const TILE_W = 260;
   return (
     <span
       style={{ borderBottom: '1px dotted #888', cursor: 'help', position: 'relative' }}
@@ -949,30 +954,49 @@ function HandTip({ count, cards }: {
             position: 'absolute', left: '100%', top: '50%',
             transform: 'translateY(-50%)',
             marginLeft: 12, zIndex: 2000,
-            display: 'flex', gap: 6, flexWrap: 'wrap',
-            background: 'rgba(0,0,0,0.92)', border: '1px solid #555',
-            padding: 8, borderRadius: 4, maxWidth: 720,
+            display: 'flex', gap: 8, flexWrap: 'wrap',
+            background: 'rgba(0,0,0,0.94)', border: '1px solid #555',
+            padding: 10, borderRadius: 4, maxWidth: 1100,
             pointerEvents: 'none',
             boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
           }}
         >
           {cards.map((c, i) => (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+            <div key={i} style={{
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              width: TILE_W,
+            }}>
               {c.image ? (
                 <img
                   src={`/dev-assets/cards/${c.image}`}
                   alt={c.name}
-                  style={{ width: 160, height: 'auto', borderRadius: 3, border: '1px solid #333' }}
+                  style={{ width: TILE_W, height: 'auto', borderRadius: 4, border: '1px solid #333' }}
                 />
               ) : (
-                <div style={{ width: 160, height: 220, background: '#222', color: '#888', fontSize: 11,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 8, textAlign: 'center' }}>
+                <div style={{
+                  width: TILE_W, height: TILE_W * 1.4, background: '#222',
+                  color: '#888', fontSize: 12,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: 8, textAlign: 'center',
+                }}>
                   {c.name}
                 </div>
               )}
-              <div style={{ color: '#ccc', fontSize: 10, marginTop: 3, maxWidth: 160, textAlign: 'center' }}>
+              <div style={{
+                color: '#fff', fontSize: 12, fontWeight: 600, marginTop: 4,
+                textAlign: 'center', lineHeight: 1.2,
+              }}>
                 {c.name}
               </div>
+              {c.rulesText && (
+                <div style={{
+                  color: '#cbc4b0', fontSize: 11, marginTop: 3,
+                  lineHeight: 1.35, textAlign: 'left',
+                  whiteSpace: 'normal',
+                }}>
+                  {c.rulesText}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -2417,7 +2441,7 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
           side === humanSide
             ? <HandTip count={f.leadersOnMissions.length} cards={f.leadersOnMissions.map((m) => {
                 const c = G.catalog.missions[m.missionId];
-                return { name: c?.name ?? m.missionId, image: c?.image };
+                return { name: c?.name ?? m.missionId, image: c?.image, rulesText: c?.rulesText };
               })} />
             : `${f.leadersOnMissions.length} cards`
         } />
@@ -2425,7 +2449,7 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
           side === humanSide
             ? <HandTip count={f.actionHand.length} cards={f.actionHand.map((cid) => {
                 const c = G.catalog.actions[cid];
-                return { name: c?.name ?? cid, image: c?.image };
+                return { name: c?.name ?? cid, image: c?.image, rulesText: c?.rulesText };
               })} />
             : `${f.actionHand.length} cards`
         } />
@@ -2434,7 +2458,7 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
           side === humanSide
             ? <HandTip count={f.missionHand.length} cards={f.missionHand.map((cid) => {
                 const c = G.catalog.missions[cid];
-                return { name: c?.name ?? cid, image: c?.image };
+                return { name: c?.name ?? cid, image: c?.image, rulesText: c?.rulesText };
               })} />
             : `${f.missionHand.length} cards`
         } />
@@ -2444,7 +2468,7 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
             side === humanSide
               ? <HandTip count={f.objectiveHand?.length ?? 0} cards={(f.objectiveHand ?? []).map((cid) => {
                   const c = G.catalog.objectives[cid];
-                  return { name: c?.name ?? cid, image: c?.image };
+                  return { name: c?.name ?? cid, image: c?.image, rulesText: c?.rulesText };
                 })} />
               : `${f.objectiveHand?.length ?? 0} cards`
           } />
