@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "copy-assets": "node scripts/copy-dev-assets.mjs"
+    "copy-assets": "node scripts/copy-dev-assets.mjs",
+    "composite-card-text": "node scripts/composite-card-text.mjs"
   },
   "dependencies": {
     "html2canvas": "^1.4.1",
@@ -16,6 +17,7 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^1.0.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.3",
