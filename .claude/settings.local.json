@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls \"C:/Users/johnc/Claude Games/\" 2>&1 | head -50)",
+      "Bash(magick --version)",
+      "Bash(cd \"C:/Users/johnc/Claude Games/Star Wars Rebellion\" && curl -sf -o /tmp/playtab.js -w \"Status: %{http_code}, Size: %{size_download}\\\\n\" http://localhost:5173/src/play/PlayTab.tsx && tail -20 /tmp/playtab.js 2>/dev/null)",
+      "Bash(pkill -f \"vite\")",
+      "Bash(cd \"C:\\\\Users\\\\johnc\\\\Claude Games\\\\Star Wars Rebellion\" && mkdir -p public/dev-assets/dice && cp vmod_extracted/images/Dice*.png public/dev-assets/dice/ && ls public/dev-assets/dice/)",
+      "Bash(gh --version)"
+    ]
+  }
+}

@@ -1,0 +1,166 @@
+{
+  "_meta": {
+    "schema": "objectives-v1",
+    "provenance": "reference-derived",
+    "source": "vmod_extracted/images/ObjectiveLvl*.png",
+    "notes": [
+      "15 objective cards (Rebel only). Stage I/II/III deck structure (rr p.10).",
+      "reputation: number printed in the top-left corner (how many spaces the reputation marker moves).",
+      "timing: Combat | StartOfRefresh | Special \u2014 read from the bold text at the top of the card.",
+      "Two \"Death Star Plans\" cards exist (stage 2 and stage 3); their ids include the stage suffix to disambiguate.",
+      "Populated by scripts/populate-cards.py from user-provided reference materials (15 entries matched)."
+    ]
+  },
+  "objectives": [
+    {
+      "id": "crippling-blow-1",
+      "name": "Crippling Blow",
+      "stage": 1,
+      "reputation": 1,
+      "timing": "Combat",
+      "effectKey": "",
+      "rulesText": "At least 3 health worth of Imperial ground units have been destroyed in a combat that you initiated.",
+      "image": "ObjectiveLvl1CripplingBlow.png"
+    },
+    {
+      "id": "cut-supply-lines-1",
+      "name": "Cut Supply Lines",
+      "stage": 1,
+      "reputation": 1,
+      "timing": "StartOfRefresh",
+      "effectKey": "",
+      "rulesText": "At least 3 Imperial systems contain either a sabotage marker or a Rebel unit.",
+      "image": "ObjectiveLvl1CutSupplyLines.png"
+    },
+    {
+      "id": "defend-the-people-1",
+      "name": "Defend The People",
+      "stage": 1,
+      "reputation": 1,
+      "timing": "StartOfRefresh",
+      "effectKey": "",
+      "rulesText": "At least 4 Rebel systems contain a Rebel unit.",
+      "image": "ObjectiveLvl1DefendThePeople.png"
+    },
+    {
+      "id": "rebel-assault-1",
+      "name": "Rebel Assault",
+      "stage": 1,
+      "reputation": 1,
+      "timing": "Combat",
+      "effectKey": "",
+      "rulesText": "A Star Destroyer or Super Star Destroyer has been destroyed in a combat that you initiated.",
+      "image": "ObjectiveLvl1RebelAssault.png"
+    },
+    {
+      "id": "regional-support-1",
+      "name": "Regional Support",
+      "stage": 1,
+      "reputation": 1,
+      "timing": "StartOfRefresh",
+      "effectKey": "",
+      "rulesText": "All populous systems in 1 region have Rebel loyalty.",
+      "image": "ObjectiveLvl1RegionalSupport.png"
+    },
+    {
+      "id": "death-star-plans-2",
+      "name": "Death Star Plans",
+      "stage": 2,
+      "reputation": 2,
+      "timing": "Combat",
+      "effectKey": "",
+      "rulesText": "If there is at least 1 fighter after the space battle step, reveal this card to roll 3 dice. If you roll a direct hit, play this card and destroy a Death Star in this system. Otherwise return this card to your hand.",
+      "image": "ObjectiveLvl2DeathStarPlans.png"
+    },
+    {
+      "id": "heart-of-the-empire-2",
+      "name": "Heart Of The Empire",
+      "stage": 2,
+      "reputation": 2,
+      "timing": "StartOfRefresh",
+      "effectKey": "",
+      "rulesText": "If the Coruscant system contains a Rebel unit and no Imperial units. Then return this card to your hand.",
+      "image": "ObjectiveLvl2HeartOfTheEmpire.png"
+    },
+    {
+      "id": "leave-no-one-behind-2",
+      "name": "Leave No One Behind",
+      "stage": 2,
+      "reputation": 1,
+      "timing": "StartOfRefresh",
+      "effectKey": "",
+      "rulesText": "If there are no captured Rebel leaders.",
+      "image": "ObjectiveLvl2LeaveNoOneBehind.png"
+    },
+    {
+      "id": "liberation-2",
+      "name": "Liberation",
+      "stage": 2,
+      "reputation": 1,
+      "timing": "Combat",
+      "effectKey": "",
+      "rulesText": "If you win a ground battle in a subjugated system.",
+      "image": "ObjectiveLvl2Liberation.png"
+    },
+    {
+      "id": "popular-support-2",
+      "name": "Popular Support",
+      "stage": 2,
+      "reputation": 1,
+      "timing": "StartOfRefresh",
+      "effectKey": "",
+      "rulesText": "If at least 6 systems have Rebel loyalty.",
+      "image": "ObjectiveLvl2PopularSupport.png"
+    },
+    {
+      "id": "death-star-plans-3",
+      "name": "Death Star Plans",
+      "stage": 3,
+      "reputation": 2,
+      "timing": "Combat",
+      "effectKey": "",
+      "rulesText": "If there is at least 1 fighter after the space battle step, reveal this card to roll 3 dice. If you roll a direct hit, play this card and destroy a Death Star in this system. Otherwise return this card to your hand.",
+      "image": "ObjectiveLvl3DeathStarPlans.png"
+    },
+    {
+      "id": "establish-outposts-3",
+      "name": "Establish Outposts",
+      "stage": 3,
+      "reputation": 1,
+      "timing": "StartOfRefresh",
+      "effectKey": "",
+      "rulesText": "At least 5 systems contain a Rebel unit.",
+      "image": "ObjectiveLvl3EstablishOutposts.png"
+    },
+    {
+      "id": "inspire-sympathy-3",
+      "name": "Inspire Sympathy",
+      "stage": 3,
+      "reputation": 0,
+      "timing": "StartOfRefresh",
+      "effectKey": "",
+      "rulesText": "Gain 1 reputation for each destroyed system. [Variable reputation; field 'reputation' here is 0 as a placeholder.]",
+      "image": "ObjectiveLvl3InspireSympathy.png"
+    },
+    {
+      "id": "major-victory-3",
+      "name": "Major Victory",
+      "stage": 3,
+      "reputation": 1,
+      "timing": "Combat",
+      "effectKey": "",
+      "rulesText": "At least 3 health worth of Imperial ships have been destroyed in a combat that you initiated.",
+      "image": "ObjectiveLvl3MajorVictory.png"
+    },
+    {
+      "id": "return-of-the-jedi-3",
+      "name": "Return Of The Jedi",
+      "stage": 3,
+      "reputation": 2,
+      "timing": "Combat",
+      "effectKey": "",
+      "rulesText": "After you win a battle in Darth Vader's or Emperor Palpatine's system. If Luke Skywalker (Jedi) is in this system, eliminate 1 Imperial leader in this system.",
+      "image": "ObjectiveLvl3ReturnOfTheJedi.png"
+    }
+  ]
+}

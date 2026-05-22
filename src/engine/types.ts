@@ -1,0 +1,487 @@
+// Engine state types. Distinct from src/types.ts which holds data-file shapes.
+// See docs/core-model.md for the rules-level model.
+
+import type {
+  Side, SystemId, ResourceIcon,
+  Leader as LeaderData,
+  ActionCard, MissionCard, ObjectiveCard, TacticCard, ProbeCard,
+} from '../types';
+
+// ---------- Units ----------
+
+export type UnitTypeId = string; // 'tie-fighter', 'x-wing', 'death-star', ...
+export type UnitInstanceId = string; // 'u-001' etc.
+
+export type Theater = 'space' | 'ground';
+export type UnitClass = 'capital' | 'fighter' | 'station' | 'ground' | 'structure';
+export type UnitTier = 'triangle' | 'circle' | 'square';
+export type HealthColor = 'red' | 'black' | null; // null = invulnerable (Death Star)
+
+export type UnitType = {
+  id: UnitTypeId;
+  name: string;
+  side: Side;
+  theater: Theater;
+  class: UnitClass;
+  tier: UnitTier;
+  health: { color: HealthColor; value: number };
+  attack: { red: number; black: number };
+  transport: { capacity: number; restriction: boolean; immobile: boolean };
+  buildResource: 1 | 2 | 3;
+  supplyCount: number;
+};
+
+export type UnitInstance = {
+  instanceId: UnitInstanceId;
+  typeId: UnitTypeId;
+  side: Side;
+  damage: number; // mid-combat only; reset at end of combat
+};
+
+// ---------- Map ----------
+
+export type SystemState = {
+  loyalty: 'rebel' | 'imperial' | 'neutral';
+  subjugated: boolean;
+  destroyed: boolean;
+  sabotage: boolean;
+  units: UnitInstance[];
+};
+
+// The Rebel Base space is not a system but uses the same state shape for unit/leader staging.
+export type RebelBaseSpaceState = SystemState;
+
+export type MapState = {
+  systems: Record<SystemId, SystemState>;
+  rebelBaseSpace: RebelBaseSpaceState;
+};
+
+// ---------- Leaders / decks ----------
+
+export type LeaderId = string;
+
+export type AssignedMission = {
+  missionId: string;
+  leaderIds: LeaderId[]; // 1 or 2
+};
+
+export type CapturedLeader = {
+  leaderId: LeaderId;
+  ring: 'captured' | 'carbonite';
+  // Per Rules Reference: captured leaders stay at a system. The Imperial
+  // player can move them like ground units. If the system has no Imperial
+  // units, the leader is immediately rescued.
+  systemId: SystemId;
+};
+
+export type AttachmentRing = {
+  leaderId: LeaderId;
+  ringId: string; // 'r2d2', 'c3po', 'master-yoda', 'millennium-falcon', 'lure-of-dark-side', 'carbonite', 'captured'
+};
+
+export type BuildQueue = {
+  1: UnitTypeId[];
+  2: UnitTypeId[];
+  3: UnitTypeId[];
+};
+
+export type FactionState = {
+  side: Side;
+
+  // Leaders
+  leaderPool: LeaderId[];
+  leadersOnBoard: Record<SystemId, LeaderId[]>; // includes 'rebel-base-space' key
+  leadersOnMissions: AssignedMission[];
+  eliminatedLeaders: LeaderId[];
+  attachmentRings: AttachmentRing[]; // active rings on this side's leaders
+
+  // Card piles
+  actionDeck: string[];
+  actionHand: string[];
+  actionDiscard: string[]; // returned to the box, kept for analytics only
+
+  missionDeck: string[];
+  missionHand: string[];
+  missionDiscard: string[];
+
+  // Build
+  buildQueue: BuildQueue;
+
+  // Rebel-only
+  objectiveDeck?: string[];
+  objectiveHand?: string[];
+  objectiveDiscard?: string[];
+
+  // Empire-only
+  probeHand?: string[];
+  projectDeck?: string[];
+  projectDiscard?: string[];
+  capturedLeaders?: CapturedLeader[];
+};
+
+// ---------- Game flow ----------
+
+export type Phase = 'Setup' | 'Assignment' | 'Command' | 'Refresh' | 'GameOver';
+
+export type ChoiceRequest =
+  | { kind: 'AssignLeaders'; missionId: string; min: 1; max: 1 | 2 }
+  | { kind: 'ChooseSystem'; legal: SystemId[]; allowSkip: boolean }
+  | { kind: 'ChooseLeader'; from: 'pool' | 'system'; systemId?: SystemId; legal: LeaderId[] }
+  | {
+      kind: 'OpposeMission';
+      missionId: string;
+      targetSystemId: SystemId;
+      opposerSide: Side;
+      skill: string;            // mission's required skill (for tooltip)
+      attackerDice: number;     // count of dice the resolver will roll
+      poolLeaders: LeaderId[];  // opposer's pool leaders available to send
+      existingAtTarget: LeaderId[]; // already-there opposer leaders (auto-oppose)
+    }
+  | { kind: 'AssignDamage'; dice: DieResult[]; targets: UnitInstanceId[] }
+  | { kind: 'PlayTacticCard'; hand: string[]; allowSkip: boolean }
+  | { kind: 'CombatAction'; options: CombatActionOption[] }
+  | { kind: 'RetreatTo'; legal: SystemId[]; allowSkip: boolean }
+  | { kind: 'DeployTarget'; unitTypeId: UnitTypeId; legal: SystemId[] }
+  | { kind: 'PickProbeForNewBase'; cards: string[] }
+  | { kind: 'PlayObjective'; legal: string[]; window: 'combat' | 'refresh' }
+  | { kind: 'YesNo'; prompt: string }
+  | { kind: 'ChooseActionCard'; from: string[] }
+  | { kind: 'InfiltrationPick'; missionId: string; topId: string; bottomId: string }
+  | {
+      kind: 'StolenPlansReorder';
+      missionId: string;
+      remaining: string[];      // objective card IDs still to be picked
+      orderedTop: string[];     // accumulated pick order (index 0 = topmost)
+    }
+  | {
+      // Attacker's window to play tactic cards after rolling their attack:
+      // Concentrate Fire (reroll up to 2 blanks) and/or damage-boost tactics
+      // (Take It Down +2, Critical Hit +1, Onslaught +2). All decisions are
+      // made in a single modal; engine applies them in order.
+      kind: 'CombatAttackerTactics';
+      side: Side;
+      theater: Theater;
+      dice: DieResult[];        // current dice (pre-reroll)
+      hand: string[];            // attacker's tactic-card IDs of this theater
+      attackerUnits: number;
+      systemId: SystemId;
+    }
+  | {
+      // Defender's window after attacker tactics resolved: choose how many
+      // incoming hits to block. Each block requires one defensive card; a
+      // single defensive-formation blocks 1 free; dig-in/outmaneuver block
+      // 1 but require an extra hand card to discard.
+      kind: 'CombatDefenderTactics';
+      side: Side;
+      theater: Theater;
+      incomingHits: number;     // base hits (post-reroll) + bonus damage
+      hand: string[];            // defender's tactic-card IDs of this theater
+      systemId: SystemId;
+    }
+  | {
+      // Build-phase choice. Refresh pauses after enumerating which icons
+      // each side gets to build for; the human player picks one unit type
+      // per icon from the legal alternatives. Picks resolve in order;
+      // each side gets its own BuildPick choice (Rebel first, then Empire).
+      kind: 'BuildPick';
+      side: Side;
+      picks: {
+        sourceSystemId: SystemId | 'rebel-base';
+        slot: 1 | 2 | 3;
+        iconType: Theater;
+        iconShape: 'triangle' | 'circle' | 'square';
+        legalUnitTypes: UnitTypeId[];
+      }[];
+    };
+
+export type CombatActionOption =
+  | { kind: 'draw-tactic' }
+  | { kind: 'play-tactic'; cardId: string }
+  | { kind: 'done' };
+
+export type DieColor = 'red' | 'black' | 'green';
+export type DieFace = 'blank' | 'hit' | 'direct-hit' | 'special';
+export type DieResult = { color: DieColor; face: DieFace };
+
+// ---------- Combat ----------
+
+export type CombatState = {
+  systemId: SystemId;
+  attackerSide: Side;
+  attackerSourceSystemId: SystemId; // for retreat-not-to-source rule (rr p.5)
+  step: 'AddLeader' | 'DrawTactics' | 'Round' | 'Ended';
+  round: number;
+  attackerHand: string[]; // tactic card ids
+  defenderHand: string[];
+  retreated: Side[]; // each side at most once
+  report: CombatReport; // accumulated play-by-play
+  // Mid-attack resumable state. Set when an attack pauses mid-resolution to
+  // ask a side which tactic cards to play. Cleared at the end of the attack.
+  pendingAttack?: {
+    side: Side;          // who's currently attacking
+    theater: Theater;
+    phase: 'awaitingAttackerTactics' | 'awaitingDefenderTactics';
+    dice: DieResult[];   // current dice (may be modified by reroll)
+    attackerUnits: number;
+    bonusDamage: number; // accumulated from damage-boost tactics
+    tacticsPlayed: { card: string; detail: string }[];
+  };
+  // Unit instance IDs already destroyed earlier in the current theater step.
+  // Excluded from damage-target picking (can't kill the same unit twice) but
+  // included in attacker eligibility (RR p.5 — dying units still attack).
+  // Cleared at the end of each theater step.
+  theaterStaged?: string[];
+  // Index of the round bucket within report.rounds that the current theater
+  // step is writing into. Persists across pauses so post-resume attack
+  // reports attach to the right round.
+  currentRoundReportIdx?: number;
+  // The theater step currently being resolved (if any). Set when entering
+  // a theater step; cleared at end of step.
+  activeTheater?: Theater;
+  // Sides that have already attacked in the current theater step. Used to
+  // know which side(s) still need to roll after a resume.
+  theaterAttackersDone?: Side[];
+  // Theaters that have been completed within the current round. Reset at
+  // the start of each new round. Lets the resumable round loop skip
+  // already-finished theater steps after a tactic-choice pause.
+  roundTheatersDone?: Theater[];
+};
+
+// ---------- Combat reports (display layer) ----------
+
+export type CombatAttackReport = {
+  side: Side;
+  theater: 'space' | 'ground';
+  attackerUnits: number;
+  dice: { color: 'red' | 'black' | 'green'; face: string }[];
+  tacticsPlayed: { card: string; detail: string }[];
+  hitsRolled: number;
+  bonusDamage: number;          // from take-it-down / critical-hit / onslaught
+  blockedDamage: number;        // from defender's defensive cards
+  damageApplied: number;        // final damage that landed
+  destroyed: { typeId: string; instanceId: string }[];
+};
+
+export type CombatRoundReport = {
+  round: number;
+  attacks: CombatAttackReport[];
+};
+
+// ---------- Mission reports (display layer) ----------
+
+export type MissionResolutionReport = {
+  missionId: string;
+  resolverSide: Side;
+  targetSystemId: SystemId;
+  attackerLeaders: LeaderId[];
+  opposerSide: Side;
+  opposerLeaders: LeaderId[];        // any opposer leaders at the target after the send-from-pool choice
+  skill: string;
+  // Roll data — undefined if unopposed (auto-success).
+  attackerDice?: { count: number; faces: string[]; successes: number };
+  opposerDice?: { count: number; faces: string[]; successes: number };
+  portraitBonus?: number;            // +2 if the assigned leader matches the card's portrait
+  attackerTotal?: number;            // dice successes + portrait
+  result: 'success' | 'failure' | 'auto-success';
+};
+
+export type CombatReport = {
+  systemId: SystemId;
+  attackerSide: Side;
+  addedLeaders: { side: Side; leaderId: LeaderId; tacticValue: number }[];
+  drawnTactics: { side: Side; spaceCount: number; groundCount: number };
+  rounds: CombatRoundReport[];
+  structureDestructions: { side: Side; typeIds: string[] }[];
+  winner: Side | 'draw' | null;
+  totalRounds: number;
+};
+
+// ---------- Refresh-phase summary ----------
+// One report per side per refresh, shown sequentially. Both players see both
+// reports — refresh events are public information. The per-side split keeps
+// each modal compact and focused.
+export type RefreshReport = {
+  /** Which side this report covers. */
+  side: Side;
+  /** The turn number this refresh produced (the new timeMarker value). */
+  newTurn: number;
+  /** Leaders that returned to this side's leader pool during step 1. */
+  retrievedLeaders: LeaderId[];
+  /** Mission cards drawn into this side's hand. */
+  missionsDrawn: { count: number; missionIds: string[] };
+  /** Probe cards drawn (Empire side only — empty for Rebel). */
+  probesDrawn: { count: number; probeIds: string[] };
+  /** Objective card drawn (Rebel side only — empty for Empire). */
+  objectivesDrawn: { count: number; objectiveIds: string[] };
+  /** StartOfRefresh objectives this side auto-played and the rep gained. */
+  objectivesPlayed: { objectiveId: string; reputation: number }[];
+  /** Recruit results (action card drawn, leader recruited if any). */
+  recruits: { cardId: string; leaderId: LeaderId | null }[];
+  /** Units that hit this side's build queue this refresh. */
+  builds: { systemId: SystemId | 'rebel-base'; unitTypeId: string; slot: 1 | 2 | 3 }[];
+  /** Units that deployed off this side's build queue (slid off slot 1). */
+  deployed: { unitTypeId: string; systemId: SystemId }[];
+};
+
+// ---------- Pending state ----------
+
+export type MissionResolution = {
+  missionId: string;
+  resolverSide: Side;
+  targetSystemId: SystemId;
+  leaderIds: LeaderId[];
+  stage: 'reveal' | 'oppose' | 'roll' | 'effect' | 'failed' | 'done';
+};
+
+// ---------- Game state ----------
+
+export type LogEntry = {
+  turn: number;
+  side?: Side;
+  kind: string;
+  payload?: Record<string, unknown>;
+};
+
+export type SeededRngState = { state: number };
+
+export type GameState = {
+  // Time / reputation
+  timeMarker: number;          // 1..N (8 in base game)
+  reputationMarker: number;    // starts at 14, decreases toward time marker
+  trackLength: number;         // 16 in the base game
+
+  // Phase
+  phase: Phase;
+  currentPlayer: Side;
+  passedThisCommand: Side[];
+
+  // Factions
+  rebel: FactionState;
+  empire: FactionState;
+
+  // Map
+  map: MapState;
+  rebelBaseSystemId: SystemId; // secret; masked via playerView
+  rebelBaseRevealed: boolean;
+
+  // Shared decks
+  probeDeck: string[];
+  spaceTacticDeck: string[];
+  spaceTacticDiscard: string[];
+  groundTacticDeck: string[];
+  groundTacticDiscard: string[];
+
+  // Mid-resolution scratch
+  pendingMission?: MissionResolution;
+  pendingCombat?: CombatState;
+  pendingChoice?: ChoiceRequest;
+
+  // Setup-phase deployment state (rr p.15 step 8). Empty when setup is complete.
+  // Each side has a list of unit type ids still to be placed. Rebel only:
+  // rebelDeployTarget records which non-base-space system (if any) Rebel
+  // chose to place starting units in — once chosen, all subsequent Rebel
+  // starting units must go to either Rebel Base space or that system.
+  pendingDeployment?: {
+    Rebel: UnitTypeId[];
+    Empire: UnitTypeId[];
+  };
+  rebelDeployTarget?: SystemId | null;
+
+  // 5 candidate base-location systems shown to the Rebel during Setup (rr p.15
+  // step 9). When set, the Rebel must call pickRebelBase before deployment
+  // completes. If undefined, the base has already been finalised.
+  pendingRebelBasePick?: SystemId[];
+
+  // Queue of "not yet implemented" notices. The play tab pops a modal for each
+  // and clears them on acknowledgement. Lets us surface known gaps to the
+  // tester immediately rather than have them logged as bugs.
+  pendingNotices?: { id: string; title: string; details?: string }[];
+
+  // Persistent leader attachments ("attachment rings", RR p.3). Per the
+  // rulebook, a leader can have only one ring at a time — a new ring replaces
+  // the old. The capture / carbonite rings live in capturedLeaders.ring;
+  // these are the *other* rings (Yoda, dark-side, R2D2, etc).
+  leaderAttachments?: Record<string, ('yoda' | 'dark-side')[]>;
+
+  // Leaders who can't be opposed by pool leaders this round (Misdirection).
+  // Cleared at end of Command phase. The protection only blocks pool
+  // recruits — opposing leaders already at the target system still oppose.
+  misdirectionProtected?: string[];
+
+  // Per-round Yoda-ring reroll state: once the Yoda-ring leader rerolls a
+  // die this round, sets to true. Reset on entering Refresh.
+  yodaRerollUsedThisRound?: boolean;
+
+  // Combat reports queued for the UI to display. Each is consumed (dismissed)
+  // by the player after combat ends; the engine just appends.
+  combatReports?: CombatReport[];
+
+  // Mission resolution reports queued for the UI. Same lifecycle as
+  // combatReports: engine appends, player dismisses one at a time.
+  missionReports?: MissionResolutionReport[];
+
+  // Refresh-phase summary, generated each time the refresh phase runs.
+  // The UI shows a single modal with everything that happened (objective
+  // drawn, missions drawn, probes drawn, leaders retrieved, time advanced,
+  // units built per system). Dismissed by the player. One at a time.
+  refreshReports?: RefreshReport[];
+
+  // Mid-refresh resumable state. When the refresh phase pauses for a
+  // BuildPick choice, we stash:
+  //   - logStart: where the refresh's log slice began (so the final report
+  //     covers the whole phase even though it spans multiple resume calls)
+  //   - pendingBuildPicks: ordered list of per-side build-pick packs still
+  //     to resolve (Rebel first, then Empire). Each entry is queued as a
+  //     BuildPick ChoiceRequest one at a time.
+  refreshPaused?: {
+    logStart: number;
+    pendingBuildPicks: {
+      side: Side;
+      picks: {
+        sourceSystemId: SystemId | 'rebel-base';
+        slot: 1 | 2 | 3;
+        iconType: Theater;
+        iconShape: 'triangle' | 'circle' | 'square';
+        legalUnitTypes: UnitTypeId[];
+      }[];
+    }[];
+  };
+
+  // End conditions
+  isGameOver: boolean;
+  winner?: Side;
+  winReason?: string;
+
+  // Determinism
+  rng: SeededRngState;
+  controllerSeeds: { rebel: number; empire: number };
+
+  // Log
+  turnLog: LogEntry[];
+
+  // Static data loaded at setup (references; not mutated)
+  // We hold references so engine functions can be pure and not require global lookups.
+  catalog: GameCatalog;
+};
+
+export type GameCatalog = {
+  systems: Record<SystemId, SystemDef>;
+  adjacency: Record<SystemId, SystemId[]>;
+  leaders: Record<LeaderId, LeaderData>;
+  unitTypes: Record<UnitTypeId, UnitType>;
+  actions: Record<string, ActionCard>;
+  missions: Record<string, MissionCard>;
+  objectives: Record<string, ObjectiveCard>;
+  tactics: Record<string, TacticCard>;
+  probes: Record<string, ProbeCard>;
+};
+
+export type SystemDef = {
+  id: SystemId;
+  name: string;
+  region: number;
+  isRemote: boolean;
+  isCoruscant: boolean;
+  resources: ResourceIcon[];
+  buildSlot: 1 | 2 | 3 | null;
+};

@@ -1,0 +1,462 @@
+{
+  "_meta": {
+    "schema": "actions-v1",
+    "provenance": "reference-derived",
+    "source": "vmod_extracted/images/ActionCard*.png; all editable fields default to empty pending transcription via dev tab",
+    "notes": [
+      "34 action cards (Empire + Rebel, starting + recruit).",
+      "timing: Assignment | StartOfCombat | Immediate | Special. User reads from the bold phrase above the ability on the card.",
+      "leaderRequirement: list of leader ids (e.g. [\"darth-vader\"]) shown on the card. Used by the rule that requires one of the named leaders to be in the system/combat (rr p.2).",
+      "effectKey: bound to a registered handler in code. Left blank until handlers exist.",
+      "rulesText: copy verbatim from the card.",
+      "Populated by scripts/populate-cards.py from user-provided reference materials (33 entries matched).",
+      "Populated by scripts/populate-cards.py from user-provided reference materials (34 entries matched)."
+    ]
+  },
+  "actions": [
+    {
+      "id": "according-to-my-design",
+      "name": "According To My Design",
+      "side": "Empire",
+      "isStarting": true,
+      "timing": "StartOfCombat",
+      "leaderRequirement": [
+        "emperor-palpatine"
+      ],
+      "effectKey": "",
+      "rulesText": "Rebel player rolls 1 fewer red die and 2 fewer black dice for the first round of air and ground combat.",
+      "image": "ActionCardEmpireStartingAccordingToMyDesign.png"
+    },
+    {
+      "id": "blindside",
+      "name": "Blindside",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "Special",
+      "leaderRequirement": [
+        "boba-fett",
+        "janus-greejatus"
+      ],
+      "effectKey": "",
+      "rulesText": "Opponent cannot send leaders from his leader pool to oppose this leader's mission.",
+      "image": "ActionCardEmpireBlindside.png"
+    },
+    {
+      "id": "boba-fett-where",
+      "name": "Boba Fett Where",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "boba-fett"
+      ],
+      "effectKey": "",
+      "rulesText": "Place this leader in an Imperial system \u2014 Rebels cannot attempt missions or use action cards here.",
+      "image": "ActionCardEmpireBobaFettWhere.png"
+    },
+    {
+      "id": "brilliant-administrator",
+      "name": "Brilliant Administrator",
+      "side": "Empire",
+      "isStarting": true,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "grand-moff-tarkin"
+      ],
+      "effectKey": "",
+      "rulesText": "Place this leader in an Imperial system and immediately build with it.",
+      "image": "ActionCardEmpireStartingBrilliantAdministrator.png"
+    },
+    {
+      "id": "catch-them-by-surprise",
+      "name": "Catch Them By Surprise",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "admiral-ozzel"
+      ],
+      "effectKey": "",
+      "rulesText": "Move a fleet immediately (i.e. in the assignment phase, before the Rebels have a chance to move).",
+      "image": "ActionCardEmpireCatchThemBySurprise.png"
+    },
+    {
+      "id": "fully-operational",
+      "name": "Fully Operational",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "StartOfCombat",
+      "leaderRequirement": [
+        "moff-jerjerrod"
+      ],
+      "effectKey": "",
+      "rulesText": "If either a Death Star or Death Star Under Construction is in this system, destroy 1 Rebel ship of your choice in the system.",
+      "image": "ActionCardEmpireFullyOperational.png"
+    },
+    {
+      "id": "good-intel",
+      "name": "Good Intel",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "StartOfCombat",
+      "leaderRequirement": [
+        "colonel-yularen",
+        "soontir-fel"
+      ],
+      "effectKey": "",
+      "rulesText": "Rebel player must keep tactic cards faceup.",
+      "image": "ActionCardEmpireGoodIntel.png"
+    },
+    {
+      "id": "it-is-your-destiny",
+      "name": "It Is Your Destiny",
+      "side": "Empire",
+      "isStarting": true,
+      "timing": "Special",
+      "leaderRequirement": [
+        "darth-vader"
+      ],
+      "effectKey": "",
+      "rulesText": "Use during a mission after a leader is rescued. Capture 1 leader who attempted the mission.",
+      "image": "ActionCardEmpireStartingItIsYourDestiny.png"
+    },
+    {
+      "id": "keep-them-from-escaping",
+      "name": "Keep Them From Escaping",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "StartOfCombat",
+      "leaderRequirement": [
+        "admiral-piett"
+      ],
+      "effectKey": "",
+      "rulesText": "Rebel units cannot retreat.",
+      "image": "ActionCardEmpireKeepThemFromEscaping.png"
+    },
+    {
+      "id": "local-rumors",
+      "name": "Local Rumors",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "colonel-yularen"
+      ],
+      "effectKey": "",
+      "rulesText": "Place this leader in any system with an Imperial unit. Rebel player must state whether the Rebel base is in that region.",
+      "image": "ActionCardEmpireLocalRumors.png"
+    },
+    {
+      "id": "more-dangerous-than-you-realize",
+      "name": "More Dangerous Than You Realize",
+      "side": "Empire",
+      "isStarting": true,
+      "timing": "StartOfCombat",
+      "leaderRequirement": [
+        "general-tagge"
+      ],
+      "effectKey": "",
+      "rulesText": "Draw either 3 space tactic or 3 ground tactic cards.",
+      "image": "ActionCardEmpireStartingMoreDangerousThanYouRealize.png"
+    },
+    {
+      "id": "proceeding-as-planned",
+      "name": "Proceeding As Planned",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "admiral-ozzel",
+        "moff-jerjerrod"
+      ],
+      "effectKey": "",
+      "rulesText": "Search the project deck for 1 project and assign this leader to it.",
+      "image": "ActionCardEmpireProceedingAsPlanned.png"
+    },
+    {
+      "id": "public-support",
+      "name": "Public Support",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "janus-greejatus"
+      ],
+      "effectKey": "",
+      "rulesText": "Place this leader in an Imperial system without Rebel ground units \u2014 gain 3 Stormtroopers. Janus does not stop units from moving out of the system this turn.",
+      "image": "ActionCardEmpirePublicSupport.png"
+    },
+    {
+      "id": "ready-for-action",
+      "name": "Ready For Action",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "StartOfCombat",
+      "leaderRequirement": [
+        "admiral-piett",
+        "general-veers"
+      ],
+      "effectKey": "",
+      "rulesText": "Take a leader from the leader pool, place in combat, and get him back at end of fight.",
+      "image": "ActionCardEmpireReadyForAction.png"
+    },
+    {
+      "id": "scouting-mission",
+      "name": "Scouting Mission",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "Assignment",
+      "leaderRequirement": [],
+      "effectKey": "",
+      "rulesText": "Place this leader in any system. Then move up to 4 TIE Fighters from any system(s) to this system, ignoring transport restrictions and adjacency. If there are Rebel ships in this system, resolve a combat.",
+      "image": "ActionCardEmpireScoutingMission.png"
+    },
+    {
+      "id": "target-the-generator",
+      "name": "Target The Generator",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "StartOfCombat",
+      "leaderRequirement": [
+        "general-veers"
+      ],
+      "effectKey": "",
+      "rulesText": "Destroy 1 structure in the system.",
+      "image": "ActionCardEmpireTargetTheGenerator.png"
+    },
+    {
+      "id": "ambush",
+      "name": "Ambush",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "general-madine"
+      ],
+      "effectKey": "",
+      "rulesText": "Place this leader in a system to destroy up to 3 health of Imperial ground units.",
+      "image": "ActionCardRebelAmbush.png"
+    },
+    {
+      "id": "an-old-friend",
+      "name": "An Old Friend",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "han-solo"
+      ],
+      "effectKey": "",
+      "rulesText": "Place this leader in Bespin or Kashyyyk to recruit Lando or Chewbacca.",
+      "image": "ActionCardRebelAnOldFriend.png"
+    },
+    {
+      "id": "human-cyborg-relations",
+      "name": "Human Cyborg Relations",
+      "side": "Rebel",
+      "isStarting": true,
+      "timing": "Immediate",
+      "leaderRequirement": [],
+      "effectKey": "",
+      "rulesText": "C-3PO ring \u2014 discard to automatically succeed at a diplomacy mission after failure.",
+      "image": "ActionCardRebelStartingHumanCyborgRelations.png"
+    },
+    {
+      "id": "independent-operation",
+      "name": "Independent Operation",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "lando-calrissian"
+      ],
+      "effectKey": "",
+      "rulesText": "Place this leader in a subjugated system in the assignment phase. All Imperial ground units there must be moved to one Imperial system of their choice.",
+      "image": "ActionCardRebelIndependentOperation.png"
+    },
+    {
+      "id": "its-a-trap",
+      "name": "Its A Trap",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "StartOfCombat",
+      "leaderRequirement": [
+        "admiral-ackbar"
+      ],
+      "effectKey": "",
+      "rulesText": "During the first round of combat, your opponent cannot play space tactic cards.",
+      "image": "ActionCardRebelItsATrap.png"
+    },
+    {
+      "id": "noble-sacrifice",
+      "name": "Noble Sacrifice",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "Special",
+      "leaderRequirement": [
+        "obi-wan-kenobi"
+      ],
+      "effectKey": "",
+      "rulesText": "Use when this leader becomes captured. He is eliminated, and you gain 1 reputation.",
+      "image": "ActionCardRebelNobleSacrifice.png"
+    },
+    {
+      "id": "one-in-a-million",
+      "name": "One In A Million",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "Special",
+      "leaderRequirement": [
+        "luke-skywalker",
+        "wedge-antilles"
+      ],
+      "effectKey": "",
+      "rulesText": "Use during a combat or mission \u2014 instead of rolling up to two dice, place them on the table showing results of your choice. Can be used to roll an automatic success with the \"Death Star Plans\" objective.",
+      "image": "ActionCardRebelOneInAMillion.png"
+    },
+    {
+      "id": "our-most-desperate-hour",
+      "name": "Our Most Desperate Hour",
+      "side": "Rebel",
+      "isStarting": true,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "princess-leia"
+      ],
+      "effectKey": "",
+      "rulesText": "Search the assignment deck for a card and put Leia on it.",
+      "image": "ActionCardRebelStartingOurMostDesperateHour.png"
+    },
+    {
+      "id": "point-blank-assault",
+      "name": "Point Blank Assault",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "StartOfCombat",
+      "leaderRequirement": [
+        "admiral-ackbar",
+        "general-madine"
+      ],
+      "effectKey": "",
+      "rulesText": "All units in the system have -1 health, to a minimum of 1.",
+      "image": "ActionCardRebelPointBlankAssault.png"
+    },
+    {
+      "id": "rebel-planning",
+      "name": "Rebel Planning",
+      "side": "Rebel",
+      "isStarting": true,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "jan-dodonna"
+      ],
+      "effectKey": "",
+      "rulesText": "Place this leader in the \"Rebel Base\" space to draw 1 objective card.",
+      "image": "ActionCardRebelStartingRebelPlanning.png"
+    },
+    {
+      "id": "resourceful-astromech",
+      "name": "Resourceful Astromech",
+      "side": "Rebel",
+      "isStarting": true,
+      "timing": "Immediate",
+      "leaderRequirement": [],
+      "effectKey": "",
+      "rulesText": "R2-D2 ring \u2014 discard to turn 1 opponent's die to the blank side.",
+      "image": "ActionCardRebelStartingResourcefulAstromech.png"
+    },
+    {
+      "id": "son-of-skywalker",
+      "name": "Son Of Skywalker",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "Special",
+      "leaderRequirement": [
+        "luke-skywalker"
+      ],
+      "effectKey": "",
+      "rulesText": "After a successful mission, search the mission deck for \"Seek Yoda\" or \"Daring Rescue\" card.",
+      "image": "ActionCardRebelSonOfSkywalker.png"
+    },
+    {
+      "id": "start-the-evacuation",
+      "name": "Start The Evacuation",
+      "side": "Rebel",
+      "isStarting": true,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "general-rieekan"
+      ],
+      "effectKey": "",
+      "rulesText": "Move units from the Rebel Base to any system without Imperial units during the assignment phase.",
+      "image": "ActionCardRebelStartingStartTheEvacuation.png"
+    },
+    {
+      "id": "target-the-star-destroyers",
+      "name": "Target The Star Destroyers",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "StartOfCombat",
+      "leaderRequirement": [
+        "wedge-antilles"
+      ],
+      "effectKey": "",
+      "rulesText": "During the space battle of each combat round, treat up to 2 of your black hits as red hits.",
+      "image": "ActionCardRebelTargetTheStarDestroyers.png"
+    },
+    {
+      "id": "temporary-alliance",
+      "name": "Temporary Alliance",
+      "side": "Rebel",
+      "isStarting": true,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "mon-mothma"
+      ],
+      "effectKey": "",
+      "rulesText": "Place this leader in a neutral system to add that system's units to the build queue.",
+      "image": "ActionCardRebelStartingTemporaryAlliance.png"
+    },
+    {
+      "id": "the-milleninium-falcon",
+      "name": "The Milleninium Falcon",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "Immediate",
+      "leaderRequirement": [
+        "han-solo",
+        "chewbacca"
+      ],
+      "effectKey": "",
+      "rulesText": "Add the \"Millennium Falcon\" ring \u2014 automatically rescue 1 captured leader in a system after a successful mission there.",
+      "image": "ActionCardRebelTheMilleniniumFalcon.png"
+    },
+    {
+      "id": "undercover",
+      "name": "Undercover",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "Special",
+      "leaderRequirement": [
+        "lando-calrissian",
+        "obi-wan-kenobi"
+      ],
+      "effectKey": "",
+      "rulesText": "When the opponent attempts a mission, move this leader from any system to that system to help oppose it.",
+      "image": "ActionCardRebelUndercover.png"
+    },
+    {
+      "id": "wookie-guardian",
+      "name": "Wookie Guardian",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "Special",
+      "leaderRequirement": [
+        "chewbacca"
+      ],
+      "effectKey": "",
+      "rulesText": "Use when your opponent attempts a Spec Ops mission \u2014 it automatically fails.",
+      "image": "ActionCardRebelWookieGuardian.png"
+    }
+  ]
+}

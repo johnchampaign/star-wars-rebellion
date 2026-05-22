@@ -1,0 +1,26 @@
+{
+  "_meta": {
+    "schema": "board-mask-v1",
+    "provenance": "user-corrected",
+    "source": "user-drawn via the mask dev tab",
+    "notes": [
+      "Rectangles overlaid on the board image.",
+      "Coordinates are in NATIVE pixels of vmod_extracted/images/Map.png (3180 x 1590).",
+      "kind: 'hide' = opaque dark mask (info shown in parallel panels); other kinds are functional play areas where the engine renders state (Rebel Base, build queues).",
+      "Edited via dev mask tab at 2026-05-20T12:30:55.122Z."
+    ]
+  },
+  "masks": [
+    { "id": "md42rhh", "label": "Objectives Deck",        "kind": "hide",            "x":    6, "y":    5, "width": 294, "height": 178 },
+    { "id": "me5zity", "label": "Projects Deck",          "kind": "hide",            "x":    6, "y": 1408, "width": 294, "height": 178 },
+    { "id": "mgz3ilh", "label": "Turn Tracker",           "kind": "hide",            "x":   -2, "y":  522, "width": 162, "height": 692 },
+    { "id": "mulevll", "label": "Rebel Base",             "kind": "rebel-base",      "x":   -2, "y":  185, "width": 270, "height": 318 },
+    { "id": "mazeml9", "label": "Probe Deck",             "kind": "hide",            "x":   -2, "y": 1220, "width": 170, "height": 180 },
+    { "id": "mwwrg3y", "label": "Build Queue 1 (Empire)", "kind": "build-1-empire",  "x": 2903, "y": 1339, "width": 272, "height": 236 },
+    { "id": "mn18mw4", "label": "Build Queue 2 (Empire)", "kind": "build-2-empire",  "x": 3043, "y": 1051, "width": 122, "height": 262 },
+    { "id": "mnd6k5x", "label": "Build Queue 3 (Empire)", "kind": "build-3-empire",  "x": 3043, "y":  797, "width": 122, "height": 244 },
+    { "id": "mxf9d0r", "label": "Build Queue 3 (Rebel)",  "kind": "build-3-rebel",   "x": 3043, "y":  551, "width": 130, "height": 220 },
+    { "id": "mr1hyw7", "label": "Build Queue 2 (Rebel)",  "kind": "build-2-rebel",   "x": 3051, "y":  263, "width": 116, "height": 252 },
+    { "id": "mr51wed", "label": "Build Queue 1 (Rebel)",  "kind": "build-1-rebel",   "x": 2903, "y":    9, "width": 264, "height": 220 }
+  ]
+}

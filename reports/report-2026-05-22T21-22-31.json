@@ -1,0 +1,508 @@
+{
+  "schema": "rebellion-report-v1",
+  "timestamp": "2026-05-22T21:22:31.649Z",
+  "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+  "description": "I just moved space and ground troops to Mandalore.  It turned out to be the rebel base and a fight started.  The fight was reported poorly (I didn't understand what was happening or why) and there's now a mixture of rebel and empire troops there in a way that doesn't seem correct.",
+  "canEncodeState": false,
+  "state": null,
+  "turnLog": [
+    {
+      "turn": 1,
+      "kind": "setup",
+      "payload": {
+        "seed": 371516871,
+        "rebelLoyalty": [
+          "bothawui",
+          "rodia",
+          "saleucami"
+        ],
+        "imperialLoyalty": [
+          "mustafar",
+          "alderaan",
+          "malastare",
+          "kashyyyk",
+          "ryloth"
+        ],
+        "baseSystem": "rodia",
+        "probesRemovedForSetup": [
+          "probe-mustafar",
+          "probe-alderaan",
+          "probe-malastare",
+          "probe-kashyyyk",
+          "probe-ryloth"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "setup-auto-fill",
+      "side": "Empire"
+    },
+    {
+      "turn": 1,
+      "kind": "pick-rebel-base",
+      "side": "Rebel",
+      "payload": {
+        "systemId": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "setup-auto-fill",
+      "side": "Rebel"
+    },
+    {
+      "turn": 1,
+      "kind": "phase",
+      "payload": {
+        "phase": "Assignment",
+        "via": "setup-complete"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "skip-assignment",
+      "side": "Rebel"
+    },
+    {
+      "turn": 1,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "imperial-propaganda",
+        "leaderIds": [
+          "emperor-palpatine"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "rule-by-fear",
+        "leaderIds": [
+          "darth-vader"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "gather-intel",
+        "leaderIds": [
+          "grand-moff-tarkin"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "skip-assignment",
+      "side": "Empire"
+    },
+    {
+      "turn": 1,
+      "kind": "phase",
+      "payload": {
+        "phase": "Command"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "place-leader",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "princess-leia",
+        "systemId": "dantooine"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "activate-system",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "princess-leia",
+        "targetSystemId": "dantooine",
+        "orders": 0
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "place-leader",
+      "side": "Empire",
+      "payload": {
+        "leaderId": "general-tagge",
+        "systemId": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "move-unit",
+      "side": "Empire",
+      "payload": {
+        "unit": "s100001",
+        "from": "alderaan",
+        "to": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "subjugated",
+      "payload": {
+        "systemId": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "reveal-base",
+      "payload": {
+        "reason": "auto",
+        "systemId": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "move-unit",
+      "side": "Empire",
+      "payload": {
+        "unit": "s100007",
+        "from": "alderaan",
+        "to": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "move-unit",
+      "side": "Empire",
+      "payload": {
+        "unit": "s100013",
+        "from": "alderaan",
+        "to": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "move-unit",
+      "side": "Empire",
+      "payload": {
+        "unit": "s100019",
+        "from": "alderaan",
+        "to": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "move-unit",
+      "side": "Empire",
+      "payload": {
+        "unit": "s100031",
+        "from": "alderaan",
+        "to": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "move-unit",
+      "side": "Empire",
+      "payload": {
+        "unit": "s100037",
+        "from": "alderaan",
+        "to": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "move-unit",
+      "side": "Empire",
+      "payload": {
+        "unit": "s100003",
+        "from": "kashyyyk",
+        "to": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "move-unit",
+      "side": "Empire",
+      "payload": {
+        "unit": "s100009",
+        "from": "kashyyyk",
+        "to": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "move-unit",
+      "side": "Empire",
+      "payload": {
+        "unit": "s100015",
+        "from": "kashyyyk",
+        "to": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "move-unit",
+      "side": "Empire",
+      "payload": {
+        "unit": "s100021",
+        "from": "kashyyyk",
+        "to": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "move-unit",
+      "side": "Empire",
+      "payload": {
+        "unit": "s100033",
+        "from": "kashyyyk",
+        "to": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "activate-system",
+      "side": "Empire",
+      "payload": {
+        "leaderId": "general-tagge",
+        "targetSystemId": "mandalore",
+        "orders": 2
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "combat-begin",
+      "payload": {
+        "systemId": "mandalore",
+        "attackerSide": "Empire"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "place-leader",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "luke-skywalker",
+        "systemId": "mandalore"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "combat-add-leader",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "luke-skywalker",
+        "tacticValue": 4
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "combat-draw-tactics",
+      "payload": {
+        "attackerHand": 3,
+        "defenderHand": 4
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "CombatAttackerTactics",
+        "theater": "space",
+        "dice": 9,
+        "hits": 6,
+        "hand": 1
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "place-leader",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "jan-dodonna",
+        "systemId": "yavin"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "activate-system",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "jan-dodonna",
+        "targetSystemId": "yavin",
+        "orders": 0
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "combat-attack",
+      "side": "Empire",
+      "payload": {
+        "theater": "space",
+        "dice": [
+          {
+            "color": "red",
+            "face": "hit"
+          },
+          {
+            "color": "red",
+            "face": "hit"
+          },
+          {
+            "color": "red",
+            "face": "hit"
+          },
+          {
+            "color": "red",
+            "face": "blank"
+          },
+          {
+            "color": "black",
+            "face": "blank"
+          },
+          {
+            "color": "black",
+            "face": "hit"
+          },
+          {
+            "color": "black",
+            "face": "special"
+          },
+          {
+            "color": "black",
+            "face": "hit"
+          },
+          {
+            "color": "black",
+            "face": "hit"
+          }
+        ],
+        "attackers": 7
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "CombatDefenderTactics",
+        "theater": "space",
+        "incomingHits": 6,
+        "hand": 2
+      }
+    }
+  ],
+  "pending": {
+    "mission": null,
+    "combat": {
+      "systemId": "mandalore",
+      "attackerSide": "Empire",
+      "attackerSourceSystemId": "alderaan",
+      "step": "Round",
+      "round": 1,
+      "attackerHand": [
+        "space-outmaneuver",
+        "ground-critical-hit",
+        "ground-escape-plan"
+      ],
+      "defenderHand": [
+        "space-defensive-formation",
+        "space-brilliant-strategy",
+        "ground-critical-hit",
+        "ground-dig-in"
+      ],
+      "retreated": [],
+      "report": {
+        "systemId": "mandalore",
+        "attackerSide": "Empire",
+        "addedLeaders": [
+          {
+            "side": "Rebel",
+            "leaderId": "luke-skywalker",
+            "tacticValue": 4
+          }
+        ],
+        "drawnTactics": {
+          "side": "Empire",
+          "spaceCount": 3,
+          "groundCount": 4
+        },
+        "rounds": [
+          {
+            "round": 1,
+            "attacks": []
+          }
+        ],
+        "structureDestructions": [],
+        "winner": null,
+        "totalRounds": 0
+      },
+      "roundTheatersDone": [],
+      "activeTheater": "space",
+      "theaterStaged": [],
+      "theaterAttackersDone": [],
+      "currentRoundReportIdx": 0,
+      "pendingAttack": {
+        "side": "Empire",
+        "theater": "space",
+        "phase": "awaitingDefenderTactics",
+        "dice": [
+          {
+            "color": "red",
+            "face": "hit"
+          },
+          {
+            "color": "red",
+            "face": "hit"
+          },
+          {
+            "color": "red",
+            "face": "hit"
+          },
+          {
+            "color": "red",
+            "face": "blank"
+          },
+          {
+            "color": "black",
+            "face": "blank"
+          },
+          {
+            "color": "black",
+            "face": "hit"
+          },
+          {
+            "color": "black",
+            "face": "special"
+          },
+          {
+            "color": "black",
+            "face": "hit"
+          },
+          {
+            "color": "black",
+            "face": "hit"
+          }
+        ],
+        "attackerUnits": 7,
+        "bonusDamage": 0,
+        "tacticsPlayed": []
+      }
+    },
+    "choice": {
+      "kind": "CombatDefenderTactics",
+      "side": "Rebel",
+      "theater": "space",
+      "incomingHits": 6,
+      "hand": [
+        "space-defensive-formation",
+        "space-brilliant-strategy"
+      ],
+      "systemId": "mandalore"
+    }
+  }
+}

@@ -1,0 +1,168 @@
+{
+  "_meta": {
+    "schema": "probes-v1",
+    "provenance": "derived-from-systems",
+    "source": "assets/systems.json; one probe card per non-Coruscant system (rr p.10)",
+    "notes": [
+      "31 probe cards (32 systems - 1 for Coruscant = 31).",
+      "Probe cards have no rules text; they are just system identifiers used by the Empire to narrow the Rebel base location."
+    ]
+  },
+  "probes": [
+    {
+      "id": "probe-alderaan",
+      "systemId": "alderaan",
+      "systemName": "Alderaan"
+    },
+    {
+      "id": "probe-bespin",
+      "systemId": "bespin",
+      "systemName": "Bespin"
+    },
+    {
+      "id": "probe-bothawui",
+      "systemId": "bothawui",
+      "systemName": "Bothawui"
+    },
+    {
+      "id": "probe-cato-neimoidia",
+      "systemId": "cato-neimoidia",
+      "systemName": "Cato Neimoidia"
+    },
+    {
+      "id": "probe-corellia",
+      "systemId": "corellia",
+      "systemName": "Corellia"
+    },
+    {
+      "id": "probe-dagobah",
+      "systemId": "dagobah",
+      "systemName": "Dagobah"
+    },
+    {
+      "id": "probe-dantooine",
+      "systemId": "dantooine",
+      "systemName": "Dantooine"
+    },
+    {
+      "id": "probe-dathomir",
+      "systemId": "dathomir",
+      "systemName": "Dathomir"
+    },
+    {
+      "id": "probe-endor",
+      "systemId": "endor",
+      "systemName": "Endor"
+    },
+    {
+      "id": "probe-felucia",
+      "systemId": "felucia",
+      "systemName": "Felucia"
+    },
+    {
+      "id": "probe-geonosis",
+      "systemId": "geonosis",
+      "systemName": "Geonosis"
+    },
+    {
+      "id": "probe-hoth",
+      "systemId": "hoth",
+      "systemName": "Hoth"
+    },
+    {
+      "id": "probe-ilum",
+      "systemId": "ilum",
+      "systemName": "Ilum"
+    },
+    {
+      "id": "probe-kashyyyk",
+      "systemId": "kashyyyk",
+      "systemName": "Kashyyyk"
+    },
+    {
+      "id": "probe-kessel",
+      "systemId": "kessel",
+      "systemName": "Kessel"
+    },
+    {
+      "id": "probe-malastare",
+      "systemId": "malastare",
+      "systemName": "Malastare"
+    },
+    {
+      "id": "probe-mandalore",
+      "systemId": "mandalore",
+      "systemName": "Mandalore"
+    },
+    {
+      "id": "probe-mon-calamari",
+      "systemId": "mon-calamari",
+      "systemName": "Mon Calamari"
+    },
+    {
+      "id": "probe-mustafar",
+      "systemId": "mustafar",
+      "systemName": "Mustafar"
+    },
+    {
+      "id": "probe-mygeeto",
+      "systemId": "mygeeto",
+      "systemName": "Mygeeto"
+    },
+    {
+      "id": "probe-naboo",
+      "systemId": "naboo",
+      "systemName": "Naboo"
+    },
+    {
+      "id": "probe-nal-hutta",
+      "systemId": "nal-hutta",
+      "systemName": "Nal Hutta"
+    },
+    {
+      "id": "probe-ord-mantell",
+      "systemId": "ord-mantell",
+      "systemName": "Ord Mantell"
+    },
+    {
+      "id": "probe-rodia",
+      "systemId": "rodia",
+      "systemName": "Rodia"
+    },
+    {
+      "id": "probe-ryloth",
+      "systemId": "ryloth",
+      "systemName": "Ryloth"
+    },
+    {
+      "id": "probe-saleucami",
+      "systemId": "saleucami",
+      "systemName": "Saleucami"
+    },
+    {
+      "id": "probe-sullust",
+      "systemId": "sullust",
+      "systemName": "Sullust"
+    },
+    {
+      "id": "probe-tatooine",
+      "systemId": "tatooine",
+      "systemName": "Tatooine"
+    },
+    {
+      "id": "probe-toydaria",
+      "systemId": "toydaria",
+      "systemName": "Toydaria"
+    },
+    {
+      "id": "probe-utapau",
+      "systemId": "utapau",
+      "systemName": "Utapau"
+    },
+    {
+      "id": "probe-yavin",
+      "systemId": "yavin",
+      "systemName": "Yavin"
+    }
+  ]
+}

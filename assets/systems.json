@@ -1,0 +1,711 @@
+{
+  "_meta": {
+    "schema": "systems-v2",
+    "provenance": "user-corrected",
+    "source": "vmod_extracted/buildFile (board positions) + vmod_extracted/images/Map.png (region & remote/populous classification)",
+    "notes": [
+      "32 systems. The Rebel Base SPACE is not represented here -- it is not a system (rr p.10).",
+      "isRemote: 8 systems (Dagobah, Dantooine, Dathomir, Endor, Hoth, Ilum, Tatooine, Yavin) -- they have no LoyaltyMarker entry in buildFile, matching the rules definition of \"no resource icons or loyalty space\" (rr p.12).",
+      "isCoruscant: special-cased per rr p.8 (always Imperial, cannot change loyalty).",
+      "region: integer 1..8. User-assigned via the regions dev tab. Each region has exactly 4 systems per rr p.12.",
+      "buildSlot: 1, 2, or 3 for populous systems; null for remote systems. Transcribed from the board via the resources dev tab.",
+      "resources: ordered list of 0..2 ResourceIcon entries (type=space/ground, shape=triangle/circle/square). Transcribed from the board via the resources dev tab. resources[0] is the left icon (the only one usable when subjugated).",
+      "boardPos: planet centers, user-positioned via the positions dev tab.",
+      "Edited via dev regions tab at 2026-05-20T00:23:29.903Z.",
+      "Edited via dev resources tab at 2026-05-20T00:35:15.345Z.",
+      "Edited via dev positions tab at 2026-05-20T10:59:30.654Z.",
+      "loyaltyMarkerPos: coordinates of the printed loyalty hex on the board (null for remote systems and Coruscant). Source: vmod_extracted/buildFile LoyaltyMarker* SetupStack entries."
+    ]
+  },
+  "systems": [
+    {
+      "id": "alderaan",
+      "name": "Alderaan",
+      "region": 7,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "triangle"
+        }
+      ],
+      "boardPos": {
+        "x": 1317,
+        "y": 1237
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": {
+        "x": 1369,
+        "y": 1285
+      }
+    },
+    {
+      "id": "bespin",
+      "name": "Bespin",
+      "region": 4,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "circle"
+        }
+      ],
+      "boardPos": {
+        "x": 2631,
+        "y": 1177
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": {
+        "x": 2683,
+        "y": 1229
+      }
+    },
+    {
+      "id": "bothawui",
+      "name": "Bothawui",
+      "region": 2,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "circle"
+        }
+      ],
+      "boardPos": {
+        "x": 1713,
+        "y": 312
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": {
+        "x": 1771,
+        "y": 356
+      }
+    },
+    {
+      "id": "cato-neimoidia",
+      "name": "Cato Neimoidia",
+      "region": 7,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "space",
+          "shape": "triangle"
+        },
+        {
+          "type": "ground",
+          "shape": "circle"
+        }
+      ],
+      "boardPos": {
+        "x": 1837,
+        "y": 1081
+      },
+      "buildSlot": 2,
+      "loyaltyMarkerPos": {
+        "x": 1883,
+        "y": 1114
+      }
+    },
+    {
+      "id": "corellia",
+      "name": "Corellia",
+      "region": 7,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "space",
+          "shape": "triangle"
+        },
+        {
+          "type": "space",
+          "shape": "square"
+        }
+      ],
+      "boardPos": {
+        "x": 2122,
+        "y": 1347
+      },
+      "buildSlot": 3,
+      "loyaltyMarkerPos": {
+        "x": 2164,
+        "y": 1434
+      }
+    },
+    {
+      "id": "coruscant",
+      "name": "Coruscant",
+      "region": 7,
+      "isRemote": false,
+      "isCoruscant": true,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "triangle"
+        }
+      ],
+      "boardPos": {
+        "x": 1724,
+        "y": 1401
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": null
+    },
+    {
+      "id": "dagobah",
+      "name": "Dagobah",
+      "region": 8,
+      "isRemote": true,
+      "isCoruscant": false,
+      "resources": [],
+      "boardPos": {
+        "x": 2483,
+        "y": 857
+      },
+      "buildSlot": null,
+      "loyaltyMarkerPos": null
+    },
+    {
+      "id": "dantooine",
+      "name": "Dantooine",
+      "region": 5,
+      "isRemote": true,
+      "isCoruscant": false,
+      "resources": [],
+      "boardPos": {
+        "x": 265,
+        "y": 1035
+      },
+      "buildSlot": null,
+      "loyaltyMarkerPos": null
+    },
+    {
+      "id": "dathomir",
+      "name": "Dathomir",
+      "region": 6,
+      "isRemote": true,
+      "isCoruscant": false,
+      "resources": [],
+      "boardPos": {
+        "x": 709,
+        "y": 951
+      },
+      "buildSlot": null,
+      "loyaltyMarkerPos": null
+    },
+    {
+      "id": "endor",
+      "name": "Endor",
+      "region": 4,
+      "isRemote": true,
+      "isCoruscant": false,
+      "resources": [],
+      "boardPos": {
+        "x": 2617,
+        "y": 1455
+      },
+      "buildSlot": null,
+      "loyaltyMarkerPos": null
+    },
+    {
+      "id": "felucia",
+      "name": "Felucia",
+      "region": 1,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "triangle"
+        }
+      ],
+      "boardPos": {
+        "x": 641,
+        "y": 490
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": {
+        "x": 691,
+        "y": 537
+      }
+    },
+    {
+      "id": "geonosis",
+      "name": "Geonosis",
+      "region": 3,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "space",
+          "shape": "triangle"
+        },
+        {
+          "type": "ground",
+          "shape": "square"
+        }
+      ],
+      "boardPos": {
+        "x": 2505,
+        "y": 342
+      },
+      "buildSlot": 2,
+      "loyaltyMarkerPos": {
+        "x": 2554,
+        "y": 386
+      }
+    },
+    {
+      "id": "hoth",
+      "name": "Hoth",
+      "region": 4,
+      "isRemote": true,
+      "isCoruscant": false,
+      "resources": [],
+      "boardPos": {
+        "x": 2925,
+        "y": 1167
+      },
+      "buildSlot": null,
+      "loyaltyMarkerPos": null
+    },
+    {
+      "id": "ilum",
+      "name": "Ilum",
+      "region": 5,
+      "isRemote": true,
+      "isCoruscant": false,
+      "resources": [],
+      "boardPos": {
+        "x": 711,
+        "y": 1433
+      },
+      "buildSlot": null,
+      "loyaltyMarkerPos": null
+    },
+    {
+      "id": "kashyyyk",
+      "name": "Kashyyyk",
+      "region": 6,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "triangle"
+        },
+        {
+          "type": "ground",
+          "shape": "triangle"
+        }
+      ],
+      "boardPos": {
+        "x": 1358,
+        "y": 847
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": {
+        "x": 1411,
+        "y": 933
+      }
+    },
+    {
+      "id": "kessel",
+      "name": "Kessel",
+      "region": 2,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "triangle"
+        }
+      ],
+      "boardPos": {
+        "x": 1029,
+        "y": 156
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": {
+        "x": 1077,
+        "y": 206
+      }
+    },
+    {
+      "id": "malastare",
+      "name": "Malastare",
+      "region": 6,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "triangle"
+        }
+      ],
+      "boardPos": {
+        "x": 1745,
+        "y": 809
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": {
+        "x": 1798,
+        "y": 859
+      }
+    },
+    {
+      "id": "mandalore",
+      "name": "Mandalore",
+      "region": 6,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "triangle"
+        },
+        {
+          "type": "space",
+          "shape": "triangle"
+        }
+      ],
+      "boardPos": {
+        "x": 1089,
+        "y": 1003
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": {
+        "x": 1139,
+        "y": 1080
+      }
+    },
+    {
+      "id": "mon-calamari",
+      "name": "Mon Calamari",
+      "region": 1,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "space",
+          "shape": "triangle"
+        },
+        {
+          "type": "space",
+          "shape": "square"
+        }
+      ],
+      "boardPos": {
+        "x": 524,
+        "y": 165
+      },
+      "buildSlot": 3,
+      "loyaltyMarkerPos": {
+        "x": 538,
+        "y": 217
+      }
+    },
+    {
+      "id": "mustafar",
+      "name": "Mustafar",
+      "region": 4,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "space",
+          "shape": "triangle"
+        },
+        {
+          "type": "space",
+          "shape": "circle"
+        }
+      ],
+      "boardPos": {
+        "x": 2825,
+        "y": 881
+      },
+      "buildSlot": 2,
+      "loyaltyMarkerPos": {
+        "x": 2872,
+        "y": 923
+      }
+    },
+    {
+      "id": "mygeeto",
+      "name": "Mygeeto",
+      "region": 5,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "space",
+          "shape": "triangle"
+        },
+        {
+          "type": "ground",
+          "shape": "square"
+        }
+      ],
+      "boardPos": {
+        "x": 531,
+        "y": 1193
+      },
+      "buildSlot": 2,
+      "loyaltyMarkerPos": {
+        "x": 579,
+        "y": 1275
+      }
+    },
+    {
+      "id": "naboo",
+      "name": "Naboo",
+      "region": 8,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "triangle"
+        },
+        {
+          "type": "space",
+          "shape": "triangle"
+        }
+      ],
+      "boardPos": {
+        "x": 2233,
+        "y": 633
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": {
+        "x": 2275,
+        "y": 704
+      }
+    },
+    {
+      "id": "nal-hutta",
+      "name": "Nal Hutta",
+      "region": 2,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "triangle"
+        },
+        {
+          "type": "space",
+          "shape": "triangle"
+        }
+      ],
+      "boardPos": {
+        "x": 1369,
+        "y": 140
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": {
+        "x": 1417,
+        "y": 243
+      }
+    },
+    {
+      "id": "ord-mantell",
+      "name": "Ord Mantell",
+      "region": 5,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "space",
+          "shape": "circle"
+        },
+        {
+          "type": "ground",
+          "shape": "circle"
+        }
+      ],
+      "boardPos": {
+        "x": 989,
+        "y": 1309
+      },
+      "buildSlot": 2,
+      "loyaltyMarkerPos": {
+        "x": 1044,
+        "y": 1344
+      }
+    },
+    {
+      "id": "rodia",
+      "name": "Rodia",
+      "region": 3,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "triangle"
+        }
+      ],
+      "boardPos": {
+        "x": 1985,
+        "y": 434
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": {
+        "x": 2037,
+        "y": 486
+      }
+    },
+    {
+      "id": "ryloth",
+      "name": "Ryloth",
+      "region": 3,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "triangle"
+        }
+      ],
+      "boardPos": {
+        "x": 2731,
+        "y": 100
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": {
+        "x": 2787,
+        "y": 143
+      }
+    },
+    {
+      "id": "saleucami",
+      "name": "Saleucami",
+      "region": 1,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "circle"
+        }
+      ],
+      "boardPos": {
+        "x": 943,
+        "y": 474
+      },
+      "buildSlot": 1,
+      "loyaltyMarkerPos": {
+        "x": 1003,
+        "y": 513
+      }
+    },
+    {
+      "id": "sullust",
+      "name": "Sullust",
+      "region": 8,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "ground",
+          "shape": "triangle"
+        },
+        {
+          "type": "ground",
+          "shape": "square"
+        }
+      ],
+      "boardPos": {
+        "x": 2243,
+        "y": 1051
+      },
+      "buildSlot": 2,
+      "loyaltyMarkerPos": {
+        "x": 2292,
+        "y": 1101
+      }
+    },
+    {
+      "id": "tatooine",
+      "name": "Tatooine",
+      "region": 3,
+      "isRemote": true,
+      "isCoruscant": false,
+      "resources": [],
+      "boardPos": {
+        "x": 2165,
+        "y": 92
+      },
+      "buildSlot": null,
+      "loyaltyMarkerPos": null
+    },
+    {
+      "id": "toydaria",
+      "name": "Toydaria",
+      "region": 2,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "space",
+          "shape": "circle"
+        }
+      ],
+      "boardPos": {
+        "x": 1271,
+        "y": 514
+      },
+      "buildSlot": 2,
+      "loyaltyMarkerPos": {
+        "x": 1319,
+        "y": 571
+      }
+    },
+    {
+      "id": "utapau",
+      "name": "Utapau",
+      "region": 8,
+      "isRemote": false,
+      "isCoruscant": false,
+      "resources": [
+        {
+          "type": "space",
+          "shape": "circle"
+        },
+        {
+          "type": "space",
+          "shape": "square"
+        }
+      ],
+      "boardPos": {
+        "x": 2865,
+        "y": 499
+      },
+      "buildSlot": 3,
+      "loyaltyMarkerPos": {
+        "x": 2910,
+        "y": 571
+      }
+    },
+    {
+      "id": "yavin",
+      "name": "Yavin",
+      "region": 1,
+      "isRemote": true,
+      "isCoruscant": false,
+      "resources": [],
+      "boardPos": {
+        "x": 377,
+        "y": 633
+      },
+      "buildSlot": null,
+      "loyaltyMarkerPos": null
+    }
+  ]
+}

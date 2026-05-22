@@ -1,0 +1,205 @@
+{
+  "_meta": {
+    "schema": "tactics-v1",
+    "provenance": "reference-derived",
+    "source": "vmod_extracted/images/Tactic*.png",
+    "notes": [
+      "19 tactic cards (ground + space). Two decks; each player draws from the matching deck per their leader's tactic value (rr p.14).",
+      "requiresSpecial: true if the card has a \u26a1 icon \u2014 playing the card costs a special die in addition to the play.",
+      "theater: ground | space.",
+      "Populated by scripts/populate-cards.py from user-provided reference materials (19 entries matched)."
+    ]
+  },
+  "tactics": [
+    {
+      "id": "ground-bombardment",
+      "name": "Bombardment",
+      "theater": "ground",
+      "requiresSpecial": true,
+      "effectKey": "",
+      "rulesText": "Deal damage equal to the red attack value of 1 of your ships",
+      "image": "TacticGroundBombardment.png",
+      "copies": 1
+    },
+    {
+      "id": "ground-brilliant-strategy",
+      "name": "Brilliant Strategy",
+      "theater": "ground",
+      "requiresSpecial": true,
+      "effectKey": "",
+      "rulesText": "Draw 2 tactic cards from either deck, or 1 from each",
+      "image": "TacticGroundBrilliantStrategy.png",
+      "copies": 1
+    },
+    {
+      "id": "ground-concentrate-fire",
+      "name": "Concentrate Fire",
+      "theater": "ground",
+      "requiresSpecial": false,
+      "effectKey": "",
+      "rulesText": "Reroll up to 2 of your dice",
+      "image": "TacticGroundConcentrateFire.png",
+      "copies": 2
+    },
+    {
+      "id": "ground-critical-hit",
+      "name": "Critical Hit",
+      "theater": "ground",
+      "requiresSpecial": false,
+      "effectKey": "",
+      "rulesText": "Deal 1 damage",
+      "image": "TacticGroundCriticalHit.png",
+      "copies": 2
+    },
+    {
+      "id": "ground-defensive-formation",
+      "name": "Defensive Formation",
+      "theater": "ground",
+      "requiresSpecial": false,
+      "effectKey": "",
+      "rulesText": "Block 1 damage",
+      "image": "TacticGroundDefensiveFormation.png",
+      "copies": 3
+    },
+    {
+      "id": "ground-dig-in",
+      "name": "Dig In",
+      "theater": "ground",
+      "requiresSpecial": false,
+      "effectKey": "",
+      "rulesText": "Discard 1 ground tactic card from your hand to block up to 2 damage",
+      "image": "TacticGroundDigIn.png",
+      "copies": 2
+    },
+    {
+      "id": "ground-escape-plan",
+      "name": "Escape Plan",
+      "theater": "ground",
+      "requiresSpecial": false,
+      "effectKey": "",
+      "rulesText": "During this combat round, your units can retreat ignoring transport restrictions",
+      "image": "TacticGroundEscapePlan.png",
+      "copies": 1
+    },
+    {
+      "id": "ground-onslaught",
+      "name": "Onslaught",
+      "theater": "ground",
+      "requiresSpecial": true,
+      "effectKey": "",
+      "rulesText": "Deal 1 damage to up to 2 different ground units",
+      "image": "TacticGroundOnslaught.png",
+      "copies": 1
+    },
+    {
+      "id": "ground-take-it-down",
+      "name": "Take It Down",
+      "theater": "ground",
+      "requiresSpecial": true,
+      "effectKey": "",
+      "rulesText": "Deal 2 damage to 1 ground unit",
+      "image": "TacticGroundTakeItDown.png",
+      "copies": 1
+    },
+    {
+      "id": "ground-unstoppable-assault",
+      "name": "Unstoppable Assault",
+      "theater": "ground",
+      "requiresSpecial": true,
+      "effectKey": "",
+      "rulesText": "During this ground battle step, your opponent cannot block damage",
+      "image": "TacticGroundUnstoppableAssault.png",
+      "copies": 1
+    },
+    {
+      "id": "space-brilliant-strategy",
+      "name": "Brilliant Strategy",
+      "theater": "space",
+      "requiresSpecial": true,
+      "effectKey": "",
+      "rulesText": "Draw 2 tactic cards from either deck, or 1 from each",
+      "image": "TacticSpaceBrilliantStrategy.png",
+      "copies": 1
+    },
+    {
+      "id": "space-concentrate-fire",
+      "name": "Concentrate Fire",
+      "theater": "space",
+      "requiresSpecial": false,
+      "effectKey": "",
+      "rulesText": "Reroll up to 2 of your dice",
+      "image": "TacticSpaceConcentrateFire.png",
+      "copies": 2
+    },
+    {
+      "id": "space-critical-hit",
+      "name": "Critical Hit",
+      "theater": "space",
+      "requiresSpecial": false,
+      "effectKey": "",
+      "rulesText": "Deal 1 damage",
+      "image": "TacticSpaceCriticalHit.png",
+      "copies": 2
+    },
+    {
+      "id": "space-defensive-formation",
+      "name": "Defensive Formation",
+      "theater": "space",
+      "requiresSpecial": false,
+      "effectKey": "",
+      "rulesText": "Block 1 damage",
+      "image": "TacticSpaceDefensiveFormation.png",
+      "copies": 3
+    },
+    {
+      "id": "space-no-escape",
+      "name": "No Escape",
+      "theater": "space",
+      "requiresSpecial": false,
+      "effectKey": "",
+      "rulesText": "During this combat round, your opponent cannot retreat",
+      "image": "TacticSpaceNoEscape.png",
+      "copies": 1
+    },
+    {
+      "id": "space-onslaught",
+      "name": "Onslaught",
+      "theater": "space",
+      "requiresSpecial": true,
+      "effectKey": "",
+      "rulesText": "Deal 1 damage to up to 2 different ships.",
+      "image": "TacticSpaceOnslaught.png",
+      "copies": 1
+    },
+    {
+      "id": "space-outmaneuver",
+      "name": "Outmaneuver",
+      "theater": "space",
+      "requiresSpecial": false,
+      "effectKey": "",
+      "rulesText": "Discard 1 space tactic card from your hand to block up to 2 damage",
+      "image": "TacticSpaceOutmaneuver.png",
+      "copies": 2
+    },
+    {
+      "id": "space-take-it-down",
+      "name": "Take It Down",
+      "theater": "space",
+      "requiresSpecial": true,
+      "effectKey": "",
+      "rulesText": "Deal 2 damage to 1 ship",
+      "image": "TacticSpaceTakeItDown.png",
+      "copies": 2
+    },
+    {
+      "id": "space-unstoppable-assault",
+      "name": "Unstoppable Assault",
+      "theater": "space",
+      "requiresSpecial": true,
+      "effectKey": "",
+      "rulesText": "During this space battle step, your opponent cannot block damage.",
+      "image": "TacticSpaceUnstoppableAssault.png",
+      "copies": 1
+    }
+  ]
+}
