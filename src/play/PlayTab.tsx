@@ -38,6 +38,32 @@ function sideColor(s: Side): string {
   return s === 'Rebel' ? '#aae0ff' : '#ffaaaa';
 }
 
+/** Does the given side own the current pendingChoice? Used by runAILoop
+ *  to decide whether to wake the AI when the choice fires during the
+ *  HUMAN's turn (e.g. Empire reveals a mission and Rebel auto-resolves
+ *  the opposition; AI builds during refresh; etc.). */
+function aiOwesChoice(G: GameState, side: Side): boolean {
+  const pc = G.pendingChoice;
+  if (!pc) return false;
+  switch (pc.kind) {
+    case 'OpposeMission':            return pc.opposerSide === side;
+    case 'BuildPick':                return pc.side === side;
+    case 'CombatAttackerTactics':    return pc.side === side;
+    case 'CombatDefenderTactics':    return pc.side === side;
+    case 'CombatAssignDamage':       return pc.side === side;
+    case 'YodaReroll':               return pc.side === side;
+    case 'SpecialDieSpend':          return pc.side === side;
+    case 'CombatStartActionCards':   return pc.side === side;
+    case 'RetreatDecision':          return pc.side === side;
+    // Infiltration / Stolen Plans are always Rebel choices.
+    case 'InfiltrationPick':         return side === 'Rebel';
+    case 'StolenPlansReorder':       return side === 'Rebel';
+    // Other ChoiceRequest kinds (system / leader picks, etc.) are
+    // human-initiated and shouldn't auto-fire the AI loop.
+    default:                         return false;
+  }
+}
+
 export default function PlayTab() {
   const gameRef = useRef<GameState | null>(null);
   const dataRef = useRef<Awaited<ReturnType<typeof loadAllForEngine>> | null>(null);
@@ -80,9 +106,11 @@ export default function PlayTab() {
     for (let safety = 0; safety < 500; safety++) {
       const Gn = gameRef.current;
       if (!Gn || Gn.isGameOver) break;
-      const owes = Gn.pendingChoice?.kind === 'OpposeMission' && Gn.pendingChoice.opposerSide === ai;
-      // AI acts when it's its turn, OR when it owes an opposition choice
-      // during the human's mission resolution.
+      const owes = aiOwesChoice(Gn, ai);
+      // AI acts when it's its turn, OR when it owes ANY pending choice
+      // (opposition, combat tactics, build picks, retreat, etc.). If we
+      // don't fire here the game silently locks because nothing else
+      // will ever resolve an AI-owned choice posted on the human's turn.
       if (Gn.currentPlayer !== ai && !owes) break;
       let did = false;
       try {
