@@ -41,9 +41,12 @@ const EMPIRE_RESERVE_LEADERS = 1;
  *  modifiers. Higher = AI cares more about this mission. */
 function missionBaseValue(missionId: string, side: Side): number {
   const empireValues: Record<string, number> = {
-    // Probe-card pulls — narrowing base
-    'gather-intel': 12,
-    'research-and-development': 10,
+    // Probe-card pulls — narrowing base. Bumped: human Empire wins
+    // showed running probe-draw missions twice in T1 + T2 is critical
+    // to set up subjugation-search later. These should beat almost
+    // everything else early.
+    'gather-intel': 15,
+    'research-and-development': 13,
     // Captures — rob the Rebel of a leader
     'capture-rebel-operative': 11,
     'collect-bounty': 10,
@@ -431,8 +434,8 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
       if (!hasOwnUnits && !sys.subjugated) {
         const resourceWeight = def?.resources?.length ?? 0;
         ts += 2 + resourceWeight;
-        // Already Empire-loyal: less urgent.
-        if (sys.loyalty?.side === 'Empire') ts -= 2;
+        // Already Empire-loyal (string compare — sys.loyalty is just a string).
+        if (sys.loyalty === 'imperial') ts -= 2;
       }
       // Base-narrowing pivot: when probe info has narrowed candidates,
       // strongly reward visiting remaining candidate systems (looking
@@ -440,6 +443,19 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
       if (baseCandidateSet?.has(sysId)) {
         if (narrowingMode) ts += 6;
         else ts += 2;
+      }
+      // Spread within the current Command turn: if an Empire leader is
+      // already on this system, another leader going there is wasted
+      // (they'd subjugate the same place). Penalize unless the base is
+      // revealed there — in that case we WANT all leaders converging.
+      const empireLeadersHere = (G.empire.leadersOnBoard[sysId] ?? []).length;
+      if (G.rebelBaseRevealed && sysId === G.rebelBaseSystemId) {
+        // CONVERGE on the revealed base: massively reward sending leaders
+        // here, especially if a first attack already happened (Pattern 4:
+        // two-wave attack same turn).
+        ts += 25;
+      } else if (empireLeadersHere > 0) {
+        ts -= 5 * empireLeadersHere;
       }
       // Don't waste activations on Coruscant or systems already saturated.
       if (sysId === 'coruscant') ts -= 3;
