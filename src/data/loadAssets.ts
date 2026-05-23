@@ -5,27 +5,33 @@ import type {
 } from '../types';
 
 const BASE = '/dev-assets';
+// Build-time-injected cache-bust. Vite's import.meta.env doesn't have a
+// natural build id, so we append the build's timestamp via Date.now() at
+// module load. Same per page-load, different per deploy because the bundle
+// re-evaluates. Avoids the "iPad Safari shows stale objectives.json" issue
+// even when HTTP cache headers don't propagate quickly.
+const BUST = import.meta.env.PROD ? `?v=${Date.now()}` : '';
 
 export async function loadSystems(): Promise<SystemsFile> {
-  const res = await fetch(`${BASE}/systems.json`);
+  const res = await fetch(`${BASE}/systems.json${BUST}`);
   if (!res.ok) throw new Error(`Failed to load systems.json: ${res.status}`);
   return res.json();
 }
 
 export async function loadAdjacency(): Promise<AdjacencyFile> {
-  const res = await fetch(`${BASE}/adjacency.json`);
+  const res = await fetch(`${BASE}/adjacency.json${BUST}`);
   if (!res.ok) throw new Error(`Failed to load adjacency.json: ${res.status}`);
   return res.json();
 }
 
 export async function loadLeaders(): Promise<LeadersFile> {
-  const res = await fetch(`${BASE}/leaders.json`);
+  const res = await fetch(`${BASE}/leaders.json${BUST}`);
   if (!res.ok) throw new Error(`Failed to load leaders.json: ${res.status}`);
   return res.json();
 }
 
 async function loadJson<T>(file: string): Promise<T> {
-  const res = await fetch(`${BASE}/${file}`);
+  const res = await fetch(`${BASE}/${file}${BUST}`);
   if (!res.ok) throw new Error(`Failed to load ${file}: ${res.status}`);
   return res.json();
 }
