@@ -16,7 +16,7 @@ function redactObjectivesInProd() {
       try {
         const raw = readFileSync(path, 'utf8');
         const data = JSON.parse(raw) as { objectives: Array<{ rulesText?: string }> };
-        for (const c of data.objectives ?? []) c.rulesText = '(text omitted in public build)';
+        for (const c of data.objectives ?? []) c.rulesText = '';
         writeFileSync(path, JSON.stringify(data, null, 2));
       } catch (e) {
         console.warn('[swr-redact-objectives] could not redact:', e);

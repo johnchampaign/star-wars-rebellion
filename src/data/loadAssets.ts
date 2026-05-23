@@ -50,7 +50,7 @@ export const loadObjectives = async (): Promise<ObjectivesFile> => {
   if (import.meta.env.PROD) {
     return {
       ...data,
-      objectives: (data.objectives ?? []).map((c) => ({ ...c, rulesText: '(text omitted in public build)' })),
+      objectives: (data.objectives ?? []).map((c) => ({ ...c, rulesText: '' })),
     };
   }
   return data;
