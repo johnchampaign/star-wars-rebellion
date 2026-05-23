@@ -1468,6 +1468,17 @@ function enterRefreshPhase(G: GameState): void {
   }
   // Yoda ring's "1/round reroll" resets at the round boundary.
   G.yodaRerollUsedThisRound = false;
+  // Per-turn action-card flags. These were set during last turn's
+  // Assignment phase and become stale once the named leader returns to
+  // pool during step 1 (Retrieve Leaders) below. Clear at refresh start
+  // so e.g. Boba Fett's block doesn't persist across rounds (the
+  // mission/action-card filter also checks live leader position, but
+  // clearing the flag keeps the data tidy and avoids stale logs).
+  if (G.actionCardFlags) {
+    G.actionCardFlags.bobaBlockSystemIds = undefined;
+    G.actionCardFlags.greejatusFreeMoveSystemId = undefined;
+    G.actionCardFlags.tarkinFreeBuildSystemId = undefined;
+  }
 
   // Pre-step: resolve eligible StartOfRefresh objectives (rr p.10 — Rebel may
   // play one objective at start of Refresh phase, just before step 1).
@@ -2192,7 +2203,14 @@ export function cancelAssignmentActionCardPlay(G: GameState): { ok: boolean; rea
 
 /** Per-card "needs a system pick?" + legal-system filter. */
 function legalSystemsForAssignmentCard(G: GameState, side: Side, cardId: string): SystemId[] | null {
-  const all = Object.keys(G.map.systems);
+  // "Boba Fett, Where?" — Rebel cannot use action cards at systems where
+  // Boba Fett is placed via the card. Pre-filter Rebel candidates so the
+  // player doesn't even see those systems as options.
+  const bobaBlocked = (sid: SystemId) =>
+    side === 'Rebel'
+    && (G.empire.leadersOnBoard[sid] ?? []).includes('boba-fett')
+    && !!G.actionCardFlags?.bobaBlockSystemIds?.includes(sid);
+  const all = Object.keys(G.map.systems).filter((sid) => !bobaBlocked(sid));
   switch (cardId) {
     case 'boba-fett-where':
     case 'brilliant-administrator':
@@ -2270,6 +2288,13 @@ export function resolveActionCardSystemPick(G: GameState, systemId: SystemId): {
   const pc = G.pendingChoice;
   if (!pc || pc.kind !== 'ActionCardSystemPick') return { ok: false, reason: 'no-pending' };
   if (!pc.candidates.includes(systemId)) return { ok: false, reason: 'not-a-candidate' };
+  // "Boba Fett, Where?" — RAW: "Rebels cannot attempt missions OR USE
+  // ACTION CARDS here." Mirrors the same check in revealMission.
+  if (pc.side === 'Rebel'
+      && (G.empire.leadersOnBoard[systemId] ?? []).includes('boba-fett')
+      && G.actionCardFlags?.bobaBlockSystemIds?.includes(systemId)) {
+    return { ok: false, reason: `boba-fett-blocks-system:${systemId}` };
+  }
   const { side, cardId } = pc;
   G.pendingChoice = undefined;
   applyAssignmentActionCardEffect(G, side, cardId, systemId);

@@ -1459,16 +1459,27 @@ function HandTip({ count, cards }: {
       {count} cards
       {open && (
         <div
-          // Float a strip of card images to the right of the row so they
-          // don't push layout around. Pointer events disabled so leaving
-          // the source still closes the popup cleanly.
+          // Float a strip of card images to the right of the row. Force
+          // single-row layout (no wrap, no column collapse) so 6+ cards
+          // tile horizontally rather than stacking. Width sized to fit
+          // exactly N tiles + gaps so a parent's overflow:hidden / narrow
+          // containing block can't crush the popup into a column.
+          // Pointer events disabled so leaving the source still closes
+          // the popup cleanly.
           style={{
             position: 'absolute', left: '100%', top: '50%',
             transform: 'translateY(-50%)',
             marginLeft: 12, zIndex: 2000,
-            display: 'flex', gap: 6, flexWrap: 'wrap',
+            display: 'flex', flexDirection: 'row', gap: 6, flexWrap: 'nowrap',
             background: 'rgba(0,0,0,0.94)', border: '1px solid #555',
-            padding: 8, borderRadius: 4, maxWidth: 'min(95vw, 1400px)',
+            padding: 8, borderRadius: 4,
+            // Explicit width = N * tile + (N-1) * gap + 16 padding. Stops
+            // a narrow ancestor's containing block from forcing column.
+            width: cards.length > 0
+              ? `${cards.length * TILE_W + (cards.length - 1) * 6 + 16}px`
+              : 'auto',
+            maxWidth: 'min(95vw, 1400px)',
+            overflowX: 'auto',
             pointerEvents: 'none',
             boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
           }}
@@ -1476,7 +1487,7 @@ function HandTip({ count, cards }: {
           {cards.map((c, i) => (
             <div key={i} style={{
               display: 'flex', flexDirection: 'column', alignItems: 'center',
-              width: TILE_W,
+              width: TILE_W, flexShrink: 0,
             }}>
               {c.image ? (
                 <img
@@ -3650,6 +3661,27 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
   const hoverSystem = hoverSystemId ? systems.find((s) => s.id === hoverSystemId) : null;
   const rebelBaseRect = masks.find((r) => r.kind === 'rebel-base');
 
+  // #98 — when the Empire player hovers the Rebel Base, also dim out every
+  // sector ruled out by drawn probe cards. RAW: the Empire has perfect
+  // knowledge of which sectors the base ISN'T in via the probe deck. Show
+  // the same overlay as hovering the probe deck. (Only fires for Empire
+  // players because the Rebel knows exactly where their own base is.)
+  const baseHoverEliminated: Set<string> | null =
+    hoverRebelBase && humanSide === 'Empire'
+      ? new Set((G.empire.probeHand ?? [])
+          .map((pid) => G.catalog.probes[pid]?.systemId)
+          .filter((s): s is string => !!s))
+      : null;
+  // Effective eliminated set is the union of the probe-deck hover and
+  // the base hover, so highlighting one or the other looks the same.
+  const effectiveEliminated: Set<string> | null =
+    eliminatedSystemIds || baseHoverEliminated
+      ? new Set([
+          ...(eliminatedSystemIds ?? []),
+          ...(baseHoverEliminated ?? []),
+        ])
+      : null;
+
   return (
     <div style={{ position: 'relative', display: 'inline-block', border: '1px solid #2a2d34' }}>
       <img src={MAP_IMAGE_URL} width={DISPLAY_W} height={DISPLAY_H} alt="Board" />
@@ -3768,7 +3800,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
           const r = hasUnits ? MARKER_R + 2 : MARKER_R - 4;
 
           const grouped = groupByType(state.units);
-          const isEliminated = eliminatedSystemIds?.has(s.id) ?? false;
+          const isEliminated = effectiveEliminated?.has(s.id) ?? false;
           return (
             <g key={s.id}>
               {isBaseRevealed && (
