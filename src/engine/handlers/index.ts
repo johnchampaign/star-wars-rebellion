@@ -186,6 +186,11 @@ const captureRebelOperative: EffectHandler = (G, ctx) => {
   if (!sysId) return true;
   const here = G.rebel.leadersOnBoard[sysId] ?? [];
   if (here.length === 0) return true;
+  // Honor explicit leader pick from reveal-step UI; else fall through.
+  if (ctx.targetLeaderId && here.includes(ctx.targetLeaderId)) {
+    M.captureLeader(G, ctx.targetLeaderId, 'captured');
+    return true;
+  }
   if (here.length === 1) {
     M.captureLeader(G, here[0], 'captured');
     return true;
@@ -974,6 +979,12 @@ const detained: EffectHandler = (G, ctx) => {
   const here = G.rebel.leadersOnBoard[sysId] ?? [];
   if (here.length === 0) {
     log(G, { kind: 'detained-noop', side: 'Empire', payload: { systemId: sysId, reason: 'no-rebel-leaders-at-target' } });
+    return true;
+  }
+  // Honor explicit leader pick from reveal-step UI; else fall through to
+  // single-or-modal path.
+  if (ctx.targetLeaderId && here.includes(ctx.targetLeaderId)) {
+    markDetained(G, ctx.targetLeaderId);
     return true;
   }
   if (here.length === 1) {
