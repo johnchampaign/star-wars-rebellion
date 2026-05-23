@@ -65,6 +65,14 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'CarbonFreezingPick':       return pc.side === side;
     case 'LureOfTheDarkSidePick':    return pc.side === side;
     case 'HomingBeaconPlace':        return pc.side === side;
+    case 'DestroyUpToHealth':        return pc.side === side;
+    case 'RogueSquadronRaidPick':    return pc.side === side;
+    case 'DoubleOurEffortsPick':     return pc.side === side;
+    case 'PlanetaryConquestSourcePick': return pc.side === side;
+    case 'FearWillKeepThemInLinePick':  return pc.side === side;
+    case 'PublicUprisingPick':       return pc.side === side;
+    case 'SupportOfMonCalamariPick': return pc.side === side;
+    case 'MisdirectionPick':         return pc.side === side;
     // Other ChoiceRequest kinds (system / leader picks, etc.) are
     // human-initiated and shouldn't auto-fire the AI loop.
     default:                         return false;
@@ -582,6 +590,68 @@ export default function PlayTab() {
           }}
         />
       )}
+      {/* ----- Bulk-added card-choice modals (task #96) ----- */}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'DestroyUpToHealth'
+        && G.pendingChoice.side === humanSide && (
+        <DestroyUpToHealthModal G={G} choice={G.pendingChoice}
+          onSubmit={(ids) => { const r = phases.resolveDestroyUpToHealth(G, ids); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'RogueSquadronRaidPick'
+        && G.pendingChoice.side === humanSide && (
+        <RogueSquadronRaidModal G={G} choice={G.pendingChoice}
+          onSubmit={(picks) => { const r = phases.resolveRogueSquadronRaidPick(G, picks); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'DoubleOurEffortsPick'
+        && G.pendingChoice.side === humanSide && (
+        <DoubleOurEffortsModal G={G} choice={G.pendingChoice}
+          onSubmit={(picks) => { const r = phases.resolveDoubleOurEffortsPick(G, picks); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'PlanetaryConquestSourcePick'
+        && G.pendingChoice.side === humanSide && (
+        <PlanetaryConquestModal G={G} choice={G.pendingChoice}
+          onPick={(sid) => { const r = phases.resolvePlanetaryConquestSourcePick(G, sid); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'FearWillKeepThemInLinePick'
+        && G.pendingChoice.side === humanSide && (
+        <SystemMultiPickModal G={G} choice={G.pendingChoice}
+          title="Fear Will Keep Them In Line — pick 2 systems in this region to gain loyalty"
+          color="#ffaaaa"
+          onSubmit={(ids) => { const r = phases.resolveFearWillKeepThemInLinePick(G, ids); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'PublicUprisingPick'
+        && G.pendingChoice.side === humanSide && (
+        <PublicUprisingModal G={G} choice={G.pendingChoice}
+          onSubmit={(p) => { const r = phases.resolvePublicUprisingPick(G, p); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'SupportOfMonCalamariPick'
+        && G.pendingChoice.side === humanSide && (
+        <SupportOfMonCalamariModal G={G} choice={G.pendingChoice}
+          onPick={(opt) => { const r = phases.resolveSupportOfMonCalamariPick(G, opt); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'MisdirectionPick'
+        && G.pendingChoice.side === humanSide && (
+        <SimpleLeaderPickModal G={G} color="#aae0ff"
+          title="Misdirection — pick a Rebel leader to protect"
+          candidates={G.pendingChoice.candidates}
+          onPick={(lid) => { const r = phases.resolveMisdirectionPick(G, lid); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
+      )}
+
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'HomingBeaconPlace'
@@ -1625,6 +1695,330 @@ function SimpleLeaderPickModal({ G, color, title, candidates, onPick }: {
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Generic system-multi-pick modal — used by Fear Will Keep Them In Line. */
+function SystemMultiPickModal({ G, choice, title, color, onSubmit }: {
+  G: GameState;
+  choice: { kind: 'FearWillKeepThemInLinePick'; candidates: string[]; count: number };
+  title: string;
+  color: string;
+  onSubmit: (systemIds: string[]) => void;
+}) {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const toggle = (sid: string) => setPicked((p) => {
+    const n = new Set(p);
+    if (n.has(sid)) n.delete(sid);
+    else if (n.size < choice.count) n.add(sid);
+    return n;
+  });
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%' }}>
+        <div style={{ fontSize: 14, color, fontWeight: 700, marginBottom: 6 }}>{title}</div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>Pick {choice.count} of {choice.candidates.length}.</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
+          {choice.candidates.map((sid) => (
+            <label key={sid} style={{ display: 'flex', gap: 6, padding: 4, background: '#1f2128', borderRadius: 3, cursor: 'pointer', fontSize: 13 }}>
+              <input type="checkbox" checked={picked.has(sid)} onChange={() => toggle(sid)} />
+              {G.catalog.systems[sid]?.name ?? sid}
+            </label>
+          ))}
+        </div>
+        <div style={{ marginTop: 12, textAlign: 'right' }}>
+          <button onClick={() => onSubmit(Array.from(picked))}
+            disabled={picked.size !== choice.count}
+            style={{ padding: '6px 16px', background: picked.size === choice.count ? color : '#444', color: '#000',
+              border: 'none', borderRadius: 3, cursor: picked.size === choice.count ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
+            Apply
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Destroy Up To N Health — generic unit-checklist with budget tracking. */
+function DestroyUpToHealthModal({ G, choice, onSubmit }: {
+  G: GameState;
+  choice: { kind: 'DestroyUpToHealth'; systemId: string; candidates: string[]; budget: number; cardName: string; side: Side };
+  onSubmit: (ids: string[]) => void;
+}) {
+  const ss = G.map.systems[choice.systemId] ?? G.map.rebelBaseSpace;
+  const cands = choice.candidates.map((uid) => {
+    const u = ss?.units.find((x) => x.instanceId === uid);
+    const t = u ? G.catalog.unitTypes[u.typeId] : null;
+    return { uid, name: t?.name ?? uid, hp: t?.health.value ?? 0 };
+  });
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const spent = Array.from(picked).reduce((s, uid) => s + (cands.find((c) => c.uid === uid)?.hp ?? 0), 0);
+  const color = sideColor(choice.side);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%' }}>
+        <div style={{ fontSize: 14, color, fontWeight: 700, marginBottom: 6 }}>
+          {choice.cardName} — destroy up to {choice.budget} health
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
+          Spent: {spent} / {choice.budget}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
+          {cands.map((c) => {
+            const willFit = picked.has(c.uid) || spent + c.hp <= choice.budget;
+            return (
+              <label key={c.uid} style={{ display: 'flex', gap: 6, padding: 4, background: '#1f2128',
+                borderRadius: 3, cursor: willFit ? 'pointer' : 'not-allowed', fontSize: 13, opacity: willFit ? 1 : 0.5 }}>
+                <input type="checkbox" checked={picked.has(c.uid)} disabled={!willFit}
+                  onChange={() => setPicked((p) => {
+                    const n = new Set(p); if (n.has(c.uid)) n.delete(c.uid); else n.add(c.uid); return n;
+                  })} />
+                {c.name} <span style={{ color: '#888', marginLeft: 4 }}>({c.hp} hp)</span>
+              </label>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 12, textAlign: 'right' }}>
+          <button onClick={() => onSubmit(Array.from(picked))}
+            style={{ padding: '6px 16px', background: color, color: '#000',
+              border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600 }}>
+            Destroy {picked.size} unit{picked.size === 1 ? '' : 's'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Rogue Squadron Raid — destroy queue items up to 4 health. */
+function RogueSquadronRaidModal({ G, choice, onSubmit }: {
+  G: GameState;
+  choice: { kind: 'RogueSquadronRaidPick'; candidates: { slot: 1 | 2 | 3; queueIndex: number; unitTypeId: string; health: number }[]; budget: number };
+  onSubmit: (picks: { slot: 1 | 2 | 3; queueIndex: number }[]) => void;
+}) {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const key = (c: { slot: number; queueIndex: number }) => `${c.slot}/${c.queueIndex}`;
+  const spent = choice.candidates
+    .filter((c) => picked.has(key(c)))
+    .reduce((s, c) => s + c.health, 0);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%' }}>
+        <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
+          Rogue Squadron Raid — destroy up to {choice.budget} health from Empire build queue
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
+          Spent: {spent} / {choice.budget}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
+          {choice.candidates.map((c) => {
+            const k = key(c);
+            const willFit = picked.has(k) || spent + c.health <= choice.budget;
+            return (
+              <label key={k} style={{ display: 'flex', gap: 6, padding: 4, background: '#1f2128',
+                borderRadius: 3, cursor: willFit ? 'pointer' : 'not-allowed', fontSize: 13, opacity: willFit ? 1 : 0.5 }}>
+                <input type="checkbox" checked={picked.has(k)} disabled={!willFit}
+                  onChange={() => setPicked((p) => {
+                    const n = new Set(p); if (n.has(k)) n.delete(k); else n.add(k); return n;
+                  })} />
+                {G.catalog.unitTypes[c.unitTypeId]?.name ?? c.unitTypeId}
+                <span style={{ color: '#888', marginLeft: 4 }}>slot {c.slot} · {c.health} hp</span>
+              </label>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 12, textAlign: 'right' }}>
+          <button onClick={() => {
+            const arr = choice.candidates.filter((c) => picked.has(key(c)))
+              .map((c) => ({ slot: c.slot, queueIndex: c.queueIndex }));
+            onSubmit(arr);
+          }} style={{ padding: '6px 16px', background: '#aae0ff', color: '#000',
+            border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600 }}>
+            Destroy {picked.size}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Double Our Efforts — pick 1 or 2 queued units to advance. */
+function DoubleOurEffortsModal({ G, choice, onSubmit }: {
+  G: GameState;
+  choice: { kind: 'DoubleOurEffortsPick'; candidates: { slot: 2 | 3; queueIndex: number; unitTypeId: string }[]; picksAllowed: 1 | 2 };
+  onSubmit: (picks: { slot: 2 | 3; queueIndex: number }[]) => void;
+}) {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const key = (c: { slot: number; queueIndex: number }) => `${c.slot}/${c.queueIndex}`;
+  const toggle = (k: string) => setPicked((p) => {
+    const n = new Set(p);
+    if (n.has(k)) n.delete(k);
+    else if (n.size < choice.picksAllowed) n.add(k);
+    return n;
+  });
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%' }}>
+        <div style={{ fontSize: 14, color: '#ffaaaa', fontWeight: 700, marginBottom: 6 }}>
+          Double Our Efforts — advance {choice.picksAllowed === 1 ? '1 unit' : 'up to 2 units'} down the queue
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
+          {choice.candidates.map((c) => {
+            const k = key(c);
+            return (
+              <label key={k} style={{ display: 'flex', gap: 6, padding: 4, background: '#1f2128',
+                borderRadius: 3, cursor: 'pointer', fontSize: 13 }}>
+                <input type="checkbox" checked={picked.has(k)} onChange={() => toggle(k)} />
+                {G.catalog.unitTypes[c.unitTypeId]?.name ?? c.unitTypeId}
+                <span style={{ color: '#888', marginLeft: 4 }}>slot {c.slot} → {c.slot - 1}</span>
+              </label>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 12, textAlign: 'right' }}>
+          <button onClick={() => {
+            const arr = choice.candidates.filter((c) => picked.has(key(c)))
+              .map((c) => ({ slot: c.slot, queueIndex: c.queueIndex }));
+            onSubmit(arr);
+          }} style={{ padding: '6px 16px', background: '#ffaaaa', color: '#000',
+            border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600 }}>
+            Apply {picked.size}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Planetary Conquest — pick a source system to drain. */
+function PlanetaryConquestModal({ G, choice, onPick }: {
+  G: GameState;
+  choice: { kind: 'PlanetaryConquestSourcePick'; targetSystemId: string; sources: { sourceSystemId: string; picks: string[] }[] };
+  onPick: (sourceSystemId: string) => void;
+}) {
+  const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%' }}>
+        <div style={{ fontSize: 14, color: '#ffaaaa', fontWeight: 700, marginBottom: 6 }}>
+          Planetary Conquest — pick a source system to draw units from
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
+          Target: {targetName}. Units (up to 1 AT-AT, 1 AT-ST, 2 Stormtroopers) move from the source, then combat fires.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
+          {choice.sources.map((s) => (
+            <button key={s.sourceSystemId} onClick={() => onPick(s.sourceSystemId)}
+              style={{ textAlign: 'left', padding: 8, background: '#0c0d10', border: '1px solid #2a2d34',
+                borderRadius: 4, color: '#e8e8ea', cursor: 'pointer', fontSize: 13 }}>
+              <strong>{G.catalog.systems[s.sourceSystemId]?.name ?? s.sourceSystemId}</strong>
+              <span style={{ color: '#888', marginLeft: 6 }}>(sends {s.picks.length} unit{s.picks.length === 1 ? '' : 's'})</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Public Uprising — pick ship/ground composition for 1 circle + 2 triangles. */
+function PublicUprisingModal({ G, choice, onSubmit }: {
+  G: GameState;
+  choice: { kind: 'PublicUprisingPick'; systemId: string };
+  onSubmit: (picks: { circle: 'corellian-corvette' | 'airspeeder'; triangles: ('x-wing' | 'rebel-trooper')[] }) => void;
+}) {
+  const [circle, setCircle] = useState<'corellian-corvette' | 'airspeeder'>('corellian-corvette');
+  const [tri1, setTri1] = useState<'x-wing' | 'rebel-trooper'>('rebel-trooper');
+  const [tri2, setTri2] = useState<'x-wing' | 'rebel-trooper'>('rebel-trooper');
+  const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  const opt = (val: string, text: string) => <option value={val}>{text}</option>;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%' }}>
+        <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
+          Public Uprising — gain 1 circle + 2 triangle units at {sysName}
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
+          Combat resolves after the units arrive.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, color: '#fff' }}>
+          <label>Circle unit:
+            <select value={circle} onChange={(e) => setCircle(e.target.value as typeof circle)}
+              style={{ marginLeft: 8, background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '2px 6px' }}>
+              {opt('corellian-corvette', 'Corellian Corvette (ship)')}
+              {opt('airspeeder', 'Airspeeder (ground)')}
+            </select>
+          </label>
+          <label>Triangle #1:
+            <select value={tri1} onChange={(e) => setTri1(e.target.value as typeof tri1)}
+              style={{ marginLeft: 8, background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '2px 6px' }}>
+              {opt('x-wing', 'X-Wing (ship)')}
+              {opt('rebel-trooper', 'Rebel Trooper (ground)')}
+            </select>
+          </label>
+          <label>Triangle #2:
+            <select value={tri2} onChange={(e) => setTri2(e.target.value as typeof tri2)}
+              style={{ marginLeft: 8, background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '2px 6px' }}>
+              {opt('x-wing', 'X-Wing (ship)')}
+              {opt('rebel-trooper', 'Rebel Trooper (ground)')}
+            </select>
+          </label>
+        </div>
+        <div style={{ marginTop: 14, textAlign: 'right' }}>
+          <button onClick={() => onSubmit({ circle, triangles: [tri1, tri2] })}
+            style={{ padding: '6px 16px', background: '#aae0ff', color: '#000',
+              border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600 }}>
+            Apply & start combat
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Support Of Mon Calamari — binary loyalty vs cruiser. */
+function SupportOfMonCalamariModal({ choice, onPick }: {
+  G: GameState;
+  choice: { kind: 'SupportOfMonCalamariPick'; monCalaLoyalty: string; monCalaSubjugated: boolean };
+  onPick: (option: 'loyalty' | 'cruiser') => void;
+}) {
+  const loyaltyHint = choice.monCalaLoyalty === 'rebel' && !choice.monCalaSubjugated
+    ? 'Mon Calamari is already Rebel-loyal — gain has no effect.' : '';
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%' }}>
+        <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 10 }}>
+          Support Of Mon Calamari — pick one
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <button onClick={() => onPick('loyalty')}
+            style={{ textAlign: 'left', padding: 10, background: '#0c0d10', border: '1px solid #2a2d34',
+              borderRadius: 4, color: '#e8e8ea', cursor: 'pointer', fontSize: 13 }}>
+            <strong>Gain 2 loyalty</strong> in Mon Calamari
+            {loyaltyHint && <div style={{ color: '#ff8866', fontSize: 11, marginTop: 4 }}>{loyaltyHint}</div>}
+          </button>
+          <button onClick={() => onPick('cruiser')}
+            style={{ textAlign: 'left', padding: 10, background: '#0c0d10', border: '1px solid #2a2d34',
+              borderRadius: 4, color: '#e8e8ea', cursor: 'pointer', fontSize: 13 }}>
+            <strong>Place 1 Mon Calamari Cruiser</strong> on build slot 3
+          </button>
         </div>
       </div>
     </div>

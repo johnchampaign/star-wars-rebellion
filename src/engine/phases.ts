@@ -872,6 +872,155 @@ export function resolveHomingBeaconPlace(G: GameState, leaderId: string, systemI
   return { ok: true };
 }
 
+/** Destroy up to N health worth of units. Used by Hunt Them Down,
+ *  Hit And Run, Wookie Uprising. Caller passes the selected instance
+ *  IDs; engine validates total health <= budget then destroys each. */
+export function resolveDestroyUpToHealth(G: GameState, instanceIds: string[]): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'DestroyUpToHealth') return { ok: false, reason: 'no-pending' };
+  const ss = G.map.systems[choice.systemId] ?? G.map.rebelBaseSpace;
+  if (!ss) return { ok: false, reason: 'no-system' };
+  // Validate each pick is in candidates and not double-counted.
+  const seen = new Set<string>();
+  let totalH = 0;
+  for (const uid of instanceIds) {
+    if (!choice.candidates.includes(uid)) return { ok: false, reason: `bad-target:${uid}` };
+    if (seen.has(uid)) return { ok: false, reason: `duplicate:${uid}` };
+    seen.add(uid);
+    const u = ss.units.find((x) => x.instanceId === uid);
+    if (!u) return { ok: false, reason: `unit-missing:${uid}` };
+    totalH += G.catalog.unitTypes[u.typeId]?.health.value ?? 0;
+  }
+  if (totalH > choice.budget) return { ok: false, reason: `over-budget:${totalH}/${choice.budget}` };
+  for (const uid of instanceIds) M.destroyUnit(G, uid, 'mission-effect');
+  log(G, { kind: 'destroy-up-to-health', side: choice.side, payload: { card: choice.cardName, killed: instanceIds.length, totalHealth: totalH } });
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Rogue Squadron Raid: Rebel picks queue items to destroy. */
+export function resolveRogueSquadronRaidPick(G: GameState, picks: { slot: 1 | 2 | 3; queueIndex: number }[]): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'RogueSquadronRaidPick') return { ok: false, reason: 'no-pending' };
+  // Validate + sum health.
+  let totalH = 0;
+  for (const p of picks) {
+    const c = choice.candidates.find((x) => x.slot === p.slot && x.queueIndex === p.queueIndex);
+    if (!c) return { ok: false, reason: `bad-pick:${p.slot}/${p.queueIndex}` };
+    totalH += c.health;
+  }
+  if (totalH > choice.budget) return { ok: false, reason: `over-budget:${totalH}/${choice.budget}` };
+  // Splice in reverse-index order per slot to keep earlier indices stable.
+  const sorted = [...picks].sort((a, b) => a.slot - b.slot || b.queueIndex - a.queueIndex);
+  for (const p of sorted) {
+    const removed = G.empire.buildQueue[p.slot].splice(p.queueIndex, 1)[0];
+    log(G, { kind: 'build-queue-destroy', side: 'Rebel', payload: { slot: p.slot, typeId: removed, via: 'rogue-squadron-raid' } });
+  }
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Double Our Efforts: Empire moves picked unit(s) down one slot each. */
+export function resolveDoubleOurEffortsPick(G: GameState, picks: { slot: 2 | 3; queueIndex: number }[]): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'DoubleOurEffortsPick') return { ok: false, reason: 'no-pending' };
+  if (picks.length > choice.picksAllowed) return { ok: false, reason: `too-many:${picks.length}/${choice.picksAllowed}` };
+  // Apply each in reverse-index order per slot.
+  const sorted = [...picks].sort((a, b) => a.slot - b.slot || b.queueIndex - a.queueIndex);
+  for (const p of sorted) {
+    if (p.queueIndex < 0 || p.queueIndex >= G.empire.buildQueue[p.slot].length) {
+      return { ok: false, reason: `bad-index:${p.slot}/${p.queueIndex}` };
+    }
+    const typeId = G.empire.buildQueue[p.slot].splice(p.queueIndex, 1)[0];
+    const toSlot = (p.slot - 1) as 1 | 2;
+    G.empire.buildQueue[toSlot].push(typeId);
+    log(G, { kind: 'build-queue-advance', side: 'Empire', payload: { typeId, fromSlot: p.slot, toSlot, via: 'double-our-efforts' } });
+  }
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Planetary Conquest: Empire picks source system; engine moves the
+ *  pre-computed unit set; combat triggers at target. */
+export function resolvePlanetaryConquestSourcePick(G: GameState, sourceSystemId: string): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'PlanetaryConquestSourcePick') return { ok: false, reason: 'no-pending' };
+  const src = choice.sources.find((s) => s.sourceSystemId === sourceSystemId);
+  if (!src) return { ok: false, reason: `bad-source:${sourceSystemId}` };
+  for (const uid of src.picks) M.moveUnit(G, uid, sourceSystemId, choice.targetSystemId);
+  log(G, { kind: 'planetary-conquest-source', side: 'Empire', payload: { sourceSystemId, targetSystemId: choice.targetSystemId, units: src.picks.length } });
+  G.pendingChoice = undefined;
+  // Trigger combat at target (lazy import to avoid cycle).
+  beginCombat(G, 'Empire', sourceSystemId, choice.targetSystemId);
+  runCombat(G);
+  if (G.pendingChoice || G.pendingCombat) return { ok: true };
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Fear Will Keep Them In Line: Empire picks 2 systems in the region. */
+export function resolveFearWillKeepThemInLinePick(G: GameState, systemIds: string[]): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'FearWillKeepThemInLinePick') return { ok: false, reason: 'no-pending' };
+  if (systemIds.length !== choice.count) return { ok: false, reason: `expected-${choice.count}-systems` };
+  for (const sid of systemIds) {
+    if (!choice.candidates.includes(sid)) return { ok: false, reason: `bad-system:${sid}` };
+  }
+  for (const sid of systemIds) M.gainLoyalty(G, 'Empire', sid, 1);
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Public Uprising: Rebel picks unit composition for 1 circle + 2 triangles. */
+export function resolvePublicUprisingPick(G: GameState, picks: {
+  circle: 'corellian-corvette' | 'airspeeder';
+  triangles: ('x-wing' | 'rebel-trooper')[];
+}): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'PublicUprisingPick') return { ok: false, reason: 'no-pending' };
+  if (picks.triangles.length !== 2) return { ok: false, reason: 'expected-2-triangles' };
+  const sysId = choice.systemId;
+  M.gainUnit(G, 'Rebel', picks.circle, sysId);
+  for (const t of picks.triangles) M.gainUnit(G, 'Rebel', t, sysId);
+  log(G, { kind: 'public-uprising-pick', side: 'Rebel', payload: { systemId: sysId, circle: picks.circle, triangles: picks.triangles } });
+  G.pendingChoice = undefined;
+  // Trigger combat at the system.
+  beginCombat(G, 'Rebel', sysId, sysId);
+  runCombat(G);
+  if (G.pendingChoice || G.pendingCombat) return { ok: true };
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Support Of Mon Calamari: Rebel picks loyalty vs cruiser. */
+export function resolveSupportOfMonCalamariPick(G: GameState, option: 'loyalty' | 'cruiser'): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'SupportOfMonCalamariPick') return { ok: false, reason: 'no-pending' };
+  if (option === 'loyalty') M.gainLoyalty(G, 'Rebel', 'mon-calamari', 2);
+  else M.buildToQueue(G, 'Rebel', 'mon-cala-cruiser', 3);
+  log(G, { kind: 'support-mon-cala-pick', side: 'Rebel', payload: { option } });
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Misdirection: Rebel picks any of their leaders to protect. */
+export function resolveMisdirectionPick(G: GameState, leaderId: string): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'MisdirectionPick') return { ok: false, reason: 'no-pending' };
+  if (!choice.candidates.includes(leaderId)) return { ok: false, reason: `bad-leader:${leaderId}` };
+  if (!G.misdirectionProtected) G.misdirectionProtected = [];
+  if (!G.misdirectionProtected.includes(leaderId)) G.misdirectionProtected.push(leaderId);
+  log(G, { kind: 'misdirection-set', side: 'Rebel', payload: { leaderId } });
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Resolve Covert Operation's keep-vs-bottom pick. Distinct from
  *  Infiltration: the kept card lands in HAND, not back on top of the deck. */
 export function resolveCovertOperationPick(G: GameState, keepInHandId: string): { ok: boolean; reason?: string } {

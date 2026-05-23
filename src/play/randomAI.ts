@@ -77,6 +77,91 @@ export function stepOnce(G: GameState, side: Side): boolean {
     const r = phases.resolvePlanTheAssaultShips(G, c.availableShipIds);
     return r.ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'DestroyUpToHealth' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const ss = G.map.systems[c.systemId] ?? G.map.rebelBaseSpace;
+    const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+    const sorted = c.candidates
+      .map((uid) => {
+        const u = ss?.units.find((x) => x.instanceId === uid);
+        const t = u ? G.catalog.unitTypes[u.typeId] : null;
+        return { uid, hp: t?.health.value ?? 0, tier: tierRank[t?.tier ?? 'triangle'] ?? 0 };
+      })
+      .sort((a, b) => b.tier - a.tier || b.hp - a.hp);
+    let spent = 0;
+    const picks: string[] = [];
+    for (const x of sorted) {
+      if (spent + x.hp > c.budget) continue;
+      picks.push(x.uid); spent += x.hp;
+    }
+    return phases.resolveDestroyUpToHealth(G, picks).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'RogueSquadronRaidPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const sorted = [...c.candidates].sort((a, b) => b.health - a.health);
+    let spent = 0;
+    const picks: { slot: 1 | 2 | 3; queueIndex: number }[] = [];
+    for (const x of sorted) {
+      if (spent + x.health > c.budget) continue;
+      picks.push({ slot: x.slot, queueIndex: x.queueIndex });
+      spent += x.health;
+    }
+    return phases.resolveRogueSquadronRaidPick(G, picks).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'DoubleOurEffortsPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+    const sorted = [...c.candidates].sort((a, b) => {
+      const tA = tierRank[G.catalog.unitTypes[a.unitTypeId]?.tier ?? 'triangle'] ?? 0;
+      const tB = tierRank[G.catalog.unitTypes[b.unitTypeId]?.tier ?? 'triangle'] ?? 0;
+      return tB - tA || a.slot - b.slot;
+    });
+    return phases.resolveDoubleOurEffortsPick(G, sorted.slice(0, c.picksAllowed).map((x) => ({ slot: x.slot, queueIndex: x.queueIndex }))).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'PlanetaryConquestSourcePick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const best = c.sources.reduce((a, b) => (b.picks.length > a.picks.length ? b : a));
+    return phases.resolvePlanetaryConquestSourcePick(G, best.sourceSystemId).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'FearWillKeepThemInLinePick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    // Prefer non-Imperial systems first.
+    const ranked = [...c.candidates].sort((a, b) => {
+      const aRebel = G.map.systems[a]?.loyalty !== 'imperial' ? 1 : 0;
+      const bRebel = G.map.systems[b]?.loyalty !== 'imperial' ? 1 : 0;
+      return bRebel - aRebel;
+    });
+    return phases.resolveFearWillKeepThemInLinePick(G, ranked.slice(0, c.count)).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'PublicUprisingPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const ss = G.map.systems[c.systemId];
+    let empireSpace = 0, empireGround = 0;
+    if (ss) for (const u of ss.units) {
+      if (u.side !== 'Empire') continue;
+      const t = G.catalog.unitTypes[u.typeId];
+      if (t?.theater === 'space') empireSpace++; else empireGround++;
+    }
+    const circle = empireGround > empireSpace ? 'airspeeder' : 'corellian-corvette';
+    const triangle = (empireSpace > 0 && empireGround === 0) ? 'x-wing' : 'rebel-trooper';
+    return phases.resolvePublicUprisingPick(G, { circle, triangles: [triangle, triangle] }).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'SupportOfMonCalamariPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const alreadyRebel = c.monCalaLoyalty === 'rebel' && !c.monCalaSubjugated;
+    return phases.resolveSupportOfMonCalamariPick(G, alreadyRebel ? 'cruiser' : 'loyalty').ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'MisdirectionPick' && G.pendingChoice.side === side) {
+    // AI: protect the highest-value Rebel leader.
+    const c = G.pendingChoice;
+    let best = c.candidates[0]; let bestV = -1;
+    for (const lid of c.candidates) {
+      const l = G.catalog.leaders[lid];
+      const v = l ? (l.skills.diplomacy + l.skills.intel + l.skills.specOps + l.skills.logistics + l.tacticValues.space + l.tacticValues.ground) : 0;
+      if (v > bestV) { best = lid; bestV = v; }
+    }
+    return phases.resolveMisdirectionPick(G, best).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'OverseeProjectPick' && side === 'Empire') {
     const c = G.pendingChoice;
     const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };

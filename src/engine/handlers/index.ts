@@ -37,6 +37,40 @@ function totalHealthInSystem(G: GameState, side: 'Rebel' | 'Empire', sysId: stri
 /** Destroy up to N health worth of opponent units in a system. Auto-picks
  *  the cheapest valid combination (smaller units first). Real game lets the
  *  attacker choose — wire a ChoiceRequest later. */
+/** Queue a DestroyUpToHealth ChoiceRequest if there are valid candidates.
+ *  Returns true if a choice was queued. RAW: player picks which units to
+ *  destroy (up to budget); the prior auto-pick has been demoted to the AI
+ *  heuristic in randomAI.ts. */
+function queueDestroyUpToHealth(
+  G: GameState,
+  resolvingSide: 'Rebel' | 'Empire',
+  opponentSide: 'Rebel' | 'Empire',
+  sysId: string,
+  healthBudget: number,
+  cardName: string,
+  theater?: 'space' | 'ground',
+): boolean {
+  const ss = sysId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[sysId];
+  if (!ss) return false;
+  const candidates = ss.units
+    .filter((u) => u.side === opponentSide)
+    .filter((u) => !theater || G.catalog.unitTypes[u.typeId]?.theater === theater)
+    .map((u) => u.instanceId);
+  if (candidates.length === 0) return false;
+  G.pendingChoice = {
+    kind: 'DestroyUpToHealth',
+    side: resolvingSide,
+    systemId: sysId,
+    candidates,
+    budget: healthBudget,
+    cardName,
+  };
+  log(G, { kind: 'choice-request', side: resolvingSide, payload: {
+    kind: 'DestroyUpToHealth', card: cardName, candidates: candidates.length, budget: healthBudget,
+  }});
+  return true;
+}
+
 function destroyUpToHealthAuto(G: GameState, opponentSide: 'Rebel' | 'Empire', sysId: string, healthBudget: number, theater?: 'space' | 'ground'): number {
   const ss = sysId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[sysId];
   if (!ss) return 0;
@@ -271,28 +305,30 @@ const tradeNegotiations: EffectHandler = (G, ctx) => {
 };
 
 const fearWillKeepThemInLine: EffectHandler = (G, ctx) => {
-  // "If successful, gain 1 loyalty in 2 systems in this region."
-  // The 2 systems CAN include the target system itself (rules clarification).
-  // Auto: prefer systems where gain-loyalty actually does something —
-  // non-Imperial-loyal, non-subjugated, non-Coruscant, non-remote — in the
-  // same region as the target.
+  // RAW: "If successful, gain 1 loyalty in 2 systems in this region."
+  // Empire picks the 2 systems (may include the target).
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
   const targetDef = G.catalog.systems[sysId];
   if (!targetDef) return true;
-  const region = targetDef.region;
   const candidates = Object.values(G.catalog.systems)
-    .filter((s) => s.region === region)
-    .filter((s) => !s.isCoruscant && !s.isRemote)
+    .filter((s) => s.region === targetDef.region && !s.isCoruscant && !s.isRemote)
     .map((s) => s.id);
-  // Score: useful (non-Imperial-loyal) systems first.
-  const useful = candidates.filter((id) => {
-    const ss = G.map.systems[id];
-    return ss && ss.loyalty !== 'imperial' && !ss.subjugated;
-  });
-  const fallback = candidates.filter((id) => !useful.includes(id));
-  const picks = [...useful, ...fallback].slice(0, 2);
-  for (const id of picks) M.gainLoyalty(G, 'Empire', id, 1);
+  if (candidates.length === 0) return true;
+  if (candidates.length <= 2) {
+    // Trivial — apply all without asking.
+    for (const id of candidates) M.gainLoyalty(G, 'Empire', id, 1);
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'FearWillKeepThemInLinePick',
+    side: 'Empire',
+    candidates,
+    count: 2,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'FearWillKeepThemInLinePick', candidates: candidates.length,
+  }});
   return true;
 };
 
@@ -369,60 +405,52 @@ const longRangeProbe: EffectHandler = (G, ctx) => {
 /** "Destroy up to 4 health worth of units of your choice on the build queue."
  *  Priority: high-tier (square > circle > triangle), then high-health. */
 const rogueSquadronRaid: EffectHandler = (G, _ctx) => {
-  const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
-  type Item = { slot: 1 | 2 | 3; idx: number; typeId: string; health: number; tier: number };
-  const items: Item[] = [];
+  // RAW: "destroy up to 4 health worth of units on the build queue."
+  // Rebel picks which queue items to destroy.
+  const candidates: { slot: 1 | 2 | 3; queueIndex: number; unitTypeId: string; health: number }[] = [];
   for (const slot of [1, 2, 3] as const) {
-    for (let i = 0; i < G.empire.buildQueue[slot].length; i++) {
-      const t = G.catalog.unitTypes[G.empire.buildQueue[slot][i]];
-      if (!t) continue;
-      items.push({ slot, idx: i, typeId: G.empire.buildQueue[slot][i], health: t.health.value, tier: tierRank[t.tier] ?? 0 });
-    }
+    G.empire.buildQueue[slot].forEach((typeId, i) => {
+      const t = G.catalog.unitTypes[typeId];
+      if (!t) return;
+      candidates.push({ slot, queueIndex: i, unitTypeId: typeId, health: t.health.value });
+    });
   }
-  items.sort((a, b) => b.tier - a.tier || b.health - a.health);
-  let spent = 0;
-  const toRemove: Item[] = [];
-  for (const it of items) {
-    if (spent + it.health > 4) continue;
-    toRemove.push(it);
-    spent += it.health;
-  }
-  // Splice in reverse index per slot to keep indices stable.
-  toRemove.sort((a, b) => a.slot - b.slot || b.idx - a.idx);
-  for (const it of toRemove) {
-    G.empire.buildQueue[it.slot].splice(it.idx, 1);
-    log(G, { kind: 'build-queue-destroy', side: 'Rebel', payload: { slot: it.slot, typeId: it.typeId, via: 'rogue-squadron-raid' } });
-  }
+  if (candidates.length === 0) return true;
+  G.pendingChoice = {
+    kind: 'RogueSquadronRaidPick',
+    side: 'Rebel',
+    candidates,
+    budget: 4,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'RogueSquadronRaidPick', candidates: candidates.length,
+  }});
   return true;
 };
 
 /** "Choose 1 unit on space 2 or 3 of the build queue and move it down 1 space.
  *  If Moff Jerjerrod resolves this mission, you can choose 1 additional unit." */
 const doubleOurEfforts: EffectHandler = (G, ctx) => {
-  const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+  // RAW: "Choose 1 unit on space 2 or 3 of the build queue and move it
+  // down 1 space. If Moff Jerjerrod resolves this mission, you can
+  // choose 1 additional unit." Empire picks per move.
   const hasJerjerrod = ctx.leaderIds.includes('moff-jerjerrod');
-  const moves = hasJerjerrod ? 2 : 1;
-  const q = G.empire.buildQueue;
-  for (let m = 0; m < moves; m++) {
-    let moved = false;
-    for (const fromSlot of [2, 3] as const) {
-      if (q[fromSlot].length === 0) continue;
-      let bestIdx = 0;
-      let bestRank = -1;
-      for (let i = 0; i < q[fromSlot].length; i++) {
-        const t = G.catalog.unitTypes[q[fromSlot][i]];
-        const r = tierRank[t?.tier ?? 'triangle'] ?? 0;
-        if (r > bestRank) { bestRank = r; bestIdx = i; }
-      }
-      const typeId = q[fromSlot].splice(bestIdx, 1)[0];
-      const toSlot = (fromSlot - 1) as 1 | 2;
-      q[toSlot].push(typeId);
-      log(G, { kind: 'build-queue-advance', side: 'Empire', payload: { typeId, fromSlot, toSlot, via: 'double-our-efforts' } });
-      moved = true;
-      break;
-    }
-    if (!moved) break;
+  const candidates: { slot: 2 | 3; queueIndex: number; unitTypeId: string }[] = [];
+  for (const slot of [2, 3] as const) {
+    G.empire.buildQueue[slot].forEach((typeId, i) => {
+      candidates.push({ slot, queueIndex: i, unitTypeId: typeId });
+    });
   }
+  if (candidates.length === 0) return true;
+  G.pendingChoice = {
+    kind: 'DoubleOurEffortsPick',
+    side: 'Empire',
+    candidates,
+    picksAllowed: hasJerjerrod ? 2 : 1,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'DoubleOurEffortsPick', candidates: candidates.length, allowed: hasJerjerrod ? 2 : 1,
+  }});
   return true;
 };
 
@@ -430,10 +458,12 @@ const doubleOurEfforts: EffectHandler = (G, ctx) => {
  *  this system, ignoring transport restrictions and adjacency. If there are
  *  Rebel ground units in this system, resolve a combat." */
 const planetaryConquest: EffectHandler = (G, ctx) => {
+  // RAW: "Move up to 1 AT-AT, 1 AT-ST and 2 Stormtroopers from any one
+  // system to this system." Empire picks the source system.
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
   const limits: Record<string, number> = { 'at-at': 1, 'at-st': 1, 'stormtrooper': 2 };
-  let best: { srcId: string; picks: string[] } | null = null;
+  const sources: { sourceSystemId: string; picks: string[] }[] = [];
   for (const [otherSysId, ss] of Object.entries(G.map.systems)) {
     if (otherSysId === sysId) continue;
     const counts: Record<string, number> = {};
@@ -446,12 +476,21 @@ const planetaryConquest: EffectHandler = (G, ctx) => {
       picks.push(u.instanceId);
       counts[u.typeId] = c + 1;
     }
-    if (!best || picks.length > best.picks.length) best = { srcId: otherSysId, picks };
+    if (picks.length > 0) sources.push({ sourceSystemId: otherSysId, picks });
   }
-  if (best && best.picks.length > 0) {
-    for (const uid of best.picks) M.moveUnit(G, uid, best.srcId, sysId);
+  if (sources.length === 0) {
+    triggerCombatAt(G, 'Empire', sysId);
+    return true;
   }
-  triggerCombatAt(G, 'Empire', sysId);
+  G.pendingChoice = {
+    kind: 'PlanetaryConquestSourcePick',
+    side: 'Empire',
+    targetSystemId: sysId,
+    sources,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'PlanetaryConquestSourcePick', sources: sources.length,
+  }});
   return true;
 };
 
@@ -516,7 +555,7 @@ const wookieUprising: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
   M.gainLoyalty(G, 'Rebel', sysId, 1);
-  destroyUpToHealthAuto(G, 'Empire', sysId, 4);
+  queueDestroyUpToHealth(G, 'Rebel', 'Empire', sysId, 4, 'Wookie Uprising');
   return true;
 };
 
@@ -733,28 +772,32 @@ const contingencyPlan: EffectHandler = (G, _ctx) => {
   return true;
 };
 
-const misdirection: EffectHandler = (G, ctx) => {
-  // Choose 1 of your leaders. Imperial leaders in the leader pool cannot be
-  // sent to oppose that leader's missions this round.
-  // Auto: protect the resolving leader (the one who did this mission).
-  const target = ctx.leaderIds[0];
-  if (!target) return true;
-  if (!G.misdirectionProtected) G.misdirectionProtected = [];
-  if (!G.misdirectionProtected.includes(target)) G.misdirectionProtected.push(target);
-  log(G, { kind: 'misdirection-set', side: 'Rebel', payload: { leaderId: target } });
-  // NOTE: today's opposition flow only counts leaders already at the target
-  // system; pool-recruit opposition isn't wired. Once it lands, it must
-  // honour `misdirectionProtected` and skip pool draws against listed leaders.
-  notImplemented(G, 'mission:misdirection-enforcement',
-    'Misdirection — protection set, enforcement pending',
-    "The 'pool leaders can't oppose' flag is set. Once pool-recruit opposition is wired up, it will honour this flag.");
+const misdirection: EffectHandler = (G, _ctx) => {
+  // RAW: "Choose 1 of your leaders. Imperial leaders in the leader pool
+  // cannot be sent to oppose that leader's missions this round."
+  // Rebel picks ANY of their leaders (not just the resolver).
+  const allRebelLeaders = [
+    ...G.rebel.leaderPool,
+    ...Object.values(G.rebel.leadersOnBoard).flat(),
+  ];
+  // Dedupe while preserving order.
+  const candidates = Array.from(new Set(allRebelLeaders));
+  if (candidates.length === 0) return true;
+  G.pendingChoice = {
+    kind: 'MisdirectionPick',
+    side: 'Rebel',
+    candidates,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'MisdirectionPick', candidates: candidates.length,
+  }});
   return true;
 };
 
 const huntThemDown: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  destroyUpToHealthAuto(G, 'Rebel', sysId, 2);
+  queueDestroyUpToHealth(G, 'Empire', 'Rebel', sysId, 2, 'Hunt Them Down');
   return true;
 };
 
@@ -771,7 +814,7 @@ const detained: EffectHandler = (G, _ctx) => {
 const hitAndRun: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  destroyUpToHealthAuto(G, 'Empire', sysId, 2);
+  queueDestroyUpToHealth(G, 'Rebel', 'Empire', sysId, 2, 'Hit And Run');
   return true;
 };
 
@@ -813,49 +856,34 @@ const inciteRebellion: EffectHandler = (G, ctx) => {
 };
 
 const supportOfMonCalamari: EffectHandler = (G, _ctx) => {
-  // Either gain 2 loyalty in Mon Calamari or place 1 Mon Cala Cruiser on
-  // space 3 of the build queue. Auto: gain loyalty if Mon Cala isn't already
-  // Rebel-loyal (more useful — flips/locks the system); otherwise build the
-  // cruiser (the loyalty option would be a no-op).
+  // RAW: "Either gain 2 loyalty in this system OR place 1 Mon Calamari
+  // Cruiser on space 3 of the build queue." Rebel picks.
   const monCala = G.map.systems['mon-calamari'];
-  const alreadyRebel = monCala?.loyalty === 'rebel' && !monCala.subjugated;
-  if (!alreadyRebel) {
-    M.gainLoyalty(G, 'Rebel', 'mon-calamari', 2);
-  } else {
-    M.buildToQueue(G, 'Rebel', 'mon-cala-cruiser', 3);
-  }
+  G.pendingChoice = {
+    kind: 'SupportOfMonCalamariPick',
+    side: 'Rebel',
+    monCalaLoyalty: (monCala?.loyalty as 'rebel' | 'imperial' | 'neutral') ?? 'neutral',
+    monCalaSubjugated: !!monCala?.subjugated,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'SupportOfMonCalamariPick',
+  }});
   return true;
 };
 
 const publicUprising: EffectHandler = (G, ctx) => {
+  // RAW: "gain 1 circle and 2 triangle units (ships and/or ground units)."
+  // Rebel picks ship-vs-ground for each unit.
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  // "Gain 1 circle and 2 triangle units (ships and/or ground units)."
-  // Auto: match the gain to the upcoming combat — if Empire's at this system,
-  // pick units that can fight them. If only Empire ships → ships. If only
-  // Empire ground → ground. Default mix otherwise.
-  const ss = G.map.systems[sysId];
-  let empireSpace = 0, empireGround = 0;
-  if (ss) {
-    for (const u of ss.units) {
-      if (u.side !== 'Empire') continue;
-      const t = G.catalog.unitTypes[u.typeId];
-      if (t?.theater === 'space') empireSpace++;
-      else if (t?.theater === 'ground') empireGround++;
-    }
-  }
-  // Circle pick (1):
-  //   Mostly-ground threat → airspeeder (circle ground)
-  //   Otherwise → corellian-corvette (circle space)
-  const circle = empireGround > empireSpace ? 'airspeeder' : 'corellian-corvette';
-  // Triangle pick (2):
-  //   All-space threat → 2 x-wings (triangle space)
-  //   Otherwise → 2 rebel-troopers (triangle ground)
-  const triangle = (empireSpace > 0 && empireGround === 0) ? 'x-wing' : 'rebel-trooper';
-  M.gainUnit(G, 'Rebel', circle, sysId);
-  M.gainUnit(G, 'Rebel', triangle, sysId);
-  M.gainUnit(G, 'Rebel', triangle, sysId);
-  triggerCombatAt(G, 'Rebel', sysId);
+  G.pendingChoice = {
+    kind: 'PublicUprisingPick',
+    side: 'Rebel',
+    systemId: sysId,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'PublicUprisingPick', systemId: sysId,
+  }});
   return true;
 };
 

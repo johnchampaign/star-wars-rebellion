@@ -195,6 +195,79 @@ export type ChoiceRequest =
       side: Side;             // always 'Empire'
       leaderCandidates: LeaderId[];
       systemCandidates: SystemId[];
+    }
+  | {
+      // Destroy up to N health worth of opponent units at a system.
+      // Used by Hunt Them Down (Empire kills Rebels), Hit and Run
+      // (Rebel kills Empire), Wookie Uprising (Rebel kills Empire).
+      // Resolver expects an array of instance IDs whose total health
+      // is <= budget.
+      kind: 'DestroyUpToHealth';
+      side: Side;
+      systemId: SystemId;
+      candidates: UnitInstanceId[];
+      budget: number;
+      cardName: string;
+    }
+  | {
+      // Rogue Squadron Raid: Rebel destroys up to 4 health from
+      // Empire's build queue. Candidates are queue items identified
+      // by (slot, queueIndex).
+      kind: 'RogueSquadronRaidPick';
+      side: Side;
+      candidates: { slot: 1 | 2 | 3; queueIndex: number; unitTypeId: UnitTypeId; health: number }[];
+      budget: number;
+    }
+  | {
+      // Double Our Efforts: Empire picks 1 unit on space 2 or 3 to
+      // move down. Picks-count is 1 normally, 2 if Moff Jerjerrod
+      // is the resolver.
+      kind: 'DoubleOurEffortsPick';
+      side: Side;
+      candidates: { slot: 2 | 3; queueIndex: number; unitTypeId: UnitTypeId }[];
+      picksAllowed: 1 | 2;
+    }
+  | {
+      // Planetary Conquest: Empire picks 1 source system to draw
+      // 1 AT-AT, 1 AT-ST, up to 2 Stormtroopers from.
+      kind: 'PlanetaryConquestSourcePick';
+      side: Side;
+      targetSystemId: SystemId;
+      // Pre-computed legal picks per source: which instance IDs
+      // would move if this source were chosen.
+      sources: { sourceSystemId: SystemId; picks: UnitInstanceId[] }[];
+    }
+  | {
+      // Fear Will Keep Them In Line: Empire picks 2 systems in this
+      // region to gain 1 loyalty in. Candidates may include the
+      // target system itself.
+      kind: 'FearWillKeepThemInLinePick';
+      side: Side;
+      candidates: SystemId[];
+      count: 2;
+    }
+  | {
+      // Public Uprising: Rebel picks composition for 1 circle + 2
+      // triangle units, then combat fires at the target.
+      kind: 'PublicUprisingPick';
+      side: Side;
+      systemId: SystemId;
+    }
+  | {
+      // Support Of Mon Calamari: binary choice between gaining 2
+      // loyalty at Mon Calamari OR placing a MC Cruiser on slot 3.
+      kind: 'SupportOfMonCalamariPick';
+      side: Side;
+      monCalaLoyalty: 'rebel' | 'imperial' | 'neutral';
+      monCalaSubjugated: boolean;
+    }
+  | {
+      // Misdirection: Rebel picks which of their own leaders the
+      // mission's protection applies to (defaults to the resolver
+      // but RAW lets the player pick any Rebel leader).
+      kind: 'MisdirectionPick';
+      side: Side;
+      candidates: LeaderId[];
     };
   | {
       kind: 'StolenPlansReorder';
