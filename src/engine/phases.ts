@@ -1642,6 +1642,113 @@ export function resolveRapidMobilizationBasePick(
   return { ok: true };
 }
 
+/** Our Most Desperate Hour: Rebel picks a mission from the deck, pulls it
+ *  into hand, and assigns Leia to it. */
+export function resolveOurMostDesperateHourPick(
+  G: GameState, missionId: string
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'OurMostDesperateHourPick') return { ok: false, reason: 'no-pending' };
+  if (!choice.candidates.includes(missionId)) return { ok: false, reason: 'bad-mission' };
+  const f = G.rebel;
+  const deckIdx = f.missionDeck.indexOf(missionId);
+  if (deckIdx < 0) return { ok: false, reason: 'mission-not-in-deck-anymore' };
+  f.missionDeck.splice(deckIdx, 1);
+  // Pull Leia out of any prior assignment, then attach to this mission.
+  for (const list of Object.values(f.leadersOnBoard)) {
+    const i = list.indexOf('princess-leia');
+    if (i >= 0) list.splice(i, 1);
+  }
+  const poolIdx = f.leaderPool.indexOf('princess-leia');
+  if (poolIdx >= 0) f.leaderPool.splice(poolIdx, 1);
+  // Remove Leia from any existing mission assignment.
+  for (const am of f.leadersOnMissions) {
+    am.leaderIds = am.leaderIds.filter((l) => l !== 'princess-leia');
+  }
+  f.leadersOnMissions = f.leadersOnMissions.filter((m) => m.leaderIds.length > 0);
+  // Mission goes into hand, then Leia assigned via leadersOnMissions.
+  f.missionHand.push(missionId);
+  f.leadersOnMissions.push({ missionId, leaderIds: ['princess-leia'] });
+  log(G, { kind: 'our-most-desperate-hour-applied', side: 'Rebel', payload: {
+    missionId, leaderId: 'princess-leia',
+  }});
+  G.pendingChoice = undefined;
+  return { ok: true };
+}
+
+/** Proceeding As Planned: Empire picks a project from the deck, pulls into
+ *  hand, and assigns the resolver leader to it. */
+export function resolveProceedingAsPlannedPick(
+  G: GameState, missionId: string
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'ProceedingAsPlannedPick') return { ok: false, reason: 'no-pending' };
+  if (!choice.candidates.includes(missionId)) return { ok: false, reason: 'bad-mission' };
+  const f = G.empire;
+  const deckIdx = f.missionDeck.indexOf(missionId);
+  if (deckIdx < 0) return { ok: false, reason: 'mission-not-in-deck-anymore' };
+  f.missionDeck.splice(deckIdx, 1);
+  const leaderId = choice.leaderId;
+  // Make sure the resolver isn't already on a mission.
+  for (const am of f.leadersOnMissions) {
+    am.leaderIds = am.leaderIds.filter((l) => l !== leaderId);
+  }
+  f.leadersOnMissions = f.leadersOnMissions.filter((m) => m.leaderIds.length > 0);
+  const poolIdx = f.leaderPool.indexOf(leaderId);
+  if (poolIdx >= 0) f.leaderPool.splice(poolIdx, 1);
+  f.missionHand.push(missionId);
+  f.leadersOnMissions.push({ missionId, leaderIds: [leaderId] });
+  log(G, { kind: 'proceeding-as-planned-applied', side: 'Empire', payload: {
+    missionId, leaderId,
+  }});
+  G.pendingChoice = undefined;
+  return { ok: true };
+}
+
+/** Start The Evacuation: Rebel moves picked units from the Rebel Base space
+ *  to a non-Imperial system (transport-validated). */
+export function resolveStartEvacuationPick(
+  G: GameState, targetSystemId: SystemId, unitInstanceIds: string[]
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'StartEvacuationPick') return { ok: false, reason: 'no-pending' };
+  if (!choice.candidateSystemIds.includes(targetSystemId)) return { ok: false, reason: 'bad-system' };
+  for (const uid of unitInstanceIds) {
+    if (!choice.candidateUnitIds.includes(uid)) return { ok: false, reason: `not-a-candidate:${uid}` };
+  }
+  if (unitInstanceIds.length > 0) {
+    const v = validateMoveOrderTransport(G, 'Rebel', {
+      fromSystemId: 'rebel-base-space', unitInstanceIds,
+    });
+    if (!v.ok) return { ok: false, reason: v.reason };
+  }
+  for (const uid of unitInstanceIds) M.moveUnit(G, uid, 'rebel-base-space', targetSystemId);
+  log(G, { kind: 'start-evacuation-applied', side: 'Rebel', payload: {
+    targetSystemId, moved: unitInstanceIds.length, movedIds: unitInstanceIds,
+  }});
+  G.pendingChoice = undefined;
+  return { ok: true };
+}
+
+/** Independent Operation: Empire picks an Imperial-occupied destination to
+ *  evacuate the displaced ground units to. */
+export function resolveIndependentOperationEvacPick(
+  G: GameState, destinationSystemId: SystemId
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'IndependentOperationEvacPick') return { ok: false, reason: 'no-pending' };
+  if (!choice.candidateSystemIds.includes(destinationSystemId)) return { ok: false, reason: 'bad-destination' };
+  for (const uid of choice.groundUnitIds) {
+    M.moveUnit(G, uid, choice.fromSystemId, destinationSystemId);
+  }
+  log(G, { kind: 'independent-operation-evac', side: 'Empire', payload: {
+    fromSystemId: choice.fromSystemId, toSystemId: destinationSystemId,
+    moved: choice.groundUnitIds.length,
+  }});
+  G.pendingChoice = undefined;
+  return { ok: true };
+}
+
 /** Hidden Fleet: Rebel picks which units at Rebel Base space to move to the
  *  mission's target system. Validates transport (no immobile, fighters and
  *  ground require capacity-ship coverage) and rejects illegal picks. */
@@ -2791,23 +2898,96 @@ function applyAssignmentActionCardEffect(
       break;
     }
     case 'our-most-desperate-hour': {
-      // RAW: search the assignment deck (mission deck) for a card, put Leia on it.
-      // Engine doesn't yet expose mid-game mission-deck search. Log a partial.
-      log(G, { kind: 'action-card-partial', side, payload: { cardId, note: 'Leia returned to pool; mission-deck search not yet automated — assign Leia to any mission this turn.' } });
-      // Make sure Leia is in the pool (consumeCardAndPlaceLeader removed her if she was there).
+      // RAW: "Search the assignment deck for a card and put Leia on it."
+      // Make sure Leia is in the pool first (consumeCardAndPlaceLeader may
+      // have placed her on a system if systemId was set — pull her back).
       const f = faction(G, side);
+      for (const list of Object.values(f.leadersOnBoard)) {
+        const i = list.indexOf('princess-leia');
+        if (i >= 0) list.splice(i, 1);
+      }
       if (!f.leaderPool.includes('princess-leia')
           && !f.eliminatedLeaders.includes('princess-leia')) {
         f.leaderPool.push('princess-leia');
       }
+      const candidates = [...f.missionDeck];
+      if (candidates.length === 0) {
+        log(G, { kind: 'action-card-noop', side, payload: { cardId, reason: 'mission-deck-empty' } });
+        break;
+      }
+      G.pendingChoice = {
+        kind: 'OurMostDesperateHourPick',
+        side: 'Rebel',
+        candidates,
+      };
+      log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+        kind: 'OurMostDesperateHourPick', deckSize: candidates.length,
+      }});
       break;
     }
     case 'independent-operation': {
-      log(G, { kind: 'action-card-partial', side, payload: { cardId, note: 'Lando placed in subjugated system; forced Imperial ground evacuation must be enacted manually.' } });
+      // Lando is now in `systemId`. Find Imperial ground there; if any,
+      // post a choice for the EMPIRE to pick an Imperial-occupied system
+      // to evacuate them to.
+      if (!systemId) break;
+      const ss = G.map.systems[systemId];
+      if (!ss) break;
+      const groundUnitIds = ss.units
+        .filter((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground')
+        .map((u) => u.instanceId);
+      if (groundUnitIds.length === 0) {
+        log(G, { kind: 'action-card-noop', side, payload: { cardId, reason: 'no-imperial-ground' } });
+        break;
+      }
+      const candidateSystemIds = Object.keys(G.map.systems).filter((sid) => {
+        if (sid === systemId) return false;
+        return G.map.systems[sid].units.some((u) => u.side === 'Empire');
+      });
+      if (candidateSystemIds.length === 0) {
+        // Empire has no other system to retreat to — units stay (RAW edge).
+        log(G, { kind: 'action-card-noop', side, payload: { cardId, reason: 'no-imperial-destination' } });
+        break;
+      }
+      G.pendingChoice = {
+        kind: 'IndependentOperationEvacPick',
+        side: 'Empire',
+        fromSystemId: systemId,
+        candidateSystemIds,
+        groundUnitIds,
+      };
+      log(G, { kind: 'choice-request', side: 'Empire', payload: {
+        kind: 'IndependentOperationEvacPick', fromSystemId: systemId,
+        units: groundUnitIds.length, destinations: candidateSystemIds.length,
+      }});
       break;
     }
     case 'start-the-evacuation': {
-      log(G, { kind: 'action-card-partial', side, payload: { cardId, note: 'Move units from Rebel Base to any non-Imperial system manually (move-units UI not wired for this card).' } });
+      // Pick target system without Imperial units + which Rebel Base units
+      // to move there (transport-validated).
+      const candidateSystemIds = Object.keys(G.map.systems).filter((sid) => {
+        return !G.map.systems[sid].units.some((u) => u.side === 'Empire');
+      });
+      const candidateUnitIds = G.map.rebelBaseSpace.units
+        .filter((u) => {
+          if (u.side !== 'Rebel') return false;
+          const t = G.catalog.unitTypes[u.typeId];
+          return !!t && !t.transport.immobile;
+        })
+        .map((u) => u.instanceId);
+      if (candidateUnitIds.length === 0 || candidateSystemIds.length === 0) {
+        log(G, { kind: 'action-card-noop', side, payload: { cardId, reason: 'no-evac-targets' } });
+        break;
+      }
+      G.pendingChoice = {
+        kind: 'StartEvacuationPick',
+        side: 'Rebel',
+        candidateSystemIds,
+        candidateUnitIds,
+      };
+      log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+        kind: 'StartEvacuationPick',
+        systems: candidateSystemIds.length, units: candidateUnitIds.length,
+      }});
       break;
     }
 
@@ -2853,12 +3033,49 @@ function applyAssignmentActionCardEffect(
       break;
     }
     case 'proceeding-as-planned': {
-      log(G, { kind: 'action-card-partial', side: 'Empire', payload: { cardId, note: 'Leader returned to pool; project-deck search must be done manually until project assignment UI lands.' } });
-      // Make sure leader is back in pool for manual assignment.
+      // RAW: "Search the project deck for 1 project and assign this leader to it."
+      // The "project deck" = projects in the Empire's mission deck.
       const f = G.empire;
-      for (const lid of (G.catalog.actions[cardId]?.leaderRequirement ?? [])) {
-        if (!f.leaderPool.includes(lid) && !f.eliminatedLeaders.includes(lid)) f.leaderPool.push(lid);
+      // Ozzel or Jerjerrod is the resolver; find which one was on the card.
+      const reqs = G.catalog.actions[cardId]?.leaderRequirement ?? [];
+      let resolverLeader: string | null = null;
+      for (const lid of reqs) {
+        // consumeCardAndPlaceLeader puts them somewhere; find them.
+        if (f.leaderPool.includes(lid)) { resolverLeader = lid; break; }
+        for (const [, list] of Object.entries(f.leadersOnBoard)) {
+          if (list.includes(lid)) { resolverLeader = lid; break; }
+        }
+        if (resolverLeader) break;
       }
+      // Default to first requirement if we couldn't locate them.
+      if (!resolverLeader) resolverLeader = reqs[0] ?? null;
+      if (!resolverLeader) {
+        log(G, { kind: 'action-card-noop', side: 'Empire', payload: { cardId, reason: 'no-resolver-leader' } });
+        break;
+      }
+      // Pull the leader back into the pool so the choice resolver can
+      // re-place them onto the chosen project.
+      for (const list of Object.values(f.leadersOnBoard)) {
+        const i = list.indexOf(resolverLeader);
+        if (i >= 0) list.splice(i, 1);
+      }
+      if (!f.leaderPool.includes(resolverLeader) && !f.eliminatedLeaders.includes(resolverLeader)) {
+        f.leaderPool.push(resolverLeader);
+      }
+      const projectCandidates = f.missionDeck.filter((mid) => G.catalog.missions[mid]?.isProject);
+      if (projectCandidates.length === 0) {
+        log(G, { kind: 'action-card-noop', side: 'Empire', payload: { cardId, reason: 'no-projects-in-deck' } });
+        break;
+      }
+      G.pendingChoice = {
+        kind: 'ProceedingAsPlannedPick',
+        side: 'Empire',
+        leaderId: resolverLeader as LeaderId,
+        candidates: projectCandidates,
+      };
+      log(G, { kind: 'choice-request', side: 'Empire', payload: {
+        kind: 'ProceedingAsPlannedPick', leaderId: resolverLeader, count: projectCandidates.length,
+      }});
       break;
     }
     case 'scouting-mission': {

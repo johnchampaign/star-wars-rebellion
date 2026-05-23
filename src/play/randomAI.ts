@@ -153,6 +153,50 @@ export function stepOnce(G: GameState, side: Side): boolean {
     }
     return phases.resolveRetrieveThePlansPick(G, best).ok;
   }
+  // Our Most Desperate Hour: pick a random mission from the deck.
+  if (G.pendingChoice && G.pendingChoice.kind === 'OurMostDesperateHourPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    return phases.resolveOurMostDesperateHourPick(G, c.candidates[0]).ok;
+  }
+  // Proceeding As Planned: pick a random project from the deck.
+  if (G.pendingChoice && G.pendingChoice.kind === 'ProceedingAsPlannedPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    return phases.resolveProceedingAsPlannedPick(G, c.candidates[0]).ok;
+  }
+  // Start The Evacuation: pick the first non-Imperial system, move all
+  // mobile Rebel Base units that fit.
+  if (G.pendingChoice && G.pendingChoice.kind === 'StartEvacuationPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const target = c.candidateSystemIds[0];
+    if (!target) return phases.resolveStartEvacuationPick(G, '', []).ok;
+    // Greedy pack like Hidden Fleet.
+    const baseUnits = G.map.rebelBaseSpace.units.filter((u) => c.candidateUnitIds.includes(u.instanceId));
+    const capShipIds: string[] = [];
+    const fighterIds: string[] = [];
+    const groundIds: string[] = [];
+    for (const u of baseUnits) {
+      const t = G.catalog.unitTypes[u.typeId];
+      if (!t) continue;
+      if (t.transport.capacity > 0) capShipIds.push(u.instanceId);
+      else if (t.transport.restriction) fighterIds.push(u.instanceId);
+      else if (t.theater === 'ground' && t.class !== 'structure') groundIds.push(u.instanceId);
+    }
+    let cap = capShipIds.reduce((s, uid) => {
+      const u = baseUnits.find((x) => x.instanceId === uid);
+      return s + (u ? (G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0) : 0);
+    }, 0);
+    const picks = [...capShipIds];
+    for (const uid of [...fighterIds, ...groundIds]) {
+      if (cap <= 0) break;
+      picks.push(uid); cap--;
+    }
+    return phases.resolveStartEvacuationPick(G, target, picks).ok;
+  }
+  // Independent Operation: Empire picks first Imperial system to retreat to.
+  if (G.pendingChoice && G.pendingChoice.kind === 'IndependentOperationEvacPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    return phases.resolveIndependentOperationEvacPick(G, c.candidateSystemIds[0]).ok;
+  }
   // Hidden Fleet: greedy-pack capital ships first, then fighters/ground
   // up to capacity. Mirrors the old engine auto-pick heuristic.
   if (G.pendingChoice && G.pendingChoice.kind === 'HiddenFleetUnitPick' && G.pendingChoice.side === side) {

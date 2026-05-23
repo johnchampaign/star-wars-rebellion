@@ -902,6 +902,60 @@ export default function PlayTab() {
 
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'OurMostDesperateHourPick'
+        && G.pendingChoice.side === humanSide && (
+        <MissionListPickModal G={G} choice={G.pendingChoice}
+          title="Our Most Desperate Hour — pick a mission"
+          subtitle="Search your full mission deck. Leia will be assigned to the chosen mission and the card moves into your hand."
+          color="#aae0ff"
+          onPick={(mid) => {
+            const r = phases.resolveOurMostDesperateHourPick(G, mid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'ProceedingAsPlannedPick'
+        && G.pendingChoice.side === humanSide && (
+        <MissionListPickModal G={G} choice={G.pendingChoice}
+          title="Proceeding As Planned — pick a project"
+          subtitle="Search projects in your mission deck. The resolver leader will be assigned to it."
+          color="#ffaaaa"
+          onPick={(mid) => {
+            const r = phases.resolveProceedingAsPlannedPick(G, mid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'StartEvacuationPick'
+        && G.pendingChoice.side === humanSide && (
+        <StartEvacuationPickModal G={G} choice={G.pendingChoice}
+          onPick={(sysId, ids) => {
+            const r = phases.resolveStartEvacuationPick(G, sysId, ids);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'IndependentOperationEvacPick'
+        && G.pendingChoice.side === humanSide && (
+        <IndependentOperationEvacPickModal G={G} choice={G.pendingChoice}
+          onPick={(sysId) => {
+            const r = phases.resolveIndependentOperationEvacPick(G, sysId);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'HiddenFleetUnitPick'
         && G.pendingChoice.side === humanSide && (
         <HiddenFleetUnitPickModal G={G} choice={G.pendingChoice}
@@ -6071,6 +6125,161 @@ function DetainedTargetPickModal({
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MissionListPickModal({
+  G, choice, title, subtitle, color, onPick,
+}: {
+  G: GameState;
+  choice: { candidates: string[] };
+  title: string;
+  subtitle: string;
+  color: string;
+  onPick: (missionId: string) => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 640, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color, marginTop: 0 }}>{title}</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>{subtitle}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {choice.candidates.map((mid) => {
+            const m = G.catalog.missions[mid];
+            return (
+              <button key={mid} className="tab-button" onClick={() => onPick(mid)} style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 600 }}>{m?.name ?? mid}</div>
+                {m?.rulesText && <div style={{ fontSize: 10, opacity: 0.8 }}>{m.rulesText}</div>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StartEvacuationPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { candidateSystemIds: string[]; candidateUnitIds: string[] };
+  onPick: (sysId: string, ids: string[]) => void;
+}) {
+  const [sysId, setSysId] = useState<string | null>(null);
+  const [picks, setPicks] = useState<Set<string>>(() => new Set(choice.candidateUnitIds));
+  const baseUnits = G.map.rebelBaseSpace.units.filter((u) => choice.candidateUnitIds.includes(u.instanceId));
+  const toggle = (uid: string) => {
+    const next = new Set(picks);
+    if (next.has(uid)) next.delete(uid); else next.add(uid);
+    setPicks(next);
+  };
+  let cap = 0, riders = 0;
+  for (const uid of picks) {
+    const u = baseUnits.find((x) => x.instanceId === uid);
+    if (!u) continue;
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t) continue;
+    if (t.transport.capacity > 0) cap += t.transport.capacity;
+    if (t.transport.restriction || (t.theater === 'ground' && t.class !== 'structure')) riders++;
+  }
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 620, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Start The Evacuation — pick destination + units</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 8 }}>
+          Move Rebel Base units to any system without Imperial units. Transport rules still apply.
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <select value={sysId ?? ''}
+            onChange={(e) => setSysId(e.target.value || null)}
+            style={{ background: '#0c0d10', color: '#e8e8ea', border: '1px solid #3a3d44', padding: '4px 8px' }}
+          >
+            <option value="">— pick destination system —</option>
+            {[...choice.candidateSystemIds].sort().map((sid) => (
+              <option key={sid} value={sid}>{G.catalog.systems[sid]?.name ?? sid}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ color: cap >= riders ? '#80dc78' : '#ff8866', fontSize: 12, marginBottom: 8 }}>
+          Capacity: {cap} · Riders: {riders} {cap >= riders ? '' : '(insufficient transport)'}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {baseUnits.map((u) => {
+            const t = G.catalog.unitTypes[u.typeId];
+            const on = picks.has(u.instanceId);
+            return (
+              <label key={u.instanceId} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px',
+                border: `1px solid ${on ? '#80dc78' : '#2a2d34'}`, borderRadius: 3, fontSize: 12,
+              }}>
+                <input type="checkbox" checked={on} onChange={() => toggle(u.instanceId)} />
+                {t?.name ?? u.typeId}
+                {t && t.transport.capacity > 0 && <span style={{ color: '#80dc78', fontSize: 10 }}>+{t.transport.capacity} cap</span>}
+                {t && t.transport.restriction && <span style={{ color: '#ffaaaa', fontSize: 10 }}>needs ride</span>}
+                {t && t.theater === 'ground' && t.class !== 'structure' && <span style={{ color: '#ffaaaa', fontSize: 10 }}>ground</span>}
+              </label>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="tab-button active" disabled={!sysId}
+            onClick={() => sysId && onPick(sysId, [...picks])}
+          >Move {picks.size} unit{picks.size === 1 ? '' : 's'}</button>
+          <button className="tab-button" onClick={() => setPicks(new Set())}>Select none</button>
+          <button className="tab-button" onClick={() => setPicks(new Set(choice.candidateUnitIds))}>Select all</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IndependentOperationEvacPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { fromSystemId: string; candidateSystemIds: string[]; groundUnitIds: string[] };
+  onPick: (sysId: string) => void;
+}) {
+  const fromName = G.catalog.systems[choice.fromSystemId]?.name ?? choice.fromSystemId;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Independent Operation — pick evac destination</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          Lando placed in {fromName}; your {choice.groundUnitIds.length} ground unit{choice.groundUnitIds.length === 1 ? '' : 's'} there
+          {' '}must retreat to one of your other Imperial-occupied systems.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {choice.candidateSystemIds.map((sid) => (
+            <button key={sid} className="tab-button" onClick={() => onPick(sid)} style={{ textAlign: 'left' }}>
+              {G.catalog.systems[sid]?.name ?? sid}
+            </button>
+          ))}
         </div>
       </div>
     </div>

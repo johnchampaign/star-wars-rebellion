@@ -342,6 +342,41 @@ export type ChoiceRequest =
       // Hidden Fleet (Rebel mission): Rebel picks which units at the Rebel
       // Base space to move to the target system. Engine validates transport
       // rules (capacity-shipping for fighters/ground, immobile exclusion).
+      // Our Most Desperate Hour (Rebel action card, Leia): Rebel searches
+      // their full mission deck for any mission, takes it into hand, and
+      // assigns Leia to it. RAW info-leak: the search reveals the deck.
+      kind: 'OurMostDesperateHourPick';
+      side: Side; // 'Rebel'
+      candidates: string[]; // missionIds in the Rebel's deck
+    }
+  | {
+      // Proceeding As Planned (Empire action card): Empire searches the
+      // project deck for 1 project and assigns this leader to it.
+      kind: 'ProceedingAsPlannedPick';
+      side: Side; // 'Empire'
+      leaderId: LeaderId;
+      candidates: string[]; // project missionIds in the Empire deck
+    }
+  | {
+      // Start The Evacuation (Rebel action card, Rieekan): Rebel picks a
+      // target system without Imperial units and which units from the Rebel
+      // Base space to move there (transport-validated on submit).
+      kind: 'StartEvacuationPick';
+      side: Side; // 'Rebel'
+      candidateSystemIds: SystemId[];
+      candidateUnitIds: UnitInstanceId[];
+    }
+  | {
+      // Independent Operation (Rebel action card, Lando): the Empire picks
+      // which Imperial system the evicted ground units evacuate to. Triggered
+      // when Lando is placed in a subjugated system that has Imperial ground.
+      kind: 'IndependentOperationEvacPick';
+      side: Side; // 'Empire' — opponent of the card player picks
+      fromSystemId: SystemId;
+      candidateSystemIds: SystemId[];
+      groundUnitIds: UnitInstanceId[];
+    }
+  | {
       kind: 'HiddenFleetUnitPick';
       side: Side; // 'Rebel'
       targetSystemId: SystemId;
