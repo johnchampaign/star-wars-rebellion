@@ -11,7 +11,13 @@
       "Bash(gh repo *)",
       "Bash(powershell -NoProfile -Command \"Get-Process node -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,StartTime\")",
       "Bash(powershell -NoProfile -Command \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue; Write-Host 'killed'\")",
-      "Bash(powershell -NoProfile -Command \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue\")"
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue\")",
+      "Bash(wrangler --version)",
+      "Bash(gh label *)",
+      "Bash(gh api *)",
+      "Bash(gh issue *)",
+      "Bash(pdftotext -l 8 sw03_learn_to_play_web.pdf -)",
+      "Bash(extract-text \"Rebellion_v3.xlsx\")"
     ]
   }
 }
