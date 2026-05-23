@@ -4,8 +4,7 @@ A faithful in-browser port of the 2016 FFG board game. Engine is a pure-function
 TypeScript core; UI is React + Vite. Designed for solo play against a random AI
 while the engine is fleshed out.
 
-**Play it here:** https://star-wars-rebellion.pages.dev *(replace with your
-Cloudflare Pages URL after first deploy — see `docs/deploy.md`)*
+**Play it here:** https://star-wars-rebellion.pages.dev
 
 ## Status
 
