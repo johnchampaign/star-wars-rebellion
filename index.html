@@ -7,6 +7,16 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      // Hide any image that fails to load (deployed site ships no card/board/
+      // unit art — players run the asset-prep scripts locally if they want
+      // visuals). Capture-phase listener so it fires before React's event
+      // delegation. visibility:hidden preserves layout dimensions.
+      window.addEventListener('error', function (e) {
+        var t = e.target;
+        if (t && t.tagName === 'IMG') t.style.visibility = 'hidden';
+      }, true);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

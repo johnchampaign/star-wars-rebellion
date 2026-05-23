@@ -9,7 +9,7 @@
     "build": "tsc -b && vite build",
     "build:fast": "vite build",
     "preview": "vite preview",
-    "deploy": "npm run composite-card-notice && vite build && npx wrangler pages deploy dist --project-name star-wars-rebellion --branch master --commit-dirty=true && npm run composite-card-text",
+    "deploy": "vite build && node scripts/strip-images-from-dist.mjs && npx wrangler pages deploy dist --project-name star-wars-rebellion --branch master --commit-dirty=true",
     "copy-assets": "node scripts/copy-dev-assets.mjs",
     "composite-card-text": "node scripts/composite-card-text.mjs",
     "composite-card-notice": "node scripts/composite-card-text.mjs --notice"

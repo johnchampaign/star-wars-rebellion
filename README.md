@@ -25,6 +25,27 @@ Then open http://localhost:5173. Engine state is mirrored to
 `./game-logs/latest.json` on every action while `vite dev` is running, which is
 the agent-collaboration loop — see "Problem reports" below.
 
+## Visuals (local play only)
+
+The deployed site at https://star-wars-rebellion.pages.dev ships **no
+VASSAL-derived art** — no board, no card art, no leader portraits, no unit
+silhouettes. It's a text-mode demo of the engine. Broken `<img>` tags are
+hidden via a global error handler so the UI stays clean.
+
+If you want full visuals while playing locally:
+
+1. Get the VASSAL module for Star Wars: Rebellion separately (you'll need
+   to own the game / acquire the module yourself — this repo does not
+   distribute FFG assets).
+2. Extract its contents into `vmod_extracted/` at the repo root.
+3. Run `npm run copy-assets` to copy and process the images into
+   `public/dev-assets/`.
+4. Run `npm run dev`. The full UI now shows board art, cards, etc.
+
+The asset-extraction scripts (`scripts/extract-*.py`, `scripts/copy-dev-assets.mjs`)
+are committed; the actual images are gitignored and the deploy script strips
+any images out of `dist/dev-assets/` before publishing.
+
 ## Deploying
 
 The project deploys as a static Vite build + two Cloudflare Pages Functions
