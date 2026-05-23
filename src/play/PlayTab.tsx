@@ -5468,30 +5468,84 @@ function MissionRollEntry({ payload, side }: { payload: MissionRollPayload; side
   );
 }
 
+/** Log kinds that leak private info to the opposing player. Filtered from
+ *  the on-screen log entirely. The disk/file log (uploaded for AI training,
+ *  attached to problem reports) still contains them — those audiences need
+ *  full information. */
+const ONSCREEN_HIDDEN_KINDS = new Set<string>([
+  // Card draws into private hands.
+  'draw-action', 'draw-mission', 'draw-objective', 'draw-probe', 'draw-tactic',
+  'objective-draw-only', 'objective-peek',
+  // Empire's private project deck operations.
+  'project-peek', 'project-draw',
+  // Combat tactic draws (private tactic hand).
+  'combat-draw-tactics', 'combat-special-draw',
+  // Probe operations that would reveal eliminated systems / base location.
+  'rapid-mobilization-probe-draw',
+  // Interrogation mission reveal of Rebel objective hand.
+  'interrogation-reveal',
+  // Rebel base initial pick (base location is hidden until reveal).
+  'pick-rebel-base',
+  // Hand trims (which card discarded is private to the holder).
+  'mission-hand-trim',
+  // UI noise + would expose candidate lists in payload.
+  'choice-request',
+  // Internal/debug.
+  'not-implemented', 'note', 'state', 'setup-warning',
+]);
+
+/** Log kinds where the OCCURRENCE is public (you can tell something
+ *  happened) but the PAYLOAD contains private card IDs. Render the kind
+ *  without the payload. */
+const ONSCREEN_REDACTED_KINDS = new Set<string>([
+  // Card-search effects: pulling a specific card from a deck is private.
+  'our-most-desperate-hour-applied',
+  'proceeding-as-planned-applied',
+  'son-of-skywalker-applied',
+  'contingency-plan-applied',
+  // Empire intel that's private to the Empire (which region the base is in).
+  'local-rumors-reveal',
+  // Recruit picks reveal the drawn action card / leader.
+  'recruit-action-only', 'recruit-leader', 'recruit-pick-resolved',
+  // Build queue additions reveal which units were queued (could be private
+  // for missions like Establish Trade Relations / Temporary Alliance).
+  'establish-trade-relations-built',
+  // Probe count and identity in deferred Rapid Mobilization.
+  'rapid-mobilization-deferred',
+]);
+
 function LogPanel({ G }: { G: GameState }) {
+  // Pre-filter to count what's actually visible (so the header count
+  // matches what the player sees).
+  const visible = G.turnLog.filter((e) => !ONSCREEN_HIDDEN_KINDS.has(e.kind));
   return (
     <div style={{
       background: '#15171c', borderRadius: 4, padding: 12, marginTop: 12,
       maxHeight: 240, overflowY: 'auto',
     }}>
       <div style={{ fontSize: 13, color: '#aaa', marginBottom: 6 }}>
-        Log ({G.turnLog.length} entries)
+        Log ({visible.length} entries shown; {G.turnLog.length - visible.length} private hidden)
       </div>
       <div style={{ fontFamily: 'monospace', fontSize: 11 }}>
-        {G.turnLog.slice(-100).map((entry, i) => (
-          <div key={i} style={{ color: entry.side ? sideColor(entry.side) : '#aaa', marginBottom: entry.kind === 'mission-roll' ? 6 : 1 }}>
-            <span style={{ color: '#666' }}>[t{entry.turn}]</span>{' '}
-            {entry.side ? <span style={{ marginRight: 4 }}>{entry.side}</span> : null}
-            <span style={{ color: '#fff' }}>{entry.kind}</span>
-            {entry.kind === 'mission-roll' && entry.payload ? (
-              <MissionRollEntry payload={entry.payload as MissionRollPayload} side={entry.side} />
-            ) : entry.kind === 'combat-attack' && entry.payload ? (
-              <CombatAttackEntry payload={entry.payload as CombatAttackPayload} />
-            ) : entry.payload ? (
-              <span style={{ color: '#888', marginLeft: 4 }}>{JSON.stringify(entry.payload)}</span>
-            ) : null}
-          </div>
-        ))}
+        {visible.slice(-100).map((entry, i) => {
+          const redacted = ONSCREEN_REDACTED_KINDS.has(entry.kind);
+          return (
+            <div key={i} style={{ color: entry.side ? sideColor(entry.side) : '#aaa', marginBottom: entry.kind === 'mission-roll' ? 6 : 1 }}>
+              <span style={{ color: '#666' }}>[t{entry.turn}]</span>{' '}
+              {entry.side ? <span style={{ marginRight: 4 }}>{entry.side}</span> : null}
+              <span style={{ color: '#fff' }}>{entry.kind}</span>
+              {redacted ? (
+                <span style={{ color: '#666', marginLeft: 4, fontStyle: 'italic' }}>(private)</span>
+              ) : entry.kind === 'mission-roll' && entry.payload ? (
+                <MissionRollEntry payload={entry.payload as MissionRollPayload} side={entry.side} />
+              ) : entry.kind === 'combat-attack' && entry.payload ? (
+                <CombatAttackEntry payload={entry.payload as CombatAttackPayload} />
+              ) : entry.payload ? (
+                <span style={{ color: '#888', marginLeft: 4 }}>{JSON.stringify(entry.payload)}</span>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
