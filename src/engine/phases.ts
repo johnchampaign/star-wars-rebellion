@@ -1202,7 +1202,10 @@ function enterRefreshPhase(G: GameState): void {
   // Step 5: Advance time marker (may trigger recruit / build)
   M.advanceTime(G);
   if (G.isGameOver) return;
-  refreshRecruitIfApplicable(G);
+  // Recruit may pause for player to pick which drawn card to keep.
+  // On resume (resolveRecruitActionCardPick), refreshBuildIfApplicable
+  // is called from there.
+  if (refreshRecruitIfApplicable(G, logStart)) return;
 
   // Build may pause for BuildPick choices. If it does, refresh resumes via
   // resolveBuildPicks() → finishRefreshAfterBuild().
@@ -1383,7 +1386,11 @@ function refreshDrawMissions(G: GameState): void {
   }
 }
 
-function refreshRecruitIfApplicable(G: GameState): void {
+/** Refresh recruit step. Each side draws 2 action cards and the player
+ *  picks 1 to keep (which recruits the matching leader if able); the
+ *  other goes to the bottom of the deck. Returns true if a player
+ *  choice is pending (refresh paused). */
+function refreshRecruitIfApplicable(G: GameState, logStart: number): boolean {
   // For now: hard-code time-track icons. In a real game the time track has
   // recruit/build icons on specific spaces. The user-published version lists:
   //   Time 1: nothing (setup)
@@ -1396,34 +1403,94 @@ function refreshRecruitIfApplicable(G: GameState): void {
   //   Time 8: end (Rebel can win at any earlier point if reputation meets time)
   // [VERIFY against the printed time track.]
   const recruitOn: Record<number, boolean> = { 2: true, 4: true, 6: true };
-  if (!recruitOn[G.timeMarker]) return;
+  if (!recruitOn[G.timeMarker]) return false;
 
-  // Each side draws 2 action cards and auto-keeps the first (no choice yet).
+  // Draw 2 per side and collect pending picks. Edge cases (deck < 2):
+  // 0 cards → skip side. 1 card → no choice, auto-keep that card.
+  const pending: { side: Side; drawnIds: [string, string] }[] = [];
   for (const side of ['Rebel', 'Empire'] as const) {
     const f = faction(G, side);
-    const drawn = f.actionDeck.splice(0, 2);
-    if (drawn.length === 0) continue;
-    // Pick the leader on the first card — recruit them.
-    const cardId = drawn[0];
-    const card = G.catalog.actions[cardId];
-    let recruited = false;
-    if (card?.leaderRequirement && card.leaderRequirement.length > 0) {
-      const pick = card.leaderRequirement[0];
-      if (G.catalog.leaders[pick] && !f.leaderPool.includes(pick) && !f.eliminatedLeaders.includes(pick)) {
-        f.leaderPool.push(pick);
-        log(G, { kind: 'recruit-leader', side, payload: { leaderId: pick, cardId } });
-        recruited = true;
-      }
+    if (f.actionDeck.length === 0) continue;
+    if (f.actionDeck.length === 1) {
+      const cardId = f.actionDeck.shift()!;
+      applyRecruitedActionCard(G, side, cardId);
+      continue;
     }
-    if (!recruited) {
-      // Drew a card but couldn't recruit (no leader requirement, or
-      // already recruited / eliminated). Note for the report modal.
-      log(G, { kind: 'recruit-action-only', side, payload: { cardId } });
-    }
-    f.actionHand.push(cardId);
-    // The other card goes to the bottom of the deck unrevealed.
-    if (drawn[1]) f.actionDeck.push(drawn[1]);
+    const a = f.actionDeck.shift()!;
+    const b = f.actionDeck.shift()!;
+    pending.push({ side, drawnIds: [a, b] });
   }
+
+  if (pending.length === 0) return false;
+  if (!G.refreshPaused) G.refreshPaused = { logStart, pendingBuildPicks: [] };
+  G.refreshPaused.pendingRecruitPicks = pending;
+  promoteNextRecruitPick(G);
+  return true;
+}
+
+/** Helper: keep card in hand, recruit the matching leader if eligible. */
+function applyRecruitedActionCard(G: GameState, side: Side, cardId: string): void {
+  const f = faction(G, side);
+  const card = G.catalog.actions[cardId];
+  let recruited = false;
+  if (card?.leaderRequirement && card.leaderRequirement.length > 0) {
+    const pick = card.leaderRequirement[0];
+    if (G.catalog.leaders[pick] && !f.leaderPool.includes(pick) && !f.eliminatedLeaders.includes(pick)) {
+      f.leaderPool.push(pick);
+      log(G, { kind: 'recruit-leader', side, payload: { leaderId: pick, cardId } });
+      recruited = true;
+    }
+  }
+  if (!recruited) {
+    log(G, { kind: 'recruit-action-only', side, payload: { cardId } });
+  }
+  f.actionHand.push(cardId);
+}
+
+function promoteNextRecruitPick(G: GameState): void {
+  const r = G.refreshPaused;
+  if (!r?.pendingRecruitPicks || r.pendingRecruitPicks.length === 0) return;
+  const next = r.pendingRecruitPicks[0];
+  G.pendingChoice = {
+    kind: 'RecruitActionCardPick',
+    side: next.side,
+    drawnIds: next.drawnIds,
+  };
+  log(G, { kind: 'choice-request', side: next.side, payload: {
+    kind: 'RecruitActionCardPick', cards: next.drawnIds,
+  }});
+}
+
+/** Resolve a single side's recruit pick. The kept card goes to hand
+ *  (and recruits the matching leader if eligible); the other goes to
+ *  the bottom of the action deck. */
+export function resolveRecruitActionCardPick(G: GameState, keepCardId: string): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'RecruitActionCardPick') return { ok: false, reason: 'no-pending' };
+  const r = G.refreshPaused;
+  if (!r?.pendingRecruitPicks || r.pendingRecruitPicks.length === 0) return { ok: false, reason: 'no-refresh-pause' };
+  const cur = r.pendingRecruitPicks[0];
+  if (cur.side !== choice.side) return { ok: false, reason: 'side-mismatch' };
+  const [a, b] = cur.drawnIds;
+  if (keepCardId !== a && keepCardId !== b) return { ok: false, reason: 'invalid-pick' };
+  const bottomed = keepCardId === a ? b : a;
+  applyRecruitedActionCard(G, cur.side, keepCardId);
+  const f = faction(G, cur.side);
+  f.actionDeck.push(bottomed);
+  log(G, { kind: 'recruit-pick-resolved', side: cur.side, payload: { kept: keepCardId, bottomed } });
+  r.pendingRecruitPicks.shift();
+  G.pendingChoice = undefined;
+  if (r.pendingRecruitPicks.length > 0) {
+    promoteNextRecruitPick(G);
+    return { ok: true };
+  }
+  // All recruit picks done — clear field and proceed to build step.
+  r.pendingRecruitPicks = undefined;
+  const logStart = r.logStart;
+  if (refreshBuildIfApplicable(G, logStart)) return { ok: true };
+  G.refreshPaused = undefined;
+  finishRefreshAfterBuild(G, logStart);
+  return { ok: true };
 }
 
 /** Return the legal unit type IDs a side may build for one (type, shape)

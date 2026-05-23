@@ -75,6 +75,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'MisdirectionPick':         return pc.side === side;
     case 'ResearchAndDevelopmentOption':     return pc.side === side;
     case 'ResearchAndDevelopmentProjectPick': return pc.side === side;
+    case 'RecruitActionCardPick':    return pc.side === side;
     // Other ChoiceRequest kinds (system / leader picks, etc.) are
     // human-initiated and shouldn't auto-fire the AI loop.
     default:                         return false;
@@ -592,6 +593,40 @@ export default function PlayTab() {
           }}
         />
       )}
+      {/* Refresh recruit step — keep one drawn action card */}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'RecruitActionCardPick'
+        && G.pendingChoice.side === humanSide && (
+        <TopBottomCardPickModal
+          G={G}
+          cardIds={G.pendingChoice.drawnIds}
+          color={sideColor(G.pendingChoice.side)}
+          title="Recruit — keep one action card"
+          blurb="You drew the top 2 action cards. Drag (or click) to place one in your hand (which recruits the matching leader if you haven't already), and the other on the bottom of the action deck."
+          topLabel="Keep & recruit"
+          topHint={(() => {
+            // Show which leader would be recruited if known.
+            const a = G.catalog.actions[G.pendingChoice.drawnIds[0]];
+            const b = G.catalog.actions[G.pendingChoice.drawnIds[1]];
+            const la = a?.leaderRequirement?.[0];
+            const lb = b?.leaderRequirement?.[0];
+            return `Leader on the card recruits to your pool if eligible.`;
+          })()}
+          bottomLabel="Bottom of deck"
+          bottomHint="Returned to the bottom; you'll see it again next time the deck is drawn."
+          lookupCard={(cid) => {
+            const a = G.catalog.actions[cid];
+            return { name: a?.name ?? cid, image: a?.image };
+          }}
+          onConfirm={(topCardId) => {
+            const r = phases.resolveRecruitActionCardPick(G, topCardId);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+
       {/* Research & Development — stage 1: option pick */}
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)

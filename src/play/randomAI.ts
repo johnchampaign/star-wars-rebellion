@@ -162,6 +162,20 @@ export function stepOnce(G: GameState, side: Side): boolean {
     }
     return phases.resolveMisdirectionPick(G, best).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'RecruitActionCardPick' && G.pendingChoice.side === side) {
+    // AI: prefer the card whose leader can actually be recruited.
+    const c = G.pendingChoice;
+    const f = side === 'Rebel' ? G.rebel : G.empire;
+    const canRecruit = (cid: string) => {
+      const card = G.catalog.actions[cid];
+      if (!card?.leaderRequirement?.length) return false;
+      const lid = card.leaderRequirement[0];
+      return !!G.catalog.leaders[lid] && !f.leaderPool.includes(lid) && !f.eliminatedLeaders.includes(lid);
+    };
+    const [a, b] = c.drawnIds;
+    const keep = canRecruit(a) ? a : canRecruit(b) ? b : a;
+    return phases.resolveRecruitActionCardPick(G, keep).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'ResearchAndDevelopmentOption' && side === 'Empire') {
     // AI: cleanse sabotage if available (B), else peek-and-keep (A).
     const c = G.pendingChoice;

@@ -262,6 +262,14 @@ export type ChoiceRequest =
       monCalaSubjugated: boolean;
     }
   | {
+      // Refresh recruit step: drew 2 action cards, keep 1 (into hand)
+      // which determines a leader to recruit if eligible; bottom the
+      // other. Per-side; processed Rebel first, then Empire.
+      kind: 'RecruitActionCardPick';
+      side: Side;
+      drawnIds: [string, string];
+    }
+  | {
       // Research & Development — Stage 1: Empire picks between
       //   A: draw 2 project cards, keep 1, bottom 1
       //   B: remove sabotage marker from target + draw 1 project card
@@ -697,6 +705,10 @@ export type GameState = {
   //     BuildPick ChoiceRequest one at a time.
   refreshPaused?: {
     logStart: number;
+    // Recruit-step picks queued before the build-step picks. Processed
+    // Rebel first, then Empire. Each side picks 1 of 2 drawn action
+    // cards to keep (and recruits the matching leader if able).
+    pendingRecruitPicks?: { side: Side; drawnIds: [string, string] }[];
     pendingBuildPicks: {
       side: Side;
       picks: {
