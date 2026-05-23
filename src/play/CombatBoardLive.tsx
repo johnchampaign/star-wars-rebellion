@@ -205,6 +205,126 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
   const dice: DieResult[] | null = c.pendingAttack?.dice ?? null;
   const activeTheater: Theater | null = c.pendingAttack?.theater ?? c.activeTheater ?? null;
 
+  // ============================================================
+  // Damage-assignment state (lifted out of AssignDamagePanel so it
+  // can be shared with the per-unit click targets on the board).
+  // ============================================================
+  const damageChoice = (pc?.kind === 'CombatAssignDamage' && isHumanDecision) ? pc : null;
+  const damageChoiceKey = damageChoice
+    ? `${damageChoice.systemId}:${damageChoice.theater}:${damageChoice.hits.length}:${damageChoice.hits.map((h) => `${h.face}-${h.color ?? 'x'}-${h.source ?? ''}`).join(',')}`
+    : null;
+  const [assignments, setAssignments] = useState<(string | null)[]>([]);
+  const [selectedHitIdx, setSelectedHitIdx] = useState<number | null>(null);
+  const lastChoiceKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (damageChoice && damageChoiceKey !== lastChoiceKeyRef.current) {
+      lastChoiceKeyRef.current = damageChoiceKey;
+      // Pre-fill with the weakest-target-first heuristic so the human can
+      // either accept defaults via Submit or click to override.
+      const ss = G.map.systems[damageChoice.systemId] ?? G.map.rebelBaseSpace;
+      const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+      const queued = new Map<string, number>();
+      const sourceFirstTarget = new Map<string, string>();
+      const sourceTargets = new Map<string, Set<string>>();
+      const init: (string | null)[] = damageChoice.hits.map((h, i) => {
+        const src = h.source;
+        const isTakeItDown = src && src.includes('take-it-down');
+        const isOnslaught = src && src.includes('onslaught');
+        const targets = damageChoice.targetsByHit[i];
+        let best: { id: string; remaining: number; tier: number } | null = null;
+        for (const tid of targets) {
+          if (isTakeItDown && sourceFirstTarget.has(src!) && tid !== sourceFirstTarget.get(src!)) continue;
+          if (isOnslaught && sourceTargets.get(src!)?.has(tid)) continue;
+          const u = ss?.units.find((x: UnitInstance) => x.instanceId === tid);
+          if (!u) continue;
+          const t = G.catalog.unitTypes[u.typeId];
+          if (!t) continue;
+          const qd = queued.get(tid) ?? 0;
+          const remaining = (t.health.value ?? 1) - (u.damage ?? 0) - qd;
+          if (remaining <= 0) continue;
+          const tier = tierRank[t.tier ?? 'square'] ?? 9;
+          if (!best || remaining < best.remaining || (remaining === best.remaining && tier < best.tier)) {
+            best = { id: tid, remaining, tier };
+          }
+        }
+        if (best) {
+          queued.set(best.id, (queued.get(best.id) ?? 0) + 1);
+          if (src) {
+            if (!sourceFirstTarget.has(src)) sourceFirstTarget.set(src, best.id);
+            if (!sourceTargets.has(src)) sourceTargets.set(src, new Set());
+            sourceTargets.get(src)!.add(best.id);
+          }
+          return best.id;
+        }
+        return null;
+      });
+      setAssignments(init);
+      // Select the first die with no auto-assignment so the user can fix
+      // the gaps; if everything auto-filled, leave nothing selected.
+      const firstNull = init.findIndex((a) => a === null);
+      setSelectedHitIdx(firstNull >= 0 ? firstNull : null);
+    }
+    if (!damageChoice && lastChoiceKeyRef.current !== null) {
+      lastChoiceKeyRef.current = null;
+      setAssignments([]);
+      setSelectedHitIdx(null);
+    }
+  }, [damageChoiceKey]);
+
+  /** Click handler for a unit on the board during damage assignment. Assigns
+   *  the currently selected die's hit to that unit, then auto-advances the
+   *  selection to the next unassigned die (if any). */
+  const onAssignUnitClick = (unitInstanceId: string) => {
+    if (!damageChoice || selectedHitIdx === null) return;
+    if (!damageChoice.targetsByHit[selectedHitIdx]?.includes(unitInstanceId)) return;
+    setAssignments((prev) => {
+      const next = [...prev];
+      next[selectedHitIdx] = unitInstanceId;
+      return next;
+    });
+    // Auto-advance: find next die with no assignment, wrapping around.
+    const n = damageChoice.hits.length;
+    let nextIdx: number | null = null;
+    for (let off = 1; off <= n; off++) {
+      const j = (selectedHitIdx + off) % n;
+      if (j === selectedHitIdx) break;
+      // Skip dice with no legal targets.
+      if (damageChoice.targetsByHit[j].length === 0) continue;
+      // Skip already-assigned dice — but only if the wrap hasn't completed.
+      if (j !== selectedHitIdx && assignments[j] !== null && off < n) continue;
+      nextIdx = j;
+      break;
+    }
+    setSelectedHitIdx(nextIdx);
+  };
+
+  const submitDamage = () => {
+    if (!damageChoice) return;
+    const r = combat.resolveCombatAssignDamage(G, assignments);
+    if (!r.ok) {
+      alert(`Cannot resolve: ${r.reason}`);
+      return;
+    }
+    onPersist();
+  };
+
+  /** Per-side per-theater click-target bundle. Only the defender's units in
+   *  the active theater are clickable during AssignDamage. */
+  const damageAssignBundle = damageChoice ? {
+    defenderSide: defender,
+    theater: damageChoice.theater,
+    selectedHitIdx,
+    legalUnitIds: (selectedHitIdx === null
+      ? new Set<string>()
+      : new Set(damageChoice.targetsByHit[selectedHitIdx] ?? [])),
+    assignedCountByUnit: ((): Map<string, number> => {
+      const m = new Map<string, number>();
+      for (const uid of assignments) if (uid) m.set(uid, (m.get(uid) ?? 0) + 1);
+      return m;
+    })(),
+    onUnitClick: onAssignUnitClick,
+  } : null;
+
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
@@ -234,12 +354,14 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
           attacker={attacker} defender={defender}
           dice={activeTheater === 'space' ? dice : null}
           rolling={activeTheater === 'space' ? c.pendingAttack?.side ?? null : null}
+          damageAssign={damageAssignBundle?.theater === 'space' ? damageAssignBundle : null}
         />
         <TheaterPanel
           G={G} c={c} theater="ground"
           attacker={attacker} defender={defender}
           dice={activeTheater === 'ground' ? dice : null}
           rolling={activeTheater === 'ground' ? c.pendingAttack?.side ?? null : null}
+          damageAssign={damageAssignBundle?.theater === 'ground' ? damageAssignBundle : null}
         />
       </div>
 
@@ -287,7 +409,14 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
           <DefenderTacticsPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'CombatAssignDamage' && isHumanDecision && (
-          <AssignDamagePanel G={G} choice={pc} c={c} onPersist={onPersist} />
+          <AssignDamagePanel
+            G={G} choice={pc} c={c}
+            assignments={assignments}
+            selectedHitIdx={selectedHitIdx}
+            setSelectedHitIdx={setSelectedHitIdx}
+            setAssignments={setAssignments}
+            onSubmit={submitDamage}
+          />
         )}
         {pc?.kind === 'YodaReroll' && pc.context === 'combat' && isHumanDecision && (
           <YodaRerollPanel G={G} choice={pc} onPersist={onPersist} />
@@ -418,10 +547,20 @@ function Header({ systemName, attacker, defender, round, humanSide }: {
   );
 }
 
-function TheaterPanel({ G, c, theater, attacker, defender, dice, rolling }: {
+type DamageAssignBundle = {
+  defenderSide: Side;
+  theater: Theater;
+  selectedHitIdx: number | null;
+  legalUnitIds: Set<string>;
+  assignedCountByUnit: Map<string, number>;
+  onUnitClick: (unitInstanceId: string) => void;
+};
+
+function TheaterPanel({ G, c, theater, attacker, defender, dice, rolling, damageAssign }: {
   G: GameState; c: NonNullable<GameState['pendingCombat']>;
   theater: Theater; attacker: Side; defender: Side;
   dice: DieResult[] | null; rolling: Side | null;
+  damageAssign?: DamageAssignBundle | null;
 }) {
   const ss = G.map.systems[c.systemId] ?? G.map.rebelBaseSpace;
   const inTheater = (u: UnitInstance) => {
@@ -457,6 +596,7 @@ function TheaterPanel({ G, c, theater, attacker, defender, dice, rolling }: {
           units={defUnits}
           leaderIds={defLeaders}
           align="left"
+          damageAssign={damageAssign && damageAssign.defenderSide === defender ? damageAssign : null}
         />
       </div>
     </div>
@@ -469,8 +609,9 @@ function TheaterPanel({ G, c, theater, attacker, defender, dice, rolling }: {
  *  matching its current damage. Wounded units visibly slide right as combat
  *  progresses. Squares are color-tinted by the unit's health colour
  *  (red-health vs black-health) so unit-class is legible at a glance. */
-function SidePanel({ G, side, units, leaderIds, align }: {
+function SidePanel({ G, side, units, leaderIds, align, damageAssign }: {
   G: GameState; side: Side; units: UnitInstance[]; leaderIds: string[]; align: 'left' | 'right';
+  damageAssign?: DamageAssignBundle | null;
 }) {
   const color = SIDE_COLOR[side];
   // Find the highest single-unit HP we need to show (decides how many
@@ -524,7 +665,17 @@ function SidePanel({ G, side, units, leaderIds, align }: {
               border: lane === 0 ? '1px dashed #2a2d34' : '1px dashed #4a3333',
               borderRadius: 3, padding: 3,
             }}>
-              {bucket.map((u) => <UnitIcon key={u.instanceId} G={G} unit={u} />)}
+              {bucket.map((u) => {
+                const legal = damageAssign?.legalUnitIds.has(u.instanceId) ?? false;
+                const assignedCount = damageAssign?.assignedCountByUnit.get(u.instanceId) ?? 0;
+                return (
+                  <UnitIcon key={u.instanceId} G={G} unit={u}
+                    legalTarget={legal}
+                    assignedCount={assignedCount}
+                    onClick={legal && damageAssign ? () => damageAssign.onUnitClick(u.instanceId) : undefined}
+                  />
+                );
+              })}
             </div>
           ))}
         </div>
@@ -533,13 +684,20 @@ function SidePanel({ G, side, units, leaderIds, align }: {
   );
 }
 
-function UnitIcon({ G, unit }: { G: GameState; unit: UnitInstance }) {
+function UnitIcon({ G, unit, legalTarget, assignedCount, onClick }: {
+  G: GameState; unit: UnitInstance;
+  legalTarget?: boolean;
+  assignedCount?: number;
+  onClick?: () => void;
+}) {
   const t = G.catalog.unitTypes[unit.typeId];
   const name = t?.name ?? unit.typeId;
   const hc = t?.health.color;
   // Health-color tint: red-health units get a red border, black-health
   // units get a gray border. Death Star (color=null) is unbordered.
-  const border = hc === 'red' ? '2px solid #c4423a'
+  // During damage assignment, legal-target units get a glowing yellow border.
+  const border = legalTarget ? '2px solid #ffd54a'
+              : hc === 'red' ? '2px solid #c4423a'
               : hc === 'black' ? '2px solid #888'
               : '1px dotted #555';
   // Two-letter abbreviation derived from the type ID for a quick visual.
@@ -566,13 +724,30 @@ function UnitIcon({ G, unit }: { G: GameState; unit: UnitInstance }) {
   return (
     <div
       title={tooltip}
+      onClick={onClick}
       style={{
+        position: 'relative',
         width: 22, height: 22, background: '#0c0d10', border,
         borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 9, fontWeight: 700, color: '#e8e8ea',
+        cursor: onClick ? 'pointer' : 'default',
+        boxShadow: legalTarget ? '0 0 6px #ffd54a' : undefined,
       }}
     >
       {abbr}
+      {assignedCount && assignedCount > 0 ? (
+        <div style={{
+          position: 'absolute', top: -6, right: -6,
+          minWidth: 14, height: 14, padding: '0 3px',
+          background: '#c4423a', color: '#fff',
+          fontSize: 9, fontWeight: 700, borderRadius: 7,
+          border: '1px solid #000',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          lineHeight: 1,
+        }}>
+          {assignedCount}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -774,60 +949,39 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
   );
 }
 
-function AssignDamagePanel({ G, choice, c, onPersist }: {
+function AssignDamagePanel({ G, choice, c, assignments, selectedHitIdx, setSelectedHitIdx, setAssignments, onSubmit }: {
   G: GameState;
   choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'CombatAssignDamage' }>;
   c: NonNullable<GameState['pendingCombat']>;
-  onPersist: () => void;
+  assignments: (string | null)[];
+  selectedHitIdx: number | null;
+  setSelectedHitIdx: (i: number | null) => void;
+  setAssignments: React.Dispatch<React.SetStateAction<(string | null)[]>>;
+  onSubmit: () => void;
 }) {
-  // Pre-fill assignments with the AI heuristic (weakest unit first) so the
-  // human can just click Submit to accept defaults — keeps fast play fast.
-  const [assignments, setAssignments] = useState<(string | null)[]>(() => {
-    const ss = G.map.systems[c.systemId] ?? G.map.rebelBaseSpace;
-    const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
-    const queued = new Map<string, number>();
-    return choice.hits.map((_, i) => {
-      const targets = choice.targetsByHit[i];
-      let best: { id: string; remaining: number; tier: number } | null = null;
-      for (const tid of targets) {
-        const u = ss?.units.find((x: UnitInstance) => x.instanceId === tid);
-        if (!u) continue;
-        const t = G.catalog.unitTypes[u.typeId];
-        if (!t) continue;
-        const qd = queued.get(tid) ?? 0;
-        const remaining = (t.health.value ?? 1) - (u.damage ?? 0) - qd;
-        if (remaining <= 0) continue;
-        const tier = tierRank[t.tier ?? 'square'] ?? 9;
-        if (!best || remaining < best.remaining || (remaining === best.remaining && tier < best.tier)) {
-          best = { id: tid, remaining, tier };
-        }
-      }
-      if (best) {
-        queued.set(best.id, (queued.get(best.id) ?? 0) + 1);
-        return best.id;
-      }
-      return null;
-    });
-  });
-
+  void c;
   const unitLabel = (instanceId: string): string => {
-    const ss = G.map.systems[c.systemId] ?? G.map.rebelBaseSpace;
+    const ss = G.map.systems[choice.systemId] ?? G.map.rebelBaseSpace;
     const u = ss?.units.find((x: UnitInstance) => x.instanceId === instanceId);
     if (!u) return instanceId.slice(0, 6);
     const t = G.catalog.unitTypes[u.typeId];
-    return `${t?.name ?? u.typeId}${(u.damage ?? 0) > 0 ? ` (${(t?.health.value ?? 1) - (u.damage ?? 0)} hp)` : ''}`;
+    return t?.name ?? u.typeId;
   };
-
-  const submit = () => {
-    const r = combat.resolveCombatAssignDamage(G, assignments);
-    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
-    onPersist();
+  const clearHit = (i: number) => {
+    setAssignments((prev) => { const next = [...prev]; next[i] = null; return next; });
+    setSelectedHitIdx(i);
   };
+  const allAssigned = assignments.every((a, i) => a !== null || choice.targetsByHit[i].length === 0);
 
   return (
     <div>
-      <div style={{ fontSize: 13, marginBottom: 8 }}>
-        <b>Assign damage:</b> pick which defender unit takes each hit.
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>Assign damage:</b> click a die to select it, then click the highlighted defender unit on the board.
+        {selectedHitIdx !== null && (
+          <span style={{ marginLeft: 8, color: '#ffd54a' }}>
+            ← die #{selectedHitIdx + 1} selected
+          </span>
+        )}
       </div>
       {/* Per-source constraint hints. RAW: Take It Down forces both hits to
           one target; Onslaught forces hits to different targets. */}
@@ -850,51 +1004,60 @@ function AssignDamagePanel({ G, choice, c, onPersist }: {
           </div>
         );
       })()}
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxHeight: 60, overflowY: 'auto' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
         {choice.hits.map((h, i) => {
-          const opts = choice.targetsByHit[i];
+          const noTargets = choice.targetsByHit[i].length === 0;
+          const isSelected = selectedHitIdx === i;
+          const assignedTo = assignments[i];
           const srcLabel = h.source
             ? (h.source.includes('take-it-down') ? 'TID' : h.source.includes('onslaught') ? 'ONS' : h.source.includes('critical-hit') ? 'CRIT' : h.source.includes('bombardment') ? 'BOMB' : '+')
             : null;
           return (
-            <div key={i} style={{
-              background: '#0c0d10', border: '1px solid #2a2d34', borderRadius: 3,
-              padding: '4px 6px', fontSize: 11,
-              display: 'flex', flexDirection: 'column', gap: 2,
-            }}>
-              <span style={{ color: '#aaa', display: 'flex', alignItems: 'center', gap: 4 }}>
-                <Die d={{ color: (h.color ?? 'black') as DieResult['color'], face: h.face }} />
-                {srcLabel && (
-                  <span style={{ fontSize: 9, color: '#cbc4b0', fontWeight: 700 }}>{srcLabel}</span>
-                )}
-              </span>
-              {opts.length === 0 ? (
-                <span style={{ color: '#555' }}>(no legal target)</span>
-              ) : (
-                <select
-                  value={assignments[i] ?? ''}
-                  onChange={(e) => {
-                    const v = e.target.value || null;
-                    setAssignments((prev) => {
-                      const next = [...prev];
-                      next[i] = v;
-                      return next;
-                    });
-                  }}
-                  style={{ background: '#15171c', color: '#fff', border: '1px solid #555', fontSize: 11, padding: '2px 4px' }}
-                >
-                  <option value="">(skip)</option>
-                  {opts.map((tid) => (
-                    <option key={tid} value={tid}>{unitLabel(tid)}</option>
-                  ))}
-                </select>
+            <button key={i}
+              onClick={() => noTargets ? null : setSelectedHitIdx(i)}
+              disabled={noTargets}
+              title={assignedTo ? `→ ${unitLabel(assignedTo)}` : (noTargets ? '(no legal target)' : 'Click to select; then click a unit on the board')}
+              style={{
+                background: '#0c0d10',
+                border: isSelected ? '2px solid #ffd54a' : (assignedTo ? '2px solid #80dc78' : '1px solid #2a2d34'),
+                borderRadius: 3,
+                padding: '4px 6px', fontSize: 11,
+                display: 'flex', alignItems: 'center', gap: 4,
+                cursor: noTargets ? 'not-allowed' : 'pointer',
+                opacity: noTargets ? 0.4 : 1,
+                boxShadow: isSelected ? '0 0 6px #ffd54a' : undefined,
+              }}
+            >
+              <Die d={{ color: (h.color ?? 'black') as DieResult['color'], face: h.face }} />
+              {srcLabel && (
+                <span style={{ fontSize: 9, color: '#cbc4b0', fontWeight: 700 }}>{srcLabel}</span>
               )}
-            </div>
+              {assignedTo && (
+                <span style={{ color: '#80dc78', fontSize: 10 }}>
+                  → {unitLabel(assignedTo).slice(0, 10)}
+                  <span
+                    onClick={(e) => { e.stopPropagation(); clearHit(i); }}
+                    style={{ marginLeft: 4, color: '#ff8866', cursor: 'pointer' }}
+                  >✕</span>
+                </span>
+              )}
+              {noTargets && <span style={{ color: '#555', fontSize: 9 }}>—</span>}
+            </button>
           );
         })}
       </div>
-      <div style={{ marginTop: 8, textAlign: 'right' }}>
-        <button onClick={submit} style={btn(SIDE_COLOR[choice.side])}>Apply damage</button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button onClick={onSubmit} style={btn(SIDE_COLOR[choice.side])}>
+          {allAssigned ? 'Apply damage' : 'Apply (skip unassigned)'}
+        </button>
+        <button
+          className="tab-button"
+          onClick={() => { setAssignments(choice.hits.map(() => null)); setSelectedHitIdx(0); }}
+          title="Clear all picks and start over"
+        >Reset</button>
+        <span style={{ fontSize: 11, color: '#888' }}>
+          {assignments.filter((a) => a !== null).length} / {assignments.length} assigned
+        </span>
       </div>
     </div>
   );
