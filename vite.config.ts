@@ -9,10 +9,15 @@ import { resolve, relative } from 'node:path';
  * - /__game-dump — fired on every state change, mirrors the current G to
  *   ./game-logs/latest.json so the agent can read live state without
  *   copy-paste.
- * - /__report — in-game "Report a problem" dialog posts here. Files a
+ * - /api/report — in-game "Report a problem" dialog posts here. Files a
  *   GitHub Issue against the configured repo when SWR_BUGREPORT_TOKEN and
  *   SWR_BUGREPORT_REPO env vars are set (port of the ToTU pattern); always
  *   also writes the report to ./reports/ as a safety net.
+ * - /api/upload-logs — bulk-uploads play logs to the repo for AI training.
+ *
+ * Production uses Cloudflare Pages Functions at the SAME paths
+ * (`functions/api/report.ts`, `functions/api/upload-logs.ts`), so the
+ * client-side fetches don't need to switch URLs between dev and prod.
  *
  * No-op in production builds — Vite middleware only runs in `vite dev`.
  */
@@ -49,7 +54,7 @@ function devPlugin() {
       const token = process.env.SWR_BUGREPORT_TOKEN;
       const repo = process.env.SWR_BUGREPORT_REPO; // e.g. "johnchampaign/star-wars-rebellion"
 
-      server.middlewares.use('/__report', async (req: any, res: any) => {
+      server.middlewares.use('/api/report', async (req: any, res: any) => {
         if (req.method !== 'POST') { res.statusCode = 405; res.end('POST only'); return; }
         const chunks: Buffer[] = [];
         req.on('data', (c: Buffer) => chunks.push(c));
@@ -213,7 +218,7 @@ function devPlugin() {
       const logsDir = resolve(process.cwd(), 'logs');
       try { mkdirSync(logsDir, { recursive: true }); } catch { /* ignore */ }
 
-      server.middlewares.use('/__upload-logs', async (req: any, res: any) => {
+      server.middlewares.use('/api/upload-logs', async (req: any, res: any) => {
         if (req.method !== 'POST') { res.statusCode = 405; res.end('POST only'); return; }
         const chunks: Buffer[] = [];
         req.on('data', (c: Buffer) => chunks.push(c));

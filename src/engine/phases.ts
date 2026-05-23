@@ -5,7 +5,7 @@
 // See docs/engine.md §4–7.
 
 import type {
-  GameState, Side, SystemId, LeaderId, MissionResolution,
+  GameState, Side, SystemId, LeaderId, MissionResolution, UnitTypeId,
 } from './types';
 // (Phase advances from Setup → Assignment internally; no extra imports needed.)
 import * as M from './mechanics';
@@ -13,7 +13,7 @@ import { beginCombat, runCombat } from './combat';
 import { log } from './log';
 import * as Handlers from './handlers/registry';
 import { missionTargets } from './missionTargets';
-import { rollDie } from './rng';
+import { rollDie, shuffle } from './rng';
 import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck } from './objectives';
 
 /** Roll N mission dice and count successes. Per Rules Reference "Reveal a
@@ -83,8 +83,20 @@ function tryYodaReroll(
   if (idx < 0) return; // nothing worth rerolling
   const color = colors[idx];
   const fresh = rollDie(G.rng, color);
+  const holderName = G.catalog.leaders[yoda]?.name ?? yoda;
+  // Loud, prose-friendly log entry so the player understands what happened.
+  // The UI surfaces this in the mission report and the turn log.
   log(G, { kind: 'yoda-reroll', side: 'Rebel', payload: {
-    holder: yoda, systemId, color, oldFace: 'blank', newFace: fresh.face,
+    holder: yoda,
+    holderName,
+    systemId,
+    color,
+    oldFace: 'blank',
+    newFace: fresh.face,
+    rule: "Yoda's training: once per round, reroll one blank die on a mission " +
+          "or combat attack rolled by the leader bearing the Yoda ring.",
+    explanation: `Yoda (carried by ${holderName} at ${G.catalog.systems[systemId]?.name ?? systemId}) ` +
+                 `rerolled a blank ${color} die → ${fresh.face === 'blank' ? 'still blank' : fresh.face}.`,
   }});
   faces[idx] = fresh.face;
   G.yodaRerollUsedThisRound = true;
@@ -457,9 +469,71 @@ function advanceCommandTurn(G: GameState): void {
 
 export type MoveOrder = { fromSystemId: SystemId; unitInstanceIds: string[] };
 
-/** Activate a system. SKELETAL: does NOT yet validate transport capacity,
- *  restriction icons, or immobile units; full validation comes in the combat
- *  task. For now it accepts the moveOrders and applies them. */
+/** Per-source transport-capacity validator. RR p.9:
+ *   - Immobile units cannot move
+ *   - Each restriction-icon unit (TIE Fighter, X-Wing, Y-Wing) consumes 1
+ *     transport capacity AND requires at least one capacity-providing ship
+ *     also moving out of the same source system
+ *   - Each ground unit consumes 1 transport capacity
+ *   - Transport-capacity ships consume nothing themselves
+ *   - Total capacity available (from moving capacity-ships) ≥ total required
+ *   "Ignore transport restrictions" abilities (Hidden Fleet, Plan The Assault,
+ *   Planetary Conquest, Scouting Mission) bypass this; those handlers move
+ *   units via M.moveUnit directly and don't go through activateSystem. */
+export function validateMoveOrderTransport(
+  G: GameState, side: Side, order: MoveOrder
+): { ok: true } | { ok: false; reason: string } {
+  const src = order.fromSystemId === 'rebel-base-space'
+    ? G.map.rebelBaseSpace
+    : G.map.systems[order.fromSystemId];
+  if (!src) return { ok: false, reason: `unknown-source:${order.fromSystemId}` };
+
+  let capacityAvailable = 0;
+  let capacityProvidingShips = 0;
+  let restrictionUnits = 0;
+  let groundUnits = 0;
+  const ownership: string[] = [];
+  for (const uid of order.unitInstanceIds) {
+    const u = src.units.find((x) => x.instanceId === uid);
+    if (!u) return { ok: false, reason: `unit-not-at-source:${uid}` };
+    if (u.side !== side) return { ok: false, reason: `not-your-unit:${uid}` };
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t) return { ok: false, reason: `unknown-unit-type:${u.typeId}` };
+    if (t.transport.immobile) {
+      return { ok: false, reason: `immobile-unit:${u.typeId}` };
+    }
+    if (t.transport.capacity > 0) {
+      capacityAvailable += t.transport.capacity;
+      capacityProvidingShips++;
+    }
+    // Restriction-icon: needs to ride along.
+    if (t.transport.restriction) restrictionUnits++;
+    // Ground units (theater === 'ground') need transport too.
+    if (t.theater === 'ground' && t.class !== 'structure') groundUnits++;
+    ownership.push(u.typeId);
+  }
+  const required = restrictionUnits + groundUnits;
+  if (required > 0 && capacityProvidingShips === 0) {
+    return { ok: false, reason: `no-transport-capacity-ship-from-${order.fromSystemId}` };
+  }
+  if (required > capacityAvailable) {
+    return {
+      ok: false,
+      reason: `transport-capacity-short:${capacityAvailable}-need-${required}-from-${order.fromSystemId}`,
+    };
+  }
+  return { ok: true };
+}
+
+/** Activate a system per RR p.6 + RR p.9 movement rules. Validates:
+ *   - Leader is in pool and has tactic values
+ *   - Target system exists
+ *   - For each move-source: friendly leader doesn't block, adjacent to target
+ *   - For each move-source: per-source transport capacity ≥ per-source
+ *     transport requirement (ground units + restriction-icon fighters that
+ *     are moving); restriction-icon units require at least one capacity-
+ *     providing ship also moving from the same source
+ *   - No moving unit has the immobile icon */
 export function activateSystem(
   G: GameState, side: Side, leaderId: LeaderId, targetSystemId: SystemId, moveOrders: MoveOrder[] = []
 ): { ok: boolean; reason?: string } {
@@ -489,6 +563,12 @@ export function activateSystem(
         return { ok: false, reason: `not-adjacent:${order.fromSystemId}` };
       }
     }
+  }
+
+  // Transport-capacity validation (RR p.9). Validate per source system.
+  for (const order of moveOrders) {
+    const cap = validateMoveOrderTransport(G, side, order);
+    if (!cap.ok) return { ok: false, reason: cap.reason };
   }
 
   // Place the leader.
@@ -531,6 +611,18 @@ export function revealMission(
   if (G.phase !== 'Command') return { ok: false, reason: 'wrong-phase' };
   if (G.currentPlayer !== side) return { ok: false, reason: 'not-your-turn' };
   if (G.passedThisCommand.includes(side)) return { ok: false, reason: 'already-passed' };
+
+  // "Boba Fett, Where?" (Empire action card): "Rebels cannot attempt missions
+  // or use action cards here." We check Boba Fett's live position rather than
+  // a flag so the block ends naturally when he leaves the system (e.g.
+  // refresh retrieve, captured, eliminated). Empire-only blocker.
+  if (side === 'Rebel') {
+    const bobaHere = (G.empire.leadersOnBoard[targetSystemId] ?? []).includes('boba-fett')
+      && G.actionCardFlags?.bobaBlockSystemIds?.includes(targetSystemId);
+    if (bobaHere) {
+      return { ok: false, reason: `boba-fett-blocks-system:${targetSystemId}` };
+    }
+  }
 
   const f = faction(G, side);
   const assigned = f.leadersOnMissions.find((m) => m.missionId === missionId);
@@ -693,29 +785,50 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
     const att = rollMissionDice(G, attackerDice, pm.resolverSide, pm.targetSystemId);
     const opp = rollMissionDice(G, opposerDice, c.opposerSide, pm.targetSystemId);
     const portrait = portraitBonus(G, pm.missionId, pm.leaderIds as LeaderId[]);
-    const attackerSuccesses = att.successes + portrait;
-    const succeeded = attackerSuccesses > opp.successes;
-    log(G, { kind: 'mission-roll', side: pm.resolverSide, payload: {
-      missionId: pm.missionId, skill,
-      attacker: { dice: attackerDice, successes: att.successes, portrait, total: attackerSuccesses, faces: att.faces },
-      opposer: { side: c.opposerSide, leaderIds: oppLeaderIds, dice: opposerDice, successes: opp.successes, faces: opp.faces },
-      result: succeeded ? 'success' : 'failure',
-    }});
-    G.missionReports.push({
-      missionId: pm.missionId,
-      resolverSide: pm.resolverSide,
-      targetSystemId: pm.targetSystemId,
-      attackerLeaders: [...pm.leaderIds] as LeaderId[],
-      opposerSide: c.opposerSide,
-      opposerLeaders: [...oppLeaderIds] as LeaderId[],
-      skill,
-      attackerDice: { count: Math.min(attackerDice, 10), faces: att.faces, successes: att.successes },
-      opposerDice: { count: Math.min(opposerDice, 10), faces: opp.faces, successes: opp.successes },
-      portraitBonus: portrait,
-      attackerTotal: attackerSuccesses,
-      result: succeeded ? 'success' : 'failure',
-    });
-    pm.stage = succeeded ? 'effect' : 'failed';
+
+    // R2-D2 mission-flip pause point. If Empire rolled (resolver OR opposer)
+    // AND the Rebel holds R2-D2 AND that Empire roll has a non-blank die,
+    // stash the partial state and post the choice. The resolver applies
+    // the flip and re-enters this function to finalise.
+    const empireRoll =
+      pm.resolverSide === 'Empire' ? { faces: att.faces, colors: att.colors, who: 'attacker' as const } :
+      c.opposerSide === 'Empire' ? { faces: opp.faces, colors: opp.colors, who: 'opposer' as const } :
+      null;
+    if (empireRoll && G.rebel.actionHand.includes('resourceful-astromech')) {
+      const flippable = empireRoll.faces
+        .map((f, i) => f !== 'blank' ? i : -1)
+        .filter((i) => i >= 0);
+      if (flippable.length > 0) {
+        pm.r2d2Pending = {
+          attDice: attackerDice,
+          opposerDice,
+          attFaces: [...att.faces],
+          attColors: [...att.colors],
+          attSuccesses: att.successes,
+          oppFaces: [...opp.faces],
+          oppColors: [...opp.colors],
+          oppSuccesses: opp.successes,
+          portrait,
+          oppLeaderIds: [...oppLeaderIds] as LeaderId[],
+          empireSide: empireRoll.who,
+        };
+        G.pendingChoice = {
+          kind: 'R2D2Flip',
+          side: 'Rebel',
+          context: 'mission',
+          systemId: pm.targetSystemId,
+          flippableDieIndices: flippable,
+          missionFaces: [...empireRoll.faces],
+        };
+        log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+          kind: 'R2D2Flip', context: 'mission',
+          flippable: flippable.length,
+        }});
+        return { ok: true };
+      }
+    }
+
+    finalizeMissionRoll(G, pm, c, skill, attackerDice, opposerDice, att.faces, opp.faces, att.successes, opp.successes, portrait, oppLeaderIds as LeaderId[]);
   }
 
   // Continue mission resolution.
@@ -737,6 +850,115 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
  *  Rebel chooses to place next on top. Each call moves one card from
  *  `remaining` into `orderedTop`. When all are placed, the deck is updated
  *  and mission resolution resumes. */
+/** Compute successes from a face array (re-used after R2-D2 flips). */
+function successesFromFaces(faces: string[]): number {
+  let s = 0;
+  for (const f of faces) s += missionDieScore(f);
+  return s;
+}
+
+/** Push the mission report + advance pm.stage from a finalized roll. Shared
+ *  by both the inline path (no R2-D2) and the post-R2D2 resume path. */
+function finalizeMissionRoll(
+  G: GameState,
+  pm: MissionResolution,
+  c: { skill: string; opposerSide: Side },
+  skill: string,
+  attackerDice: number,
+  opposerDice: number,
+  attFaces: string[],
+  oppFaces: string[],
+  attSuccesses: number,
+  oppSuccesses: number,
+  portrait: number,
+  oppLeaderIds: LeaderId[],
+): void {
+  const attackerTotal = attSuccesses + portrait;
+  const succeeded = attackerTotal > oppSuccesses;
+  log(G, { kind: 'mission-roll', side: pm.resolverSide, payload: {
+    missionId: pm.missionId, skill,
+    attacker: { dice: attackerDice, successes: attSuccesses, portrait, total: attackerTotal, faces: attFaces },
+    opposer: { side: c.opposerSide, leaderIds: oppLeaderIds, dice: opposerDice, successes: oppSuccesses, faces: oppFaces },
+    result: succeeded ? 'success' : 'failure',
+  }});
+  (G.missionReports ??= []).push({
+    missionId: pm.missionId,
+    resolverSide: pm.resolverSide,
+    targetSystemId: pm.targetSystemId,
+    attackerLeaders: [...pm.leaderIds] as LeaderId[],
+    opposerSide: c.opposerSide,
+    opposerLeaders: [...oppLeaderIds] as LeaderId[],
+    skill,
+    attackerDice: { count: Math.min(attackerDice, 10), faces: attFaces, successes: attSuccesses },
+    opposerDice: { count: Math.min(opposerDice, 10), faces: oppFaces, successes: oppSuccesses },
+    portraitBonus: portrait,
+    attackerTotal,
+    result: succeeded ? 'success' : 'failure',
+  });
+  pm.stage = succeeded ? 'effect' : 'failed';
+}
+
+/** Resolve a mission-context R2-D2 flip. flipIndex === null → skip (card
+ *  stays in hand). Otherwise flip the chosen face in the stashed Empire-
+ *  roll faces to blank, discard the card, then finalise the mission. */
+export function resolveR2D2MissionFlip(G: GameState, flipIndex: number | null): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'R2D2Flip' || pc.context !== 'mission') return { ok: false, reason: 'no-pending' };
+  const pm = G.pendingMission;
+  if (!pm || !pm.r2d2Pending) return { ok: false, reason: 'no-r2d2-stash' };
+  const stash = pm.r2d2Pending;
+  if (flipIndex !== null) {
+    const facesArr = stash.empireSide === 'attacker' ? stash.attFaces : stash.oppFaces;
+    if (flipIndex < 0 || flipIndex >= facesArr.length) return { ok: false, reason: 'bad-index' };
+    if (facesArr[flipIndex] === 'blank') return { ok: false, reason: 'already-blank' };
+    const before = facesArr[flipIndex];
+    facesArr[flipIndex] = 'blank';
+    // Discard the R2-D2 card.
+    const i = G.rebel.actionHand.indexOf('resourceful-astromech');
+    if (i >= 0) {
+      G.rebel.actionHand.splice(i, 1);
+      G.rebel.actionDiscard.push('resourceful-astromech');
+    }
+    // Recompute successes on the side that was flipped.
+    if (stash.empireSide === 'attacker') {
+      stash.attSuccesses = successesFromFaces(stash.attFaces);
+    } else {
+      stash.oppSuccesses = successesFromFaces(stash.oppFaces);
+    }
+    log(G, { kind: 'r2d2-flip', side: 'Rebel', payload: {
+      context: 'mission', systemId: pm.targetSystemId,
+      dieIndex: flipIndex, flippedFrom: before, empireSide: stash.empireSide,
+      explanation: `R2-D2 ring discarded — turned an Empire ${stash.empireSide}'s "${before}" mission die to blank.`,
+    }});
+  } else {
+    log(G, { kind: 'r2d2-skipped', side: 'Rebel', payload: { context: 'mission', systemId: pm.targetSystemId } });
+  }
+  G.pendingChoice = undefined;
+  pm.r2d2Pending = undefined;
+  // Now finalise the mission roll with possibly-modified faces.
+  const c = { skill: G.catalog.missions[pm.missionId]?.skill ?? '', opposerSide: pm.resolverSide === 'Rebel' ? 'Empire' as Side : 'Rebel' as Side };
+  finalizeMissionRoll(
+    G, pm, c, c.skill,
+    stash.attDice, stash.opposerDice,
+    stash.attFaces, stash.oppFaces,
+    stash.attSuccesses, stash.oppSuccesses,
+    stash.portrait, stash.oppLeaderIds,
+  );
+  // Continue mission resolution.
+  if (pm.stage === 'effect') {
+    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[]);
+    if (G.pendingChoice) return { ok: true };
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    G.pendingMission = undefined;
+    if (!G.isGameOver) advanceCommandTurn(G);
+  } else if (pm.stage === 'failed') {
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    G.pendingMission = undefined;
+    if (!G.isGameOver) advanceCommandTurn(G);
+  }
+  return { ok: true };
+}
+
 export function resolveStolenPlansPick(G: GameState, cardId: string): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;
   if (!choice || choice.kind !== 'StolenPlansReorder') {
@@ -777,8 +999,16 @@ export function resolvePlanTheAssaultShips(G: GameState, shipIds: string[]): { o
     }
   }
   const targetSystemId = choice.targetSystemId;
+  // RAW: "Move ships (but not ground units) from the Rebel Base space to
+  // this system as if they were adjacent." Adjacency is bypassed but the
+  // card does NOT say "ignoring transport restrictions" — fighters with
+  // the restriction icon (X-Wing, Y-Wing) still need a transport-capacity
+  // ship in the move group.
+  const cap = validateMoveOrderTransport(G, 'Rebel', {
+    fromSystemId: 'rebel-base-space', unitInstanceIds: shipIds,
+  });
+  if (!cap.ok) return { ok: false, reason: `plan-the-assault-transport:${cap.reason}` };
   // Move each picked ship from rebel-base-space to the target system.
-  // (M.moveUnit handles invariants like reveal-base checks.)
   for (const sid of shipIds) {
     M.moveUnit(G, sid, 'rebel-base-space', targetSystemId);
   }
@@ -1109,6 +1339,65 @@ export function resolveCovertOperationPick(G: GameState, keepInHandId: string): 
   return { ok: true };
 }
 
+/** Detained: Empire picks which Rebel leader at the target system gets the
+ *  "skip next refresh retrieve" mark. */
+export function resolveDetainedTargetPick(G: GameState, leaderId: LeaderId): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'DetainedTargetPick') return { ok: false, reason: 'no-pending' };
+  if (!choice.candidates.includes(leaderId)) return { ok: false, reason: 'bad-leader' };
+  G.detainedLeadersNextRefresh = G.detainedLeadersNextRefresh ?? [];
+  if (!G.detainedLeadersNextRefresh.some((d) => d.leaderId === leaderId)) {
+    G.detainedLeadersNextRefresh.push({ side: 'Rebel', leaderId });
+  }
+  log(G, { kind: 'detained-applied', side: 'Empire', payload: { leaderId } });
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Retrieve The Plans: Empire picks 1 card from the Rebel's revealed
+ *  objective hand to send to the bottom of the objective deck. */
+export function resolveRetrieveThePlansPick(G: GameState, objectiveId: string): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'RetrieveThePlansPick') return { ok: false, reason: 'no-pending' };
+  if (!choice.candidates.includes(objectiveId)) return { ok: false, reason: 'bad-card' };
+  const hand = G.rebel.objectiveHand ?? [];
+  const i = hand.indexOf(objectiveId);
+  if (i < 0) return { ok: false, reason: 'card-not-in-hand-anymore' };
+  hand.splice(i, 1);
+  (G.rebel.objectiveDeck ??= []).push(objectiveId);
+  log(G, { kind: 'retrieve-plans-applied', side: 'Empire', payload: {
+    bottomed: objectiveId, revealedHand: choice.candidates,
+  }});
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Interrogation Droid: Rebel picks 2 decoy systems; engine adds the actual
+ *  base and logs the trio so Empire learns the same info they'd see at
+ *  a physical table (the base is among these 3). */
+export function resolveInterrogationDroidDecoyPick(G: GameState, systemIds: SystemId[]): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'InterrogationDroidDecoyPick') return { ok: false, reason: 'no-pending' };
+  if (systemIds.length !== choice.count) return { ok: false, reason: `expected-${choice.count}-systems` };
+  if (new Set(systemIds).size !== systemIds.length) return { ok: false, reason: 'duplicates-not-allowed' };
+  for (const sid of systemIds) {
+    if (!choice.candidates.includes(sid)) return { ok: false, reason: `bad-system:${sid}` };
+    if (sid === G.rebelBaseSystemId) return { ok: false, reason: 'cannot-name-base-as-decoy' };
+  }
+  // Combine 2 decoys + base, then shuffle (deterministically via the seeded
+  // RNG) so the log doesn't betray the base's position.
+  const shuffled = shuffle(G.rng, [...systemIds, G.rebelBaseSystemId]);
+  log(G, { kind: 'interrogation-droid-named-systems', side: 'Rebel', payload: {
+    named: shuffled,
+    note: 'One of these contains the Rebel base.',
+  }});
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 export function resolveInfiltrationPick(G: GameState, keepOnTopId: string): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;
   if (!choice || choice.kind !== 'InfiltrationPick') {
@@ -1216,16 +1505,18 @@ function enterRefreshPhase(G: GameState): void {
 
 /** Continues the refresh phase after the build step (which may have paused
  *  for BuildPick choices). Runs deploy, builds the report, advances to
- *  Assignment. */
+ *  Assignment. If the deploy step needs player picks, this returns early
+ *  and resumes via resolveDeployUnitPick. */
 function finishRefreshAfterBuild(G: GameState, logStart: number): void {
-  // Step 6: Deploy units (slide queue)
-  refreshDeployUnits(G);
+  // Step 6: Deploy units (slide queue + per-unit deploy picks)
+  if (refreshDeployUnits(G)) return; // paused for DeployUnitPick
+  finishRefreshAfterDeploy(G, logStart);
+}
+
+/** Final step of the refresh phase: report + advance to Assignment. */
+function finishRefreshAfterDeploy(G: GameState, logStart: number): void {
   if (G.isGameOver) return;
-
-  // Build the refresh report by scanning the log slice we just emitted.
   buildRefreshReport(G, logStart);
-
-  // Round complete — back to Assignment for the next round.
   enterAssignmentPhase(G);
 }
 
@@ -1335,30 +1626,51 @@ function refreshPlayStartOfRefreshObjectives(G: GameState): void {
 }
 
 function refreshRetrieveLeaders(G: GameState): void {
+  const detainedThisRound = new Set(
+    (G.detainedLeadersNextRefresh ?? []).map((d) => `${d.side}:${d.leaderId}`)
+  );
+  const skippedReturn: string[] = [];
   for (const side of ['Rebel', 'Empire'] as const) {
     const f = faction(G, side);
     const retrieved: string[] = [];
+    const tryReturn = (lid: string): boolean => {
+      // Detained leaders skip THIS refresh's retrieve (single-use per RAW).
+      if (detainedThisRound.has(`${side}:${lid}`)) {
+        skippedReturn.push(lid);
+        return false;
+      }
+      if (!f.leaderPool.includes(lid)) f.leaderPool.push(lid);
+      retrieved.push(lid);
+      return true;
+    };
     // Leaders on missions return without revealing (rr p.9).
     for (const a of f.leadersOnMissions) {
-      for (const lid of a.leaderIds) {
-        if (!f.leaderPool.includes(lid)) f.leaderPool.push(lid);
-        retrieved.push(lid);
-      }
+      for (const lid of a.leaderIds) tryReturn(lid);
       f.missionHand.push(a.missionId);
     }
     f.leadersOnMissions = [];
     // Leaders on the board return to the pool.
-    for (const list of Object.values(f.leadersOnBoard)) {
+    // Skipped (detained) ones stay where they are — they remain on the board
+    // and become retrievable next refresh.
+    const newBoard: typeof f.leadersOnBoard = {};
+    for (const [sysId, list] of Object.entries(f.leadersOnBoard)) {
+      const remaining: string[] = [];
       for (const lid of list) {
-        if (!f.leaderPool.includes(lid)) f.leaderPool.push(lid);
-        retrieved.push(lid);
+        const returned = tryReturn(lid);
+        if (!returned) remaining.push(lid);
       }
+      if (remaining.length > 0) newBoard[sysId] = remaining;
     }
-    f.leadersOnBoard = {};
+    f.leadersOnBoard = newBoard;
     if (retrieved.length > 0) {
       log(G, { kind: 'refresh-retrieve', side, payload: { leaderIds: retrieved } });
     }
   }
+  if (skippedReturn.length > 0) {
+    log(G, { kind: 'detained-refresh-skip', payload: { leaderIds: skippedReturn } });
+  }
+  // RAW: Detained is single-use; clear the marker after applying.
+  G.detainedLeadersNextRefresh = [];
 }
 
 function refreshDrawMissions(G: GameState): void {
@@ -1664,32 +1976,12 @@ export function resolveBuildPicks(G: GameState, choices: string[]): { ok: boolea
   return { ok: true };
 }
 
-function refreshDeployUnits(G: GameState): void {
-  // Slide queues 3 -> 2 -> 1 -> deploy. (rr p.7)
-  for (const side of ['Rebel', 'Empire'] as const) {
-    const f = faction(G, side);
-    const deploying = f.buildQueue[1];
-    f.buildQueue[1] = f.buildQueue[2];
-    f.buildQueue[2] = f.buildQueue[3];
-    f.buildQueue[3] = [];
-
-    // Auto-deploy: place each unit in the first eligible system. Real game
-    // lets the player pick. [TODO]
-    for (const typeId of deploying) {
-      const sys = pickDefaultDeployTarget(G, side, typeId);
-      if (sys) {
-        M.deployUnit(G, side, typeId, sys);
-      } else {
-        // No legal target: returns to slot 1 (rr p.7).
-        f.buildQueue[1].push(typeId);
-      }
-    }
-  }
-}
-
-function pickDefaultDeployTarget(G: GameState, side: Side, _typeId: string): string | null {
-  // Find any system where this side has loyalty (or subjugation for Empire)
-  // and the opponent has no units, no sabotage, room for one more unit.
+/** All legal deploy-target systems for one unit type from `side`, per
+ *  RR p.7. A system is legal if it's controlled (subjugated for Empire),
+ *  has no enemy units, no sabotage, isn't destroyed, isn't remote. Rebel
+ *  Base space is added if the base is still hidden. */
+export function legalDeployTargets(G: GameState, side: Side): SystemId[] {
+  const out: SystemId[] = [];
   for (const [sysId, ss] of Object.entries(G.map.systems)) {
     const sysDef = G.catalog.systems[sysId];
     if (!sysDef || sysDef.isRemote || ss.destroyed || ss.sabotage) continue;
@@ -1697,12 +1989,472 @@ function pickDefaultDeployTarget(G: GameState, side: Side, _typeId: string): str
     if (side === 'Empire' && ss.loyalty !== 'imperial' && !ss.subjugated) continue;
     const opp: Side = side === 'Rebel' ? 'Empire' : 'Rebel';
     if (ss.units.some((u) => u.side === opp)) continue;
-    return sysId;
+    out.push(sysId);
   }
   if (side === 'Rebel' && !G.rebelBaseRevealed) {
-    return 'rebel-base-space';
+    out.push('rebel-base-space');
   }
+  return out;
+}
+
+/** Refresh deploy step. Slides queue 3→2→1, then queues a DeployUnitPick
+ *  for each unit that falls off slot 1. Returns true if a choice is pending
+ *  (caller must wait for resolveDeployUnitPick); false if everything
+ *  auto-resolved (zero candidates → returned to slot 1, exactly one
+ *  candidate → auto-deployed). */
+function refreshDeployUnits(G: GameState): boolean {
+  const queue: { side: Side; typeId: UnitTypeId }[] = [];
+  for (const side of ['Rebel', 'Empire'] as const) {
+    const f = faction(G, side);
+    const deploying = f.buildQueue[1];
+    f.buildQueue[1] = f.buildQueue[2];
+    f.buildQueue[2] = f.buildQueue[3];
+    f.buildQueue[3] = [];
+    for (const typeId of deploying) {
+      queue.push({ side, typeId });
+    }
+  }
+  if (!G.refreshPaused) {
+    // Defensive: should always be set during a refresh, but if not, create.
+    G.refreshPaused = { logStart: G.turnLog.length, pendingBuildPicks: [] };
+  }
+  G.refreshPaused.pendingDeployPicks = queue;
+  // Start the deploy-cap counter fresh for this Refresh phase.
+  G.refreshPaused.deployedThisPhase = {};
+  return promoteNextDeployPick(G);
+}
+
+/** Apply RR p.7 cap: filter `candidates` down to systems where this side
+ *  has deployed fewer than 2 units in the current Refresh's deploy step. */
+function applyDeployCap(G: GameState, side: Side, candidates: SystemId[]): SystemId[] {
+  const counts = G.refreshPaused?.deployedThisPhase?.[side] ?? {};
+  return candidates.filter((sid) => (counts[sid] ?? 0) < 2);
+}
+
+/** Record a successful deploy for the per-Refresh per-side per-system cap. */
+function trackDeploy(G: GameState, side: Side, systemId: SystemId): void {
+  const r = G.refreshPaused;
+  if (!r) return;
+  r.deployedThisPhase = r.deployedThisPhase ?? {};
+  const bySys = (r.deployedThisPhase[side] = r.deployedThisPhase[side] ?? {});
+  bySys[systemId] = (bySys[systemId] ?? 0) + 1;
+}
+
+/** Take the next pending deploy entry; auto-resolve if 0 or 1 candidates,
+ *  otherwise post a DeployUnitPick choice. Returns true if we paused.
+ *  RAW (RR p.7): max 2 deploys per side per system per Refresh — applied
+ *  via applyDeployCap on every candidate set. */
+function promoteNextDeployPick(G: GameState): boolean {
+  const r = G.refreshPaused;
+  if (!r?.pendingDeployPicks) return false;
+  while (r.pendingDeployPicks.length > 0) {
+    const next = r.pendingDeployPicks[0];
+    const f = faction(G, next.side);
+    const candidates = applyDeployCap(G, next.side, legalDeployTargets(G, next.side));
+    if (candidates.length === 0) {
+      // RAW: returns to slot 1 of build queue. (Includes the case where
+      // every legal system is already saturated at the 2-deploy cap.)
+      f.buildQueue[1].push(next.typeId);
+      log(G, { kind: 'deploy-returned-to-queue', side: next.side, payload: {
+        typeId: next.typeId,
+        reason: legalDeployTargets(G, next.side).length === 0 ? 'no-legal-system' : 'all-systems-at-deploy-cap',
+      }});
+      r.pendingDeployPicks.shift();
+      continue;
+    }
+    if (candidates.length === 1) {
+      M.deployUnit(G, next.side, next.typeId, candidates[0]);
+      trackDeploy(G, next.side, candidates[0]);
+      r.pendingDeployPicks.shift();
+      continue;
+    }
+    // Multiple legal targets — player picks.
+    G.pendingChoice = {
+      kind: 'DeployUnitPick',
+      side: next.side,
+      typeId: next.typeId,
+      candidates,
+    };
+    log(G, { kind: 'choice-request', side: next.side, payload: {
+      kind: 'DeployUnitPick', typeId: next.typeId, candidates,
+    }});
+    return true;
+  }
+  // All deploys done.
+  r.pendingDeployPicks = undefined;
+  return false;
+}
+
+/** Player picks a system to deploy the queued unit into. */
+export function resolveDeployUnitPick(G: GameState, systemId: SystemId): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'DeployUnitPick') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(systemId)) return { ok: false, reason: 'not-a-candidate' };
+  // Defensive cap check — candidates list was already filtered by
+  // applyDeployCap when the choice was posted, but re-check in case the
+  // state changed between modal-post and player-submit.
+  const cur = G.refreshPaused?.deployedThisPhase?.[pc.side]?.[systemId] ?? 0;
+  if (cur >= 2) return { ok: false, reason: `deploy-cap-reached:${systemId}` };
+  M.deployUnit(G, pc.side, pc.typeId, systemId);
+  trackDeploy(G, pc.side, systemId);
+  G.pendingChoice = undefined;
+  const r = G.refreshPaused;
+  if (r?.pendingDeployPicks) r.pendingDeployPicks.shift();
+  if (promoteNextDeployPick(G)) return { ok: true };
+  // All deploys done — finish refresh.
+  const logStart = r?.logStart ?? 0;
+  G.refreshPaused = undefined;
+  finishRefreshAfterDeploy(G, logStart);
+  return { ok: true };
+}
+
+// ============================================================================
+// Assignment-phase action card play (14 cards, timing=Assignment)
+// ============================================================================
+//
+// Rules: a player may play any number of action cards during their Assignment
+// turn (rr p.4 — Assignment phase, "play action cards"). Each Assignment-timed
+// card requires a named leader; the leader must be in the player's leader pool
+// (i.e. NOT already on the board / on a mission / captured / eliminated).
+// Playing the card places the leader on the named space and applies the
+// card's effect, then discards the card to the action-card discard.
+//
+// Implementation status per card (* = full effect; † = leader placed + partial
+// effect; ‡ = leader placed + log notice, full effect manual):
+//   * rebel-planning          (place at Rebel Base, draw 1 objective)
+//   * public-support          (place + gain 3 stormtroopers + freeze-exempt flag)
+//   * an-old-friend           (place at Bespin/Kashyyyk + recruit Lando/Chewbacca)
+//   * rebel-planning          (see above)
+//   * temporary-alliance      (place + add the system's resource icons as build queue entries — simplified)
+//   * brilliant-administrator (place + grant 1 build action via flag)
+//   * local-rumors            (place + log "rebel base in this region: Y/N")
+//   † ambush                  (place + DestroyUpToHealth pick on Imperial ground at system)
+//   ‡ boba-fett-where         (place + set blocker flag — Rebels can't mission/action here this turn)
+//   ‡ catch-them-by-surprise  (place Ozzel + log; manual fleet move expected by player on their next Command turn)
+//   ‡ proceeding-as-planned   (place + log; project deck search is project-deck infra, not yet wired)
+//   ‡ scouting-mission        (place + log; TIE relocate + auto-combat is complex)
+//   ‡ independent-operation   (place at subjugated system + log; forced Imperial ground evacuation manual)
+//   ‡ our-most-desperate-hour (place Leia on a mission card in hand — already handled by player at assign step; log notice)
+//   ‡ start-the-evacuation    (no leader to place in pool; Rieekan + base-units move — manual)
+
+export function playableAssignmentActionCards(G: GameState, side: Side): string[] {
+  const f = faction(G, side);
+  const out: string[] = [];
+  for (const cid of f.actionHand) {
+    const card = G.catalog.actions[cid];
+    if (!card) continue;
+    if (card.timing !== 'Assignment') continue;
+    // Leader requirement: at least one named leader must be in the pool.
+    const reqs = card.leaderRequirement ?? [];
+    if (reqs.length > 0 && !reqs.some((lid) => f.leaderPool.includes(lid))) continue;
+    out.push(cid);
+  }
+  return out;
+}
+
+/** Player explicitly opens the action-card play modal during their Assignment turn. */
+export function requestAssignmentActionCardPlay(G: GameState, side: Side): { ok: boolean; reason?: string } {
+  if (G.phase !== 'Assignment') return { ok: false, reason: 'wrong-phase' };
+  if (G.currentPlayer !== side) return { ok: false, reason: 'not-your-turn' };
+  if (G.pendingChoice) return { ok: false, reason: 'pending-choice' };
+  const candidates = playableAssignmentActionCards(G, side);
+  if (candidates.length === 0) return { ok: false, reason: 'no-playable-action-cards' };
+  G.pendingChoice = { kind: 'PlayAssignmentActionCard', side, candidates };
+  log(G, { kind: 'choice-request', side, payload: { kind: 'PlayAssignmentActionCard', candidates } });
+  return { ok: true };
+}
+
+/** "Cancel" the play modal without picking. */
+export function cancelAssignmentActionCardPlay(G: GameState): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'PlayAssignmentActionCard') return { ok: false, reason: 'no-pending' };
+  G.pendingChoice = undefined;
+  log(G, { kind: 'choice-cancel', side: pc.side, payload: { kind: 'PlayAssignmentActionCard' } });
+  return { ok: true };
+}
+
+/** Per-card "needs a system pick?" + legal-system filter. */
+function legalSystemsForAssignmentCard(G: GameState, side: Side, cardId: string): SystemId[] | null {
+  const all = Object.keys(G.map.systems);
+  switch (cardId) {
+    case 'boba-fett-where':
+    case 'brilliant-administrator':
+    case 'public-support': {
+      // Imperial system. Per card text "Imperial system" = loyalty=imperial OR subjugated.
+      return all.filter((sid) => {
+        const ss = G.map.systems[sid];
+        return ss && (ss.loyalty === 'imperial' || ss.subjugated);
+      });
+    }
+    case 'local-rumors': {
+      // Any system with an Imperial unit.
+      return all.filter((sid) => {
+        const ss = G.map.systems[sid];
+        return ss && ss.units.some((u) => u.side === 'Empire');
+      });
+    }
+    case 'catch-them-by-surprise':
+    case 'scouting-mission':
+    case 'ambush': {
+      // Any system.
+      return all;
+    }
+    case 'an-old-friend': {
+      return all.filter((sid) => sid === 'bespin' || sid === 'kashyyyk');
+    }
+    case 'independent-operation': {
+      return all.filter((sid) => G.map.systems[sid]?.subjugated);
+    }
+    case 'temporary-alliance': {
+      return all.filter((sid) => G.map.systems[sid]?.loyalty === 'neutral');
+    }
+    // No system pick needed:
+    case 'rebel-planning':           return null; // Rebel Base
+    case 'proceeding-as-planned':    return null; // attached to project, not a system
+    case 'our-most-desperate-hour':  return null; // attached to a mission card in hand
+    case 'start-the-evacuation':     return null; // moves units; no leader-placement
+    default: return null;
+  }
+}
+
+/** Default placement system for cards that don't take a system pick. */
+function defaultPlacementSystemForCard(cardId: string): SystemId | null {
+  if (cardId === 'rebel-planning') return 'rebel-base-space';
   return null;
+}
+
+/** Player picks a card from the PlayAssignmentActionCard candidates. If the
+ *  card needs a system, posts an ActionCardSystemPick; else applies effect now. */
+export function playAssignmentActionCard(G: GameState, cardId: string): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'PlayAssignmentActionCard') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(cardId)) return { ok: false, reason: 'not-a-candidate' };
+  const side = pc.side;
+  const card = G.catalog.actions[cardId];
+  if (!card) return { ok: false, reason: 'unknown-card' };
+
+  const legalSystems = legalSystemsForAssignmentCard(G, side, cardId);
+  if (legalSystems !== null) {
+    if (legalSystems.length === 0) return { ok: false, reason: 'no-legal-system' };
+    // Swap pending choice from "pick card" → "pick system for this card".
+    G.pendingChoice = { kind: 'ActionCardSystemPick', side, cardId, candidates: legalSystems };
+    log(G, { kind: 'choice-request', side, payload: { kind: 'ActionCardSystemPick', cardId, candidates: legalSystems } });
+    return { ok: true };
+  }
+
+  // No system pick — apply directly.
+  G.pendingChoice = undefined;
+  applyAssignmentActionCardEffect(G, side, cardId, defaultPlacementSystemForCard(cardId));
+  return { ok: true };
+}
+
+/** Player picks the system for a card that needed one. */
+export function resolveActionCardSystemPick(G: GameState, systemId: SystemId): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'ActionCardSystemPick') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(systemId)) return { ok: false, reason: 'not-a-candidate' };
+  const { side, cardId } = pc;
+  G.pendingChoice = undefined;
+  applyAssignmentActionCardEffect(G, side, cardId, systemId);
+  return { ok: true };
+}
+
+/** Helper: discard the card to action discard and (if it has a leader requirement)
+ *  remove the chosen leader from the pool and place it on the target system. */
+function consumeCardAndPlaceLeader(
+  G: GameState, side: Side, cardId: string, systemId: SystemId | null,
+): { leaderId: LeaderId | null } {
+  const f = faction(G, side);
+  // Discard the card.
+  const i = f.actionHand.indexOf(cardId);
+  if (i >= 0) f.actionHand.splice(i, 1);
+  f.actionDiscard.push(cardId);
+
+  const card = G.catalog.actions[cardId];
+  const reqs = card?.leaderRequirement ?? [];
+  let placed: LeaderId | null = null;
+  for (const lid of reqs) {
+    if (f.leaderPool.includes(lid)) { placed = lid; break; }
+  }
+  if (placed && systemId) {
+    const pi = f.leaderPool.indexOf(placed);
+    if (pi >= 0) f.leaderPool.splice(pi, 1);
+    M.placeLeader(G, side, placed, systemId);
+  }
+  return { leaderId: placed };
+}
+
+/** Per-card effect dispatch. `systemId` is null for cards that don't place a leader. */
+function applyAssignmentActionCardEffect(
+  G: GameState, side: Side, cardId: string, systemId: SystemId | null,
+): void {
+  const { leaderId } = consumeCardAndPlaceLeader(G, side, cardId, systemId);
+  log(G, { kind: 'action-card-play', side, payload: { cardId, leaderId, systemId, timing: 'Assignment' } });
+
+  switch (cardId) {
+    // ---------- Rebel ----------
+    case 'rebel-planning': {
+      M.drawObjective(G, 1);
+      break;
+    }
+    case 'an-old-friend': {
+      // Han at Bespin → recruit Lando; at Kashyyyk → recruit Chewbacca.
+      const target = systemId === 'bespin' ? 'lando-calrissian'
+                   : systemId === 'kashyyyk' ? 'chewbacca' : null;
+      const f = faction(G, side);
+      if (target && G.catalog.leaders[target]
+          && !f.leaderPool.includes(target)
+          && !f.eliminatedLeaders.includes(target)) {
+        f.leaderPool.push(target);
+        log(G, { kind: 'recruit-leader', side, payload: { leaderId: target, via: 'an-old-friend' } });
+      }
+      break;
+    }
+    case 'ambush': {
+      // Destroy up to 3 health of Imperial ground units at the system.
+      if (!systemId) break;
+      const ss = G.map.systems[systemId];
+      if (!ss) break;
+      const candidates = ss.units
+        .filter((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground')
+        .map((u) => u.instanceId);
+      if (candidates.length === 0) {
+        log(G, { kind: 'action-card-noop', side, payload: { cardId, reason: 'no-imperial-ground' } });
+        break;
+      }
+      G.pendingChoice = {
+        kind: 'DestroyUpToHealth',
+        side, systemId, candidates, budget: 3, cardName: 'Ambush',
+      };
+      log(G, { kind: 'choice-request', side, payload: { kind: 'DestroyUpToHealth', card: 'Ambush', candidates, budget: 3 } });
+      break;
+    }
+    case 'temporary-alliance': {
+      // Add the chosen neutral system's resource-icon units to the Rebel build queue.
+      if (!systemId) break;
+      const sysDef = G.catalog.systems[systemId];
+      if (!sysDef || !sysDef.buildSlot) {
+        log(G, { kind: 'action-card-noop', side, payload: { cardId, reason: 'no-build-icons' } });
+        break;
+      }
+      const slot = sysDef.buildSlot;
+      let added = 0;
+      for (const icon of sysDef.resources) {
+        // Pick a default unit for the icon: space → x-wing (triangle) / corellian-corvette / mc-cruiser by shape;
+        // ground → rebel-trooper / airspeeder / heavy-aa by shape. Player can refine via build pick UI later.
+        // Simplified: queue the smallest-tier unit matching theater. Engine doesn't gate this card.
+        const defaultId = pickDefaultUnitForIcon(side, icon);
+        if (defaultId) {
+          M.buildToQueue(G, side, defaultId, slot, systemId);
+          added++;
+        }
+      }
+      log(G, { kind: 'temporary-alliance-built', side, payload: { systemId, added, simplified: true } });
+      break;
+    }
+    case 'our-most-desperate-hour': {
+      // RAW: search the assignment deck (mission deck) for a card, put Leia on it.
+      // Engine doesn't yet expose mid-game mission-deck search. Log a partial.
+      log(G, { kind: 'action-card-partial', side, payload: { cardId, note: 'Leia returned to pool; mission-deck search not yet automated — assign Leia to any mission this turn.' } });
+      // Make sure Leia is in the pool (consumeCardAndPlaceLeader removed her if she was there).
+      const f = faction(G, side);
+      if (!f.leaderPool.includes('princess-leia')
+          && !f.eliminatedLeaders.includes('princess-leia')) {
+        f.leaderPool.push('princess-leia');
+      }
+      break;
+    }
+    case 'independent-operation': {
+      log(G, { kind: 'action-card-partial', side, payload: { cardId, note: 'Lando placed in subjugated system; forced Imperial ground evacuation must be enacted manually.' } });
+      break;
+    }
+    case 'start-the-evacuation': {
+      log(G, { kind: 'action-card-partial', side, payload: { cardId, note: 'Move units from Rebel Base to any non-Imperial system manually (move-units UI not wired for this card).' } });
+      break;
+    }
+
+    // ---------- Empire ----------
+    case 'public-support': {
+      // Gain 3 stormtroopers at the system; set "Greejatus does not pin units out" flag.
+      if (!systemId) break;
+      for (let i = 0; i < 3; i++) M.gainUnit(G, 'Empire', 'stormtrooper', systemId);
+      G.actionCardFlags = G.actionCardFlags ?? {};
+      G.actionCardFlags.greejatusFreeMoveSystemId = systemId;
+      log(G, { kind: 'public-support-gain', side: 'Empire', payload: { systemId, stormtroopers: 3 } });
+      break;
+    }
+    case 'brilliant-administrator': {
+      // "Immediately build with it" — grant Empire one free build action at this system.
+      G.actionCardFlags = G.actionCardFlags ?? {};
+      G.actionCardFlags.tarkinFreeBuildSystemId = systemId ?? undefined;
+      log(G, { kind: 'action-card-partial', side: 'Empire', payload: { cardId, note: 'Tarkin placed; "immediately build with it" needs manual build via your Command turn at this system.', systemId } });
+      break;
+    }
+    case 'local-rumors': {
+      if (!systemId) break;
+      const sysDef = G.catalog.systems[systemId];
+      const baseDef = G.catalog.systems[G.rebelBaseSystemId];
+      const sameRegion = !!(sysDef && baseDef && sysDef.region === baseDef.region);
+      log(G, { kind: 'local-rumors-reveal', side: 'Empire', payload: {
+        systemId, region: sysDef?.region, baseInRegion: sameRegion,
+      }});
+      break;
+    }
+    case 'boba-fett-where': {
+      if (!systemId) break;
+      G.actionCardFlags = G.actionCardFlags ?? {};
+      G.actionCardFlags.bobaBlockSystemIds = G.actionCardFlags.bobaBlockSystemIds ?? [];
+      if (!G.actionCardFlags.bobaBlockSystemIds.includes(systemId)) {
+        G.actionCardFlags.bobaBlockSystemIds.push(systemId);
+      }
+      log(G, { kind: 'boba-block', side: 'Empire', payload: { systemId } });
+      break;
+    }
+    case 'catch-them-by-surprise': {
+      log(G, { kind: 'action-card-partial', side: 'Empire', payload: { cardId, note: 'Ozzel placed; move a fleet now via the standard activation UI (this card lets you move during Assignment).' } });
+      break;
+    }
+    case 'proceeding-as-planned': {
+      log(G, { kind: 'action-card-partial', side: 'Empire', payload: { cardId, note: 'Leader returned to pool; project-deck search must be done manually until project assignment UI lands.' } });
+      // Make sure leader is back in pool for manual assignment.
+      const f = G.empire;
+      for (const lid of (G.catalog.actions[cardId]?.leaderRequirement ?? [])) {
+        if (!f.leaderPool.includes(lid) && !f.eliminatedLeaders.includes(lid)) f.leaderPool.push(lid);
+      }
+      break;
+    }
+    case 'scouting-mission': {
+      log(G, { kind: 'action-card-partial', side: 'Empire', payload: { cardId, note: 'Leader placed; TIE Fighter relocation + auto-combat must be done manually.' } });
+      break;
+    }
+
+    default: {
+      log(G, { kind: 'action-card-unknown', side, payload: { cardId } });
+      break;
+    }
+  }
+}
+
+/** Default unit pick for a resource icon (used by Temporary Alliance — simplified). */
+function pickDefaultUnitForIcon(side: Side, icon: { type: 'space' | 'ground'; shape: 'triangle' | 'circle' | 'square' }): string | null {
+  if (side === 'Rebel') {
+    if (icon.type === 'space') {
+      if (icon.shape === 'triangle') return 'x-wing';
+      if (icon.shape === 'circle') return 'corellian-corvette';
+      return 'mc-cruiser';
+    }
+    if (icon.shape === 'triangle') return 'rebel-trooper';
+    if (icon.shape === 'circle') return 'airspeeder';
+    return 'heavy-aa';
+  }
+  if (icon.type === 'space') {
+    if (icon.shape === 'triangle') return 'tie-fighter';
+    if (icon.shape === 'circle') return 'assault-carrier';
+    return 'star-destroyer';
+  }
+  if (icon.shape === 'triangle') return 'stormtrooper';
+  if (icon.shape === 'circle') return 'at-st';
+  return 'at-at';
 }
 
 // ============================================================================

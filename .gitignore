@@ -19,6 +19,18 @@ public/dev-assets/
 # Live game-state dumps (vite dev plugin output — not for sharing)
 game-logs/
 
+# Local copies of problem reports. The canonical copies live as GitHub
+# Issues (created by the /api/report Function or vite dev middleware).
+# Disk backups stay out of the repo.
+reports/
+
+# Local-only play-log mirrors. Real uploads live in logs/<hash>.json
+# committed to the deploy repo by /api/upload-logs.
+logs/
+
+# TypeScript incremental-build artifacts.
+*.tsbuildinfo
+
 # FFG-copyrighted source materials — kept locally for development
 # reference only. DO NOT commit these. Anyone working on the project
 # brings their own copies.

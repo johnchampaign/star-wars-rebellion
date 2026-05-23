@@ -213,9 +213,12 @@ export function runCombat(G: GameState): void {
     // Retreat decision (RR pp.5-6) — each side may retreat at most once
     // per combat. Defender goes first per RAW; then attacker.
     if (!c.retreatStepDoneThisRound) {
+      c.retreatDecidedThisRound = c.retreatDecidedThisRound ?? [];
       for (const side of [other(c.attackerSide), c.attackerSide] as const) {
         if (c.retreated.includes(side)) continue; // already retreated this combat
-        if (c.flags?.cannotRetreatThisRound?.[side]) continue; // No Escape
+        if (c.retreatDecidedThisRound.includes(side)) continue; // already decided this round (declined or retreated)
+        if (c.flags?.cannotRetreatThisRound?.[side]) continue; // No Escape (single-round)
+        if (c.flags?.opponentCannotRetreat?.includes(side)) continue; // Keep Them From Escaping (whole combat)
         const dests = legalRetreatDestinations(G, c, side);
         const hasUnits = unitsOf(G, side, c.systemId).length > 0;
         if (dests.length === 0 || !hasUnits) continue;
@@ -243,6 +246,7 @@ export function runCombat(G: GameState): void {
       c.round++;
       c.roundTheatersDone = undefined; // reset for next round
       c.retreatStepDoneThisRound = false;
+      c.retreatDecidedThisRound = []; // each round each side gets a fresh retreat decision
       // No Escape only lasts the round it was played.
       if (c.flags?.cannotRetreatThisRound) c.flags.cannotRetreatThisRound = {};
     }
@@ -314,6 +318,19 @@ function beginAttack(G: GameState, c: CombatState, side: Side, theater: Theater)
   red = Math.min(5, red);
   black = Math.min(5, black);
 
+  // "According To My Design" (Emperor Palpatine start-of-combat action card):
+  // Rebel rolls 1 fewer red die and 2 fewer black dice for the first round
+  // of air AND ground combat. Apply BEFORE rolling. Floor at 0 so a small
+  // Rebel attack doesn't go negative.
+  let accordingToMyDesignReduction: { red: number; black: number } | null = null;
+  if (c.flags?.accordingToMyDesignActive && side === 'Rebel' && c.round === 1) {
+    const redCut = Math.min(1, red);
+    const blackCut = Math.min(2, black);
+    red -= redCut;
+    black -= blackCut;
+    accordingToMyDesignReduction = { red: redCut, black: blackCut };
+  }
+
   // Roll dice.
   const dice: DieResult[] = [];
   for (let i = 0; i < red; i++) dice.push(rollDie(G.rng, 'red' as DieColor));
@@ -329,6 +346,20 @@ function beginAttack(G: GameState, c: CombatState, side: Side, theater: Theater)
     bonusDamage: 0,
     tacticsPlayed: [],
   };
+  // Surface the dice-reduction in the per-attack tactics log so the player
+  // can see why fewer dice rolled than expected.
+  if (accordingToMyDesignReduction) {
+    c.pendingAttack.tacticsPlayed.push({
+      card: 'according-to-my-design',
+      detail: `Empire: −${accordingToMyDesignReduction.red}R / −${accordingToMyDesignReduction.black}B Rebel dice (round 1)`,
+    });
+    log(G, { kind: 'combat-action-card-applied', side: 'Empire', payload: {
+      card: 'according-to-my-design',
+      targetSide: side, theater, round: c.round,
+      reducedRed: accordingToMyDesignReduction.red,
+      reducedBlack: accordingToMyDesignReduction.black,
+    }});
+  }
   advanceAttackToTactics(G, c);
 }
 
@@ -360,6 +391,29 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
         }});
         return;
       }
+    }
+  }
+
+  // 1b) R2-D2 flip — when Empire just rolled, give the Rebel a chance to
+  //     discard the Resourceful Astromech ring to turn 1 of Empire's dice
+  //     to the blank side. RAW: "discard to turn 1 opponent's die to the
+  //     blank side." Player can skip to preserve the card for a future roll.
+  if (!pa.r2d2Resolved && pa.side === 'Empire'
+      && G.rebel.actionHand.includes('resourceful-astromech')) {
+    const flippable = pa.dice
+      .map((d, i) => d.face !== 'blank' ? i : -1)
+      .filter((i) => i >= 0);
+    if (flippable.length > 0) {
+      pa.phase = 'awaitingR2D2Flip';
+      G.pendingChoice = {
+        kind: 'R2D2Flip',
+        side: 'Rebel', theater: pa.theater, systemId: c.systemId,
+        flippableDieIndices: flippable,
+      };
+      log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+        kind: 'R2D2Flip', flippable: flippable.length, theater: pa.theater,
+      }});
+      return;
     }
   }
 
@@ -451,6 +505,44 @@ export function resolveYodaReroll(
   return { ok: true };
 }
 
+/** Resolve R2-D2 (Resourceful Astromech) flip. `flipIndex === null` means
+ *  the Rebel skipped — card stays in hand. Otherwise flip the die at
+ *  flipIndex to blank and discard the card from the Rebel's action hand. */
+export function resolveR2D2Flip(
+  G: GameState, flipIndex: number | null
+): { ok: boolean; reason?: string } {
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  const pa = c.pendingAttack;
+  if (!pa || pa.phase !== 'awaitingR2D2Flip') return { ok: false, reason: 'no-r2d2-phase' };
+  if (!G.pendingChoice || G.pendingChoice.kind !== 'R2D2Flip') return { ok: false, reason: 'no-choice' };
+
+  if (flipIndex !== null) {
+    if (flipIndex < 0 || flipIndex >= pa.dice.length) return { ok: false, reason: 'bad-index' };
+    const before = pa.dice[flipIndex].face;
+    if (before === 'blank') return { ok: false, reason: 'already-blank' };
+    pa.dice[flipIndex] = { ...pa.dice[flipIndex], face: 'blank' };
+    // Discard the R2-D2 card.
+    const i = G.rebel.actionHand.indexOf('resourceful-astromech');
+    if (i >= 0) {
+      G.rebel.actionHand.splice(i, 1);
+      G.rebel.actionDiscard.push('resourceful-astromech');
+    }
+    log(G, { kind: 'r2d2-flip', side: 'Rebel', payload: {
+      systemId: c.systemId, theater: pa.theater,
+      dieIndex: flipIndex,
+      flippedFrom: before,
+      explanation: `R2-D2 ring discarded — turned an Empire ${pa.dice[flipIndex].color} die showing "${before}" to blank.`,
+    }});
+  } else {
+    log(G, { kind: 'r2d2-skipped', side: 'Rebel', payload: { systemId: c.systemId, theater: pa.theater } });
+  }
+  pa.r2d2Resolved = true;
+  G.pendingChoice = undefined;
+  advanceAttackToTactics(G, c);
+  return { ok: true };
+}
+
 /** Resolve the special-die spend choice. `draws` is the count of specials
  *  spent on drawing tactic cards (each draw spends 1 special); `playCardIds`
  *  is the list of special-requiring cards to play (each spends 1 special).
@@ -533,7 +625,9 @@ export function resolveCombatAttackerTactics(
     }
   }
 
-  // Damage boosts: each plays for its tabulated bonus.
+  // Damage boosts: each plays for its tabulated bonus. We track the source
+  // card per bonus hit so the damage-assignment step can enforce per-card
+  // target constraints (Onslaught spreads, Take It Down concentrates).
   for (const cid of plays.damageBoostCardIds ?? []) {
     if (!hand.includes(cid)) continue;
     const amount = cid.includes('take-it-down') ? 2
@@ -543,6 +637,7 @@ export function resolveCombatAttackerTactics(
     if (amount === 0) continue;
     discardCard(G, hand, cid);
     pa.bonusDamage += amount;
+    (pa.bonusDamageSources ??= []).push({ source: cid, amount });
     pa.tacticsPlayed.push({ card: cid, detail: `+${amount} damage` });
     log(G, { kind: 'combat-tactic', side: pa.side, payload: { card: cid, bonusDamage: amount } });
   }
@@ -653,16 +748,27 @@ function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): vo
   const pa = c.pendingAttack!;
 
   // Build the full hit list (rolled hits + bonus damage from tactics).
-  type Hit = { color: 'red' | 'black' | null; face: 'hit' | 'direct-hit' };
+  type Hit = { color: 'red' | 'black' | null; face: 'hit' | 'direct-hit'; source?: string };
   const rawHits: Hit[] = [];
   for (const d of pa.dice) {
     if (d.face === 'hit' || d.face === 'direct-hit') {
       rawHits.push({ color: d.color as 'red' | 'black', face: d.face });
     }
   }
-  for (let i = 0; i < pa.bonusDamage; i++) {
-    // Bonus damage from take-it-down / critical-hit / onslaught acts as
-    // direct-hit on any colour.
+  // Bonus damage from take-it-down / critical-hit / onslaught / bombardment
+  // acts as direct-hit on any colour. Tag each with its source card so the
+  // damage-assignment resolver can enforce per-card target constraints.
+  const tagged = pa.bonusDamageSources ?? [];
+  let tagBudgetLeft = pa.bonusDamage;
+  for (const { source, amount } of tagged) {
+    for (let i = 0; i < amount && tagBudgetLeft > 0; i++) {
+      rawHits.push({ color: null, face: 'direct-hit', source });
+      tagBudgetLeft--;
+    }
+  }
+  // Fallback: any bonus damage not accounted for in sources (shouldn't
+  // happen but safer than losing hits) gets added as unsourced.
+  for (let i = 0; i < tagBudgetLeft; i++) {
     rawHits.push({ color: null, face: 'direct-hit' });
   }
 
@@ -728,6 +834,34 @@ export function resolveCombatAssignDamage(
   const choice = G.pendingChoice;
   if (assignments.length !== choice.hits.length) {
     return { ok: false, reason: 'assignment-count-mismatch' };
+  }
+
+  // RAW: per-card target constraints on bonus-damage hits.
+  //   take-it-down: all hits from this card must hit the SAME target.
+  //   onslaught:    hits from this card must hit DIFFERENT targets (no
+  //                 stacking on one unit).
+  // Group assignments by source card, then validate.
+  const bySource = new Map<string, (string | null)[]>();
+  for (let i = 0; i < choice.hits.length; i++) {
+    const src = choice.hits[i].source;
+    if (!src) continue;
+    if (!bySource.has(src)) bySource.set(src, []);
+    bySource.get(src)!.push(assignments[i]);
+  }
+  for (const [src, picks] of bySource) {
+    const real = picks.filter((p): p is string => p !== null);
+    if (real.length <= 1) continue; // single hit (e.g. critical-hit) — no constraint
+    if (src.includes('take-it-down')) {
+      const first = real[0];
+      if (!real.every((p) => p === first)) {
+        return { ok: false, reason: `take-it-down-requires-same-target:${src}` };
+      }
+    } else if (src.includes('onslaught')) {
+      if (new Set(real).size !== real.length) {
+        return { ok: false, reason: `onslaught-requires-different-targets:${src}` };
+      }
+    }
+    // critical-hit / bombardment: no constraint (single hit or generic)
   }
 
   let damageApplied = 0;
@@ -857,6 +991,7 @@ function applySpecialTacticEffect(G: GameState, c: CombatState, side: Side, card
       if ((t?.attack.red ?? 0) > bestRed) bestRed = t!.attack.red;
     }
     pa.bonusDamage += bestRed;
+    if (bestRed > 0) (pa.bonusDamageSources ??= []).push({ source: cardId, amount: bestRed });
     pa.tacticsPlayed.push({ card: cardId, detail: `Bombardment: +${bestRed} damage` });
     log(G, { kind: 'combat-tactic', side, payload: { card: cardId, bombardment: bestRed } });
     return;
@@ -901,6 +1036,79 @@ function applySpecialTacticEffect(G: GameState, c: CombatState, side: Side, card
 // Start-of-Combat action cards + Retreat helpers
 // ============================================================================
 
+/** Per-card effect for StartOfCombat action cards. Most modify dice / draw
+ *  tactic cards / capture leaders at start of combat. Wired here best-effort;
+ *  cards without explicit handling are silently consumed (a "discard with no
+ *  effect" warning is logged so it's visible to the player). */
+function applyStartOfCombatActionCardEffect(G: GameState, c: CombatState, side: Side, cardId: string): void {
+  const hand = side === c.attackerSide ? c.attackerHand : c.defenderHand;
+  switch (cardId) {
+    case 'more-dangerous-than-you-realize': {
+      // RAW: "Draw either 3 space tactic or 3 ground tactic cards." Player
+      // picks. Post a sub-choice; the resolver draws the cards and resumes
+      // the start-of-combat batch.
+      G.pendingChoice = {
+        kind: 'MoreDangerousTheaterPick',
+        side,
+        cardId,
+      };
+      log(G, { kind: 'choice-request', side, payload: {
+        kind: 'MoreDangerousTheaterPick', cardId,
+      }});
+      return;
+    }
+    case 'according-to-my-design': {
+      // RAW: Rebel rolls 1 fewer red die and 2 fewer black dice in round 1
+      // of air AND ground combat. Set a flag the attack-roll path reads.
+      c.flags = c.flags ?? {};
+      c.flags.accordingToMyDesignActive = true;
+      log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'rebel-rolls-1R-2B-fewer-round1' } });
+      return;
+    }
+    case 'keep-them-from-escaping': {
+      // RAW: Rebel units cannot retreat.
+      c.flags = c.flags ?? {};
+      c.flags.opponentCannotRetreat = (c.flags.opponentCannotRetreat ?? []);
+      if (!c.flags.opponentCannotRetreat.includes('Rebel')) c.flags.opponentCannotRetreat.push('Rebel');
+      log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'rebel-cannot-retreat' } });
+      return;
+    }
+    case 'good-intel': {
+      // RAW: Rebel player must keep tactic cards faceup. Engine has perfect
+      // info anyway, so this is effectively a no-op in code — we log it.
+      log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'no-op (engine has perfect info)' } });
+      return;
+    }
+    case 'its-a-trap': {
+      // RAW: During round 1, opponent cannot play space tactic cards.
+      c.flags = c.flags ?? {};
+      c.flags.opponentNoSpaceTacticsRound = 1;
+      log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'empire-no-space-tactics-round-1' } });
+      return;
+    }
+    case 'point-blank-assault': {
+      // RAW: All units in the system have -1 health (minimum 1) for combat.
+      // Applied as combat-only damage to every unit at start.
+      c.flags = c.flags ?? {};
+      c.flags.allUnitsMinusOneHealthApplied = true;
+      const ss = G.map.systems[c.systemId];
+      if (ss) {
+        for (const u of ss.units) {
+          const t = G.catalog.unitTypes[u.typeId];
+          const max = t?.health.value ?? 1;
+          if (max > 1) u.damage = Math.max(u.damage ?? 0, 1);
+        }
+      }
+      log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'all-units-minus-1-hp-min-1' } });
+      return;
+    }
+    default: {
+      log(G, { kind: 'combat-action-card-not-implemented', side, payload: { card: cardId } });
+      return;
+    }
+  }
+}
+
 /** Action-card IDs in `side`'s hand that have timing === 'StartOfCombat'
  *  and whose leaderRequirement (if any) is satisfied by leaders at the
  *  combat system. */
@@ -932,21 +1140,48 @@ export function resolveCombatStartActionCards(
   const side = ch.side;
   const f = side === 'Rebel' ? G.rebel : G.empire;
 
+  // Validate all cards up front so a half-resolved batch doesn't leave the
+  // state weird if one is illegal.
   for (const cid of cardIds) {
     if (!ch.playable.includes(cid)) return { ok: false, reason: `not-playable:${cid}` };
     if (!f.actionHand.includes(cid)) return { ok: false, reason: `not-in-hand:${cid}` };
-    // Discard from hand → action discard pile.
+  }
+  // Clear the start-of-combat choice immediately so a card effect can post
+  // its own sub-choice without colliding.
+  G.pendingChoice = undefined;
+  // Stash the remaining-cards queue + acting side so a mid-batch sub-choice
+  // (e.g. MoreDangerousTheaterPick) can resume.
+  c.startOfCombatBatch = { side, remaining: [...cardIds] };
+  const resumeOk = processStartOfCombatBatch(G, c);
+  if (!resumeOk) return { ok: true }; // paused on a sub-choice; resolver continues
+  advanceStartOfCombatAfterSideDone(G, c, side);
+  return { ok: true };
+}
+
+/** Drain `c.startOfCombatBatch.remaining`, applying each card's effect.
+ *  Returns true if the batch finished, false if it paused on a sub-choice. */
+function processStartOfCombatBatch(G: GameState, c: CombatState): boolean {
+  const batch = c.startOfCombatBatch;
+  if (!batch) return true;
+  const f = batch.side === 'Rebel' ? G.rebel : G.empire;
+  while (batch.remaining.length > 0) {
+    const cid = batch.remaining.shift()!;
+    // Re-check hand presence (the card might have been discarded out-of-band).
+    if (!f.actionHand.includes(cid)) continue;
     f.actionHand.splice(f.actionHand.indexOf(cid), 1);
     f.actionDiscard.push(cid);
-    log(G, { kind: 'combat-action-card', side, payload: { card: cid } });
-    // Effect handlers are out of scope for this MVP — most start-of-combat
-    // action cards modify dice / draw cards / etc. and are deferred. The
-    // play is recorded for the report and the card is consumed.
+    log(G, { kind: 'combat-action-card', side: batch.side, payload: { card: cid } });
+    applyStartOfCombatActionCardEffect(G, c, batch.side, cid);
+    if (G.pendingChoice) return false; // paused — caller resumes via resolver
   }
+  c.startOfCombatBatch = undefined;
+  return true;
+}
 
-  G.pendingChoice = undefined;
-  // Continue with the OTHER side's start-of-combat window if any, then
-  // mark startOfCombatActionsDone and proceed to round 1.
+/** After one side's start-of-combat batch finishes, hand off to the other
+ *  side's window (if they have playable cards), or mark the window done
+ *  and continue combat. */
+function advanceStartOfCombatAfterSideDone(G: GameState, c: CombatState, side: Side): void {
   const otherSide = other(side);
   if (otherSide !== side) {
     const other_playable = listStartOfCombatPlayable(G, c, otherSide);
@@ -958,11 +1193,38 @@ export function resolveCombatStartActionCards(
       log(G, { kind: 'choice-request', side: otherSide, payload: {
         kind: 'CombatStartActionCards', playable: other_playable.length,
       }});
-      return { ok: true };
+      return;
     }
   }
   c.startOfCombatActionsDone = true;
   runCombat(G);
+}
+
+/** Resolve "More Dangerous Than You Realize" — draw 3 from the chosen deck
+ *  and resume the start-of-combat batch. */
+export function resolveMoreDangerousTheaterPick(
+  G: GameState, theater: 'space' | 'ground'
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'MoreDangerousTheaterPick') return { ok: false, reason: 'no-pending' };
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  const side = pc.side;
+  const cardId = pc.cardId;
+  const hand = side === c.attackerSide ? c.attackerHand : c.defenderHand;
+  const deck = theater === 'space' ? G.spaceTacticDeck : G.groundTacticDeck;
+  const drawn: string[] = [];
+  for (let i = 0; i < 3; i++) {
+    const card = deck.shift();
+    if (card) { hand.push(card); drawn.push(card); }
+  }
+  log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, drew: drawn, theater } });
+  G.pendingChoice = undefined;
+  // Capture the batch's acting side BEFORE processing (process may clear it).
+  const batchSide = c.startOfCombatBatch?.side ?? side;
+  const finished = processStartOfCombatBatch(G, c);
+  if (!finished) return { ok: true };
+  advanceStartOfCombatAfterSideDone(G, c, batchSide);
   return { ok: true };
 }
 
@@ -1003,8 +1265,9 @@ function legalRetreatDestinations(G: GameState, c: CombatState, side: Side): Sys
 
 /** Resolve the retreat decision. `destSystemId === null` means decline to
  *  retreat. `unitInstanceIds` is the list of units to take (or null /
- *  empty for "take all"). Transport-capacity is NOT enforced in this MVP
- *  — TODO once unit movement is fully rules-faithful. */
+ *  empty for "take all"). Enforces transport capacity per RR p.5-6 unless
+ *  the side has the `retreatIgnoresTransport` flag set (Escape Plan tactic
+ *  card). Units left behind are destroyed per RAW. */
 export function resolveRetreatDecision(
   G: GameState, destSystemId: SystemId | null, unitInstanceIds: string[] | null
 ): { ok: boolean; reason?: string } {
@@ -1017,8 +1280,10 @@ export function resolveRetreatDecision(
   const side = ch.side;
 
   if (destSystemId === null) {
-    // Decline — log and continue.
+    // Decline — log, mark side decided so the runCombat loop doesn't re-post.
     log(G, { kind: 'combat-retreat-decline', side, payload: { systemId: c.systemId } });
+    c.retreatDecidedThisRound = c.retreatDecidedThisRound ?? [];
+    if (!c.retreatDecidedThisRound.includes(side)) c.retreatDecidedThisRound.push(side);
     G.pendingChoice = undefined;
     runCombat(G);
     return { ok: true };
@@ -1026,14 +1291,97 @@ export function resolveRetreatDecision(
   if (!ch.legalDestinations.includes(destSystemId)) {
     return { ok: false, reason: `illegal-dest:${destSystemId}` };
   }
-  const toMove = (unitInstanceIds ?? ch.availableUnits).filter((uid) =>
+  const requested = (unitInstanceIds ?? ch.availableUnits).filter((uid) =>
     ch.availableUnits.includes(uid)
   );
+  // Transport-capacity check per RR p.5-6. Retreats are a kind of move;
+  // unless an effect explicitly ignores transport (Escape Plan tactic card
+  // → retreatIgnoresTransport flag), restriction-icon fighters and ground
+  // units need capacity-providing ships in the retreat group.
+  const ignoresTransport = !!c.flags?.retreatIgnoresTransport?.[side];
+  const ss = c.systemId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[c.systemId];
+  let toMove: string[] = requested;
+  let capacityDropped: string[] = [];
+  if (!ignoresTransport && ss) {
+    let capAvail = 0;
+    let capProviders = 0;
+    let restrictionNeed = 0;
+    let groundNeed = 0;
+    const restrictionUids: string[] = [];
+    const groundUids: string[] = [];
+    for (const uid of requested) {
+      const u = ss.units.find((x) => x.instanceId === uid);
+      if (!u) continue;
+      const t = G.catalog.unitTypes[u.typeId];
+      if (!t) continue;
+      if (t.transport.immobile) continue; // immobile can't retreat
+      if (t.transport.capacity > 0) {
+        capAvail += t.transport.capacity;
+        capProviders++;
+      }
+      if (t.transport.restriction) { restrictionNeed++; restrictionUids.push(uid); }
+      if (t.theater === 'ground' && t.class !== 'structure') {
+        groundNeed++;
+        groundUids.push(uid);
+      }
+    }
+    const needed = restrictionNeed + groundNeed;
+    if (needed > 0 && capProviders === 0) {
+      // No transport ship in the group — all restriction/ground must stay.
+      const stayBehind = new Set([...restrictionUids, ...groundUids]);
+      toMove = requested.filter((uid) => !stayBehind.has(uid));
+      capacityDropped = [...stayBehind];
+    } else if (needed > capAvail) {
+      // Some restriction/ground units exceed capacity. Drop them greedily,
+      // ground first (typically more replaceable than fighters in a retreat
+      // scenario — purely a policy call when the player overpacks).
+      let surplus = needed - capAvail;
+      const dropOrder = [...groundUids, ...restrictionUids];
+      const stayBehind = new Set<string>();
+      for (const uid of dropOrder) {
+        if (surplus <= 0) break;
+        stayBehind.add(uid);
+        surplus--;
+      }
+      toMove = requested.filter((uid) => !stayBehind.has(uid));
+      capacityDropped = [...stayBehind];
+    }
+  }
+  // Destroy units left behind by capacity (RR p.5-6: "units not moved are
+  // destroyed"). Same rule applies to immobile units in the system.
+  for (const uid of capacityDropped) {
+    M.destroyUnit(G, uid, 'retreat-no-transport');
+  }
+  // Also destroy ANY unit at the combat system not in toMove and not just
+  // dropped above — RAW: "all of your units not moved are destroyed." This
+  // includes units the player explicitly chose to leave (e.g. damaged
+  // structures, immobile units).
+  if (ss) {
+    const movingSet = new Set(toMove);
+    const droppedSet = new Set(capacityDropped);
+    const leftBehind = ss.units
+      .filter((u) => u.side === side && !movingSet.has(u.instanceId) && !droppedSet.has(u.instanceId))
+      .map((u) => u.instanceId);
+    for (const uid of leftBehind) M.destroyUnit(G, uid, 'retreat-left-behind');
+    if (leftBehind.length > 0) {
+      log(G, { kind: 'combat-retreat-leftbehind', side, payload: {
+        systemId: c.systemId, units: leftBehind.length, instances: leftBehind,
+      }});
+    }
+  }
+  // Now move the units that fit.
   for (const uid of toMove) {
     M.moveUnit(G, uid, c.systemId, destSystemId);
   }
   c.retreated.push(side);
-  log(G, { kind: 'combat-retreat', side, payload: { from: c.systemId, to: destSystemId, units: toMove.length } });
+  c.retreatDecidedThisRound = c.retreatDecidedThisRound ?? [];
+  if (!c.retreatDecidedThisRound.includes(side)) c.retreatDecidedThisRound.push(side);
+  log(G, { kind: 'combat-retreat', side, payload: {
+    from: c.systemId, to: destSystemId,
+    units: toMove.length,
+    droppedByCapacity: capacityDropped.length,
+    ignoresTransport,
+  }});
 
   G.pendingChoice = undefined;
   runCombat(G);
@@ -1133,5 +1481,97 @@ function endCombat(G: GameState): void {
     if (G.isGameOver) break;
   }
 
+  // Death Star Plans 2/3 — player-discretion attempt. RAW eligibility:
+  // (1) Rebel holds the card, (2) at least one Rebel fighter is at the
+  // combat system after the space battle step (i.e. now), (3) at least one
+  // Death Star is here to destroy. Post the choice; resolver rolls dice.
+  if (!G.isGameOver) maybePostDeathStarPlansChoice(G, c);
+
   G.pendingCombat = undefined;
+}
+
+/** Eligibility-check + post for Death Star Plans 2/3.
+ *  Idempotent: only posts a choice; the resolver does the actual work. */
+function maybePostDeathStarPlansChoice(G: GameState, c: CombatState): void {
+  const hand = G.rebel.objectiveHand ?? [];
+  const eligibleCardIds = ['death-star-plans-2', 'death-star-plans-3'].filter((id) => hand.includes(id));
+  if (eligibleCardIds.length === 0) return;
+  const ss = G.map.systems[c.systemId];
+  if (!ss) return;
+  // Rebel fighter alive at the combat system.
+  const hasRebelFighter = ss.units.some((u) => {
+    if (u.side !== 'Rebel') return false;
+    const t = G.catalog.unitTypes[u.typeId];
+    return t?.class === 'fighter';
+  });
+  if (!hasRebelFighter) return;
+  // Death Star(s) at the system. RAW says "a Death Star" — destroying one
+  // requires the player to pick if multiple are present (edge case).
+  const deathStarInstanceIds = ss.units
+    .filter((u) => u.side === 'Empire' && (u.typeId === 'death-star' || u.typeId === 'death-star-under-construction'))
+    .map((u) => u.instanceId);
+  if (deathStarInstanceIds.length === 0) return;
+  // Post the choice for the first eligible card. (If both are in hand,
+  // the second will become eligible on the next combat — they don't stack
+  // in a single combat per RAW.)
+  G.pendingChoice = {
+    kind: 'DeathStarPlansAttempt',
+    side: 'Rebel',
+    objectiveId: eligibleCardIds[0],
+    systemId: c.systemId,
+    deathStarInstanceIds,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'DeathStarPlansAttempt',
+    objectiveId: eligibleCardIds[0],
+    systemId: c.systemId,
+    deathStars: deathStarInstanceIds.length,
+  }});
+}
+
+/** Resolve a Death Star Plans 2/3 attempt. `attempt === true` means the
+ *  Rebel reveals the card and rolls 3 dice; on direct-hit, destroy a
+ *  Death Star + gain reputation + discard the card. On no hit, the card
+ *  returns to the Rebel's hand (effectively a no-op since it's already
+ *  there). `attempt === false` means decline — card stays in hand. */
+export function resolveDeathStarPlansAttempt(
+  G: GameState, attempt: boolean, deathStarInstanceId?: UnitInstanceId
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'DeathStarPlansAttempt') return { ok: false, reason: 'no-pending' };
+  G.pendingChoice = undefined;
+  if (!attempt) {
+    log(G, { kind: 'death-star-plans-declined', side: 'Rebel', payload: {
+      objectiveId: pc.objectiveId, systemId: pc.systemId,
+    }});
+    return { ok: true };
+  }
+  // RAW: roll 3 dice. Color doesn't matter for mission-style rolls; pick red.
+  const faces: string[] = [];
+  for (let i = 0; i < 3; i++) faces.push(rollDie(G.rng, 'red').face);
+  const directHit = faces.some((f) => f === 'direct-hit');
+  if (directHit) {
+    // Pick which Death Star to destroy. Default to the first if the caller
+    // didn't pass one (or if the passed id is no longer at the system).
+    let targetId = deathStarInstanceId;
+    if (!targetId || !pc.deathStarInstanceIds.includes(targetId)) targetId = pc.deathStarInstanceIds[0];
+    // Death Star can't be damaged by normal attacks (health.color === null),
+    // but RAW explicitly says "destroy" — bypass damage and just remove.
+    M.destroyUnit(G, targetId, 'death-star-plans');
+    const rep = G.catalog.objectives[pc.objectiveId]?.reputation ?? 2;
+    M.gainReputation(G, rep);
+    const i = (G.rebel.objectiveHand ?? []).indexOf(pc.objectiveId);
+    if (i >= 0) G.rebel.objectiveHand!.splice(i, 1);
+    log(G, { kind: 'death-star-plans-success', side: 'Rebel', payload: {
+      objectiveId: pc.objectiveId, systemId: pc.systemId, destroyed: targetId,
+      faces, reputation: rep,
+    }});
+  } else {
+    // No direct hit — RAW: "Otherwise return this card to your hand." It's
+    // already in hand (we don't remove it on reveal); just log.
+    log(G, { kind: 'death-star-plans-miss', side: 'Rebel', payload: {
+      objectiveId: pc.objectiveId, systemId: pc.systemId, faces,
+    }});
+  }
+  return { ok: true };
 }

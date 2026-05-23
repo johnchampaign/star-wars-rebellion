@@ -45,6 +45,31 @@ export function stepOnce(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'YodaReroll' && G.pendingChoice.side === side) {
     return handleYodaReroll(G);
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'R2D2Flip' && G.pendingChoice.side === side) {
+    // AI Rebel: flip the most valuable Empire die.
+    const c = G.pendingChoice;
+    const score = (face: string) =>
+      face === 'direct-hit' ? 4 : face === 'hit' ? 3 : face === 'special' ? 2 : 0;
+    let bestIdx = -1;
+    let bestScore = -1;
+    // Source the faces from the appropriate context.
+    let faces: string[] = [];
+    if (c.context === 'combat') {
+      const dice = G.pendingCombat?.pendingAttack?.dice ?? [];
+      faces = dice.map((d) => d.face);
+    } else {
+      faces = c.missionFaces ?? [];
+    }
+    for (const i of c.flippableDieIndices) {
+      const s = score(faces[i] ?? 'blank');
+      if (s > bestScore) { bestScore = s; bestIdx = i; }
+    }
+    // AI policy: only spend the once-per-game card if the target is at least
+    // a hit (worth 3+). Otherwise save it.
+    const flipIndex = bestScore >= 3 ? bestIdx : null;
+    if (c.context === 'mission') return phases.resolveR2D2MissionFlip(G, flipIndex).ok;
+    return combat.resolveR2D2Flip(G, flipIndex).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'SpecialDieSpend' && G.pendingChoice.side === side) {
     return handleSpecialDieSpend(G);
   }
@@ -53,6 +78,79 @@ export function stepOnce(G: GameState, side: Side): boolean {
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'RetreatDecision' && G.pendingChoice.side === side) {
     return handleRetreatDecision(G);
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'DeathStarPlansAttempt' && G.pendingChoice.side === side) {
+    // AI: always attempt — it's a free shot at destroying the Death Star.
+    return combat.resolveDeathStarPlansAttempt(G, true).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'MoreDangerousTheaterPick' && G.pendingChoice.side === side) {
+    // AI: pick the deck with more remaining cards (avoid drawing 0 of 0).
+    const theater: 'space' | 'ground' = G.groundTacticDeck.length >= G.spaceTacticDeck.length ? 'ground' : 'space';
+    return combat.resolveMoreDangerousTheaterPick(G, theater).ok;
+  }
+  // Assignment-timed action card play: the AI never proactively opens this
+  // modal (random Assignment branch just assigns or skips). But if for some
+  // reason the choice is posted, cancel out / pick a random candidate-system
+  // so we don't deadlock.
+  if (G.pendingChoice && G.pendingChoice.kind === 'PlayAssignmentActionCard' && G.pendingChoice.side === side) {
+    return phases.cancelAssignmentActionCardPlay(G).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'ActionCardSystemPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const sysId = pick(c.candidates);
+    if (!sysId) return false;
+    return phases.resolveActionCardSystemPick(G, sysId).ok;
+  }
+
+  // RecruitActionCardPick fires during the Refresh phase where
+  // G.currentPlayer doesn't match the side that owes the choice (refresh
+  // is bilateral). Handle it before the "my turn only" gate so the AI
+  // doesn't deadlock when its own recruit pick is queued during Rebel's
+  // refresh turn (or vice versa).
+  if (G.pendingChoice && G.pendingChoice.kind === 'RecruitActionCardPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const f = side === 'Rebel' ? G.rebel : G.empire;
+    const canRecruit = (cid: string) => {
+      const card = G.catalog.actions[cid];
+      if (!card?.leaderRequirement?.length) return false;
+      const lid = card.leaderRequirement[0];
+      return !!G.catalog.leaders[lid] && !f.leaderPool.includes(lid) && !f.eliminatedLeaders.includes(lid);
+    };
+    const [a, b] = c.drawnIds;
+    const keep = canRecruit(a) ? a : canRecruit(b) ? b : a;
+    return phases.resolveRecruitActionCardPick(G, keep).ok;
+  }
+  // BuildPick is also bilateral during refresh — same fix.
+  if (G.pendingChoice && G.pendingChoice.kind === 'BuildPick' && G.pendingChoice.side === side) {
+    return handleBuildPick(G);
+  }
+  // DeployUnitPick is also a bilateral refresh-phase pause.
+  if (G.pendingChoice && G.pendingChoice.kind === 'DeployUnitPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const sysId = c.candidates[0]; // first legal target — dumb but deterministic
+    return phases.resolveDeployUnitPick(G, sysId).ok;
+  }
+  // Detained: Empire picks any Rebel leader at the target.
+  if (G.pendingChoice && G.pendingChoice.kind === 'DetainedTargetPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    return phases.resolveDetainedTargetPick(G, c.candidates[0]).ok;
+  }
+  // Retrieve The Plans: Empire bottoms the highest-rep Rebel objective.
+  if (G.pendingChoice && G.pendingChoice.kind === 'RetrieveThePlansPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    let best = c.candidates[0];
+    let bestRep = G.catalog.objectives[best]?.reputation ?? 0;
+    for (const oid of c.candidates.slice(1)) {
+      const r = G.catalog.objectives[oid]?.reputation ?? 0;
+      if (r > bestRep) { best = oid; bestRep = r; }
+    }
+    return phases.resolveRetrieveThePlansPick(G, best).ok;
+  }
+  // Interrogation Droid: Rebel picks 2 decoy systems that AREN'T the base.
+  if (G.pendingChoice && G.pendingChoice.kind === 'InterrogationDroidDecoyPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const decoys = c.candidates.filter((sid) => sid !== G.rebelBaseSystemId).slice(0, c.count);
+    return phases.resolveInterrogationDroidDecoyPick(G, decoys).ok;
   }
 
   // From here on, only act on our own turn.
@@ -161,20 +259,6 @@ export function stepOnce(G: GameState, side: Side): boolean {
       if (v > bestV) { best = lid; bestV = v; }
     }
     return phases.resolveMisdirectionPick(G, best).ok;
-  }
-  if (G.pendingChoice && G.pendingChoice.kind === 'RecruitActionCardPick' && G.pendingChoice.side === side) {
-    // AI: prefer the card whose leader can actually be recruited.
-    const c = G.pendingChoice;
-    const f = side === 'Rebel' ? G.rebel : G.empire;
-    const canRecruit = (cid: string) => {
-      const card = G.catalog.actions[cid];
-      if (!card?.leaderRequirement?.length) return false;
-      const lid = card.leaderRequirement[0];
-      return !!G.catalog.leaders[lid] && !f.leaderPool.includes(lid) && !f.eliminatedLeaders.includes(lid);
-    };
-    const [a, b] = c.drawnIds;
-    const keep = canRecruit(a) ? a : canRecruit(b) ? b : a;
-    return phases.resolveRecruitActionCardPick(G, keep).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'ResearchAndDevelopmentOption' && side === 'Empire') {
     // AI: cleanse sabotage if available (B), else peek-and-keep (A).
@@ -443,14 +527,27 @@ function handleCombatAssignDamage(G: GameState): boolean {
   const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
   const assigned = new Map<string, number>(); // instanceId → damage already queued
   const assignments: (string | null)[] = [];
+  // Track per-source-card targets to respect RAW constraints:
+  //   take-it-down: subsequent hits MUST go to the same target as the first
+  //   onslaught:    subsequent hits MUST go to a DIFFERENT target
+  const sourceFirstTarget = new Map<string, string>();
+  const sourceTargets = new Map<string, Set<string>>();
 
   // Find the live unit instance from catalog data + current map state.
   const ss = G.map.systems[c.systemId] ?? G.map.rebelBaseSpace;
   for (let i = 0; i < c.hits.length; i++) {
     const targets = c.targetsByHit[i];
     if (targets.length === 0) { assignments.push(null); continue; }
+    const src = c.hits[i].source;
+    const isTakeItDown = src && src.includes('take-it-down');
+    const isOnslaught = src && src.includes('onslaught');
     let best: { id: string; remaining: number; tier: number } | null = null;
     for (const tid of targets) {
+      // Per-source constraint filtering.
+      if (isTakeItDown && sourceFirstTarget.has(src)) {
+        if (tid !== sourceFirstTarget.get(src)) continue;
+      }
+      if (isOnslaught && sourceTargets.get(src)?.has(tid)) continue;
       const u = ss?.units.find((x) => x.instanceId === tid);
       if (!u) continue;
       const t = G.catalog.unitTypes[u.typeId];
@@ -466,6 +563,11 @@ function handleCombatAssignDamage(G: GameState): boolean {
     if (best) {
       assignments.push(best.id);
       assigned.set(best.id, (assigned.get(best.id) ?? 0) + 1);
+      if (src) {
+        if (!sourceFirstTarget.has(src)) sourceFirstTarget.set(src, best.id);
+        if (!sourceTargets.has(src)) sourceTargets.set(src, new Set());
+        sourceTargets.get(src)!.add(best.id);
+      }
     } else {
       assignments.push(null);
     }

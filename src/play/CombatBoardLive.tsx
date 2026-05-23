@@ -7,11 +7,81 @@
 // kind and side, and only enables the decision panel when humanSide owns
 // the choice. AI moves continue to auto-resolve via randomAI.ts.
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GameState, Side, UnitInstance, Theater, DieResult } from '../engine/types';
 import * as combat from '../engine/combat';
+import { stepOnce as aiStepOnce } from './randomAI';
 
 const SIDE_COLOR = { Rebel: '#4fc3f7', Empire: '#ff8a80' } as const;
+
+/** Hover-preview for a single card by id. Looks up the card in either the
+ *  tactics or actions catalog (whichever has it) and floats a 220px image
+ *  popup with the name + rules text. Used to wrap every card-name reference
+ *  on the combat board so the player can read what's actually in their hand. */
+function CardHover({ G, cardId, children }: {
+  G: GameState;
+  cardId: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const card =
+    G.catalog.tactics[cardId] ??
+    G.catalog.actions[cardId] ??
+    G.catalog.objectives[cardId] ??
+    null;
+  if (!card) return <>{children}</>;
+  const TILE_W = 220;
+  return (
+    <span
+      style={{ borderBottom: '1px dotted #888', cursor: 'help', position: 'relative' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      {children}
+      {open && (
+        <div style={{
+          position: 'absolute', left: '100%', bottom: '100%',
+          marginLeft: 8, marginBottom: 4, zIndex: 3000,
+          background: 'rgba(0,0,0,0.95)', border: '1px solid #555',
+          padding: 8, borderRadius: 4, width: TILE_W + 16,
+          pointerEvents: 'none',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+        }}>
+          {card.image ? (
+            <img
+              src={`/dev-assets/cards/${card.image}`}
+              alt={card.name}
+              style={{ width: TILE_W, height: 'auto', borderRadius: 4, border: '1px solid #333' }}
+            />
+          ) : (
+            <div style={{
+              width: TILE_W, height: TILE_W * 1.4, background: '#222',
+              color: '#888', fontSize: 12,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 8, textAlign: 'center',
+            }}>
+              {card.name}
+            </div>
+          )}
+          <div style={{
+            color: '#fff', fontSize: 13, fontWeight: 600, marginTop: 4, textAlign: 'center',
+          }}>
+            {card.name}
+          </div>
+          {card.rulesText && (
+            <div style={{
+              color: '#cbc4b0', fontSize: 11, marginTop: 4,
+              lineHeight: 1.35, textAlign: 'left', whiteSpace: 'normal',
+            }}>
+              {card.rulesText}
+            </div>
+          )}
+        </div>
+      )}
+    </span>
+  );
+}
 
 export function CombatBoardLive({ G, humanSide, onPersist }: {
   G: GameState;
@@ -32,11 +102,104 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
     pc?.kind === 'CombatDefenderTactics' ? pc.side :
     pc?.kind === 'CombatAssignDamage'    ? pc.side :
     pc?.kind === 'YodaReroll'            ? pc.side :
+    pc?.kind === 'R2D2Flip'              ? pc.side :
     pc?.kind === 'SpecialDieSpend'       ? pc.side :
     pc?.kind === 'CombatStartActionCards' ? pc.side :
+    pc?.kind === 'MoreDangerousTheaterPick' ? pc.side :
     pc?.kind === 'RetreatDecision'       ? pc.side : null;
   const isHumanDecision = decisionSide === humanSide;
   const waitingForAI = decisionSide !== null && !isHumanDecision;
+
+  // Self-healing AI driver: any time this component renders and the AI owes
+  // a combat decision, step the AI synchronously and notify the parent to
+  // re-render. The parent's runAILoop already does this on every refresh()
+  // call, but in some edge cases (specifically: when a human's submit
+  // posts a follow-up AI-owed choice, then setTick batches the re-render
+  // before runAILoop's read of gameRef.current sees the latest state)
+  // it can be missed. Adding a render-driven retry guarantees we never
+  // freeze on an AI-owed choice as long as CombatBoardLive is mounted.
+  const aiSide: Side = humanSide === 'Rebel' ? 'Empire' : 'Rebel';
+  // Fingerprint includes pc.side so transitions Empire→Rebel within the
+  // same kind (e.g. start-of-combat handoff) retrigger. Resets on any
+  // pendingCombat change too.
+  const fp = `${pc?.kind ?? '-'}:${(pc as { side?: string } | undefined)?.side ?? '-'}:${c.round}:${(pc as { theater?: string } | undefined)?.theater ?? ''}`;
+  const lastStepRef = useRef<string>('');
+  const [aiFailure, setAiFailure] = useState<string | null>(null);
+  useEffect(() => {
+    if (!waitingForAI || decisionSide !== aiSide) return;
+    if (G.missionReports && G.missionReports.length > 0) return;
+    if (lastStepRef.current === fp) return;
+    lastStepRef.current = fp;
+    try {
+      const did = aiStepOnce(G, aiSide);
+      if (did) {
+        setAiFailure(null);
+        onPersist();
+      } else {
+        const msg = `aiStepOnce returned false for ${pc?.kind} side=${(pc as { side?: string } | undefined)?.side} round=${c.round}`;
+        console.warn('[CombatBoardLive]', msg, { pc });
+        setAiFailure(msg);
+      }
+    } catch (e) {
+      console.error('[CombatBoardLive] aiStepOnce threw', e);
+      setAiFailure(`aiStepOnce threw: ${(e as Error)?.message ?? String(e)}`);
+    }
+  }, [fp]);
+
+  /** Step AI manual kick — resets the dedup fingerprint so it actually retries,
+   *  then calls onPersist to trigger the parent's runAILoop. */
+  const kickAI = () => {
+    lastStepRef.current = '';
+    setAiFailure(null);
+    onPersist();
+  };
+
+  /** Emergency: assign damage on the AI's behalf by picking weakest-first. Used
+   *  when the AI returns false and we'd otherwise be soft-locked. */
+  const forceAssignDamage = () => {
+    if (!pc || pc.kind !== 'CombatAssignDamage') return;
+    const ss = G.map.systems[pc.systemId] ?? G.map.rebelBaseSpace;
+    const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+    const assigned = new Map<string, number>();
+    const sourceFirstTarget = new Map<string, string>();
+    const sourceTargets = new Map<string, Set<string>>();
+    const out: (string | null)[] = [];
+    for (let i = 0; i < pc.hits.length; i++) {
+      const src = pc.hits[i].source;
+      const isTakeItDown = src && src.includes('take-it-down');
+      const isOnslaught = src && src.includes('onslaught');
+      let best: { id: string; remaining: number; tier: number } | null = null;
+      for (const tid of pc.targetsByHit[i]) {
+        if (isTakeItDown && sourceFirstTarget.has(src) && tid !== sourceFirstTarget.get(src)) continue;
+        if (isOnslaught && sourceTargets.get(src)?.has(tid)) continue;
+        const u = ss?.units.find((x: UnitInstance) => x.instanceId === tid);
+        if (!u) continue;
+        const t = G.catalog.unitTypes[u.typeId];
+        if (!t) continue;
+        const queued = assigned.get(tid) ?? 0;
+        const remaining = (t.health.value ?? 1) - (u.damage ?? 0) - queued;
+        if (remaining <= 0) continue;
+        const tier = tierRank[t.tier ?? 'square'] ?? 9;
+        if (!best || remaining < best.remaining || (remaining === best.remaining && tier < best.tier)) {
+          best = { id: tid, remaining, tier };
+        }
+      }
+      if (best) {
+        out.push(best.id);
+        assigned.set(best.id, (assigned.get(best.id) ?? 0) + 1);
+        if (src) {
+          if (!sourceFirstTarget.has(src)) sourceFirstTarget.set(src, best.id);
+          if (!sourceTargets.has(src)) sourceTargets.set(src, new Set());
+          sourceTargets.get(src)!.add(best.id);
+        }
+      } else out.push(null);
+    }
+    const r = combat.resolveCombatAssignDamage(G, out);
+    if (!r.ok) alert(`Force-assign failed: ${r.reason}\nassignments=${JSON.stringify(out)}`);
+    setAiFailure(null);
+    lastStepRef.current = '';
+    onPersist();
+  };
 
   // Dice rolled by the in-flight attack (if any) — shown in the active theater.
   const dice: DieResult[] | null = c.pendingAttack?.dice ?? null;
@@ -54,6 +217,15 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
         defender={defender}
         round={c.round}
         humanSide={humanSide}
+      />
+
+      <TacticHandsBar
+        G={G}
+        humanSide={humanSide}
+        attacker={attacker}
+        defender={defender}
+        attackerHand={c.attackerHand}
+        defenderHand={c.defenderHand}
       />
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12, minHeight: 0 }}>
@@ -78,8 +250,34 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
         minHeight: 110,
       }}>
         {waitingForAI && (
-          <div style={{ color: '#888', fontStyle: 'italic' }}>
-            Waiting for {decisionSide} (AI) to choose…
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ color: '#888', fontStyle: 'italic' }}>
+                Waiting for {decisionSide} (AI) to choose…
+              </div>
+              <button
+                className="tab-button"
+                onClick={kickAI}
+                title="Manually kick the AI driver. Use if the AI seems stuck."
+              >
+                Step AI
+              </button>
+              {pc?.kind === 'CombatAssignDamage' && (
+                <button
+                  className="tab-button"
+                  onClick={forceAssignDamage}
+                  title="Bypass the AI: pick weakest-target damage assignment directly."
+                  style={{ borderColor: '#c4423a' }}
+                >
+                  Force-resolve damage
+                </button>
+              )}
+            </div>
+            {aiFailure && (
+              <div style={{ color: '#ff8a80', fontSize: 11, fontFamily: 'monospace' }}>
+                ⚠ {aiFailure}
+              </div>
+            )}
           </div>
         )}
         {pc?.kind === 'CombatAttackerTactics' && isHumanDecision && (
@@ -94,21 +292,109 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
         {pc?.kind === 'YodaReroll' && isHumanDecision && (
           <YodaRerollPanel G={G} choice={pc} onPersist={onPersist} />
         )}
+        {pc?.kind === 'R2D2Flip' && pc.context === 'combat' && isHumanDecision && (
+          <R2D2FlipPanel G={G} choice={pc} c={c} onPersist={onPersist} />
+        )}
         {pc?.kind === 'SpecialDieSpend' && isHumanDecision && (
           <SpecialDieSpendPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'CombatStartActionCards' && isHumanDecision && (
           <StartOfCombatPanel G={G} choice={pc} onPersist={onPersist} />
         )}
+        {pc?.kind === 'MoreDangerousTheaterPick' && isHumanDecision && (
+          <MoreDangerousTheaterPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
         {pc?.kind === 'RetreatDecision' && isHumanDecision && (
           <RetreatPanel G={G} choice={pc} onPersist={onPersist} />
         )}
+        {/* Always-visible diagnostic line so the player can see what state
+            the combat is in even if no panel renders for it. */}
+        <div style={{ fontSize: 10, color: '#555', marginTop: 6, fontFamily: 'monospace' }}>
+          state: pc={pc?.kind ?? 'none'} side={(pc as { side?: string } | undefined)?.side ?? '-'} round={c.round} you={humanSide} ai-owns={waitingForAI ? 'yes' : 'no'}
+        </div>
         {!pc && (
           <div style={{ color: '#666', fontStyle: 'italic' }}>
             Resolving — combat will pause here on the next decision.
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/** Strip showing each side's combat tactic-card hand. The human side sees
+ *  their cards (with hover-preview of art + rules text). The AI side sees
+ *  only the count — opponent's hand is private per RAW. */
+function TacticHandsBar({
+  G, humanSide, attacker, defender, attackerHand, defenderHand,
+}: {
+  G: GameState;
+  humanSide: Side;
+  attacker: Side;
+  defender: Side;
+  attackerHand: string[];
+  defenderHand: string[];
+}) {
+  const handFor = (side: Side) => (side === attacker ? attackerHand : defenderHand);
+  const renderSide = (side: Side) => {
+    const hand = handFor(side);
+    const isHuman = side === humanSide;
+    const color = SIDE_COLOR[side];
+    if (isHuman) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+          <span style={{ color, fontWeight: 700, fontSize: 12 }}>
+            {side} tactic cards ({hand.length}):
+          </span>
+          {hand.length === 0 && (
+            <span style={{ color: '#666', fontStyle: 'italic', fontSize: 11 }}>(none)</span>
+          )}
+          {hand.map((cid, i) => {
+            const card = G.catalog.tactics[cid];
+            const label = card?.name ?? cid;
+            const theater = card?.theater;
+            const dot = theater === 'space' ? '◇' : theater === 'ground' ? '■' : '·';
+            return (
+              <span key={`${cid}-${i}`} style={{
+                background: '#0c0d10', border: `1px solid ${color}88`,
+                borderRadius: 3, padding: '2px 6px', fontSize: 11,
+              }}>
+                <CardHover G={G} cardId={cid}>
+                  <span style={{ color: '#aaa', marginRight: 4 }}>{dot}</span>
+                  {label}
+                </CardHover>
+              </span>
+            );
+          })}
+        </div>
+      );
+    }
+    // Opponent: count only, no hover preview.
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ color, fontWeight: 700, fontSize: 12 }}>
+          {side} tactic cards:
+        </span>
+        <span style={{
+          background: '#0c0d10', border: `1px solid ${color}88`,
+          borderRadius: 3, padding: '2px 8px', fontSize: 11, fontWeight: 700, color: '#fff',
+        }}>
+          {hand.length}
+        </span>
+        <span style={{ color: '#666', fontStyle: 'italic', fontSize: 11 }}>
+          (hidden — opponent's hand)
+        </span>
+      </div>
+    );
+  };
+  return (
+    <div style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      gap: 24, padding: '8px 12px', marginTop: 8,
+      background: '#15171c', borderRadius: 4, border: '1px solid #2a2d34',
+    }}>
+      {renderSide(attacker)}
+      {renderSide(defender)}
     </div>
   );
 }
@@ -258,9 +544,28 @@ function UnitIcon({ G, unit }: { G: GameState; unit: UnitInstance }) {
               : '1px dotted #555';
   // Two-letter abbreviation derived from the type ID for a quick visual.
   const abbr = (t?.id ?? unit.typeId).split('-').map((s) => s[0]?.toUpperCase()).join('').slice(0, 3);
+  // Rich combat tooltip: attack dice, hp, theater, tier, transport.
+  const tooltip = (() => {
+    if (!t) return name;
+    const hpMax = t.health.value ?? 1;
+    const hpNow = hpMax - (unit.damage ?? 0);
+    const hpColor = t.health.color ?? '—';
+    const attack = `Atk: ${t.attack.red}R + ${t.attack.black}B`;
+    const tierLabel = t.tier ?? '?';
+    const transport = t.transport.capacity > 0
+      ? `Transport ${t.transport.capacity}${t.transport.restriction ? ' (restricted)' : ''}`
+      : (t.transport.immobile ? 'Immobile' : '');
+    return [
+      name,
+      `${t.theater} · ${tierLabel}`,
+      `HP ${hpNow}/${hpMax} (${hpColor})`,
+      attack,
+      transport,
+    ].filter(Boolean).join('\n');
+  })();
   return (
     <div
-      title={`${name}${(unit.damage ?? 0) > 0 ? ` — ${(t?.health.value ?? 1) - (unit.damage ?? 0)}/${t?.health.value ?? 1} hp` : ''}`}
+      title={tooltip}
       style={{
         width: 22, height: 22, background: '#0c0d10', border,
         borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -322,8 +627,8 @@ function AttackerTacticsPanel({ G, choice, onPersist }: {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const label = (cid: string) => G.catalog.tactics[cid]?.name ?? cid;
   const bonus = (cid: string) =>
-    cid.includes('take-it-down') ? '+2' :
-    cid.includes('onslaught') ? '+2' :
+    cid.includes('take-it-down') ? '+2 same target' :
+    cid.includes('onslaught') ? '+1 × 2 different' :
     cid.includes('critical-hit') ? '+1' : '';
 
   const submit = () => {
@@ -345,7 +650,7 @@ function AttackerTacticsPanel({ G, choice, onPersist }: {
         {cf && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
             <input type="checkbox" checked={useCF} disabled={blanks === 0} onChange={(e) => setUseCF(e.target.checked)} />
-            {label(cf)} (reroll ≤2 blanks)
+            <CardHover G={G} cardId={cf}>{label(cf)}</CardHover> (reroll ≤2 blanks)
           </label>
         )}
         {damageBoosts.map((cid) => (
@@ -361,7 +666,7 @@ function AttackerTacticsPanel({ G, choice, onPersist }: {
                 });
               }}
             />
-            {label(cid)} ({bonus(cid)} damage)
+            <CardHover G={G} cardId={cid}>{label(cid)}</CardHover> ({bonus(cid)} damage)
           </label>
         ))}
         {!cf && damageBoosts.length === 0 && (
@@ -416,7 +721,7 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
         {free && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
             <input type="checkbox" checked={useFree} onChange={(e) => setUseFree(e.target.checked)} />
-            {label(free)} (free block 1)
+            <CardHover G={G} cardId={free}>{label(free)}</CardHover> (free block 1)
           </label>
         )}
         {paid && (
@@ -428,7 +733,7 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
                 disabled={sacrificeCandidates.length === 0}
                 onChange={(e) => setUsePaid(e.target.checked)}
               />
-              {label(paid)} (block 1, discard another)
+              <CardHover G={G} cardId={paid}>{label(paid)}</CardHover> (block 1, discard another)
             </label>
             {usePaid && sacrificeCandidates.length > 0 && (
               <select
@@ -449,9 +754,20 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
           </span>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <button onClick={() => submit([], [])} style={btn('#2a2c33')}>Take all {choice.incomingHits}</button>
-          <button onClick={() => submit(blocks, sacs)} disabled={blocks.length === 0}
-            style={btn(blocks.length === 0 ? '#444' : SIDE_COLOR[choice.side])}>Block {blocks.length}</button>
+          <button onClick={() => submit([], [])} style={btn(SIDE_COLOR[choice.side])}>
+            Take all {choice.incomingHits}
+          </button>
+          <button
+            onClick={() => submit(blocks, sacs)}
+            disabled={blocks.length === 0}
+            style={{
+              ...btn(blocks.length === 0 ? '#2a2c33' : SIDE_COLOR[choice.side]),
+              opacity: blocks.length === 0 ? 0.45 : 1,
+              cursor: blocks.length === 0 ? 'not-allowed' : 'pointer',
+            }}
+          >
+            Block {blocks.length}
+          </button>
         </div>
       </div>
     </div>
@@ -513,17 +829,44 @@ function AssignDamagePanel({ G, choice, c, onPersist }: {
       <div style={{ fontSize: 13, marginBottom: 8 }}>
         <b>Assign damage:</b> pick which defender unit takes each hit.
       </div>
+      {/* Per-source constraint hints. RAW: Take It Down forces both hits to
+          one target; Onslaught forces hits to different targets. */}
+      {(() => {
+        const sources = new Set(choice.hits.map((h) => h.source).filter((s): s is string => !!s));
+        if (sources.size === 0) return null;
+        return (
+          <div style={{ fontSize: 11, color: '#cbc4b0', marginBottom: 6 }}>
+            {Array.from(sources).map((s) => {
+              const card = G.catalog.tactics[s];
+              const name = card?.name ?? s;
+              const rule = s.includes('take-it-down')
+                ? `both hits must target the SAME unit`
+                : s.includes('onslaught')
+                ? `the 2 hits must target DIFFERENT units`
+                : null;
+              if (!rule) return null;
+              return <div key={s}>⚠ <b>{name}</b>: {rule}.</div>;
+            })}
+          </div>
+        );
+      })()}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, maxHeight: 60, overflowY: 'auto' }}>
         {choice.hits.map((h, i) => {
           const opts = choice.targetsByHit[i];
+          const srcLabel = h.source
+            ? (h.source.includes('take-it-down') ? 'TID' : h.source.includes('onslaught') ? 'ONS' : h.source.includes('critical-hit') ? 'CRIT' : h.source.includes('bombardment') ? 'BOMB' : '+')
+            : null;
           return (
             <div key={i} style={{
               background: '#0c0d10', border: '1px solid #2a2d34', borderRadius: 3,
               padding: '4px 6px', fontSize: 11,
               display: 'flex', flexDirection: 'column', gap: 2,
             }}>
-              <span style={{ color: '#aaa' }}>
+              <span style={{ color: '#aaa', display: 'flex', alignItems: 'center', gap: 4 }}>
                 <Die d={{ color: (h.color ?? 'black') as DieResult['color'], face: h.face }} />
+                {srcLabel && (
+                  <span style={{ fontSize: 9, color: '#cbc4b0', fontWeight: 700 }}>{srcLabel}</span>
+                )}
               </span>
               {opts.length === 0 ? (
                 <span style={{ color: '#555' }}>(no legal target)</span>
@@ -565,6 +908,60 @@ function btn(bg: string): React.CSSProperties {
 }
 
 // ---------- Yoda reroll ----------
+
+// ---------- R2-D2 (Resourceful Astromech) flip ----------
+
+function R2D2FlipPanel({ G, choice, c, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'R2D2Flip' }>;
+  c: NonNullable<GameState['pendingCombat']>;
+  onPersist: () => void;
+}) {
+  const dice = c.pendingAttack?.dice ?? [];
+  const submit = (flipIndex: number | null) => {
+    const r = combat.resolveR2D2Flip(G, flipIndex);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b style={{ color: '#aae0ff' }}>R2-D2 (Resourceful Astromech):</b>{' '}
+        Discard the ring to turn 1 Empire die to blank?
+        <span style={{ color: '#888', fontSize: 11, marginLeft: 8 }}>
+          ⚠ One-time use — once discarded, the card is gone for the rest of the game.
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+        {choice.flippableDieIndices.map((i) => {
+          const d = dice[i];
+          if (!d) return null;
+          return (
+            <button
+              key={i}
+              onClick={() => submit(i)}
+              style={{
+                background: '#0c0d10', border: '2px solid #aae0ff', borderRadius: 4,
+                padding: '4px 8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+              }}
+              title={`Flip this ${d.color} ${d.face} die to blank`}
+            >
+              <Die d={d} />
+              <span style={{ fontSize: 11, color: '#aae0ff' }}>→ ▢ blank</span>
+            </button>
+          );
+        })}
+        <button
+          onClick={() => submit(null)}
+          style={btn('#2a2c33')}
+          title="Save R2-D2 for a later combat"
+        >
+          Skip (keep R2-D2 in hand)
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function YodaRerollPanel({ G, choice, onPersist }: {
   G: GameState;
@@ -648,7 +1045,7 @@ function SpecialDieSpendPanel({ G, choice, onPersist }: {
                 });
               }}
             />
-            {cardName(cid)}
+            <CardHover G={G} cardId={cid}>{cardName(cid)}</CardHover>
           </label>
         ))}
         <div style={{ marginLeft: 'auto' }}>
@@ -697,7 +1094,7 @@ function StartOfCombatPanel({ G, choice, onPersist }: {
                   });
                 }}
               />
-              {cardName(cid)}
+              <CardHover G={G} cardId={cid}>{cardName(cid)}</CardHover>
             </label>
           ))}
         </div>
@@ -705,6 +1102,48 @@ function StartOfCombatPanel({ G, choice, onPersist }: {
       <div style={{ marginTop: 8, textAlign: 'right' }}>
         <button onClick={submit} style={btn(SIDE_COLOR[choice.side])}>
           {picked.size === 0 ? 'Skip' : `Play ${picked.size} card${picked.size === 1 ? '' : 's'}`}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- "More Dangerous Than You Realize" theater pick ----------
+
+function MoreDangerousTheaterPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'MoreDangerousTheaterPick' }>;
+  onPersist: () => void;
+}) {
+  const card = G.catalog.actions[choice.cardId];
+  const pick = (theater: 'space' | 'ground') => {
+    const r = combat.resolveMoreDangerousTheaterPick(G, theater);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  const spaceLeft = G.spaceTacticDeck.length;
+  const groundLeft = G.groundTacticDeck.length;
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>{card?.name ?? choice.cardId}:</b> draw 3 tactic cards from one deck — your choice.
+      </div>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <button
+          onClick={() => pick('space')}
+          style={btn('#4fc3f7')}
+          disabled={spaceLeft === 0}
+          title={spaceLeft === 0 ? 'Space deck is empty' : `Draw 3 from ${spaceLeft} remaining space cards`}
+        >
+          ◇ Space ({spaceLeft} left)
+        </button>
+        <button
+          onClick={() => pick('ground')}
+          style={btn('#ffb74d')}
+          disabled={groundLeft === 0}
+          title={groundLeft === 0 ? 'Ground deck is empty' : `Draw 3 from ${groundLeft} remaining ground cards`}
+        >
+          ■ Ground ({groundLeft} left)
         </button>
       </div>
     </div>

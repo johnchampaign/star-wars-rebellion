@@ -9,6 +9,8 @@ import { missionTargets } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce } from './randomAI';
 
 const LS_HUMAN_SIDE = 'rebellion-human-side';
+const LS_SIDE_PREF = 'rebellion-side-pref'; // 'Rebel' | 'Empire' | 'Random'
+type SidePref = 'Rebel' | 'Empire' | 'Random';
 function randomSide(): Side { return Math.random() < 0.5 ? 'Rebel' : 'Empire'; }
 function otherSide(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -52,8 +54,11 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'CombatDefenderTactics':    return pc.side === side;
     case 'CombatAssignDamage':       return pc.side === side;
     case 'YodaReroll':               return pc.side === side;
+    case 'R2D2Flip':                 return pc.side === side;
     case 'SpecialDieSpend':          return pc.side === side;
     case 'CombatStartActionCards':   return pc.side === side;
+    case 'MoreDangerousTheaterPick': return pc.side === side;
+    case 'DeathStarPlansAttempt':    return pc.side === side;
     case 'RetreatDecision':          return pc.side === side;
     // Infiltration / Stolen Plans / Plan The Assault are always Rebel choices.
     case 'InfiltrationPick':         return side === 'Rebel';
@@ -76,10 +81,53 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'ResearchAndDevelopmentOption':     return pc.side === side;
     case 'ResearchAndDevelopmentProjectPick': return pc.side === side;
     case 'RecruitActionCardPick':    return pc.side === side;
+    case 'PlayAssignmentActionCard': return pc.side === side;
+    case 'ActionCardSystemPick':     return pc.side === side;
+    case 'DeployUnitPick':           return pc.side === side;
+    case 'DetainedTargetPick':       return pc.side === side;
+    case 'RetrieveThePlansPick':     return pc.side === side;
+    case 'InterrogationDroidDecoyPick': return pc.side === side;
     // Other ChoiceRequest kinds (system / leader picks, etc.) are
     // human-initiated and shouldn't auto-fire the AI loop.
     default:                         return false;
   }
+}
+
+/** Returns true if `side` has any legal Command-phase action available right
+ *  now. Used to relabel the Pass button when the player is effectively
+ *  forced to end their participation in this Command phase.
+ *
+ *  Definition of "has an action":
+ *    - At least one leader in their pool has combined tactic values > 0
+ *      (i.e. could activate a system), OR
+ *    - At least one assigned mission has enough leader skill to be revealed
+ *      (skill total >= skill cost).
+ *
+ *  We don't bother validating per-system legality of activation — that's
+ *  expensive and the player can see system options in the Command panel
+ *  anyway. The check is a fast superset that's accurate for "no leaders
+ *  left in pool with tactic dice AND no revealable missions". */
+function hasAnyCommandAction(G: GameState, side: Side): boolean {
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  // Any tactic-capable leader still in pool?
+  for (const lid of f.leaderPool) {
+    const ld = G.catalog.leaders[lid];
+    if (!ld) continue;
+    if ((ld.tacticValues.space + ld.tacticValues.ground) > 0) return true;
+  }
+  // Any revealable assigned mission?
+  for (const am of f.leadersOnMissions) {
+    const card = G.catalog.missions[am.missionId];
+    if (!card || !card.skill) continue;
+    let total = 0;
+    for (const lid of am.leaderIds) {
+      const ld = G.catalog.leaders[lid];
+      if (!ld) continue;
+      total += ld.skills[card.skill as keyof typeof ld.skills] ?? 0;
+    }
+    if (total >= card.skillCost) return true;
+  }
+  return false;
 }
 
 export default function PlayTab() {
@@ -99,6 +147,16 @@ export default function PlayTab() {
     const stored = localStorage.getItem(LS_HUMAN_SIDE);
     return stored === 'Rebel' || stored === 'Empire' ? stored : 'Rebel';
   });
+  // Player's preference for next new game: Rebel / Empire / Random. Persisted
+  // so the choice survives reload. "Random" rolls 50/50 on startNew.
+  const [sidePref, setSidePref] = useState<SidePref>(() => {
+    const v = localStorage.getItem(LS_SIDE_PREF);
+    return v === 'Rebel' || v === 'Empire' || v === 'Random' ? v : 'Random';
+  });
+  const updateSidePref = (p: SidePref) => {
+    setSidePref(p);
+    localStorage.setItem(LS_SIDE_PREF, p);
+  };
   const aiSide = otherSide(humanSide);
   // True while the Empire player is hovering the probe-deck UI; Board uses
   // this to highlight systems already ruled out by drawn probe cards.
@@ -207,13 +265,16 @@ export default function PlayTab() {
     const s = trimmed === '' ? Math.floor(Math.random() * 1e9) : Number(trimmed);
     if (Number.isNaN(s)) return;
     gameRef.current = createGame(dataRef.current, { seed: s, autoSetupUnits: false });
-    // Randomly assign human side for this game.
-    const newHuman = randomSide();
+    // Honor the player's side preference. "Random" rolls 50/50.
+    const newHuman: Side =
+      sidePref === 'Rebel' ? 'Rebel' :
+      sidePref === 'Empire' ? 'Empire' :
+      randomSide();
     localStorage.setItem(LS_HUMAN_SIDE, newHuman);
     setHumanSide(newHuman);
     persist();
     refresh();
-  }, [seed, refresh, persist]);
+  }, [seed, refresh, persist, sidePref]);
 
   const resumeSaved = useCallback(() => {
     const raw = localStorage.getItem(LS_CURRENT);
@@ -252,18 +313,47 @@ export default function PlayTab() {
         <h2 style={{ marginTop: 0 }}>Play</h2>
         <div className="placeholder">
           <p>No game in progress.</p>
-          <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
-            <label style={{ color: '#aaa', fontSize: 13 }}>
-              Seed (blank = random):{' '}
-              <input value={seed} onChange={(e) => setSeed(e.target.value)} placeholder="random" style={inputStyle} />
-            </label>
-            <button className="tab-button active" onClick={startNew}>Start new game</button>
-            {hasSaved && (
-              <>
-                <button className="tab-button" onClick={resumeSaved}>Resume saved game</button>
-                <button className="tab-button" onClick={discardSaved}>Discard saved</button>
-              </>
-            )}
+          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center' }}>
+              <div style={{ color: '#aaa', fontSize: 13 }}>Play as:</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {(['Rebel', 'Empire', 'Random'] as const).map((p) => {
+                  const active = sidePref === p;
+                  const c = p === 'Rebel' ? '#aae0ff' : p === 'Empire' ? '#ffaaaa' : '#cbc4b0';
+                  return (
+                    <button
+                      key={p}
+                      onClick={() => updateSidePref(p)}
+                      style={{
+                        padding: '6px 14px',
+                        background: active ? c : '#15171c',
+                        color: active ? '#000' : c,
+                        border: `2px solid ${c}`,
+                        borderRadius: 4,
+                        fontWeight: active ? 700 : 500,
+                        fontSize: 13,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {p}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
+              <label style={{ color: '#aaa', fontSize: 13 }}>
+                Seed (blank = random):{' '}
+                <input value={seed} onChange={(e) => setSeed(e.target.value)} placeholder="random" style={inputStyle} />
+              </label>
+              <button className="tab-button active" onClick={startNew}>Start new game</button>
+              {hasSaved && (
+                <>
+                  <button className="tab-button" onClick={resumeSaved}>Resume saved game</button>
+                  <button className="tab-button" onClick={discardSaved}>Discard saved</button>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -385,19 +475,48 @@ export default function PlayTab() {
             </button>
           )}
           {G.phase === 'Assignment' && G.currentPlayer === humanSide && (
-            <button
-              className="tab-button active"
-              onClick={onSkipAssignment}
-              style={{ fontWeight: 700 }}
-            >
-              {G.currentPlayer} done assigning
-            </button>
+            <>
+              {(() => {
+                const playable = phases.playableAssignmentActionCards(G, humanSide);
+                if (playable.length === 0 || G.pendingChoice) return null;
+                return (
+                  <button
+                    className="tab-button"
+                    onClick={() => {
+                      const r = phases.requestAssignmentActionCardPlay(G, humanSide);
+                      if (!r.ok) alert(`Cannot play: ${r.reason}`);
+                      persist(); refresh();
+                    }}
+                    title={`${playable.length} playable action card${playable.length === 1 ? '' : 's'}`}
+                  >
+                    Play action card ({playable.length})
+                  </button>
+                );
+              })()}
+              <button
+                className="tab-button active"
+                onClick={onSkipAssignment}
+                style={{ fontWeight: 700 }}
+              >
+                {G.currentPlayer} done assigning
+              </button>
+            </>
           )}
-          {G.phase === 'Command' && (
-            <button className="tab-button" onClick={onPass}>
-              {G.currentPlayer} pass
-            </button>
-          )}
+          {G.phase === 'Command' && (() => {
+            const canDo = hasAnyCommandAction(G, G.currentPlayer);
+            return (
+              <button
+                className={canDo ? 'tab-button' : 'tab-button active'}
+                onClick={onPass}
+                style={canDo ? undefined : { fontWeight: 700 }}
+                title={canDo
+                  ? 'Voluntarily pass for the rest of the Command phase. You can still oppose missions and join combats.'
+                  : 'No leaders in your pool can activate, and no assigned mission has enough skill to reveal. Click to end your Command phase.'}
+              >
+                {G.currentPlayer} {canDo ? 'pass' : 'end Command phase'}
+              </button>
+            );
+          })()}
         </span>
       </div>
 
@@ -424,6 +543,7 @@ export default function PlayTab() {
         G={G}
         systems={systemsRef.current}
         masks={masksRef.current}
+        humanSide={humanSide}
         eliminatedSystemIds={
           probeHover && humanSide === 'Empire'
             ? new Set((G.empire.probeHand ?? [])
@@ -667,6 +787,105 @@ export default function PlayTab() {
             persist(); refresh();
           }}
         />
+      )}
+
+      {/* ----- Assignment-timed action card play (#99) ----- */}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'PlayAssignmentActionCard'
+        && G.pendingChoice.side === humanSide && (
+        <PlayAssignmentActionCardModal G={G} choice={G.pendingChoice}
+          onPick={(cid) => {
+            const r = phases.playAssignmentActionCard(G, cid);
+            if (!r.ok) alert(`Cannot play: ${r.reason}`);
+            persist(); refresh();
+          }}
+          onCancel={() => {
+            phases.cancelAssignmentActionCardPlay(G);
+            persist(); refresh();
+          }} />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'ActionCardSystemPick'
+        && G.pendingChoice.side === humanSide && (
+        <ActionCardSystemPickModal G={G} choice={G.pendingChoice}
+          onPick={(sid) => {
+            const r = phases.resolveActionCardSystemPick(G, sid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'DeployUnitPick'
+        && G.pendingChoice.side === humanSide && (
+        <DeployUnitPickModal G={G} choice={G.pendingChoice}
+          onPick={(sid) => {
+            const r = phases.resolveDeployUnitPick(G, sid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {/* Mission-context R2-D2 (combat-context lives in CombatBoardLive). */}
+      {G.pendingChoice?.kind === 'R2D2Flip'
+        && G.pendingChoice.context === 'mission'
+        && G.pendingChoice.side === humanSide && (
+        <R2D2MissionFlipModal G={G} choice={G.pendingChoice}
+          onPick={(idx) => {
+            const r = phases.resolveR2D2MissionFlip(G, idx);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'DeathStarPlansAttempt'
+        && G.pendingChoice.side === humanSide && (
+        <DeathStarPlansAttemptModal G={G} choice={G.pendingChoice}
+          onAttempt={(attempt, dsId) => {
+            const r = combat.resolveDeathStarPlansAttempt(G, attempt, dsId);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'DetainedTargetPick'
+        && G.pendingChoice.side === humanSide && (
+        <DetainedTargetPickModal G={G} choice={G.pendingChoice}
+          onPick={(lid) => {
+            const r = phases.resolveDetainedTargetPick(G, lid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'RetrieveThePlansPick'
+        && G.pendingChoice.side === humanSide && (
+        <RetrieveThePlansPickModal G={G} choice={G.pendingChoice}
+          onPick={(oid) => {
+            const r = phases.resolveRetrieveThePlansPick(G, oid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'InterrogationDroidDecoyPick'
+        && G.pendingChoice.side === humanSide && (
+        <InterrogationDroidDecoyPickModal G={G} choice={G.pendingChoice}
+          onPick={(sids) => {
+            const r = phases.resolveInterrogationDroidDecoyPick(G, sids);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
       )}
 
       {/* ----- Bulk-added card-choice modals (task #96) ----- */}
@@ -2164,14 +2383,40 @@ function PlanetaryConquestModal({ G, choice, onPick }: {
           Target: {targetName}. Units (up to 1 AT-AT, 1 AT-ST, 2 Stormtroopers) move from the source, then combat fires.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
-          {choice.sources.map((s) => (
-            <button key={s.sourceSystemId} onClick={() => onPick(s.sourceSystemId)}
-              style={{ textAlign: 'left', padding: 8, background: '#0c0d10', border: '1px solid #2a2d34',
-                borderRadius: 4, color: '#e8e8ea', cursor: 'pointer', fontSize: 13 }}>
-              <strong>{G.catalog.systems[s.sourceSystemId]?.name ?? s.sourceSystemId}</strong>
-              <span style={{ color: '#888', marginLeft: 6 }}>(sends {s.picks.length} unit{s.picks.length === 1 ? '' : 's'})</span>
-            </button>
-          ))}
+          {[...choice.sources]
+            // Sort by units-sent descending so the strongest source is on top.
+            .sort((a, b) => b.picks.length - a.picks.length)
+            .map((s) => {
+              // Break the picks down by unit type so the player can see
+              // exactly what's coming (e.g. "1 AT-AT, 1 AT-ST, 2 Stormtroopers").
+              const ss = G.map.systems[s.sourceSystemId];
+              const byType: Record<string, number> = {};
+              for (const uid of s.picks) {
+                const u = ss?.units.find((x) => x.instanceId === uid);
+                if (!u) continue;
+                byType[u.typeId] = (byType[u.typeId] ?? 0) + 1;
+              }
+              const labelFor = (typeId: string) => G.catalog.unitTypes[typeId]?.name ?? typeId;
+              const breakdown = Object.entries(byType)
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([typeId, n]) => `${n}× ${labelFor(typeId)}`)
+                .join(', ');
+              return (
+                <button key={s.sourceSystemId} onClick={() => onPick(s.sourceSystemId)}
+                  style={{ textAlign: 'left', padding: 8, background: '#0c0d10', border: '1px solid #2a2d34',
+                    borderRadius: 4, color: '#e8e8ea', cursor: 'pointer', fontSize: 13 }}>
+                  <div>
+                    <strong>{G.catalog.systems[s.sourceSystemId]?.name ?? s.sourceSystemId}</strong>
+                    <span style={{ color: '#80dc78', marginLeft: 8, fontWeight: 600 }}>
+                      sends {s.picks.length} unit{s.picks.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
+                  <div style={{ color: '#cbc4b0', fontSize: 12, marginTop: 2 }}>
+                    {breakdown || '(empty)'}
+                  </div>
+                </button>
+              );
+            })}
         </div>
       </div>
     </div>
@@ -2723,7 +2968,11 @@ function MissionReportModal({ G, report, onDismiss }: {
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000,
+      // Above the combat board (zIndex 2000) so a mission that triggers
+      // combat (Ignite Rebellion, Plan The Assault, uprising missions)
+      // shows the success/failure narrative BEFORE the player has to
+      // engage with the combat board.
+      zIndex: 2500,
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${resultColor}`, borderRadius: 8,
@@ -2981,13 +3230,28 @@ function EnlargedSector({ G, system }: { G: GameState; system: System }) {
                 ) : (
                   system.resources.map((r, i) => (
                     <span key={i} style={{
+                      position: 'relative',
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                       width: 30, height: 30, borderRadius: 4,
                       background: r.type === 'space' ? 'rgba(79,195,247,0.85)' : 'rgba(255,183,77,0.85)',
                       color: '#000', fontSize: 20, fontWeight: 700,
                       border: i === 0 && system.resources.length > 1 ? '2px solid #fff' : 'none',
-                    }} title={i === 0 ? 'left icon (used when subjugated)' : 'right icon'}>
+                      // Desaturate sabotaged icons so the red strike-through reads as "disabled."
+                      opacity: state.sabotage ? 0.45 : 1,
+                    }} title={state.sabotage
+                      ? 'SABOTAGED — this icon cannot produce until a Repair Damage or R&D Option B clears the marker'
+                      : (i === 0 ? 'left icon (used when subjugated)' : 'right icon')}>
                       {r.shape === 'triangle' ? '▲' : r.shape === 'circle' ? '●' : '■'}
+                      {state.sabotage && (
+                        // Diagonal red bar across the icon. Pure CSS, no extra asset.
+                        <span style={{
+                          position: 'absolute', left: -2, right: -2, top: '50%',
+                          height: 4, background: '#ff3a3a',
+                          transform: 'translateY(-50%) rotate(-25deg)',
+                          boxShadow: '0 0 6px rgba(255,58,58,0.8)',
+                          pointerEvents: 'none',
+                        }} />
+                      )}
                     </span>
                   ))
                 )}
@@ -3139,9 +3403,36 @@ function EnlargedRebelBase({ G, rect }: { G: GameState; rect: MaskRect }) {
 function LeaderPips({ G, systemId, centerX, centerY }: {
   G: GameState; systemId: string; centerX: number; centerY: number;
 }) {
-  const rebel = (G.rebel.leadersOnBoard[systemId] ?? []).map((lid) => ({ side: 'Rebel' as Side, leader: G.catalog.leaders[lid] })).filter((x) => x.leader);
-  const empire = (G.empire.leadersOnBoard[systemId] ?? []).map((lid) => ({ side: 'Empire' as Side, leader: G.catalog.leaders[lid] })).filter((x) => x.leader);
-  const all = [...rebel, ...empire];
+  type Pip = {
+    kind: 'active' | 'captured' | 'carbonite';
+    side: Side; // owning side (captives are still Rebel/Empire leaders)
+    leader: NonNullable<ReturnType<(typeof G.catalog.leaders)['__type']>> | (typeof G.catalog.leaders)[string];
+  };
+  const rebel: Pip[] = (G.rebel.leadersOnBoard[systemId] ?? [])
+    .map((lid) => ({ kind: 'active' as const, side: 'Rebel' as Side, leader: G.catalog.leaders[lid] }))
+    .filter((x): x is Pip => !!x.leader);
+  const empire: Pip[] = (G.empire.leadersOnBoard[systemId] ?? [])
+    .map((lid) => ({ kind: 'active' as const, side: 'Empire' as Side, leader: G.catalog.leaders[lid] }))
+    .filter((x): x is Pip => !!x.leader);
+  // Captured leaders pinned at this system. Their side is the side they
+  // belong to (e.g. a captured Mon Mothma is still a Rebel leader). Visually
+  // we paint them with a heavy red ring + chain glyph, or cyan for carbonite.
+  const captured: Pip[] = (G.empire.capturedLeaders ?? [])
+    .filter((cl) => cl.systemId === systemId)
+    .map((cl) => {
+      const ldr = G.catalog.leaders[cl.leaderId];
+      if (!ldr) return null;
+      // Captured Rebel leaders are the common case; a flipped Imperial leader
+      // (e.g. Lure of the Dark Side) wouldn't show up here. Use side from the
+      // catalog so we get the right value either way.
+      return {
+        kind: cl.ring === 'carbonite' ? 'carbonite' as const : 'captured' as const,
+        side: ldr.side,
+        leader: ldr,
+      };
+    })
+    .filter((x): x is Pip => !!x);
+  const all = [...rebel, ...empire, ...captured];
   if (all.length === 0) return null;
   const SIZE = 24;        // up from 14 — actually recognisable
   const GAP = 2;
@@ -3158,11 +3449,23 @@ function LeaderPips({ G, systemId, centerX, centerY }: {
       />
       {all.map((x, i) => {
         const cx = startX + i * (SIZE + GAP) + SIZE / 2;
-        const ringColor = x.side === 'Rebel' ? '#aae0ff' : '#ffaaaa';
-        const glowColor = x.side === 'Rebel' ? 'rgba(170,224,255,0.85)' : 'rgba(255,170,170,0.85)';
-        const clipId = `lpip-${systemId}-${x.leader!.id}`;
+        // Active leaders use side colour. Captured/carbonite override with a
+        // distinctive ring + label so the player can see who's held where.
+        const ringColor =
+          x.kind === 'captured'  ? '#ff3a3a' :
+          x.kind === 'carbonite' ? '#4fc3f7' :
+          x.side === 'Rebel'      ? '#aae0ff' : '#ffaaaa';
+        const glowColor =
+          x.kind === 'captured'  ? 'rgba(255,58,58,0.9)' :
+          x.kind === 'carbonite' ? 'rgba(79,195,247,0.9)' :
+          x.side === 'Rebel'      ? 'rgba(170,224,255,0.85)' : 'rgba(255,170,170,0.85)';
+        const clipId = `lpip-${systemId}-${x.leader.id}-${x.kind}`;
+        const titlePrefix =
+          x.kind === 'captured'  ? `CAPTURED ${x.side}` :
+          x.kind === 'carbonite' ? `CARBONITE ${x.side}` :
+          x.side;
         return (
-          <g key={x.leader!.id}>
+          <g key={`${x.kind}-${x.leader.id}`}>
             <defs>
               <clipPath id={clipId}>
                 <circle cx={cx} cy={centerY} r={SIZE / 2 - 1} />
@@ -3170,17 +3473,33 @@ function LeaderPips({ G, systemId, centerX, centerY }: {
             </defs>
             {/* Soft outer glow — easier to spot the cluster on a busy map */}
             <circle cx={cx} cy={centerY} r={SIZE / 2 + 1.5}
-              style={{ fill: 'none', stroke: glowColor, strokeWidth: 1, opacity: 0.7 }} />
+              style={{ fill: 'none', stroke: glowColor, strokeWidth: x.kind === 'active' ? 1 : 1.5, opacity: 0.75 }} />
             <image
-              href={`${LEADER_IMAGE_BASE}/${x.leader!.image}`}
+              href={`${LEADER_IMAGE_BASE}/${x.leader.image}`}
               x={cx - SIZE / 2} y={centerY - SIZE / 2}
               width={SIZE} height={SIZE}
               clipPath={`url(#${clipId})`}
               preserveAspectRatio="xMidYMid slice"
+              // Desaturate captives so the red ring reads as "held."
+              style={x.kind === 'active' ? undefined : { filter: 'grayscale(0.55) brightness(0.7)' }}
             />
             <circle cx={cx} cy={centerY} r={SIZE / 2}
-              style={{ fill: 'none', stroke: ringColor, strokeWidth: 2 }} />
-            <title>{x.side}: {x.leader!.name}</title>
+              style={{ fill: 'none', stroke: ringColor, strokeWidth: x.kind === 'active' ? 2 : 2.5 }} />
+            {/* Chain/snowflake glyph in the corner for captured/carbonite */}
+            {x.kind !== 'active' && (
+              <text
+                x={cx + SIZE / 2 - 2} y={centerY + SIZE / 2 - 1}
+                textAnchor="end" fontSize={11} fontWeight={700}
+                style={{
+                  fill: x.kind === 'carbonite' ? '#4fc3f7' : '#ff3a3a',
+                  paintOrder: 'stroke',
+                  stroke: '#000', strokeWidth: 2.5,
+                }}
+              >
+                {x.kind === 'carbonite' ? '❄' : '⛓'}
+              </text>
+            )}
+            <title>{titlePrefix}: {x.leader.name}</title>
           </g>
         );
       })}
@@ -3243,9 +3562,10 @@ function UnitCluster({ centerX, centerY, groups, iconSize, maxWidth }: {
   );
 }
 
-function Board({ G, systems, masks, eliminatedSystemIds }: {
+function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
   G: GameState; systems: System[]; masks: MaskRect[];
   eliminatedSystemIds?: Set<string> | null;
+  humanSide?: Side;
 }) {
   // Compute aggregate of Rebel Base space units (offboard staging area)
   const rbsUnits = G.map.rebelBaseSpace.units.length;
@@ -3280,7 +3600,18 @@ function Board({ G, systems, masks, eliminatedSystemIds }: {
             const units = G.map.rebelBaseSpace.units;
             const leaders = G.rebel.leadersOnBoard['rebel-base-space'] ?? [];
             const grouped = groupByType(units);
-            title = G.rebelBaseRevealed ? 'Rebel Base (revealed)' : 'Rebel Base (hidden)';
+            // Rebel player knows where their own base is — show the sector
+            // in the tooltip. Empire just sees "hidden" until revealed.
+            const baseSys = G.catalog.systems[G.rebelBaseSystemId];
+            const baseSysName = baseSys?.name ?? G.rebelBaseSystemId;
+            const baseRegion = baseSys?.region;
+            if (G.rebelBaseRevealed) {
+              title = `Rebel Base — ${baseSysName} (revealed)`;
+            } else if (humanSide === 'Rebel' && baseSys) {
+              title = `Rebel Base — secretly at ${baseSysName} (region ${baseRegion}). Only you can see this.`;
+            } else {
+              title = 'Rebel Base (hidden)';
+            }
             content = (
               <>
                 <text x={x + 6} y={y + 32} style={{ fill: '#aae0ff', fontSize: 13, fontWeight: 700, pointerEvents: 'none' }}>
@@ -3434,11 +3765,13 @@ function Board({ G, systems, masks, eliminatedSystemIds }: {
 
         {/* Loyalty / subjugation marker images placed on the printed hex */}
         {systems.map((s) => {
-          if (!s.loyaltyMarkerPos) return null; // remote / Coruscant
           const state = G.map.systems[s.id];
           if (!state) return null;
-          const mx = s.loyaltyMarkerPos.x * BOARD_SCALE;
-          const my = s.loyaltyMarkerPos.y * BOARD_SCALE;
+          // Coruscant + remote systems have no loyalty hex, but a sabotage
+          // badge still needs to be visible. Fall back to the planet position.
+          if (!s.loyaltyMarkerPos && !state.sabotage) return null;
+          const mx = (s.loyaltyMarkerPos ?? s.boardPos).x * BOARD_SCALE;
+          const my = (s.loyaltyMarkerPos ?? s.boardPos).y * BOARD_SCALE;
           const markerSize = 36;
 
           // Pick which marker to render. Per rr p.13: subjugation marker sits
@@ -3458,7 +3791,7 @@ function Board({ G, systems, masks, eliminatedSystemIds }: {
             const dy = markers.length > 0 ? 14 : 0;
             markers.push({ src: 'MarkerLoyaltySubjugated.png', offsetX: dx, offsetY: dy });
           }
-          if (markers.length === 0) return null;
+          if (markers.length === 0 && !state.sabotage) return null;
           return (
             <g key={`loyalty-${s.id}`} pointerEvents="none">
               {markers.map((m, i) => (
@@ -3472,6 +3805,29 @@ function Board({ G, systems, masks, eliminatedSystemIds }: {
                   opacity={m.opacity ?? 1}
                 />
               ))}
+              {state.sabotage && (() => {
+                // Sabotage badge — pure SVG (no asset), placed offset from the
+                // loyalty marker so both stay visible. Red circle with a wrench
+                // glyph and "SABOTAGE" label.
+                const badgeR = 14;
+                // Stack the sabotage badge to the LEFT of the loyalty marker to
+                // avoid overlapping the subjugation offset (which sits down/right).
+                const bx = mx - markerSize / 2 - 6;
+                const by = my;
+                return (
+                  <g>
+                    <circle cx={bx} cy={by} r={badgeR}
+                      style={{ fill: 'rgba(180,20,20,0.95)', stroke: '#ff8a80', strokeWidth: 1.5 }} />
+                    <text x={bx} y={by + 5} textAnchor="middle"
+                      style={{ fill: '#fff', fontSize: 16, fontWeight: 700 }}>⚠</text>
+                    <text x={bx} y={by + badgeR + 10} textAnchor="middle"
+                      style={{ fill: '#ff8a80', fontSize: 8, fontWeight: 700,
+                              paintOrder: 'stroke', stroke: '#000', strokeWidth: 2 }}>
+                      SABOTAGE
+                    </text>
+                  </g>
+                );
+              })()}
             </g>
           );
         })}
@@ -3598,7 +3954,35 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
               }
             />
             <Row label="Project deck" value={`${f.projectDeck?.length ?? 0} cards`} />
-            <Row label="Captured leaders" value={`${f.capturedLeaders?.length ?? 0}`} />
+            <Row
+              label="Captured leaders"
+              value={
+                f.capturedLeaders && f.capturedLeaders.length > 0
+                  ? (
+                      <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 4 }}>
+                        {f.capturedLeaders.map((cl) => {
+                          const ldr = G.catalog.leaders[cl.leaderId];
+                          const sysName = G.catalog.systems[cl.systemId]?.name ?? cl.systemId;
+                          const ringTag = cl.ring === 'carbonite' ? ' ❄' : '';
+                          return (
+                            <span
+                              key={cl.leaderId}
+                              title={`${ldr?.name ?? cl.leaderId} — held at ${sysName}${cl.ring === 'carbonite' ? ' (in carbonite)' : ''}`}
+                              style={{
+                                background: '#3a1a1a', color: '#ffaaaa',
+                                border: '1px solid #6a2a2a', borderRadius: 3,
+                                padding: '1px 6px', fontSize: 11, fontWeight: 600,
+                              }}
+                            >
+                              {ldr?.name ?? cl.leaderId}{ringTag} @ {sysName}
+                            </span>
+                          );
+                        })}
+                      </span>
+                    )
+                  : '(none)'
+              }
+            />
           </>
         )}
         <Row label="Build queue 3 / 2 / 1" value={`${f.buildQueue[3].length} / ${f.buildQueue[2].length} / ${f.buildQueue[1].length}`} />
@@ -4738,7 +5122,7 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
     // Try the relay (vite dev endpoint, which auto-files a GH issue if env
     // vars are set). On any failure, fall through to a pre-filled GH URL.
     try {
-      const res = await fetch('/__report', {
+      const res = await fetch('/api/report', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(buildReport()),
@@ -4955,10 +5339,6 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
   >({ kind: 'idle' });
 
   const onConfirm = async () => {
-    if (!import.meta.env.DEV) {
-      setStatus({ kind: 'error', message: 'Upload only works while running `vite dev` (the endpoint is dev-only).' });
-      return;
-    }
     setConfirmed(true);
     setStatus({ kind: 'uploading' });
     const payload = {
@@ -4979,7 +5359,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
       ],
     };
     try {
-      const res = await fetch('/__upload-logs', {
+      const res = await fetch('/api/upload-logs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -5017,7 +5397,11 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
           <>
             <p>
               You are about to submit <b>{recordCount}</b> game log{recordCount === 1 ? '' : 's'} to
-              a <b>public</b> GitHub repo for use in AI development.
+              a <b>public</b> GitHub repo. <b style={{ color: '#ffd54a' }}>
+                These logs will be readable by anyone on the internet — including
+                AI researchers and game developers who may use them to train and
+                improve the game's AI opponent.
+              </b>
             </p>
             <p style={{ marginBottom: 4 }}><b>What gets sent:</b></p>
             <ul style={{ marginTop: 0, paddingLeft: 22 }}>
@@ -5070,6 +5454,463 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
           {confirmed && status.kind !== 'uploading' && (
             <button className="tab-button" onClick={onClose}>Close</button>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- Assignment-timed action card play (#99) -----
+
+function PlayAssignmentActionCardModal({
+  G, choice, onPick, onCancel,
+}: {
+  G: GameState;
+  choice: { kind: 'PlayAssignmentActionCard'; side: Side; candidates: string[] };
+  onPick: (cardId: string) => void;
+  onCancel: () => void;
+}) {
+  const color = sideColor(choice.side);
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color, marginTop: 0 }}>Play an action card — Assignment phase</h3>
+        <div style={{ color: '#aaa', fontSize: 13, marginBottom: 10 }}>
+          Pick one to play. Its leader is placed on the named space and the
+          card's effect resolves immediately. Cancel to assign a mission instead.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {choice.candidates.map((cid) => {
+            const card = G.catalog.actions[cid];
+            if (!card) return null;
+            const reqLeader = (card.leaderRequirement ?? [])[0];
+            const leaderName = reqLeader ? G.catalog.leaders[reqLeader]?.name ?? reqLeader : '(none)';
+            return (
+              <button
+                key={cid}
+                className="tab-button"
+                onClick={() => onPick(cid)}
+                style={{ textAlign: 'left', padding: '8px 10px' }}
+              >
+                <div style={{ fontWeight: 700, color: '#fff' }}>{card.name}</div>
+                <div style={{ fontSize: 11, color: '#aaa' }}>Leader: {leaderName}</div>
+                <div style={{ fontSize: 11, color: '#ccc', marginTop: 4, fontStyle: 'italic' }}>{card.rulesText}</div>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+          <button className="tab-button" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ActionCardSystemPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'ActionCardSystemPick'; side: Side; cardId: string; candidates: string[] };
+  onPick: (sysId: string) => void;
+}) {
+  const color = sideColor(choice.side);
+  const card = G.catalog.actions[choice.cardId];
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color, marginTop: 0 }}>{card?.name ?? choice.cardId} — pick a system</h3>
+        <div style={{ color: '#ccc', fontSize: 13, marginBottom: 10, fontStyle: 'italic' }}>{card?.rulesText}</div>
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 6,
+        }}>
+          {choice.candidates.map((sid) => {
+            const sys = G.catalog.systems[sid];
+            return (
+              <button key={sid} className="tab-button" onClick={() => onPick(sid)} style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 700 }}>{sys?.name ?? sid}</div>
+                <div style={{ fontSize: 11, color: '#888' }}>region {sys?.region}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- Refresh-phase deploy pick (#100) -----
+
+// ----- R2-D2 mission-context flip -----
+
+function R2D2MissionFlipModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: {
+    kind: 'R2D2Flip'; side: Side; context: 'combat' | 'mission';
+    systemId: string; flippableDieIndices: number[]; missionFaces?: string[];
+  };
+  onPick: (flipIndex: number | null) => void;
+}) {
+  const faces = choice.missionFaces ?? [];
+  const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  // High z-index — must sit above the soon-to-arrive MissionReportModal.
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2700,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 8,
+        padding: 24, maxWidth: 640, width: '92%',
+        boxShadow: '0 8px 32px rgba(170,224,255,0.4)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>
+          R2-D2 (Resourceful Astromech) — flip an Empire mission die?
+        </h3>
+        <div style={{ color: '#cbc4b0', fontSize: 13, fontStyle: 'italic', marginBottom: 8 }}>
+          "R2-D2 ring — discard to turn 1 opponent's die to the blank side."
+        </div>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+          Empire rolled this mission at <b>{sysName}</b>. You may discard the
+          ring to turn one of Empire's dice to blank. Once discarded, the card
+          is gone for the rest of the game.
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+          {faces.map((face, i) => {
+            const flippable = choice.flippableDieIndices.includes(i);
+            const glyph = face === 'hit' ? '✓' : face === 'direct-hit' ? '✶' : face === 'special' ? '◈' : '·';
+            return (
+              <button
+                key={i}
+                disabled={!flippable}
+                onClick={() => onPick(i)}
+                style={{
+                  width: 56, height: 56, borderRadius: 6,
+                  background: face === 'blank' ? '#222' : '#c4423a',
+                  color: '#fff', fontSize: 24, fontWeight: 700,
+                  border: flippable ? '2px solid #aae0ff' : '1px solid #444',
+                  opacity: flippable ? 1 : 0.4,
+                  cursor: flippable ? 'pointer' : 'not-allowed',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                }}
+                title={flippable ? `Flip ${face} → blank` : 'Already blank — no effect'}
+              >
+                <span>{glyph}</span>
+                <span style={{ fontSize: 9, fontWeight: 500, opacity: 0.8 }}>{face}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <button className="tab-button" onClick={() => onPick(null)}>
+            Skip (keep R2-D2 in hand)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- Death Star Plans 2/3 attempt (#6) -----
+
+function DeathStarPlansAttemptModal({
+  G, choice, onAttempt,
+}: {
+  G: GameState;
+  choice: { kind: 'DeathStarPlansAttempt'; side: Side; objectiveId: string; systemId: string; deathStarInstanceIds: string[] };
+  onAttempt: (attempt: boolean, deathStarId?: string) => void;
+}) {
+  const card = G.catalog.objectives[choice.objectiveId];
+  const sys = G.catalog.systems[choice.systemId];
+  const [pickedDS, setPickedDS] = useState<string>(choice.deathStarInstanceIds[0]);
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2600,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #80dc78', borderRadius: 8,
+        padding: 24, maxWidth: 640, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(128,220,120,0.4)',
+      }}>
+        <h3 style={{ color: '#80dc78', marginTop: 0 }}>
+          🌟 {card?.name ?? 'Death Star Plans'} — attempt the destruction?
+        </h3>
+        <div style={{ color: '#cbc4b0', fontSize: 13, marginBottom: 12, fontStyle: 'italic' }}>
+          {card?.rulesText}
+        </div>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12, lineHeight: 1.4 }}>
+          You have at least one fighter at <b>{sys?.name ?? choice.systemId}</b> and{' '}
+          {choice.deathStarInstanceIds.length === 1
+            ? 'a Death Star is here.'
+            : `${choice.deathStarInstanceIds.length} Death Stars are here.`}
+          {' '}If you reveal, you roll <b>3 red dice</b>. Any <b>direct hit</b> (1/6 each die,
+          ~42% combined) destroys the chosen Death Star and grants{' '}
+          <b>{card?.reputation ?? 2} reputation</b>. Otherwise the card returns to your hand —
+          no penalty for trying.
+        </div>
+        {choice.deathStarInstanceIds.length > 1 && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ color: '#aaa', fontSize: 12, marginBottom: 4 }}>Pick which Death Star:</div>
+            <select
+              value={pickedDS}
+              onChange={(e) => setPickedDS(e.target.value)}
+              style={{ background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '4px 8px' }}
+            >
+              {choice.deathStarInstanceIds.map((id) => {
+                const ss = G.map.systems[choice.systemId];
+                const u = ss?.units.find((x) => x.instanceId === id);
+                const name = u ? (G.catalog.unitTypes[u.typeId]?.name ?? u.typeId) : id;
+                return <option key={id} value={id}>{name} ({id.slice(0, 6)})</option>;
+              })}
+            </select>
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button
+            className="tab-button"
+            onClick={() => onAttempt(false)}
+            title="Keep the card in hand for a later combat (Death Star can be destroyed by direct attack too)."
+          >
+            Decline (save for later)
+          </button>
+          <button
+            className="tab-button active"
+            onClick={() => onAttempt(true, pickedDS)}
+            style={{ fontWeight: 700, background: '#80dc78', color: '#000' }}
+          >
+            Reveal &amp; roll 3 dice
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- Detained / Retrieve The Plans / Interrogation Droid (#4: stub-mission fixes) -----
+
+function DetainedTargetPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'DetainedTargetPick'; side: Side; candidates: string[] };
+  onPick: (leaderId: string) => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Detained — pick a Rebel leader to detain</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          The chosen leader will skip the next Refresh phase's retrieve step
+          and remain on the board for another full round.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {choice.candidates.map((lid) => {
+            const ldr = G.catalog.leaders[lid];
+            return (
+              <button key={lid} className="tab-button" onClick={() => onPick(lid)} style={{ textAlign: 'left' }}>
+                {ldr?.name ?? lid}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RetrieveThePlansPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'RetrieveThePlansPick'; side: Side; candidates: string[] };
+  onPick: (objectiveId: string) => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>
+          Retrieve The Plans — pick one Rebel objective to bottom-of-deck
+        </h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          The Rebel's objective hand is revealed below. Pick one to send to
+          the bottom of the objective deck (delaying its trigger).
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {choice.candidates.map((oid) => {
+            const obj = G.catalog.objectives[oid];
+            return (
+              <button key={oid} onClick={() => onPick(oid)}
+                style={{
+                  textAlign: 'left', padding: 8, width: 200,
+                  background: '#0c0d10', border: '1px solid #2a2d34',
+                  borderRadius: 4, color: '#e8e8ea', cursor: 'pointer',
+                }}>
+                <div style={{ fontWeight: 700, fontSize: 13 }}>{obj?.name ?? oid}</div>
+                <div style={{ color: '#80dc78', fontSize: 11 }}>
+                  Reputation: {obj?.reputation ?? '?'} · {obj?.timing ?? ''}
+                </div>
+                {obj?.rulesText && (
+                  <div style={{ color: '#cbc4b0', fontSize: 11, marginTop: 4, lineHeight: 1.3 }}>
+                    {obj.rulesText}
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InterrogationDroidDecoyPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'InterrogationDroidDecoyPick'; side: Side; candidates: string[]; count: number };
+  onPick: (systemIds: string[]) => void;
+}) {
+  const [picks, setPicks] = useState<Set<string>>(new Set());
+  const toggle = (sid: string) => {
+    setPicks((prev) => {
+      const next = new Set(prev);
+      if (next.has(sid)) next.delete(sid);
+      else if (next.size < choice.count) next.add(sid);
+      return next;
+    });
+  };
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>
+          Interrogation Droid — name 2 decoy systems
+        </h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          Empire's Interrogation Droid succeeded. RAW: you must name 3
+          systems, one of which contains the Rebel base. Pick {choice.count} decoys;
+          the engine will add the actual base ({G.catalog.systems[G.rebelBaseSystemId]?.name ?? G.rebelBaseSystemId})
+          and reveal all three (shuffled) to the Empire. Picked: {picks.size}/{choice.count}.
+        </div>
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 4,
+          marginBottom: 10,
+        }}>
+          {choice.candidates.map((sid) => {
+            const sys = G.catalog.systems[sid];
+            const on = picks.has(sid);
+            return (
+              <button key={sid} onClick={() => toggle(sid)}
+                style={{
+                  padding: '6px 8px',
+                  background: on ? '#2a4d6e' : '#0c0d10',
+                  border: on ? '2px solid #aae0ff' : '1px solid #2a2d34',
+                  borderRadius: 3, color: '#e8e8ea', cursor: 'pointer', fontSize: 12,
+                  textAlign: 'left',
+                }}>
+                {sys?.name ?? sid}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <button
+            className="tab-button"
+            disabled={picks.size !== choice.count}
+            onClick={() => onPick(Array.from(picks))}
+            style={{ opacity: picks.size === choice.count ? 1 : 0.45 }}
+          >
+            Reveal these 2 + base ({picks.size}/{choice.count})
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DeployUnitPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'DeployUnitPick'; side: Side; typeId: string; candidates: string[] };
+  onPick: (sysId: string) => void;
+}) {
+  const color = sideColor(choice.side);
+  const t = G.catalog.unitTypes[choice.typeId];
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color, marginTop: 0 }}>
+          Deploy {t?.name ?? choice.typeId} — pick a system
+        </h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          This {t?.name ?? 'unit'} fell off slot 1 of the build queue. Pick any
+          system you control (or subjugate, for Empire) with no enemy units,
+          no sabotage, and that isn't remote.
+        </div>
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 6,
+        }}>
+          {choice.candidates.map((sid) => {
+            const sys = G.catalog.systems[sid];
+            const ss = G.map.systems[sid];
+            const unitCount = ss?.units.filter((u) => u.side === choice.side).length ?? 0;
+            return (
+              <button key={sid} className="tab-button" onClick={() => onPick(sid)} style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 700 }}>
+                  {sid === 'rebel-base-space' ? 'Rebel Base (hidden)' : (sys?.name ?? sid)}
+                </div>
+                <div style={{ fontSize: 11, color: '#888' }}>
+                  {sid === 'rebel-base-space' ? '' : `region ${sys?.region}`}
+                  {unitCount > 0 ? ` · ${unitCount} of your units` : ''}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

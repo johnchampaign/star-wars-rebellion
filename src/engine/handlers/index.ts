@@ -152,11 +152,28 @@ const infiltration: EffectHandler = (G, ctx) => {
   return true;
 };
 
-const rapidMobilization: EffectHandler = (G, _ctx) => {
+const rapidMobilization: EffectHandler = (G, ctx) => {
+  // RAW: "Resolve in the Rebel Base space. At the end of this phase, choose
+  // 1 of the following: (a) If base is not revealed, move up to 5 units
+  // from 1 system to the Rebel Base space, ignoring adjacency; (b)
+  // Establish a new Rebel base. If 2 leaders are assigned, draw 8 probe
+  // cards instead of 4 (for use during the base-establish choice)."
+  //
+  // The probe-draw half is mechanically deterministic and useful even on
+  // its own (the Rebel can pick a new hidden base from the candidates).
+  // The unit-move and base-establish halves require an end-of-phase choice
+  // + base-relocate infrastructure that we don't have yet.
+  const twoLeaders = (ctx.leaderIds?.length ?? 0) >= 2;
+  const n = twoLeaders ? 8 : 4;
+  const drawn = M.drawProbe(G, n);
+  log(G, { kind: 'rapid-mobilization-probe-draw', side: 'Rebel', payload: {
+    count: n, twoLeaders, drawnProbeIds: drawn,
+  }});
   notImplemented(G, 'mission:rapid-mobilization',
-    'Rapid Mobilization not implemented',
-    'Should let you choose: move up to 5 units to Rebel Base space, OR establish a new base. ' +
-    'Needs end-of-phase choice infrastructure. Mission still discards.');
+    `Rapid Mobilization — partial (drew ${n} probe cards)`,
+    'The probe-card draw is applied. The end-of-phase choice (move up to 5 units to base, OR ' +
+    'establish a new Rebel base) is NOT yet automated — execute it manually if you intend to. ' +
+    'Use the drawn probes to inform a new-base candidate.');
   return true;
 };
 
@@ -525,12 +542,45 @@ const collectBounty: EffectHandler = (G, ctx) => {
 // ----- More Rebel handlers ------------------------------------------------
 
 /** "Move units from the 'Rebel Base' space to this system as if they were
- *  adjacent. Leaders in the 'Rebel Base' space do not prevent this." */
+ *  adjacent. Leaders in the 'Rebel Base' space do not prevent this."
+ *  RAW: bypasses adjacency, but does NOT bypass transport restrictions.
+ *  We greedy-pack: take all transport-capacity ships, then fit fighters/
+ *  ground into available capacity (capital ships first, then fighters in
+ *  order, then ground). Units that don't fit stay at the Rebel Base. */
 const hiddenFleet: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  const units = [...G.map.rebelBaseSpace.units];
-  for (const u of units) M.moveUnit(G, u.instanceId, 'rebel-base-space', sysId);
+  const baseUnits = [...G.map.rebelBaseSpace.units].filter((u) => u.side === 'Rebel');
+  const T = (uid: string) => {
+    const u = baseUnits.find((x) => x.instanceId === uid);
+    return u ? G.catalog.unitTypes[u.typeId] : null;
+  };
+  // Always-mobile capacity ships first.
+  const capacityShipUids: string[] = [];
+  const restrictionUids: string[] = []; // fighters
+  const groundUids: string[] = [];
+  for (const u of baseUnits) {
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t || t.transport.immobile) continue;
+    if (t.transport.capacity > 0) capacityShipUids.push(u.instanceId);
+    else if (t.transport.restriction) restrictionUids.push(u.instanceId);
+    else if (t.theater === 'ground' && t.class !== 'structure') groundUids.push(u.instanceId);
+  }
+  let capacity = capacityShipUids.reduce((sum, uid) => sum + (T(uid)?.transport.capacity ?? 0), 0);
+  const toMove: string[] = [...capacityShipUids];
+  // Fighters next, then ground — each consumes 1 capacity. Stop when full.
+  for (const uid of [...restrictionUids, ...groundUids]) {
+    if (capacity <= 0) break;
+    toMove.push(uid);
+    capacity--;
+  }
+  for (const uid of toMove) M.moveUnit(G, uid, 'rebel-base-space', sysId);
+  log(G, { kind: 'hidden-fleet-move', side: 'Rebel', payload: {
+    targetSystemId: sysId,
+    moved: toMove.length,
+    leftBehind: baseUnits.length - toMove.length,
+    note: 'Adjacency bypassed; transport restrictions still enforced.',
+  }});
   return true;
 };
 
@@ -750,24 +800,66 @@ const lureOfTheDarkSide: EffectHandler = (G, ctx) => {
   return true;
 };
 
-const interrogationDroid: EffectHandler = (G, _ctx) => {
-  notImplemented(G, 'mission:interrogation-droid',
-    'Interrogation Droid not implemented',
-    'Should force the Rebel to name 3 systems, one of which contains the base. Needs Rebel-driven choice UI.');
+const interrogationDroid: EffectHandler = (G) => {
+  // RAW: "Attempt against a captured leader. Count all skill icons during
+  // this attempt. If successful, the Rebel player must name 3 systems. One
+  // of these systems must contain the Rebel base." (skill-counting variant
+  // handled by missionCountsAllSkills; effect side is just the naming step.)
+  // We let the Rebel pick 2 decoy systems; the engine then logs all 3 (the
+  // 2 decoys + the actual base) so the Empire sees the same info they'd see
+  // at a physical table.
+  const allSystems = Object.keys(G.map.systems).filter((sid) => sid !== G.rebelBaseSystemId);
+  if (allSystems.length < 2) {
+    log(G, { kind: 'interrogation-droid-noop', side: 'Empire', payload: { reason: 'too-few-decoy-candidates' } });
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'InterrogationDroidDecoyPick',
+    side: 'Rebel',
+    candidates: allSystems,
+    count: 2,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'InterrogationDroidDecoyPick', candidates: allSystems.length, count: 2,
+  }});
   return true;
 };
 
-const retrieveThePlans: EffectHandler = (G, _ctx) => {
-  notImplemented(G, 'mission:retrieve-the-plans',
-    'Retrieve The Plans not implemented',
-    'Should let Empire view the Rebel objective hand and bottom one of those cards. Needs hidden-info + Empire-driven pick UI.');
+const retrieveThePlans: EffectHandler = (G) => {
+  // RAW: "Attempt against a captured leader. If successful, Rebel reveals
+  // hand of objective cards. Empire picks 1 to put on the bottom of the
+  // objective deck."
+  const hand = G.rebel.objectiveHand ?? [];
+  if (hand.length === 0) {
+    log(G, { kind: 'retrieve-plans-noop', side: 'Empire', payload: { reason: 'empty-rebel-objective-hand' } });
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'RetrieveThePlansPick',
+    side: 'Empire',
+    candidates: [...hand],
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'RetrieveThePlansPick', candidates: hand.length,
+  }});
   return true;
 };
 
-const contingencyPlan: EffectHandler = (G, _ctx) => {
+const contingencyPlan: EffectHandler = (G) => {
+  // RAW: "Assign this leader to a starting mission from your hand, even one
+  // that was already attempted or resolved this round. If Lando Calrissian
+  // was assigned to this mission, he gains 2 additional successes when he
+  // attempts a mission later this round." The "re-assign across rounds"
+  // semantics need intra-phase mission-reassignment infra we don't have yet.
+  // Partial implementation: log a player-facing notice so they can manually
+  // re-assign in the UI; the resolver's leader is already back in their
+  // pool from the standard mission-resolution path so a manual assign is
+  // free.
   notImplemented(G, 'mission:contingency-plan',
-    'Contingency Plan not implemented',
-    'Should re-assign this leader to a starting mission from hand, including ones already attempted/resolved this round. Needs intra-phase reassignment infra.');
+    'Contingency Plan partial',
+    'The resolver leader is back in your pool. Manually assign them to any starting mission in your hand. ' +
+    'Re-assigning to an already-resolved mission this round is NOT yet automated. ' +
+    'Lando bonus (+2 successes if he was assigned here) is also not yet tracked.');
   return true;
 };
 
@@ -800,13 +892,41 @@ const huntThemDown: EffectHandler = (G, ctx) => {
   return true;
 };
 
-const detained: EffectHandler = (G, _ctx) => {
-  notImplemented(G, 'mission:detained',
-    'Detained not implemented',
-    'Should prevent the target Rebel leader from returning to pool next refresh. ' +
-    'Needs a per-leader "detained" flag.');
+const detained: EffectHandler = (G, ctx) => {
+  // RAW: "Attempt against a Rebel leader that is in any system. If successful,
+  // that leader does not return to the leader pool during the next refresh."
+  // The mission target is a system; we look for Rebel leaders there.
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  const here = G.rebel.leadersOnBoard[sysId] ?? [];
+  if (here.length === 0) {
+    log(G, { kind: 'detained-noop', side: 'Empire', payload: { systemId: sysId, reason: 'no-rebel-leaders-at-target' } });
+    return true;
+  }
+  if (here.length === 1) {
+    markDetained(G, here[0]);
+    return true;
+  }
+  // Empire picks among multiple.
+  G.pendingChoice = {
+    kind: 'DetainedTargetPick',
+    side: 'Empire',
+    candidates: [...here],
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'DetainedTargetPick', candidates: here.length, systemId: sysId,
+  }});
   return true;
 };
+
+/** Shared mutator: tag a Rebel leader to skip the next refresh retrieve. */
+function markDetained(G: GameState, leaderId: string): void {
+  G.detainedLeadersNextRefresh = G.detainedLeadersNextRefresh ?? [];
+  if (!G.detainedLeadersNextRefresh.some((d) => d.leaderId === leaderId)) {
+    G.detainedLeadersNextRefresh.push({ side: 'Rebel', leaderId });
+  }
+  log(G, { kind: 'detained-applied', side: 'Empire', payload: { leaderId } });
+}
 
 // ----- Common Rebel -----
 
@@ -998,27 +1118,29 @@ function defaultUnitForIcon(side: 'Rebel' | 'Empire', type: 'space' | 'ground', 
 }
 
 // ============================================================================
-// Tactic card handlers
+// Tactic card handlers — REMOVED (all effects live in src/engine/combat.ts).
 // ============================================================================
-
-// Most tactic cards have effects that apply during attack resolution or
-// damage application. Until the combat sub-machine exposes the necessary
-// hooks (ApplyTacticCard mid-attack), these handlers are stubs that get
-// looked up but don't yet alter combat math. Real implementation comes
-// with the combat-action ChoiceRequest plumbing.
-
-const tacticConcentrateFire: EffectHandler = () => true;        // reroll up to 2 dice
-const tacticCriticalHit: EffectHandler = () => true;            // deal 1 damage
-const tacticDefensiveFormation: EffectHandler = () => true;     // block 1
-const tacticBrilliantStrategy: EffectHandler = () => true;      // draw 2 tactic cards
-const tacticOnslaught: EffectHandler = () => true;              // theater-specific
-const tacticTakeItDown: EffectHandler = () => true;             // deal 2 damage
-const tacticUnstoppableAssault: EffectHandler = () => true;     // opponent cannot block this step
-const tacticNoEscape: EffectHandler = () => true;               // opponent cannot retreat (space)
-const tacticOutmaneuver: EffectHandler = () => true;            // discard 1 to block 2 (space)
-const tacticBombardment: EffectHandler = () => true;            // ship attack value as ground damage (ground)
-const tacticDigIn: EffectHandler = () => true;                  // discard 1 to block 2 (ground)
-const tacticEscapePlan: EffectHandler = () => true;             // retreat ignoring restrictions (ground)
+//
+// Historical note: this file previously registered 12 `() => true` stubs for
+// every tactic card. They were never actually invoked — the handler registry
+// is consulted only by `runMissionEffect` in phases.ts (for mission cards
+// and projects), never for tactic cards. Tactic-card effects live inline
+// in combat.ts at the appropriate combat-machine pause points:
+//   - concentrate-fire    → combat.ts:608  (reroll up to 2 blanks)
+//   - take-it-down        → combat.ts:633  (+2 damage, same target)
+//   - onslaught           → combat.ts:634  (+1 damage × 2 different targets)
+//   - critical-hit        → combat.ts:635  (+1 damage)
+//   - defensive-formation → combat.ts:714  (free block 1)
+//   - dig-in / outmaneuver→ combat.ts:719  (block 1, discard 1 to sacrifice)
+//   - brilliant-strategy  → combat.ts:966  (draw 1 space + 1 ground)
+//   - bombardment         → combat.ts:978  (ship attack value as ground dmg)
+//   - unstoppable-assault → combat.ts:999  (opponent cannot block step)
+//   - no-escape           → combat.ts:1011 (opponent cannot retreat this round)
+//   - escape-plan         → combat.ts:1021 (retreat ignores transport)
+//
+// Deleting the stubs eliminates ~25 lines of misleading dead code and
+// removes the risk that someone "fixes" a tactic card by editing a no-op
+// here when the real implementation is elsewhere.
 
 // ============================================================================
 // Registration
@@ -1090,16 +1212,6 @@ export function registerAll(): void {
   register('plant-false-lead', plantFalseLead);
 
   // Tactic cards (stubs)
-  register('tactic-concentrate-fire', tacticConcentrateFire);
-  register('tactic-critical-hit', tacticCriticalHit);
-  register('tactic-defensive-formation', tacticDefensiveFormation);
-  register('tactic-brilliant-strategy', tacticBrilliantStrategy);
-  register('tactic-onslaught', tacticOnslaught);
-  register('tactic-take-it-down', tacticTakeItDown);
-  register('tactic-unstoppable-assault', tacticUnstoppableAssault);
-  register('tactic-no-escape', tacticNoEscape);
-  register('tactic-outmaneuver', tacticOutmaneuver);
-  register('tactic-bombardment', tacticBombardment);
-  register('tactic-dig-in', tacticDigIn);
-  register('tactic-escape-plan', tacticEscapePlan);
+  // No tactic-card registrations: those effects live inline in combat.ts.
+  // See the comment block in this file for the per-card index.
 }

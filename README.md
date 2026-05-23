@@ -4,6 +4,9 @@ A faithful in-browser port of the 2016 FFG board game. Engine is a pure-function
 TypeScript core; UI is React + Vite. Designed for solo play against a random AI
 while the engine is fleshed out.
 
+**Play it here:** https://star-wars-rebellion.pages.dev *(replace with your
+Cloudflare Pages URL after first deploy — see `docs/deploy.md`)*
+
 ## Status
 
 Early playable. Setup, Assignment, Command, and Refresh phases run end-to-end.
@@ -22,6 +25,19 @@ npm run dev
 Then open http://localhost:5173. Engine state is mirrored to
 `./game-logs/latest.json` on every action while `vite dev` is running, which is
 the agent-collaboration loop — see "Problem reports" below.
+
+## Deploying
+
+The project deploys as a static Vite build + two Cloudflare Pages Functions
+(`functions/api/report.ts`, `functions/api/upload-logs.ts`) that file
+GitHub Issues and commit play-log JSON respectively. Step-by-step setup in
+[`docs/deploy.md`](docs/deploy.md). Once configured:
+
+- `git push` to `main` → CF auto-builds & deploys
+- Players visit your Pages URL → no GitHub account needed
+- Problem reports become real GitHub Issues with screenshots
+- Game logs get committed to `logs/<hash>.json` in the repo (with an
+  in-game warning that the logs are publicly visible)
 
 ## Reference materials (not in this repo)
 

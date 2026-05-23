@@ -165,16 +165,20 @@ function sumDestroyedHp(
   G: GameState, report: import('./types').CombatReport,
   destroyedSide: Side, theater: import('./types').Theater
 ): number {
+  // RAW: count every destroyed unit on `destroyedSide` in this theater.
+  // We DO NOT filter by attack.side, because finalizeTheaterDestructions
+  // attributes all staged kills in a theater step to the last attack of
+  // that step — mis-attribution would silently lose kills here. Use the
+  // unit catalog to determine each destroyed unit's actual side/theater.
   let hp = 0;
   for (const round of report.rounds) {
     for (const atk of round.attacks) {
-      // Destroyed units belong to the side that wasn't the attacker.
-      const destroyedSideOfAtk: Side = atk.side === 'Rebel' ? 'Empire' : 'Rebel';
-      if (destroyedSideOfAtk !== destroyedSide) continue;
-      if (atk.theater !== theater) continue;
       for (const d of atk.destroyed) {
         const t = G.catalog.unitTypes[d.typeId];
-        hp += t?.health.value ?? 1;
+        if (!t) continue;
+        if (t.side !== destroyedSide) continue;
+        if (t.theater !== theater) continue;
+        hp += t.health.value ?? 1;
       }
     }
   }

@@ -262,6 +262,97 @@ export type ChoiceRequest =
       monCalaSubjugated: boolean;
     }
   | {
+      // Refresh-phase deploy step: a unit fell off slot 1 of the build
+      // queue and the player must pick a legal system to deploy it into.
+      // Per RR p.7: any system the side controls (or subjugates, for
+      // Empire), without enemy units, without sabotage, not remote, not
+      // destroyed. Rebel-base-space is also legal if the base is hidden.
+      kind: 'DeployUnitPick';
+      side: Side;
+      typeId: UnitTypeId;
+      candidates: SystemId[];
+    }
+  | {
+      // Death Star Plans 2/3 (Rebel objective, Combat-timed). RAW:
+      // "If there is at least 1 fighter after the space battle step, reveal
+      // this card to roll 3 dice. If you roll a direct hit, play this card
+      // and destroy a Death Star in this system. Otherwise return this card
+      // to your hand."
+      // The Rebel may DECLINE to reveal (e.g. low-odds roll, save for a
+      // better attempt later this game). Posted at end of combat when the
+      // conditions are met.
+      kind: 'DeathStarPlansAttempt';
+      side: Side; // Rebel
+      objectiveId: string; // 'death-star-plans-2' or 'death-star-plans-3'
+      systemId: SystemId;
+      deathStarInstanceIds: UnitInstanceId[];
+    }
+  | {
+      // R2-D2 (Resourceful Astromech) ring effect. RAW: "discard to turn 1
+      // opponent's die to the blank side." Posted after an Empire roll
+      // (combat attack OR mission) if the Rebel holds the card. Rebel may
+      // SKIP (preserve the card for later) or PICK one die index to flip.
+      kind: 'R2D2Flip';
+      side: Side; // Rebel
+      // 'combat' = applied to pendingCombat.pendingAttack.dice
+      // 'mission' = applied to pendingMission.r2d2Pending stash
+      context: 'combat' | 'mission';
+      // Combat-only: which theater (for the panel header).
+      theater?: Theater;
+      systemId: SystemId;
+      // For combat: indices into pendingAttack.dice that aren't blank.
+      // For mission: indices into the Empire-rolled faces array (whichever
+      // roll triggered this — attacker or opposer side).
+      flippableDieIndices: number[];
+      // Mission-only: the actual faces array we're flipping (for display).
+      missionFaces?: string[];
+    }
+  | {
+      // Interrogation Droid (Empire mission): "Rebel must name 3 systems,
+      // one of which contains the Rebel base." We let the Rebel pick the
+      // 2 decoys; the engine inserts the actual base as the third so the
+      // narration reveals exactly what RAW reveals.
+      kind: 'InterrogationDroidDecoyPick';
+      side: Side; // Rebel
+      candidates: SystemId[];
+      count: number; // always 2 — the decoys; base is added by the resolver
+    }
+  | {
+      // Retrieve The Plans (Empire mission): Empire picks 1 card from the
+      // Rebel's revealed objective hand to send to the bottom of the deck.
+      kind: 'RetrieveThePlansPick';
+      side: Side; // Empire
+      candidates: string[]; // objective card ids (Rebel's hand)
+    }
+  | {
+      // Detained (Empire mission): Empire picks which Rebel leader (at any
+      // system) gets the "skip next refresh retrieve" mark. RAW says
+      // "against a Rebel leader" so the target is implied by the assigned
+      // mission's revealMission target system, but to be general we offer
+      // a pick of all Rebel leaders currently on the board (matches a
+      // common reading of the card).
+      kind: 'DetainedTargetPick';
+      side: Side; // Empire
+      candidates: LeaderId[];
+    }
+  | {
+      // Player wants to play an action card during the Assignment phase.
+      // Engine lists cards in their hand whose timing === 'Assignment'
+      // AND whose leaderRequirement leader is currently in their pool
+      // (or eliminated; not yet placed on the board this round).
+      kind: 'PlayAssignmentActionCard';
+      side: Side;
+      candidates: string[];
+    }
+  | {
+      // Some action cards need a system target. Posted after the card
+      // is picked; legal systems are pre-filtered per the card's text.
+      kind: 'ActionCardSystemPick';
+      side: Side;
+      cardId: string;
+      candidates: SystemId[];
+    }
+  | {
       // Refresh recruit step: drew 2 action cards, keep 1 (into hand)
       // which determines a leader to recruit if eligible; bottom the
       // other. Per-side; processed Rebel first, then Empire.
@@ -296,7 +387,7 @@ export type ChoiceRequest =
       kind: 'MisdirectionPick';
       side: Side;
       candidates: LeaderId[];
-    };
+    }
   | {
       kind: 'StolenPlansReorder';
       missionId: string;
@@ -398,6 +489,14 @@ export type ChoiceRequest =
       playable: string[];
     }
   | {
+      // "More Dangerous Than You Realize" picks 3 tactic cards from either
+      // the space or ground deck. Posted mid-resolution of the start-of-
+      // combat window when the card is played.
+      kind: 'MoreDangerousTheaterPick';
+      side: Side;
+      cardId: string;
+    }
+  | {
       // End-of-round retreat choice (RR pp.5-6). The attacker may retreat
       // to the system they moved from; the defender may retreat to any
       // adjacent system (and not the attacker's source). Each side may
@@ -424,6 +523,12 @@ export type ChoiceRequest =
       hits: {
         color: 'red' | 'black' | null; // null = bonus damage from tactic
         face: 'hit' | 'direct-hit';
+        // Source tactic card id if this hit came from a damage-boost card.
+        // Used to enforce per-card target constraints in the assignment
+        // resolver:
+        //   - take-it-down: all hits from this card must go to the same target
+        //   - onslaught:    hits from this card must go to different targets
+        source?: string;
       }[];
       // Per-hit list of eligible defender unit instance IDs (already filtered
       // for color matching and "not already staged for destruction"). Same
@@ -457,20 +562,32 @@ export type CombatState = {
   pendingAttack?: {
     side: Side;          // who's currently attacking
     theater: Theater;
-    phase: 'awaitingYodaReroll' | 'awaitingSpecialSpend' | 'awaitingAttackerTactics' | 'awaitingDefenderTactics' | 'awaitingDamageAssignment';
+    phase: 'awaitingYodaReroll' | 'awaitingR2D2Flip' | 'awaitingSpecialSpend' | 'awaitingAttackerTactics' | 'awaitingDefenderTactics' | 'awaitingDamageAssignment';
     dice: DieResult[];   // current dice (may be modified by reroll)
     attackerUnits: number;
     bonusDamage: number; // accumulated from damage-boost tactics
+    // Per-source breakdown of bonus damage. Used by the damage-assignment
+    // step to enforce per-card target constraints (take-it-down: must
+    // concentrate on 1 target; onslaught: must spread across different
+    // targets). bonusDamage above is the sum of `amount` here.
+    bonusDamageSources?: { source: string; amount: number }[];
     tacticsPlayed: { card: string; detail: string }[];
     // True once the SpecialDieSpend window has been resolved for this
     // attack, so re-entry doesn't queue it again.
     specialsResolved?: boolean;
+    // True once the R2-D2 flip window has been resolved for this attack so
+    // re-entry (after another pause) doesn't re-prompt the Rebel.
+    r2d2Resolved?: boolean;
     // Set when entering 'awaitingDamageAssignment'. Frozen list of hits
     // the attacker must assign (post-blocks), and the legal targets per
     // hit (computed when the choice is queued).
     pendingAssignment?: {
       blocksApplied: number;
-      applicableHits: { color: 'red' | 'black' | null; face: 'hit' | 'direct-hit' }[];
+      applicableHits: {
+        color: 'red' | 'black' | null;
+        face: 'hit' | 'direct-hit';
+        source?: string;
+      }[];
     };
   };
   // Unit instance IDs already destroyed earlier in the current theater step.
@@ -495,9 +612,19 @@ export type CombatState = {
   // Whether the Start-of-Combat action-card window has been resolved.
   // Set after both sides confirm their picks (or skip); never re-prompted.
   startOfCombatActionsDone?: boolean;
+  // Mid-resolution state for the start-of-combat batch: when a played card
+  // needs a sub-choice (e.g. "More Dangerous Than You Realize" theater
+  // pick), we stash the remaining cards + acting side here so the choice
+  // resolver can continue processing.
+  startOfCombatBatch?: { side: Side; remaining: string[] };
   // Whether the end-of-round retreat window has been resolved for the
   // current round. Reset at the start of each new round.
   retreatStepDoneThisRound?: boolean;
+  // Sides that have decided this round's retreat window (whether by
+  // retreating or declining). Without this, declining doesn't mark the
+  // decision and the engine infinite-loops re-posting RetreatDecision.
+  // Reset at the start of each new round.
+  retreatDecidedThisRound?: Side[];
   // Sides that have used their Yoda reroll during the current round
   // (resets each round, mirrors G.yodaRerollUsedThisRound semantics).
   yodaRerollUsedRound?: number;
@@ -514,6 +641,19 @@ export type CombatState = {
     cannotBlockUntilStepEnd?: Partial<Record<Side, boolean>>;
     cannotRetreatThisRound?: Partial<Record<Side, boolean>>;
     retreatIgnoresTransport?: Partial<Record<Side, boolean>>;
+    // Start-of-combat action card flags:
+    // - accordingToMyDesignActive: Rebel rolls 1 fewer red die and 2 fewer
+    //   black dice in round 1 (both theaters).
+    accordingToMyDesignActive?: boolean;
+    // - opponentCannotRetreat: list of sides that cannot retreat this combat.
+    //   Set by "Keep Them From Escaping".
+    opponentCannotRetreat?: Side[];
+    // - opponentNoSpaceTacticsRound: integer round number (1-based) in which
+    //   the named side may not play space tactic cards. Set by "It's a Trap".
+    opponentNoSpaceTacticsRound?: number;
+    // - allUnitsMinusOneHealthApplied: marker that Point Blank Assault has
+    //   already been applied (so a second play in the same combat is a no-op).
+    allUnitsMinusOneHealthApplied?: boolean;
   };
 };
 
@@ -601,6 +741,23 @@ export type MissionResolution = {
   targetSystemId: SystemId;
   leaderIds: LeaderId[];
   stage: 'reveal' | 'oppose' | 'roll' | 'effect' | 'failed' | 'done';
+  // Mid-roll stash for R2-D2 mission flip. resolveOpposition pauses here
+  // when Empire just rolled and Rebel holds R2-D2; the resolver applies
+  // the flip (if accepted) and continues success calc + report push.
+  r2d2Pending?: {
+    attDice: number;
+    opposerDice: number;
+    attFaces: string[];
+    attColors: ('red' | 'black')[];
+    attSuccesses: number;
+    oppFaces: string[];
+    oppColors: ('red' | 'black')[];
+    oppSuccesses: number;
+    portrait: number;
+    oppLeaderIds: LeaderId[];
+    // Which side is Empire (= the one R2-D2 affects).
+    empireSide: 'attacker' | 'opposer';
+  };
 };
 
 // ---------- Game state ----------
@@ -726,7 +883,30 @@ export type GameState = {
         unitTypeId: UnitTypeId;
       }[];
     }[];
+    // Deploy-step queue: units that fell off slot 1 of the build queue
+    // and need a player-chosen target system. Each entry processed one
+    // at a time as a DeployUnitPick ChoiceRequest.
+    pendingDeployPicks?: { side: Side; typeId: UnitTypeId }[];
+    // Per-side, per-system count of units deployed THIS refresh phase.
+    // RR p.7 caps deployment at 2 units per system per side per Refresh.
+    deployedThisPhase?: Partial<Record<Side, Record<SystemId, number>>>;
   };
+
+  // Flags set by Assignment-timed action cards. Cleared at appropriate
+  // points (end of turn / start of next refresh). Out-of-band of the
+  // formal phase machinery — UI and engine read them opportunistically.
+  actionCardFlags?: {
+    // Public Support: Janus Greejatus does NOT pin units in this system this turn.
+    greejatusFreeMoveSystemId?: SystemId;
+    // Brilliant Administrator: Tarkin has earned a free build action at this system.
+    tarkinFreeBuildSystemId?: SystemId;
+    // Boba Fett, Where? — Rebels cannot mission/use action cards in any of these systems this turn.
+    bobaBlockSystemIds?: SystemId[];
+  };
+
+  // Leaders the Detained mission has flagged to skip the NEXT refresh
+  // retrieval. Cleared after the skip fires (one-time effect per RAW).
+  detainedLeadersNextRefresh?: { side: Side; leaderId: LeaderId }[];
 
   // End conditions
   isGameOver: boolean;
