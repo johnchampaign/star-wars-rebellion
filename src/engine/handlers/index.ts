@@ -164,17 +164,15 @@ const rapidMobilization: EffectHandler = (G, ctx) => {
   // RAW deviation — the Rebel can defer making the pick by leaving the
   // mission resolution open, but in practice firing immediately is more
   // playable.
+  // RAW timing: defer the choice until the END of the Command phase (after
+  // both players pass). Resolving immediately would let the Rebel use this
+  // as a panic-escape mid-phase against incoming Empire activity — a real
+  // strategic difference.
   const twoLeaders = (ctx.leaderIds?.length ?? 0) >= 2;
-  const baseRevealed = !!G.rebelBaseRevealed;
-  G.pendingChoice = {
-    kind: 'RapidMobilizationBranch',
-    side: 'Rebel',
-    twoLeaders,
-    baseRevealed,
-    moveUnitsAvailable: !baseRevealed,
-  };
-  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-    kind: 'RapidMobilizationBranch', twoLeaders, baseRevealed,
+  G.pendingRapidMobilizations = G.pendingRapidMobilizations ?? [];
+  G.pendingRapidMobilizations.push({ twoLeaders });
+  log(G, { kind: 'rapid-mobilization-deferred', side: 'Rebel', payload: {
+    twoLeaders, queueDepth: G.pendingRapidMobilizations.length,
   }});
   return true;
 };

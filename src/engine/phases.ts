@@ -450,10 +450,12 @@ export function pass(G: GameState, side: Side): { ok: boolean; reason?: string }
   return { ok: true };
 }
 
-/** Advance to the next side's turn, or to Refresh if both have passed. */
+/** Advance to the next side's turn, or to Refresh if both have passed.
+ *  Before transitioning to Refresh, drain any pending Rapid Mobilization
+ *  end-of-phase choices (RAW: those resolve after both players pass). */
 function advanceCommandTurn(G: GameState): void {
   if (G.passedThisCommand.length >= 2) {
-    enterRefreshPhase(G);
+    processPendingRapidMobilizations(G);
     return;
   }
   // Pass to the other side, but skip them if they have already passed.
@@ -1511,6 +1513,40 @@ export function resolveDetainedTargetPick(G: GameState, leaderId: LeaderId): { o
   return { ok: true };
 }
 
+/** End-of-Command-phase hook: drain Rapid Mobilization deferred entries
+ *  one at a time, posting the Branch choice for the next pending mission.
+ *  Once the queue is empty, advance to Refresh. */
+function processPendingRapidMobilizations(G: GameState): void {
+  const queue = G.pendingRapidMobilizations;
+  if (!queue || queue.length === 0) {
+    enterRefreshPhase(G);
+    return;
+  }
+  const next = queue[0];
+  const baseRevealed = !!G.rebelBaseRevealed;
+  G.pendingChoice = {
+    kind: 'RapidMobilizationBranch',
+    side: 'Rebel',
+    twoLeaders: next.twoLeaders,
+    baseRevealed,
+    moveUnitsAvailable: !baseRevealed,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'RapidMobilizationBranch', twoLeaders: next.twoLeaders, baseRevealed,
+    endOfPhase: true, remaining: queue.length,
+  }});
+}
+
+/** Called by RapidMobilization sub-resolvers when they finish their chain.
+ *  Pops the head of the queue (the one just resolved) and either posts the
+ *  next or advances to Refresh. */
+function finishRapidMobilization(G: GameState): void {
+  if (G.pendingRapidMobilizations && G.pendingRapidMobilizations.length > 0) {
+    G.pendingRapidMobilizations.shift();
+  }
+  processPendingRapidMobilizations(G);
+}
+
 /** Rapid Mobilization branch: Rebel picks 'move-units' or 'establish-base'.
  *  - 'move-units' (only legal if base unrevealed): posts a follow-up
  *    RapidMobilizationMovePick.
@@ -1579,7 +1615,7 @@ export function resolveRapidMobilizationMove(
     sourceSystemId, movedCount: picks.length, movedIds: picks,
   }});
   G.pendingChoice = undefined;
-  resumeMissionAfterChoice(G);
+  finishRapidMobilization(G);
   return { ok: true };
 }
 
@@ -1602,7 +1638,7 @@ export function resolveRapidMobilizationBasePick(
     fromSystemId: old, toSystemId: systemId, baseRevealed: choice.baseRevealed,
   }});
   G.pendingChoice = undefined;
-  resumeMissionAfterChoice(G);
+  finishRapidMobilization(G);
   return { ok: true };
 }
 

@@ -960,6 +960,12 @@ export type GameState = {
   // retrieval. Cleared after the skip fires (one-time effect per RAW).
   detainedLeadersNextRefresh?: { side: Side; leaderId: LeaderId }[];
 
+  // Rapid Mobilization missions that have been resolved this Command phase
+  // and are waiting for their end-of-phase choice. Drained one entry at a
+  // time after both players pass, posting RapidMobilizationBranch choices
+  // before Refresh begins.
+  pendingRapidMobilizations?: { twoLeaders: boolean }[];
+
   // End conditions
   isGameOver: boolean;
   winner?: Side;
