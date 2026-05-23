@@ -3,7 +3,7 @@
 // and a "Report a problem" dialog that produces a downloadable JSON.
 
 import { useEffect, useRef, useState, useCallback, useMemo, createContext, useContext } from 'react';
-import { loadAllForEngine, loadBoardMask, MAP_IMAGE_URL, MARKER_IMAGE_BASE, UNIT_IMAGE_BASE, LEADER_IMAGE_BASE, CARD_IMAGE_BASE, diceImageUrl } from '../data/loadAssets';
+import { loadAllForEngine, loadBoardMask, MAP_IMAGE_URL, MARKER_IMAGE_BASE, UNIT_IMAGE_BASE, LEADER_IMAGE_BASE, CARD_IMAGE_BASE, IMG_BUST, diceImageUrl } from '../data/loadAssets';
 import { UNIT_IMAGE, groupByType, groupTypeIds, getUnitStyle, setUnitStyle, nextStyle, unitImageUrl, type UnitImageStyle } from './unitImages';
 import { missionTargets, missionLeaderTargets } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce } from './randomAI';
@@ -2332,7 +2332,7 @@ function TopBottomCardPickModal({ G, cardIds, color, title, blurb, topLabel, bot
         }}
       >
         {info.image && (
-          <img src={`${CARD_IMAGE_BASE}/${info.image}`} alt={info.name}
+          <img src={`${CARD_IMAGE_BASE}/${info.image}${IMG_BUST}`} alt={info.name}
             draggable={false}
             style={{ width: 180, height: 'auto', borderRadius: 3,
               boxShadow: '0 0 12px rgba(0,0,0,0.6)' }} />
@@ -2466,7 +2466,7 @@ function SimpleLeaderPickModal({ G, color, title, candidates, onPick }: {
                 }}
               >
                 {l?.image && (
-                  <img src={`${LEADER_IMAGE_BASE}/${l.image}`} alt={l.name}
+                  <img src={`${LEADER_IMAGE_BASE}/${l.image}${IMG_BUST}`} alt={l.name}
                     width={48} height={48}
                     style={{ borderRadius: '50%', border: `2px solid ${color}`, objectFit: 'cover' }} />
                 )}
@@ -3195,7 +3195,7 @@ function MissionReportModal({ G, report, onDismiss }: {
 }) {
   const card = G.catalog.missions[report.missionId];
   const sysName = G.catalog.systems[report.targetSystemId]?.name ?? report.targetSystemId;
-  const cardImg = card?.image ? `${CARD_IMAGE_BASE}/${card.image}` : null;
+  const cardImg = card?.image ? `${CARD_IMAGE_BASE}/${card.image}${IMG_BUST}` : null;
   const resultColor =
     report.result === 'auto-success' ? '#80dc78' :
     report.result === 'success'      ? '#80dc78' :
@@ -3239,7 +3239,7 @@ function MissionReportModal({ G, report, onDismiss }: {
                 <div key={lid} style={{ textAlign: 'center' }}>
                   {ldr?.image && (
                     <img
-                      src={`${LEADER_IMAGE_BASE}/${ldr.image}`}
+                      src={`${LEADER_IMAGE_BASE}/${ldr.image}${IMG_BUST}`}
                       width={64} height={64}
                       style={{ borderRadius: '50%', border: `2px solid ${color}`, objectFit: 'cover' }}
                       alt={ldr.name}
@@ -3506,10 +3506,10 @@ function EnlargedSector({ G, system }: { G: GameState; system: System }) {
         {/* Loyalty + status badges */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
           {loyaltyMarkerImg && (
-            <img src={`${MARKER_IMAGE_BASE}/${loyaltyMarkerImg}`} width={28} height={28} alt="" />
+            <img src={`${MARKER_IMAGE_BASE}/${loyaltyMarkerImg}${IMG_BUST}`} width={28} height={28} alt="" />
           )}
           {state.subjugated && (
-            <img src={`${MARKER_IMAGE_BASE}/MarkerLoyaltySubjugated.png`} width={28} height={28} alt="" />
+            <img src={`${MARKER_IMAGE_BASE}/MarkerLoyaltySubjugated.png${IMG_BUST}`} width={28} height={28} alt="" />
           )}
           <span style={{ fontSize: 14, fontWeight: 600, color: loyaltyColor, textShadow: '0 0 4px rgba(0,0,0,0.9)' }}>
             {state.subjugated
@@ -3875,7 +3875,7 @@ function LeaderPips({ G, systemId, centerX, centerY }: {
             <circle cx={cx} cy={centerY} r={SIZE / 2 + 1.5}
               style={{ fill: 'none', stroke: glowColor, strokeWidth: x.kind === 'active' ? 1 : 1.5, opacity: 0.75 }} />
             <image
-              href={`${LEADER_IMAGE_BASE}/${x.leader.image}`}
+              href={`${LEADER_IMAGE_BASE}/${x.leader.image}${IMG_BUST}`}
               x={cx - SIZE / 2} y={centerY - SIZE / 2}
               width={SIZE} height={SIZE}
               clipPath={`url(#${clipId})`}
@@ -4233,7 +4233,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
               {markers.map((m, i) => (
                 <image
                   key={i}
-                  href={`${MARKER_IMAGE_BASE}/${m.src}`}
+                  href={`${MARKER_IMAGE_BASE}/${m.src}${IMG_BUST}`}
                   x={mx + m.offsetX - markerSize / 2}
                   y={my + m.offsetY - markerSize / 2}
                   width={markerSize}
@@ -4294,9 +4294,9 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
         background: 'rgba(0,0,0,0.7)', padding: '6px 10px', borderRadius: 3,
         fontSize: 10, color: '#ccc', display: 'flex', gap: 12, flexWrap: 'wrap',
       }}>
-        <span><img src={`${MARKER_IMAGE_BASE}/MarkerLoyaltyRebel.png`} width={14} height={14} style={{ verticalAlign: 'middle', marginRight: 4 }} alt="" /> Rebel</span>
-        <span><img src={`${MARKER_IMAGE_BASE}/MarkerLoyaltyEmpire.png`} width={14} height={14} style={{ verticalAlign: 'middle', marginRight: 4 }} alt="" /> Imperial</span>
-        <span><img src={`${MARKER_IMAGE_BASE}/MarkerLoyaltySubjugated.png`} width={14} height={14} style={{ verticalAlign: 'middle', marginRight: 4 }} alt="" /> subjugated</span>
+        <span><img src={`${MARKER_IMAGE_BASE}/MarkerLoyaltyRebel.png${IMG_BUST}`} width={14} height={14} style={{ verticalAlign: 'middle', marginRight: 4 }} alt="" /> Rebel</span>
+        <span><img src={`${MARKER_IMAGE_BASE}/MarkerLoyaltyEmpire.png${IMG_BUST}`} width={14} height={14} style={{ verticalAlign: 'middle', marginRight: 4 }} alt="" /> Imperial</span>
+        <span><img src={`${MARKER_IMAGE_BASE}/MarkerLoyaltySubjugated.png${IMG_BUST}`} width={14} height={14} style={{ verticalAlign: 'middle', marginRight: 4 }} alt="" /> subjugated</span>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'transparent', border: '1px solid #80dc78', borderRadius: '50%', marginRight: 4, verticalAlign: 'middle' }} /> revealed Rebel base</span>
         <span>R<i>N</i> = Rebel units · E<i>N</i> = Empire units</span>
       </div>

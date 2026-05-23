@@ -58,12 +58,17 @@ export const loadObjectives = async (): Promise<ObjectivesFile> => {
 export const loadTactics    = () => loadJson<TacticsFile>('tactics.json');
 export const loadProbes     = () => loadJson<ProbesFile>('probes.json');
 
-export const MAP_IMAGE_URL = `${BASE}/Map.png`;
+export const MAP_IMAGE_URL = `${BASE}/Map.png${BUST}`;
 export const LEADER_IMAGE_BASE = `${BASE}/leaders`;
 export const CARD_IMAGE_BASE = `${BASE}/cards`;
 export const MARKER_IMAGE_BASE = `${BASE}/markers`;
 export const UNIT_IMAGE_BASE = `${BASE}/units`;
 export const DICE_IMAGE_BASE = `${BASE}/dice`;
+/** Cache-bust suffix consumers append to <img src> URLs so the iPad fetches
+ *  fresh PNGs and bypasses Cloudflare's edge cache (which has 7-day TTLs
+ *  on static assets and doesn't auto-purge when files are replaced/removed
+ *  in a new deployment). Empty in dev. */
+export const IMG_BUST = BUST;
 
 /** Build URL for a SWR die face. color: red|black|green; face: hit|direct-hit|special|blank.
  *  Returns null for combos not present in the .vmod (green hit/special are RoE-only). */
@@ -75,7 +80,7 @@ export function diceImageUrl(color: 'red' | 'black' | 'green', face: 'hit' | 'di
           : 'Blank';
   // Green is base-game-incomplete: only Blank + Direct shipped.
   if (color === 'green' && (face === 'hit' || face === 'special')) return null;
-  return `${DICE_IMAGE_BASE}/Dice${c}${f}.png`;
+  return `${DICE_IMAGE_BASE}/Dice${c}${f}.png${BUST}`;
 }
 
 /** Load all 8 JSON files needed by the engine in parallel. */

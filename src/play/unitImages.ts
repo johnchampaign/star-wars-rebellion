@@ -48,11 +48,16 @@ export function setUnitStyle(style: UnitImageStyle): void {
   else localStorage.setItem(STYLE_KEY, style);
 }
 
+// Per-module cache-bust suffix appended to unit image URLs in prod builds.
+// Forces Cloudflare's edge cache to fetch fresh PNGs instead of serving
+// stale FFG art from older deployments.
+const UNIT_IMG_BUST = import.meta.env.PROD ? `?v=${Date.now()}` : '';
+
 /** Build URL for a unit's image based on current style. */
 export function unitImageUrl(typeId: string, base: string, style: UnitImageStyle): string | null {
   if (!UNIT_IMAGE[typeId]) return null;
-  if (style === 'silhouette') return `${base}/silhouette/${typeId}.png`;
-  return `${base}/token/${typeId}.png`;
+  if (style === 'silhouette') return `${base}/silhouette/${typeId}.png${UNIT_IMG_BUST}`;
+  return `${base}/token/${typeId}.png${UNIT_IMG_BUST}`;
 }
 
 export function groupByType<T extends { typeId: string }>(units: T[]): { typeId: string; count: number }[] {
