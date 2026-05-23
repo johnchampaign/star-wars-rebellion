@@ -22,6 +22,7 @@
 import type { GameState, Side, LeaderId, SystemId } from '../engine/types';
 import * as phases from '../engine/phases';
 import * as combat from '../engine/combat';
+import { missionTargets } from '../engine/missionTargets';
 
 function pick<T>(arr: T[]): T | undefined {
   if (arr.length === 0) return undefined;
@@ -261,54 +262,75 @@ function rebelMissionTargetScore(
 // ============================================================================
 
 /** Plan the full Assignment phase: which leaders should go on which missions
- *  for this side. Greedy: sort all (leader, mission) pairs by combined
- *  score, then commit pairs in order while respecting one-leader-per-mission
- *  constraints. Returns the list of planned pairings. */
+ *  for this side.
+ *
+ *  Algorithm: for each mission in hand, compute the CHEAPEST leader-set
+ *  that meets its skill cost (or null if no such set exists). Score by
+ *  mission value - leader-cost-penalty. Greedy-commit top-scoring missions
+ *  in order, marking leaders used. Skip infeasible missions entirely —
+ *  previous bug had the planner committing top leaders to high-value
+ *  missions they could never reveal (cost not met), starving the actually-
+ *  attemptable missions of leaders. */
 function planAssignment(G: GameState, side: Side): Array<{ missionId: string; leaderIds: LeaderId[] }> {
   const f = side === 'Rebel' ? G.rebel : G.empire;
-  const pool = [...f.leaderPool];
   const hand = [...f.missionHand];
-  if (pool.length === 0 || hand.length === 0) return [];
+  if (f.leaderPool.length === 0 || hand.length === 0) return [];
 
-  // Compute a score matrix for every (leader, mission) pair.
-  type Candidate = { leaderId: LeaderId; missionId: string; score: number };
-  const candidates: Candidate[] = [];
-  for (const missionId of hand) {
+  // Score every mission's best feasible leader-set.
+  type Plan = { missionId: string; leaderIds: LeaderId[]; score: number; leaderSkillSum: number };
+  const computePlanForMission = (missionId: string, availableLeaders: LeaderId[]): Plan | null => {
+    const card = G.catalog.missions[missionId];
+    if (!card || !card.skill) return null;
     const sit = missionSituationalAdjust(G, missionId, side);
-    if (sit < -5) continue; // skip clearly-bad missions
-    for (const leaderId of pool as LeaderId[]) {
-      const base = leaderMissionScore(G, leaderId, missionId, side);
-      const score = base + sit;
-      if (score <= 0) continue;
-      candidates.push({ leaderId, missionId, score });
+    if (sit < -5) return null;
+    const cost = card.skillCost;
+    // Rank leaders by skill fit for this mission (best first).
+    const ranked = availableLeaders
+      .map((lid) => ({ lid, fit: leaderSkillFit(G, lid, missionId) }))
+      .filter((x) => x.fit > 0 || cost === 0) // include zero-fit only when no cost
+      .sort((a, b) => b.fit - a.fit);
+    // Greedy: add leaders in fit-order until cost is met.
+    const used: LeaderId[] = [];
+    let sum = 0;
+    for (const r of ranked) {
+      if (sum >= cost) break;
+      used.push(r.lid);
+      sum += r.fit;
     }
-  }
-  candidates.sort((a, b) => b.score - a.score);
+    if (sum < cost) return null; // infeasible — skip
+    // Base mission value + situational + leader bonuses minus the
+    // opportunity cost of using N leaders (we'd rather a 1-leader plan
+    // than a 2-leader one all else equal).
+    const baseValue = missionBaseValue(missionId, side) + sit;
+    const leaderBonus = used.reduce((s, l) => s + leaderPortraitBonus(G, l, missionId) + leaderMissionBespoke(l, missionId), 0);
+    const score = baseValue + leaderBonus - used.length * 0.5;
+    return { missionId, leaderIds: used, score, leaderSkillSum: sum };
+  };
 
+  // Greedy multi-round selection: each round, pick the highest-scoring
+  // feasible plan with currently-free leaders, commit it, mark leaders used,
+  // and recompute.
   const usedLeaders = new Set<string>();
-  const planMap = new Map<string, LeaderId[]>(); // missionId → leaders
-  for (const c of candidates) {
-    if (usedLeaders.has(c.leaderId)) continue;
-    const existing = planMap.get(c.missionId) ?? [];
-    const card = G.catalog.missions[c.missionId];
-    // A mission can take additional leaders only if the first one alone
-    // doesn't meet the skill cost.
-    if (existing.length > 0) {
-      const cost = card?.skillCost ?? 0;
-      const skillSum = existing.reduce((s, l) => s + leaderSkillFit(G, l, c.missionId), 0);
-      if (skillSum >= cost) continue; // already met; don't pile on
+  const planMap: Array<{ missionId: string; leaderIds: LeaderId[] }> = [];
+  const usedMissions = new Set<string>();
+  while (true) {
+    const available = (f.leaderPool as LeaderId[]).filter((lid) => !usedLeaders.has(lid));
+    if (available.length === 0) break;
+    // Empire reserve: stop if we'd leave fewer than EMPIRE_RESERVE_LEADERS in pool.
+    if (side === 'Empire' && f.leaderPool.length - usedLeaders.size <= EMPIRE_RESERVE_LEADERS) break;
+    let best: Plan | null = null;
+    for (const missionId of hand) {
+      if (usedMissions.has(missionId)) continue;
+      const p = computePlanForMission(missionId, available);
+      if (!p) continue;
+      if (!best || p.score > best.score) best = p;
     }
-    // Reserve check (Empire side).
-    if (side === 'Empire') {
-      const remaining = pool.length - usedLeaders.size;
-      if (remaining <= EMPIRE_RESERVE_LEADERS) break;
-    }
-    existing.push(c.leaderId);
-    usedLeaders.add(c.leaderId);
-    planMap.set(c.missionId, existing);
+    if (!best || best.score <= 0) break;
+    planMap.push({ missionId: best.missionId, leaderIds: best.leaderIds });
+    usedMissions.add(best.missionId);
+    for (const l of best.leaderIds) usedLeaders.add(l);
   }
-
-  return Array.from(planMap.entries()).map(([missionId, leaderIds]) => ({ missionId, leaderIds }));
+  return planMap;
 }
 
 // ============================================================================
@@ -337,17 +359,27 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
         .filter((s): s is string => !!s))
     : new Set<string>();
 
-  // 1) Revealing assigned missions whose skill cost is met.
+  // 1) Revealing assigned missions whose skill cost is met AND at least one
+  //    legal target exists. Previously we'd score any system, pick the best
+  //    one, and let the engine reject illegal targets — this resulted in
+  //    missions like capture-rebel-operative scoring high every turn but
+  //    failing to reveal (no Rebel-leader + Empire-unit shared system),
+  //    causing the AI to pass instead.
   for (const am of f.leadersOnMissions) {
     const card = G.catalog.missions[am.missionId];
     if (!card || !card.skill) continue;
     let skillSum = 0;
     for (const lid of am.leaderIds) skillSum += leaderSkillFit(G, lid as LeaderId, am.missionId);
     if (skillSum < card.skillCost) continue;
+    const targets = missionTargets(G, side, am.missionId);
+    // If the encoder couldn't narrow targets (permissive), allow all systems;
+    // otherwise restrict to the engine-legal list.
+    const candidateSystems = targets.permissive ? allSystemIds : targets.systemIds;
+    if (candidateSystems.length === 0) continue;
     const baseValue = missionBaseValue(am.missionId, side) + missionSituationalAdjust(G, am.missionId, side);
     let bestTarget: SystemId | null = null;
     let bestTargetScore = -Infinity;
-    for (const sysId of allSystemIds) {
+    for (const sysId of candidateSystems) {
       const t = side === 'Empire'
         ? empireMissionTargetScore(G, am.missionId, sysId)
         : rebelMissionTargetScore(G, am.missionId, sysId, baseDist);
@@ -364,16 +396,53 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
 
   // 2) Activating systems. Pre-score each system once (not per-leader) since
   //    the per-system signal doesn't change between leaders.
+  // Pre-compute base candidates from the Empire perspective: systems the
+  // Rebel base could still be at (not Coruscant, not remote, not probe-
+  // eliminated). When this set shrinks, the Empire pivots to actively
+  // visiting those systems to "stumble onto" the base.
+  let baseCandidateSet: Set<string> | null = null;
+  if (side === 'Empire' && !G.rebelBaseRevealed) {
+    baseCandidateSet = new Set(
+      allSystemIds.filter((sid) => {
+        if (sid === 'coruscant') return false;
+        const def = G.catalog.systems[sid];
+        if (!def || def.isRemote) return false;
+        if (eliminatedByProbe.has(sid)) return false;
+        return true;
+      }),
+    );
+  }
+  const narrowingMode = baseCandidateSet ? baseCandidateSet.size <= 6 : false;
   const systemScore = new Map<string, number>();
   for (const sysId of allSystemIds) {
     let ts = 0;
     const sys = G.map.systems[sysId];
     if (!sys) continue;
+    const def = G.catalog.systems[sysId];
     const hasEnemyUnits = sys.units.some((u) => u.side !== side);
     const hasOwnUnits = sys.units.some((u) => u.side === side);
     if (side === 'Empire') {
+      // Existing baseline.
       if (hasEnemyUnits) ts += 4;
       if (eliminatedByProbe.has(sysId)) ts -= 4;
+      // Spread heuristic — reward visiting untouched neutral/Rebel-loyalty
+      // systems to extend Imperial control + drop a unit for subjugation.
+      // Worth more when the system has build resources.
+      if (!hasOwnUnits && !sys.subjugated) {
+        const resourceWeight = def?.resources?.length ?? 0;
+        ts += 2 + resourceWeight;
+        // Already Empire-loyal: less urgent.
+        if (sys.loyalty?.side === 'Empire') ts -= 2;
+      }
+      // Base-narrowing pivot: when probe info has narrowed candidates,
+      // strongly reward visiting remaining candidate systems (looking
+      // to bump into the base).
+      if (baseCandidateSet?.has(sysId)) {
+        if (narrowingMode) ts += 6;
+        else ts += 2;
+      }
+      // Don't waste activations on Coruscant or systems already saturated.
+      if (sysId === 'coruscant') ts -= 3;
     } else {
       if (baseDist) {
         const d = distFrom(baseDist, sysId);
@@ -381,7 +450,7 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
       }
       if (sys.loyalty?.side === 'Empire') ts += 3;
     }
-    if (hasOwnUnits) ts += 1;
+    if (hasOwnUnits && side === 'Rebel') ts += 1;
     systemScore.set(sysId, ts);
   }
   // For each pool leader, pick their best target.
@@ -1039,7 +1108,9 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       }
       if (action.kind === 'activate') {
         // Bring along units from one adjacent friendly system if there's
-        // value in massing forces.
+        // value in massing forces. EMPIRE: leave a ground unit at the source
+        // so the source system stays subjugated/garrisoned (user's strategy
+        // of spreading out, keeping control of visited systems).
         const orders: phases.MoveOrder[] = [];
         const f = side === 'Rebel' ? G.rebel : G.empire;
         const adj = G.catalog.adjacency[action.targetSystemId] ?? [];
@@ -1052,11 +1123,30 @@ function stepOnceInner(G: GameState, side: Side): boolean {
           const fromId = sources[0];
           const ss = G.map.systems[fromId];
           const mine = ss.units.filter((u) => u.side === side);
-          // Bring up to 3 units.
-          orders.push({
-            fromSystemId: fromId,
-            unitInstanceIds: mine.slice(0, 3).map((u) => u.instanceId),
-          });
+          let pickIds: string[];
+          if (side === 'Empire') {
+            // Sort: capital ships first (most valuable to bring), then
+            // fighters, then ground last. Reserve one ground unit at source.
+            const sortedNonGround = mine.filter((u) => {
+              const t = G.catalog.unitTypes[u.typeId];
+              return !t || t.theater !== 'ground' || t.class === 'structure';
+            });
+            const ground = mine.filter((u) => {
+              const t = G.catalog.unitTypes[u.typeId];
+              return t && t.theater === 'ground' && t.class !== 'structure';
+            });
+            // Keep one ground unit (the cheapest) at source if possible.
+            const groundToBring = ground.length > 1 ? ground.slice(0, ground.length - 1) : [];
+            pickIds = [...sortedNonGround.slice(0, 3), ...groundToBring.slice(0, Math.max(0, 3 - sortedNonGround.length))]
+              .map((u) => u.instanceId);
+          } else {
+            // Rebel: same shape as before — bring up to 3 units, no
+            // reservation (Rebel rarely wants to leave behind).
+            pickIds = mine.slice(0, 3).map((u) => u.instanceId);
+          }
+          if (pickIds.length > 0) {
+            orders.push({ fromSystemId: fromId, unitInstanceIds: pickIds });
+          }
         }
         const r = phases.activateSystem(G, side, action.leaderId, action.targetSystemId, orders);
         if (r.ok) return true;
