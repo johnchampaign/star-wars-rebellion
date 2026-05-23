@@ -148,6 +148,14 @@ export type ChoiceRequest =
   | { kind: 'ChooseActionCard'; from: string[] }
   | { kind: 'InfiltrationPick'; missionId: string; topId: string; bottomId: string }
   | {
+      // Covert Operation: drew 2 objectives, keep 1 (into hand), other
+      // goes to the bottom of the deck. Distinct from InfiltrationPick
+      // because the kept card lands in HAND, not back on top of the deck.
+      kind: 'CovertOperationPick';
+      missionId: string;
+      drawnIds: [string, string];
+    }
+  | {
       kind: 'StolenPlansReorder';
       missionId: string;
       remaining: string[];      // objective card IDs still to be picked

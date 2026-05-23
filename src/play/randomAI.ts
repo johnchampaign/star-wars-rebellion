@@ -77,6 +77,16 @@ export function stepOnce(G: GameState, side: Side): boolean {
     const r = phases.resolvePlanTheAssaultShips(G, c.availableShipIds);
     return r.ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'CovertOperationPick' && side === 'Rebel') {
+    // AI: keep the higher-rep card.
+    const c = G.pendingChoice;
+    const [a, b] = c.drawnIds;
+    const repA = G.catalog.objectives[a]?.reputation ?? 0;
+    const repB = G.catalog.objectives[b]?.reputation ?? 0;
+    const keep = repA >= repB ? a : b;
+    const r = phases.resolveCovertOperationPick(G, keep);
+    return r.ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'InfiltrationPick' && side === 'Rebel') {
     const c = G.pendingChoice;
     const repTop = G.catalog.objectives[c.topId]?.reputation ?? 0;

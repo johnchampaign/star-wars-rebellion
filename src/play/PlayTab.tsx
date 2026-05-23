@@ -59,6 +59,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'InfiltrationPick':         return side === 'Rebel';
     case 'StolenPlansReorder':       return side === 'Rebel';
     case 'PlanTheAssaultShips':      return side === 'Rebel';
+    case 'CovertOperationPick':      return side === 'Rebel';
     // Other ChoiceRequest kinds (system / leader picks, etc.) are
     // human-initiated and shouldn't auto-fire the AI loop.
     default:                         return false;
@@ -508,6 +509,21 @@ export default function PlayTab() {
           choice={G.pendingChoice}
           onSubmit={(shipIds) => {
             const r = phases.resolvePlanTheAssaultShips(G, shipIds);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'CovertOperationPick'
+        && humanSide === 'Rebel' && (
+        <CovertOperationPickModal
+          G={G}
+          choice={G.pendingChoice}
+          onPick={(keepId) => {
+            const r = phases.resolveCovertOperationPick(G, keepId);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }}
@@ -979,9 +995,11 @@ function HandTip({ count, cards }: {
 }) {
   const [open, setOpen] = useState(false);
   if (count === 0) return <>0 cards</>;
-  // Width of each card tile in the popup. 260px makes the embedded rules
-  // text on the card art legible at native rendering.
-  const TILE_W = 260;
+  // Width of each card tile in the popup. 130px keeps long hands on
+  // one row without running off the screen; the embedded card-art text
+  // becomes a thumbnail at this size, so the typeset rulesText below
+  // is the primary readable copy.
+  const TILE_W = 130;
   return (
     <span
       style={{ borderBottom: '1px dotted #888', cursor: 'help', position: 'relative' }}
@@ -998,9 +1016,9 @@ function HandTip({ count, cards }: {
             position: 'absolute', left: '100%', top: '50%',
             transform: 'translateY(-50%)',
             marginLeft: 12, zIndex: 2000,
-            display: 'flex', gap: 8, flexWrap: 'wrap',
+            display: 'flex', gap: 6, flexWrap: 'wrap',
             background: 'rgba(0,0,0,0.94)', border: '1px solid #555',
-            padding: 10, borderRadius: 4, maxWidth: 1100,
+            padding: 8, borderRadius: 4, maxWidth: 'min(95vw, 1400px)',
             pointerEvents: 'none',
             boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
           }}
@@ -1450,6 +1468,69 @@ function InfiltrationPickModal({ G, choice, onPick }: {
         <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>
           You looked at the top 2 cards of your objective deck. Pick the one you want to
           stay on top (drawn next Refresh). The other goes to the bottom.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {cards.map((c) => (
+            <button
+              key={c.id}
+              onClick={() => onPick(c.id)}
+              style={{
+                textAlign: 'left',
+                padding: 10,
+                background: '#0c0d10',
+                border: '1px solid #2a2d34',
+                color: '#e8e8ea', borderRadius: 4,
+                cursor: 'pointer',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
+                <strong style={{ fontSize: 13 }}>{c.name}</strong>
+                <span style={{ marginLeft: 'auto', fontSize: 11, color: '#ffd54a', fontWeight: 700 }}>
+                  +{c.rep} reputation
+                </span>
+              </div>
+              <div style={{ fontSize: 11, color: '#aaa', lineHeight: 1.4 }}>{c.text}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Covert Operation Pick Modal — Rebel draws 2 objectives, keeps 1 in hand
+// ============================================================================
+
+function CovertOperationPickModal({ G, choice, onPick }: {
+  G: GameState;
+  choice: { kind: 'CovertOperationPick'; drawnIds: [string, string] };
+  onPick: (keepInHandId: string) => void;
+}) {
+  const opt = (id: string) => {
+    const o = G.catalog.objectives[id];
+    return { id, name: o?.name ?? id, rep: o?.reputation ?? 0, text: o?.rulesText ?? '' };
+  };
+  const cards = [opt(choice.drawnIds[0]), opt(choice.drawnIds[1])];
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        zIndex: 1000,
+      }}
+    >
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 640, width: '92%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
+          Covert Operation — keep one objective in hand
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>
+          You drew the top 2 objective cards. Pick one to keep in your hand
+          (immediately available); the other goes to the bottom of the deck.
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           {cards.map((c) => (

@@ -799,6 +799,31 @@ export function resolvePlanTheAssaultShips(G: GameState, shipIds: string[]): { o
   return { ok: true };
 }
 
+/** Resolve Covert Operation's keep-vs-bottom pick. Distinct from
+ *  Infiltration: the kept card lands in HAND, not back on top of the deck. */
+export function resolveCovertOperationPick(G: GameState, keepInHandId: string): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'CovertOperationPick') {
+    return { ok: false, reason: 'no-pending-covert-operation' };
+  }
+  const [a, b] = choice.drawnIds;
+  if (keepInHandId !== a && keepInHandId !== b) {
+    return { ok: false, reason: 'invalid-pick' };
+  }
+  const kept = keepInHandId;
+  const bottomed = keepInHandId === a ? b : a;
+  if (!G.rebel.objectiveHand) G.rebel.objectiveHand = [];
+  if (!G.rebel.objectiveDeck) G.rebel.objectiveDeck = [];
+  G.rebel.objectiveHand.push(kept);
+  G.rebel.objectiveDeck.push(bottomed);
+  log(G, { kind: 'covert-operation-pick', side: 'Rebel', payload: {
+    drawn: [a, b], kept, bottomed,
+  }});
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 export function resolveInfiltrationPick(G: GameState, keepOnTopId: string): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;
   if (!choice || choice.kind !== 'InfiltrationPick') {

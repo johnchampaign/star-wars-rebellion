@@ -894,22 +894,28 @@ const stolenPlans: EffectHandler = (G, ctx) => {
   return true;
 };
 
-const covertOperation: EffectHandler = (G, _ctx) => {
-  // Draw 2 objective cards; keep 1, place the other on the bottom.
-  // Auto: keep the higher-rep card (matches infiltration heuristic).
-  if (!G.rebel.objectiveDeck || G.rebel.objectiveDeck.length === 0) return true;
-  const a = G.rebel.objectiveDeck.shift();
-  const b = G.rebel.objectiveDeck.shift();
-  if (a && b) {
-    const repA = G.catalog.objectives[a]?.reputation ?? 0;
-    const repB = G.catalog.objectives[b]?.reputation ?? 0;
-    const keep = repA >= repB ? a : b;
-    const bottom = repA >= repB ? b : a;
-    G.rebel.objectiveHand!.push(keep);
-    G.rebel.objectiveDeck.push(bottom);
-  } else if (a) {
-    G.rebel.objectiveHand!.push(a);
+const covertOperation: EffectHandler = (G, ctx) => {
+  // Draw 2 objective cards; keep 1 (into hand), place the other on the
+  // bottom. The player picks which card to keep — pause for a choice.
+  const deck = G.rebel.objectiveDeck;
+  if (!deck || deck.length === 0) return true;
+  if (deck.length === 1) {
+    // Only 1 card left — just take it, no choice possible.
+    const only = deck.shift()!;
+    G.rebel.objectiveHand!.push(only);
+    log(G, { kind: 'objective-draw-only', side: 'Rebel', payload: { cardId: only } });
+    return true;
   }
+  const a = deck.shift()!;
+  const b = deck.shift()!;
+  G.pendingChoice = {
+    kind: 'CovertOperationPick',
+    missionId: ctx.card.id,
+    drawnIds: [a, b],
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'CovertOperationPick', candidates: [a, b],
+  }});
   return true;
 };
 
