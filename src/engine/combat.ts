@@ -418,6 +418,29 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
     }
   }
 
+  // 1c) One In A Million — Rebel side, Luke or Wedge at the system, card in
+  //     hand, at least 1 die. Lets the Rebel set up to 2 dice faces.
+  if (!pa.oneInAMillionResolved && pa.side === 'Rebel'
+      && G.rebel.actionHand.includes('one-in-a-million')) {
+    const here = G.rebel.leadersOnBoard[c.systemId] ?? [];
+    const lukeOrWedge = here.some((l) => l === 'luke-skywalker' || l === 'luke-skywalker-jedi' || l === 'wedge-antilles');
+    if (lukeOrWedge && pa.dice.length > 0) {
+      pa.phase = 'awaitingOneInAMillion';
+      G.pendingChoice = {
+        kind: 'OneInAMillionOffer',
+        side: 'Rebel',
+        context: 'combat',
+        rebelRoleInRoll: 'attacker',
+        faces: pa.dice.map((d) => d.face),
+        colors: pa.dice.map((d) => d.color),
+      };
+      log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+        kind: 'OneInAMillionOffer', context: 'combat', theater: pa.theater, dice: pa.dice.length,
+      }});
+      return;
+    }
+  }
+
   // 2) Special-die spend — only for the attacker, only if specials present.
   const specials = pa.dice.filter((d) => d.face === 'special').length;
   if (specials > 0 && !pa.specialsResolved) {
@@ -476,6 +499,49 @@ function findYodaHolder(G: GameState): LeaderId | null {
     if (G.leaderAttachments[lid].includes('yoda')) return lid as LeaderId;
   }
   return null;
+}
+
+/** Resolve One In A Million (combat context). `picks` sets up to 2 dice
+ *  faces in the current pendingAttack. Empty picks = skip (keep card). */
+export function resolveOneInAMillionCombat(
+  G: GameState, picks: { index: number; face: string }[]
+): { ok: boolean; reason?: string } {
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-combat' };
+  const pa = c.pendingAttack;
+  if (!pa || pa.phase !== 'awaitingOneInAMillion') return { ok: false, reason: 'no-one-in-a-million-phase' };
+  if (!G.pendingChoice || G.pendingChoice.kind !== 'OneInAMillionOffer' || G.pendingChoice.context !== 'combat') {
+    return { ok: false, reason: 'no-choice' };
+  }
+  if (picks.length > 2) return { ok: false, reason: 'too-many-picks' };
+  const validFaces = new Set(['blank', 'hit', 'direct-hit', 'special']);
+  if (picks.length > 0) {
+    const seen = new Set<number>();
+    for (const p of picks) {
+      if (seen.has(p.index)) return { ok: false, reason: 'dup-index' };
+      seen.add(p.index);
+      if (!validFaces.has(p.face)) return { ok: false, reason: `bad-face:${p.face}` };
+      if (p.index < 0 || p.index >= pa.dice.length) return { ok: false, reason: `bad-index:${p.index}` };
+    }
+    for (const p of picks) pa.dice[p.index] = { color: pa.dice[p.index].color, face: p.face as DieResult['face'] };
+    // Discard the card.
+    const i = G.rebel.actionHand.indexOf('one-in-a-million');
+    if (i >= 0) {
+      G.rebel.actionHand.splice(i, 1);
+      G.rebel.actionDiscard.push('one-in-a-million');
+    }
+    log(G, { kind: 'one-in-a-million-applied', side: 'Rebel', payload: {
+      context: 'combat', theater: pa.theater, picks,
+      explanation: `One In A Million — set ${picks.length} combat dice to chosen faces.`,
+    }});
+  } else {
+    log(G, { kind: 'one-in-a-million-skipped', side: 'Rebel', payload: { context: 'combat' } });
+  }
+  pa.oneInAMillionResolved = true;
+  G.pendingChoice = undefined;
+  advanceAttackToTactics(G, c);
+  runCombat(G);
+  return { ok: true };
 }
 
 /** Resolve the Yoda reroll choice. `rerollIndex` is the dice index to

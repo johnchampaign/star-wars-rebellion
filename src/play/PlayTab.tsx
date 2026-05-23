@@ -902,6 +902,19 @@ export default function PlayTab() {
 
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'OneInAMillionOffer'
+        && G.pendingChoice.context === 'mission'
+        && G.pendingChoice.side === humanSide && (
+        <OneInAMillionMissionModal choice={G.pendingChoice}
+          onSubmit={(picks) => {
+            const r = phases.resolveOneInAMillionMission(G, picks);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'NobleSacrificeOffer'
         && G.pendingChoice.side === humanSide && (
         <NobleSacrificeOfferModal onAccept={(accept) => {
@@ -6256,6 +6269,85 @@ function DetainedTargetPickModal({
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OneInAMillionMissionModal({
+  choice, onSubmit,
+}: {
+  choice: { faces: string[]; colors: ('red' | 'black')[]; rebelRoleInRoll: 'attacker' | 'opposer' };
+  onSubmit: (picks: { index: number; face: string }[]) => void;
+}) {
+  const [picks, setPicks] = useState<Map<number, string>>(new Map());
+  const setFace = (i: number, face: string | null) => {
+    const next = new Map(picks);
+    if (face === null) next.delete(i);
+    else {
+      if (!next.has(i) && next.size >= 2) return;
+      next.set(i, face);
+    }
+    setPicks(next);
+  };
+  const dieGlyph = (face: string) =>
+    face === 'hit' ? '✓' : face === 'direct-hit' ? '✶' : face === 'special' ? '◈' : '·';
+  const dieBg = (color: string) => color === 'red' ? '#c4423a' : '#222';
+  const submit = (skip: boolean) => {
+    onSubmit(skip ? [] : Array.from(picks.entries()).map(([index, face]) => ({ index, face })));
+  };
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 580, width: '92%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>One In A Million — set dice</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          Discard One In A Million to set up to 2 of your dice ({choice.rebelRoleInRoll}) to faces of your choice.
+        </div>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {choice.faces.map((face, i) => {
+            const overridden = picks.get(i);
+            return (
+              <div key={i} style={{
+                background: '#0c0d10', border: `2px solid ${overridden ? '#80dc78' : '#2a2d34'}`,
+                borderRadius: 4, padding: '4px 6px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11,
+              }}>
+                <div style={{
+                  width: 22, height: 22, background: dieBg(choice.colors[i]),
+                  border: '1px solid #000', borderRadius: 3,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 14, fontWeight: 700, color: face === 'blank' ? '#555' : '#fff',
+                }}>
+                  {dieGlyph(face)}
+                </div>
+                <span style={{ color: '#888' }}>→</span>
+                <select value={overridden ?? ''} onChange={(e) => setFace(i, e.target.value || null)}
+                  style={{ background: '#0c0d10', color: '#e8e8ea', border: '1px solid #555', fontSize: 11 }}
+                >
+                  <option value="">(keep)</option>
+                  <option value="blank">blank</option>
+                  <option value="hit">hit ✓</option>
+                  <option value="direct-hit">direct-hit ✶</option>
+                </select>
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>
+          Set: {picks.size} / 2
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="tab-button active" disabled={picks.size === 0} onClick={() => submit(false)}>
+            Apply ({picks.size})
+          </button>
+          <button className="tab-button" onClick={() => submit(true)}>Skip (keep card)</button>
         </div>
       </div>
     </div>

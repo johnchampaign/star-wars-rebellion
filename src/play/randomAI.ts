@@ -153,6 +153,21 @@ export function stepOnce(G: GameState, side: Side): boolean {
     }
     return phases.resolveRetrieveThePlansPick(G, best).ok;
   }
+  // One In A Million: set up to 2 worst dice to direct-hit (always good for Rebel).
+  if (G.pendingChoice && G.pendingChoice.kind === 'OneInAMillionOffer' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    // Rank: blanks worst (0), specials (1), hits (2), direct-hits (3).
+    const rank = (f: string) => f === 'blank' ? 0 : f === 'special' ? 1 : f === 'hit' ? 2 : 3;
+    const indexed = c.faces.map((f, i) => ({ i, r: rank(f) }))
+      .sort((a, b) => a.r - b.r);
+    const picks = indexed.slice(0, Math.min(2, indexed.length))
+      .filter((x) => x.r < 3) // don't bother overriding direct-hits
+      .map((x) => ({ index: x.i, face: 'direct-hit' }));
+    if (c.context === 'combat') {
+      return combat.resolveOneInAMillionCombat(G, picks).ok;
+    }
+    return phases.resolveOneInAMillionMission(G, picks).ok;
+  }
   // Noble Sacrifice: always accept (+1 reputation, Obi out of capture).
   if (G.pendingChoice && G.pendingChoice.kind === 'NobleSacrificeOffer' && G.pendingChoice.side === side) {
     return phases.resolveNobleSacrificeOffer(G, true).ok;

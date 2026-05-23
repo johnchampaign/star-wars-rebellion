@@ -355,6 +355,21 @@ export type ChoiceRequest =
       // the card to pull Seek Yoda or Daring Rescue into the Rebel's hand.
       // Noble Sacrifice (Rebel/Obi-Wan): when Obi-Wan is captured, may
       // discard this card to eliminate Obi-Wan instead, gaining 1 reputation.
+      // One In A Million (Rebel/Luke|Wedge): after rolling, may discard to
+      // set up to 2 dice faces to results of choice. Works on Rebel-side
+      // rolls in both combat and mission contexts.
+      kind: 'OneInAMillionOffer';
+      side: Side; // 'Rebel'
+      context: 'combat' | 'mission';
+      // Whether the Rebel is the attacker or opposer (mission) / which side's
+      // dice are flippable (combat).
+      rebelRoleInRoll: 'attacker' | 'opposer';
+      // Dice faces + colors to choose from. Resolver returns chosen indexes
+      // + target faces; engine validates and applies.
+      faces: string[];
+      colors: ('red' | 'black')[];
+    }
+  | {
       kind: 'NobleSacrificeOffer';
       side: Side; // 'Rebel'
     }
@@ -758,7 +773,7 @@ export type CombatState = {
   pendingAttack?: {
     side: Side;          // who's currently attacking
     theater: Theater;
-    phase: 'awaitingYodaReroll' | 'awaitingR2D2Flip' | 'awaitingSpecialSpend' | 'awaitingAttackerTactics' | 'awaitingDefenderTactics' | 'awaitingDamageAssignment';
+    phase: 'awaitingYodaReroll' | 'awaitingR2D2Flip' | 'awaitingOneInAMillion' | 'awaitingSpecialSpend' | 'awaitingAttackerTactics' | 'awaitingDefenderTactics' | 'awaitingDamageAssignment';
     dice: DieResult[];   // current dice (may be modified by reroll)
     attackerUnits: number;
     bonusDamage: number; // accumulated from damage-boost tactics
@@ -774,6 +789,9 @@ export type CombatState = {
     // True once the R2-D2 flip window has been resolved for this attack so
     // re-entry (after another pause) doesn't re-prompt the Rebel.
     r2d2Resolved?: boolean;
+    // True once the One In A Million window has been resolved for this
+    // attack so re-entry doesn't re-prompt the Rebel.
+    oneInAMillionResolved?: boolean;
     // Set when entering 'awaitingDamageAssignment'. Frozen list of hits
     // the attacker must assign (post-blocks), and the legal targets per
     // hit (computed when the choice is queued).

@@ -103,6 +103,7 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
     pc?.kind === 'CombatAssignDamage'    ? pc.side :
     pc?.kind === 'YodaReroll'            ? pc.side :
     pc?.kind === 'R2D2Flip'              ? pc.side :
+    pc?.kind === 'OneInAMillionOffer'    ? pc.side :
     pc?.kind === 'SpecialDieSpend'       ? pc.side :
     pc?.kind === 'CombatStartActionCards' ? pc.side :
     pc?.kind === 'MoreDangerousTheaterPick' ? pc.side :
@@ -423,6 +424,9 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
         )}
         {pc?.kind === 'R2D2Flip' && pc.context === 'combat' && isHumanDecision && (
           <R2D2FlipPanel G={G} choice={pc} c={c} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'OneInAMillionOffer' && pc.context === 'combat' && isHumanDecision && (
+          <OneInAMillionPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'SpecialDieSpend' && isHumanDecision && (
           <SpecialDieSpendPanel G={G} choice={pc} onPersist={onPersist} />
@@ -1071,6 +1075,74 @@ function btn(bg: string): React.CSSProperties {
 }
 
 // ---------- Yoda reroll ----------
+
+// ---------- One In A Million (Luke/Wedge) ----------
+
+function OneInAMillionPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'OneInAMillionOffer' }>;
+  onPersist: () => void;
+}) {
+  const [picks, setPicks] = useState<Map<number, string>>(new Map());
+  const setFace = (i: number, face: string | null) => {
+    const next = new Map(picks);
+    if (face === null) next.delete(i);
+    else {
+      if (!next.has(i) && next.size >= 2) return;
+      next.set(i, face);
+    }
+    setPicks(next);
+  };
+  const submit = (skip: boolean) => {
+    const arr = skip ? [] : Array.from(picks.entries()).map(([index, face]) => ({ index, face }));
+    const r = combat.resolveOneInAMillionCombat(G, arr);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b style={{ color: '#aae0ff' }}>One In A Million:</b>{' '}
+        Discard the card to set up to 2 dice faces to results of your choice.
+        <span style={{ color: '#888', fontSize: 11, marginLeft: 8 }}>⚠ One-time use.</span>
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+        {choice.faces.map((face, i) => {
+          const overridden = picks.get(i);
+          return (
+            <div key={i} style={{
+              background: '#0c0d10', border: `2px solid ${overridden ? '#80dc78' : '#2a2d34'}`, borderRadius: 4,
+              padding: '4px 6px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11,
+            }}>
+              <Die d={{ color: choice.colors[i], face }} />
+              <span style={{ color: '#888' }}>→</span>
+              <select value={overridden ?? ''} onChange={(e) => setFace(i, e.target.value || null)}
+                style={{ background: '#0c0d10', color: '#e8e8ea', border: '1px solid #555', fontSize: 11 }}
+              >
+                <option value="">(keep)</option>
+                <option value="blank">blank</option>
+                <option value="hit">hit ✓</option>
+                <option value="direct-hit">direct-hit ✶</option>
+                <option value="special">special ◈</option>
+              </select>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 11, color: '#888', marginBottom: 6 }}>
+        Set: {picks.size} / 2
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={() => submit(false)} disabled={picks.size === 0} style={btn(SIDE_COLOR.Rebel)}>
+          Apply ({picks.size})
+        </button>
+        <button onClick={() => submit(true)} style={btn('#2a2c33')} title="Keep One In A Million in hand">
+          Skip
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ---------- R2-D2 (Resourceful Astromech) flip ----------
 
