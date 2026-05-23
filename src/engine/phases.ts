@@ -872,11 +872,24 @@ function finalizeMissionRoll(
   portrait: number,
   oppLeaderIds: LeaderId[],
 ): void {
-  const attackerTotal = attSuccesses + portrait;
+  // Contingency Plan bonus: +2 successes on Lando's next mission attempt this
+  // round. Consumed when applied. Only when Lando is among the resolvers and
+  // Rebel is the attacker.
+  let landoBonus = 0;
+  if (pm.resolverSide === 'Rebel'
+    && G.actionCardFlags?.landoContingencyBonus
+    && (pm.leaderIds as LeaderId[]).includes('lando-calrissian')) {
+    landoBonus = 2;
+    G.actionCardFlags.landoContingencyBonus = false;
+    log(G, { kind: 'lando-contingency-bonus-consumed', side: 'Rebel', payload: {
+      missionId: pm.missionId,
+    }});
+  }
+  const attackerTotal = attSuccesses + portrait + landoBonus;
   const succeeded = attackerTotal > oppSuccesses;
   log(G, { kind: 'mission-roll', side: pm.resolverSide, payload: {
     missionId: pm.missionId, skill,
-    attacker: { dice: attackerDice, successes: attSuccesses, portrait, total: attackerTotal, faces: attFaces },
+    attacker: { dice: attackerDice, successes: attSuccesses, portrait, landoBonus, total: attackerTotal, faces: attFaces },
     opposer: { side: c.opposerSide, leaderIds: oppLeaderIds, dice: opposerDice, successes: oppSuccesses, faces: oppFaces },
     result: succeeded ? 'success' : 'failure',
   }});
@@ -1498,6 +1511,141 @@ export function resolveDetainedTargetPick(G: GameState, leaderId: LeaderId): { o
   return { ok: true };
 }
 
+/** Rapid Mobilization branch: Rebel picks 'move-units' or 'establish-base'.
+ *  - 'move-units' (only legal if base unrevealed): posts a follow-up
+ *    RapidMobilizationMovePick.
+ *  - 'establish-base': either picks a system directly (revealed case) or
+ *    draws probes and posts RapidMobilizationBasePick (unrevealed case). */
+export function resolveRapidMobilizationBranch(
+  G: GameState, branch: 'move-units' | 'establish-base'
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'RapidMobilizationBranch') return { ok: false, reason: 'no-pending' };
+  if (branch === 'move-units' && !choice.moveUnitsAvailable) return { ok: false, reason: 'move-units-unavailable' };
+  const twoLeaders = choice.twoLeaders;
+  const baseRevealed = choice.baseRevealed;
+  if (branch === 'move-units') {
+    G.pendingChoice = { kind: 'RapidMobilizationMovePick', side: 'Rebel' };
+    log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+      kind: 'RapidMobilizationMovePick',
+    }});
+    return { ok: true };
+  }
+  // Establish a new Rebel Base.
+  if (baseRevealed) {
+    // Any system on the map is a candidate.
+    G.pendingChoice = { kind: 'RapidMobilizationBasePick', side: 'Rebel', baseRevealed: true };
+    log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+      kind: 'RapidMobilizationBasePick', baseRevealed: true,
+    }});
+    return { ok: true };
+  }
+  // Unrevealed: draw N probes (4 or 8) → those systems are the candidates.
+  const n = twoLeaders ? 8 : 4;
+  const drawn = M.drawProbe(G, n);
+  log(G, { kind: 'rapid-mobilization-probe-draw', side: 'Rebel', payload: {
+    count: n, twoLeaders, drawnProbeIds: drawn,
+  }});
+  const probeSystemIds = drawn
+    .map((pid) => G.catalog.probes[pid]?.systemId)
+    .filter((s): s is SystemId => !!s);
+  G.pendingChoice = {
+    kind: 'RapidMobilizationBasePick', side: 'Rebel',
+    baseRevealed: false, probeSystemIds,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'RapidMobilizationBasePick', baseRevealed: false, candidates: probeSystemIds.length,
+  }});
+  return { ok: true };
+}
+
+/** Rapid Mobilization move-units sub-pick: move up to 5 units from a source
+ *  system to the Rebel Base space, ignoring adjacency. The picks are unit
+ *  instance IDs; engine validates they're Rebel-side units at the source. */
+export function resolveRapidMobilizationMove(
+  G: GameState, sourceSystemId: SystemId, unitInstanceIds: string[]
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'RapidMobilizationMovePick') return { ok: false, reason: 'no-pending' };
+  if (unitInstanceIds.length > 5) return { ok: false, reason: 'too-many-units' };
+  const src = G.map.systems[sourceSystemId];
+  if (!src) return { ok: false, reason: 'unknown-source' };
+  const picks = unitInstanceIds.filter((uid) => {
+    const u = src.units.find((x) => x.instanceId === uid);
+    return u && u.side === 'Rebel';
+  });
+  for (const uid of picks) M.moveUnit(G, uid, sourceSystemId, 'rebel-base-space');
+  log(G, { kind: 'rapid-mobilization-move-applied', side: 'Rebel', payload: {
+    sourceSystemId, movedCount: picks.length, movedIds: picks,
+  }});
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Rapid Mobilization establish-base sub-pick: relocate the Rebel Base to
+ *  the chosen system. Revealed base stays revealed; unrevealed stays hidden. */
+export function resolveRapidMobilizationBasePick(
+  G: GameState, systemId: SystemId
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'RapidMobilizationBasePick') return { ok: false, reason: 'no-pending' };
+  if (!choice.baseRevealed) {
+    if (!choice.probeSystemIds || !choice.probeSystemIds.includes(systemId)) {
+      return { ok: false, reason: 'not-a-drawn-probe-candidate' };
+    }
+  }
+  if (!G.map.systems[systemId]) return { ok: false, reason: 'unknown-system' };
+  const old = G.rebelBaseSystemId;
+  G.rebelBaseSystemId = systemId;
+  log(G, { kind: 'rapid-mobilization-base-established', side: 'Rebel', payload: {
+    fromSystemId: old, toSystemId: systemId, baseRevealed: choice.baseRevealed,
+  }});
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Contingency Plan: Rebel picks a starting mission from their hand to
+ *  re-assign the resolver leader to. The leader goes onto leadersOnMissions,
+ *  available to be revealed later this Command phase (or a future one). */
+export function resolveContingencyPlanPick(G: GameState, missionId: string): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'ContingencyPlanPick') return { ok: false, reason: 'no-pending' };
+  if (!choice.candidates.includes(missionId)) return { ok: false, reason: 'bad-mission' };
+  const leaderId = choice.leaderId;
+  // Move mission from hand to leadersOnMissions. If the mission's already
+  // there (e.g. someone else assigned to it earlier and it hasn't been
+  // resolved), append our leader to the existing entry; else create new.
+  const hand = G.rebel.missionHand;
+  const i = hand.indexOf(missionId);
+  if (i >= 0) hand.splice(i, 1);
+  // Make sure the leader isn't sitting on a different mission already.
+  const otherAssign = G.rebel.leadersOnMissions.find((m) => m.leaderIds.includes(leaderId));
+  if (otherAssign) {
+    otherAssign.leaderIds = otherAssign.leaderIds.filter((l) => l !== leaderId);
+    if (otherAssign.leaderIds.length === 0) {
+      G.rebel.leadersOnMissions = G.rebel.leadersOnMissions.filter((m) => m !== otherAssign);
+    }
+  }
+  const existing = G.rebel.leadersOnMissions.find((m) => m.missionId === missionId);
+  if (existing) {
+    if (!existing.leaderIds.includes(leaderId)) existing.leaderIds.push(leaderId);
+  } else {
+    G.rebel.leadersOnMissions.push({ missionId, leaderIds: [leaderId] });
+  }
+  // Also remove the leader from any board placement (they were on Contingency
+  // Plan's target system; the reassignment pulls them back into the mission).
+  for (const list of Object.values(G.rebel.leadersOnBoard)) {
+    const j = list.indexOf(leaderId);
+    if (j >= 0) list.splice(j, 1);
+  }
+  log(G, { kind: 'contingency-plan-applied', side: 'Rebel', payload: { leaderId, missionId } });
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Retrieve The Plans: Empire picks 1 card from the Rebel's revealed
  *  objective hand to send to the bottom of the objective deck. */
 export function resolveRetrieveThePlansPick(G: GameState, objectiveId: string): { ok: boolean; reason?: string } {
@@ -1621,6 +1769,8 @@ function enterRefreshPhase(G: GameState): void {
     G.actionCardFlags.bobaBlockSystemIds = undefined;
     G.actionCardFlags.greejatusFreeMoveSystemId = undefined;
     G.actionCardFlags.tarkinFreeBuildSystemId = undefined;
+    // Contingency Plan: Lando bonus expires at end of round if unused.
+    G.actionCardFlags.landoContingencyBonus = undefined;
   }
 
   // Pre-step: resolve eligible StartOfRefresh objectives (rr p.10 — Rebel may

@@ -153,6 +153,44 @@ export function stepOnce(G: GameState, side: Side): boolean {
     }
     return phases.resolveRetrieveThePlansPick(G, best).ok;
   }
+  // Contingency Plan: pick a random starting mission from the candidates.
+  if (G.pendingChoice && G.pendingChoice.kind === 'ContingencyPlanPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    return phases.resolveContingencyPlanPick(G, c.candidates[0]).ok;
+  }
+  // Rapid Mobilization: prefer establish-base (always-available) over
+  // move-units; AI doesn't have great unit-selection heuristics for the
+  // move branch.
+  if (G.pendingChoice && G.pendingChoice.kind === 'RapidMobilizationBranch' && G.pendingChoice.side === side) {
+    return phases.resolveRapidMobilizationBranch(G, 'establish-base').ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'RapidMobilizationMovePick' && G.pendingChoice.side === side) {
+    // Find any Rebel-occupied system and move up to 5 units to base.
+    let srcSys: string | null = null;
+    let picks: string[] = [];
+    for (const sysId of Object.keys(G.map.systems)) {
+      const rebels = G.map.systems[sysId].units.filter((u) => u.side === 'Rebel');
+      if (rebels.length > 0) { srcSys = sysId; picks = rebels.slice(0, 5).map((u) => u.instanceId); break; }
+    }
+    if (!srcSys) {
+      // Nothing to move — bail without picks.
+      return phases.resolveRapidMobilizationMove(G, Object.keys(G.map.systems)[0], []).ok;
+    }
+    return phases.resolveRapidMobilizationMove(G, srcSys, picks).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'RapidMobilizationBasePick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const candidates = c.baseRevealed
+      ? Object.keys(G.map.systems)
+      : (c.probeSystemIds ?? []);
+    if (candidates.length === 0) {
+      // No legal target — just clear the choice via no-op (pick current base
+      // — engine will accept any valid system in revealed case).
+      const fallback = Object.keys(G.map.systems)[0];
+      return phases.resolveRapidMobilizationBasePick(G, fallback).ok;
+    }
+    return phases.resolveRapidMobilizationBasePick(G, candidates[0]).ok;
+  }
   // Interrogation Droid: Rebel picks 2 decoy systems that AREN'T the base.
   if (G.pendingChoice && G.pendingChoice.kind === 'InterrogationDroidDecoyPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;

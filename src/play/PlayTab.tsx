@@ -900,6 +900,54 @@ export default function PlayTab() {
           }} />
       )}
 
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'ContingencyPlanPick'
+        && G.pendingChoice.side === humanSide && (
+        <ContingencyPlanPickModal G={G} choice={G.pendingChoice}
+          onPick={(mid) => {
+            const r = phases.resolveContingencyPlanPick(G, mid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'RapidMobilizationBranch'
+        && G.pendingChoice.side === humanSide && (
+        <RapidMobilizationBranchModal choice={G.pendingChoice}
+          onPick={(branch) => {
+            const r = phases.resolveRapidMobilizationBranch(G, branch);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'RapidMobilizationMovePick'
+        && G.pendingChoice.side === humanSide && (
+        <RapidMobilizationMovePickModal G={G}
+          onPick={(sysId, ids) => {
+            const r = phases.resolveRapidMobilizationMove(G, sysId, ids);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'RapidMobilizationBasePick'
+        && G.pendingChoice.side === humanSide && (
+        <RapidMobilizationBasePickModal G={G} choice={G.pendingChoice}
+          onPick={(sysId) => {
+            const r = phases.resolveRapidMobilizationBasePick(G, sysId);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
       {/* ----- Bulk-added card-choice modals (task #96) ----- */}
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
@@ -5999,6 +6047,207 @@ function DetainedTargetPickModal({
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ContingencyPlanPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'ContingencyPlanPick'; side: Side; leaderId: string; candidates: string[] };
+  onPick: (missionId: string) => void;
+}) {
+  const ldr = G.catalog.leaders[choice.leaderId];
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 640, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Contingency Plan — re-assign {ldr?.name ?? choice.leaderId}</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          Pick a starting mission from your hand to assign this leader to.
+          You can pick one that was already attempted or resolved this round.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {choice.candidates.map((mid) => {
+            const m = G.catalog.missions[mid];
+            return (
+              <button key={mid} className="tab-button" onClick={() => onPick(mid)} style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 600 }}>{m?.name ?? mid}</div>
+                {m?.rulesText && <div style={{ fontSize: 10, opacity: 0.8 }}>{m.rulesText}</div>}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RapidMobilizationBranchModal({
+  choice, onPick,
+}: {
+  choice: { kind: 'RapidMobilizationBranch'; side: Side; twoLeaders: boolean; baseRevealed: boolean; moveUnitsAvailable: boolean };
+  onPick: (branch: 'move-units' | 'establish-base') => void;
+}) {
+  const n = choice.twoLeaders ? 8 : 4;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 560, width: '92%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Rapid Mobilization — choose</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          Two leaders: {choice.twoLeaders ? 'yes (8 probes for new-base pick)' : 'no (4 probes for new-base pick)'}.
+          Base currently {choice.baseRevealed ? 'REVEALED' : 'hidden'}.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <button className="tab-button"
+            disabled={!choice.moveUnitsAvailable}
+            onClick={() => onPick('move-units')}
+            style={{ textAlign: 'left', opacity: choice.moveUnitsAvailable ? 1 : 0.5 }}
+            title={choice.moveUnitsAvailable ? '' : 'Only available when the base is not yet revealed.'}
+          >
+            <div style={{ fontWeight: 600 }}>Move up to 5 units to Rebel Base space</div>
+            <div style={{ fontSize: 10, opacity: 0.8 }}>Pick a system; choose up to 5 Rebel units there. Ignores adjacency.</div>
+          </button>
+          <button className="tab-button" onClick={() => onPick('establish-base')} style={{ textAlign: 'left' }}>
+            <div style={{ fontWeight: 600 }}>Establish a new Rebel Base</div>
+            <div style={{ fontSize: 10, opacity: 0.8 }}>
+              {choice.baseRevealed
+                ? 'Pick any system on the map to be the new base.'
+                : `Draw ${n} probe cards; pick one of those systems as the new hidden base.`}
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RapidMobilizationMovePickModal({
+  G, onPick,
+}: {
+  G: GameState;
+  onPick: (systemId: string, unitInstanceIds: string[]) => void;
+}) {
+  const [sysId, setSysId] = useState<string | null>(null);
+  const [picks, setPicks] = useState<Set<string>>(new Set());
+  const rebelSystems = Object.keys(G.map.systems).filter(
+    (sid) => G.map.systems[sid].units.some((u) => u.side === 'Rebel')
+  );
+  const units = sysId
+    ? G.map.systems[sysId].units.filter((u) => u.side === 'Rebel')
+    : [];
+  const toggle = (uid: string) => {
+    const next = new Set(picks);
+    if (next.has(uid)) next.delete(uid);
+    else if (next.size < 5) next.add(uid);
+    setPicks(next);
+  };
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 640, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Rapid Mobilization — move units</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 8 }}>
+          Pick a source system and up to 5 Rebel units to move into the Rebel Base space (ignores adjacency).
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <select value={sysId ?? ''}
+            onChange={(e) => { setSysId(e.target.value || null); setPicks(new Set()); }}
+            style={{ background: '#0c0d10', color: '#e8e8ea', border: '1px solid #3a3d44', padding: '4px 8px' }}
+          >
+            <option value="">— pick a source system —</option>
+            {rebelSystems.map((sid) => (
+              <option key={sid} value={sid}>{G.catalog.systems[sid]?.name ?? sid}</option>
+            ))}
+          </select>
+        </div>
+        {sysId && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+            {units.map((u) => {
+              const t = G.catalog.unitTypes[u.typeId];
+              const on = picks.has(u.instanceId);
+              return (
+                <label key={u.instanceId} style={{
+                  display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px',
+                  border: `1px solid ${on ? '#80dc78' : '#2a2d34'}`, borderRadius: 3, fontSize: 12,
+                }}>
+                  <input type="checkbox" checked={on} onChange={() => toggle(u.instanceId)} />
+                  {t?.name ?? u.typeId}
+                </label>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="tab-button active"
+            disabled={!sysId}
+            onClick={() => sysId && onPick(sysId, [...picks])}
+          >Move {picks.size} unit{picks.size === 1 ? '' : 's'}</button>
+          <button className="tab-button"
+            onClick={() => sysId && onPick(sysId, [])}
+            disabled={!sysId}
+            title="Resolve without moving any units"
+          >Skip move</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RapidMobilizationBasePickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'RapidMobilizationBasePick'; side: Side; baseRevealed: boolean; probeSystemIds?: string[] };
+  onPick: (systemId: string) => void;
+}) {
+  const candidates = choice.baseRevealed
+    ? Object.keys(G.map.systems)
+    : (choice.probeSystemIds ?? []);
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Rapid Mobilization — establish new base</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          {choice.baseRevealed
+            ? 'Pick any system to be the new (still-revealed) Rebel Base.'
+            : `Pick one of the ${candidates.length} systems drawn from probes as the new hidden Rebel Base.`}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {candidates.map((sid) => (
+            <button key={sid} className="tab-button" onClick={() => onPick(sid)} style={{ textAlign: 'left' }}>
+              {G.catalog.systems[sid]?.name ?? sid}
+            </button>
+          ))}
         </div>
       </div>
     </div>

@@ -156,24 +156,26 @@ const rapidMobilization: EffectHandler = (G, ctx) => {
   // RAW: "Resolve in the Rebel Base space. At the end of this phase, choose
   // 1 of the following: (a) If base is not revealed, move up to 5 units
   // from 1 system to the Rebel Base space, ignoring adjacency; (b)
-  // Establish a new Rebel base. If 2 leaders are assigned, draw 8 probe
-  // cards instead of 4 (for use during the base-establish choice)."
+  // Establish a new Rebel Base. If 2 leaders are assigned, draw 8 probe
+  // cards instead of 4 (for new-base pick)."
   //
-  // The probe-draw half is mechanically deterministic and useful even on
-  // its own (the Rebel can pick a new hidden base from the candidates).
-  // The unit-move and base-establish halves require an end-of-phase choice
-  // + base-relocate infrastructure that we don't have yet.
+  // Implementation note: we fire the choice immediately on reveal rather
+  // than at end-of-phase (no deferred-effect infra). This is an acceptable
+  // RAW deviation — the Rebel can defer making the pick by leaving the
+  // mission resolution open, but in practice firing immediately is more
+  // playable.
   const twoLeaders = (ctx.leaderIds?.length ?? 0) >= 2;
-  const n = twoLeaders ? 8 : 4;
-  const drawn = M.drawProbe(G, n);
-  log(G, { kind: 'rapid-mobilization-probe-draw', side: 'Rebel', payload: {
-    count: n, twoLeaders, drawnProbeIds: drawn,
+  const baseRevealed = !!G.rebelBaseRevealed;
+  G.pendingChoice = {
+    kind: 'RapidMobilizationBranch',
+    side: 'Rebel',
+    twoLeaders,
+    baseRevealed,
+    moveUnitsAvailable: !baseRevealed,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'RapidMobilizationBranch', twoLeaders, baseRevealed,
   }});
-  notImplemented(G, 'mission:rapid-mobilization',
-    `Rapid Mobilization — partial (drew ${n} probe cards)`,
-    'The probe-card draw is applied. The end-of-phase choice (move up to 5 units to base, OR ' +
-    'establish a new Rebel base) is NOT yet automated — execute it manually if you intend to. ' +
-    'Use the drawn probes to inform a new-base candidate.');
   return true;
 };
 
@@ -923,21 +925,41 @@ const retrieveThePlans: EffectHandler = (G) => {
   return true;
 };
 
-const contingencyPlan: EffectHandler = (G) => {
+const contingencyPlan: EffectHandler = (G, ctx) => {
   // RAW: "Assign this leader to a starting mission from your hand, even one
   // that was already attempted or resolved this round. If Lando Calrissian
   // was assigned to this mission, he gains 2 additional successes when he
-  // attempts a mission later this round." The "re-assign across rounds"
-  // semantics need intra-phase mission-reassignment infra we don't have yet.
-  // Partial implementation: log a player-facing notice so they can manually
-  // re-assign in the UI; the resolver's leader is already back in their
-  // pool from the standard mission-resolution path so a manual assign is
-  // free.
-  notImplemented(G, 'mission:contingency-plan',
-    'Contingency Plan partial',
-    'The resolver leader is back in your pool. Manually assign them to any starting mission in your hand. ' +
-    'Re-assigning to an already-resolved mission this round is NOT yet automated. ' +
-    'Lando bonus (+2 successes if he was assigned here) is also not yet tracked.');
+  // attempts a mission later this round."
+  //
+  // Lando bonus: if Lando was assigned here, set a flag consumed on his
+  // next mission attempt. Re-assign step: post a ChoiceRequest listing the
+  // Rebel's starting missions in hand; resolver then attaches the leader.
+  if (ctx.leaderIds.includes('lando-calrissian')) {
+    G.actionCardFlags = G.actionCardFlags ?? {};
+    G.actionCardFlags.landoContingencyBonus = true;
+    log(G, { kind: 'lando-contingency-bonus-armed', side: 'Rebel', payload: {} });
+  }
+  // Determine which leader to reassign. RAW: "this leader" — the leader
+  // resolving Contingency Plan. If multiple, pick the first.
+  const reassignLeader = ctx.leaderIds[0];
+  if (!reassignLeader) return true;
+  const candidates = G.rebel.missionHand.filter((mid) => {
+    const m = G.catalog.missions[mid];
+    return m && m.isStarting && mid !== 'contingency-plan';
+  });
+  if (candidates.length === 0) {
+    log(G, { kind: 'contingency-plan-no-candidates', side: 'Rebel', payload: {} });
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'ContingencyPlanPick',
+    side: 'Rebel',
+    leaderId: reassignLeader,
+    candidates,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'ContingencyPlanPick', leaderId: reassignLeader, count: candidates.length,
+  }});
   return true;
 };
 

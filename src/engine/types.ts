@@ -336,6 +336,45 @@ export type ChoiceRequest =
       candidates: LeaderId[];
     }
   | {
+      // Contingency Plan (Rebel mission): after resolving, the Rebel picks
+      // a starting mission from their hand and reassigns the resolver
+      // leader to it.
+      kind: 'ContingencyPlanPick';
+      side: Side; // always 'Rebel'
+      leaderId: LeaderId; // the leader being reassigned
+      candidates: string[]; // starting missionIds in Rebel hand
+    }
+  | {
+      // Rapid Mobilization (Rebel starting mission): Rebel chooses between
+      // moving up to 5 units from a system to the Rebel Base space, or
+      // establishing a new Rebel Base. Sub-picks (source system + unit
+      // selection, or new-base system) follow via separate ChoiceRequests.
+      kind: 'RapidMobilizationBranch';
+      side: Side; // always 'Rebel'
+      twoLeaders: boolean;
+      baseRevealed: boolean;
+      // Whether the move-units option is available (only if base unrevealed).
+      moveUnitsAvailable: boolean;
+    }
+  | {
+      // Rapid Mobilization sub-choice: pick source system + up to 5 units
+      // to move to the Rebel Base space.
+      kind: 'RapidMobilizationMovePick';
+      side: Side; // always 'Rebel'
+      // We let the UI present all systems with Rebel units; engine will
+      // validate the picks.
+    }
+  | {
+      // Rapid Mobilization sub-choice: establish a new Rebel Base. If
+      // unrevealed, draw N probes (4 or 8) and pick one. If revealed, pick
+      // any system on the map.
+      kind: 'RapidMobilizationBasePick';
+      side: Side; // always 'Rebel'
+      baseRevealed: boolean;
+      // Candidates if unrevealed (probe-card-derived system IDs).
+      probeSystemIds?: SystemId[];
+    }
+  | {
       // Player wants to play an action card during the Assignment phase.
       // Engine lists cards in their hand whose timing === 'Assignment'
       // AND whose leaderRequirement leader is currently in their pool
@@ -913,6 +952,8 @@ export type GameState = {
     tarkinFreeBuildSystemId?: SystemId;
     // Boba Fett, Where? — Rebels cannot mission/use action cards in any of these systems this turn.
     bobaBlockSystemIds?: SystemId[];
+    // Contingency Plan: Lando gains +2 successes on his next mission attempt this round.
+    landoContingencyBonus?: boolean;
   };
 
   // Leaders the Detained mission has flagged to skip the NEXT refresh
