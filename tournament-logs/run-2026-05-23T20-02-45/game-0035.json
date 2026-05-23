@@ -1,0 +1,7274 @@
+{
+  "schemaVersion": 1,
+  "seed": 1034,
+  "result": "Rebel",
+  "winReason": "reputation-time",
+  "rounds": 13,
+  "reputationMarker": 13,
+  "rebelBaseRevealed": false,
+  "capturedLeaders": 0,
+  "steps": 278,
+  "elapsed_ms": 6,
+  "finalPhase": "GameOver",
+  "pendingChoiceAtEnd": null,
+  "logEntries": 664,
+  "log": [
+    {
+      "turn": 1,
+      "kind": "setup",
+      "payload": {
+        "seed": 1034,
+        "rebelLoyalty": [
+          "ryloth",
+          "sullust",
+          "mustafar"
+        ],
+        "imperialLoyalty": [
+          "saleucami",
+          "mandalore",
+          "alderaan",
+          "mygeeto",
+          "nal-hutta"
+        ],
+        "baseSystem": "dagobah",
+        "probesRemovedForSetup": [
+          "probe-saleucami",
+          "probe-mandalore",
+          "probe-alderaan",
+          "probe-mygeeto",
+          "probe-nal-hutta"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "ignite-rebellion",
+        "leaderIds": [
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "demolition",
+        "leaderIds": [
+          "luke-skywalker",
+          "princess-leia"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "infiltration",
+        "leaderIds": [
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "skip-assignment",
+      "side": "Rebel"
+    },
+    {
+      "turn": 1,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "capture-rebel-operative",
+        "leaderIds": [
+          "darth-vader"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "gather-intel",
+        "leaderIds": [
+          "emperor-palpatine"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "research-and-development",
+        "leaderIds": [
+          "general-tagge"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "skip-assignment",
+      "side": "Empire"
+    },
+    {
+      "turn": 1,
+      "kind": "phase",
+      "payload": {
+        "phase": "Command"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "place-leader",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "mon-mothma",
+        "systemId": "saleucami"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "reveal-mission",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "ignite-rebellion",
+        "targetSystemId": "saleucami",
+        "isAttempt": true
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "OpposeMission",
+        "missionId": "ignite-rebellion",
+        "attackerDice": 3,
+        "existing": [],
+        "poolSize": 1
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "place-leader",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "jan-dodonna",
+        "systemId": "alderaan"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "reveal-mission",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "infiltration",
+        "targetSystemId": "alderaan",
+        "isAttempt": true
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "OpposeMission",
+        "missionId": "infiltration",
+        "attackerDice": 2,
+        "existing": [],
+        "poolSize": 1
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "pass",
+      "side": "Rebel"
+    },
+    {
+      "turn": 1,
+      "kind": "place-leader",
+      "side": "Empire",
+      "payload": {
+        "leaderId": "grand-moff-tarkin",
+        "systemId": "alderaan"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "mission-roll",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "infiltration",
+        "skill": "intel",
+        "attacker": {
+          "dice": 2,
+          "successes": 3,
+          "portrait": 0,
+          "landoBonus": 0,
+          "total": 3,
+          "faces": [
+            "hit",
+            "special"
+          ]
+        },
+        "opposer": {
+          "side": "Empire",
+          "leaderIds": [
+            "grand-moff-tarkin"
+          ],
+          "dice": 1,
+          "successes": 1,
+          "faces": [
+            "direct-hit"
+          ]
+        },
+        "result": "success"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "InfiltrationPick",
+        "candidates": [
+          "cut-supply-lines-1",
+          "regional-support-1"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "pass",
+      "side": "Empire"
+    },
+    {
+      "turn": 1,
+      "kind": "phase",
+      "payload": {
+        "phase": "Refresh"
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "objective-check-not-met",
+      "side": "Rebel",
+      "payload": {
+        "objectives": [
+          {
+            "id": "defend-the-people-1",
+            "name": "Defend The People",
+            "rulesText": "At least 4 Rebel systems contain a Rebel unit."
+          }
+        ],
+        "note": "StartOfRefresh objectives are checked at the start of Refresh — before retrieve, draw missions, advance-time, recruit/build, and deploy. If you satisfy the condition only after deploys (e.g. fresh units landed in Rebel-loyalty systems), the objective stays in hand and will be re-checked at the next Refresh."
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "refresh-retrieve",
+      "side": "Rebel",
+      "payload": {
+        "leaderIds": [
+          "luke-skywalker",
+          "princess-leia",
+          "mon-mothma",
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "refresh-retrieve",
+      "side": "Empire",
+      "payload": {
+        "leaderIds": [
+          "darth-vader",
+          "emperor-palpatine",
+          "general-tagge",
+          "grand-moff-tarkin"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "draw-mission",
+      "side": "Rebel",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "contingency-plan",
+          "for-the-greater-good"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "draw-mission",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "interrogation-droid",
+          "planetary-conquest"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "draw-probe",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "probeIds": [
+          "probe-bothawui",
+          "probe-hoth"
+        ]
+      }
+    },
+    {
+      "turn": 1,
+      "kind": "draw-objective",
+      "side": "Rebel",
+      "payload": {
+        "count": 1,
+        "objectiveIds": [
+          "crippling-blow-1"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "advance-time",
+      "payload": {
+        "newValue": 2
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "RecruitActionCardPick",
+        "cards": [
+          "ambush",
+          "point-blank-assault"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "recruit-leader",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "general-madine",
+        "cardId": "ambush"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "recruit-pick-resolved",
+      "side": "Rebel",
+      "payload": {
+        "kept": "ambush",
+        "bottomed": "point-blank-assault"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "RecruitActionCardPick",
+        "cards": [
+          "keep-them-from-escaping",
+          "good-intel"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "recruit-leader",
+      "side": "Empire",
+      "payload": {
+        "leaderId": "admiral-piett",
+        "cardId": "keep-them-from-escaping"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "recruit-pick-resolved",
+      "side": "Empire",
+      "payload": {
+        "kept": "keep-them-from-escaping",
+        "bottomed": "good-intel"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "ryloth"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 2,
+        "sourceSystemId": "sullust"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "rebel-base"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "alderaan"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "coruscant"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "mandalore"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "slot": 2,
+        "sourceSystemId": "mygeeto"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-at",
+        "slot": 2,
+        "sourceSystemId": "mygeeto"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "nal-hutta"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "slot": 1,
+        "sourceSystemId": "nal-hutta"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-st",
+        "slot": 1,
+        "sourceSystemId": "saleucami"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "BuildPick",
+        "count": 3,
+        "autoApplied": 3
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "slot": 2,
+        "sourceSystemId": "mustafar"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "corellian-corvette",
+        "slot": 2,
+        "sourceSystemId": "mustafar"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "slot": 1,
+        "sourceSystemId": "rebel-base"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002693"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002694"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "x-wing",
+        "candidates": [
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "systemId": "ryloth",
+        "unit": "u1002695"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "alderaan",
+        "unit": "u1002696"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "alderaan",
+        "unit": "u1002697"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "coruscant",
+        "unit": "u1002698"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "coruscant",
+        "unit": "u1002699"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "tie-fighter",
+        "candidates": [
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "systemId": "mandalore",
+        "unit": "u1002700"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "at-st",
+        "candidates": [
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-st",
+        "systemId": "mandalore",
+        "unit": "u1002701"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "phase",
+      "payload": {
+        "phase": "Assignment"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "demolition",
+        "leaderIds": [
+          "general-madine",
+          "luke-skywalker"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "build-alliance",
+        "leaderIds": [
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "rapid-mobilization",
+        "leaderIds": [
+          "princess-leia",
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "skip-assignment",
+      "side": "Rebel"
+    },
+    {
+      "turn": 2,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "interrogation-droid",
+        "leaderIds": [
+          "darth-vader"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "gather-intel",
+        "leaderIds": [
+          "emperor-palpatine"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "long-range-probe",
+        "leaderIds": [
+          "admiral-piett"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "capture-rebel-operative",
+        "leaderIds": [
+          "general-tagge"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "skip-assignment",
+      "side": "Empire"
+    },
+    {
+      "turn": 2,
+      "kind": "phase",
+      "payload": {
+        "phase": "Command"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "place-leader",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "general-madine",
+        "systemId": "alderaan"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "place-leader",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "luke-skywalker",
+        "systemId": "alderaan"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "reveal-mission",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "demolition",
+        "targetSystemId": "alderaan",
+        "isAttempt": true
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "OpposeMission",
+        "missionId": "demolition",
+        "attackerDice": 3,
+        "existing": [],
+        "poolSize": 1
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "place-leader",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "mon-mothma",
+        "systemId": "alderaan"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "reveal-mission",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "build-alliance",
+        "targetSystemId": "alderaan",
+        "isAttempt": true
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "OpposeMission",
+        "missionId": "build-alliance",
+        "attackerDice": 3,
+        "existing": [],
+        "poolSize": 1
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "pass",
+      "side": "Rebel"
+    },
+    {
+      "turn": 2,
+      "kind": "place-leader",
+      "side": "Empire",
+      "payload": {
+        "leaderId": "grand-moff-tarkin",
+        "systemId": "alderaan"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "mission-roll",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "build-alliance",
+        "skill": "diplomacy",
+        "attacker": {
+          "dice": 3,
+          "successes": 1,
+          "portrait": 0,
+          "landoBonus": 0,
+          "total": 1,
+          "faces": [
+            "blank",
+            "hit",
+            "blank"
+          ]
+        },
+        "opposer": {
+          "side": "Empire",
+          "leaderIds": [
+            "grand-moff-tarkin"
+          ],
+          "dice": 1,
+          "successes": 2,
+          "faces": [
+            "special"
+          ]
+        },
+        "result": "failure"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "C3POOffer",
+        "missionId": "build-alliance",
+        "targetSystemId": "alderaan"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "pass",
+      "side": "Empire"
+    },
+    {
+      "turn": 2,
+      "kind": "phase",
+      "payload": {
+        "phase": "Refresh"
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "objective-check-not-met",
+      "side": "Rebel",
+      "payload": {
+        "objectives": [
+          {
+            "id": "defend-the-people-1",
+            "name": "Defend The People",
+            "rulesText": "At least 4 Rebel systems contain a Rebel unit."
+          }
+        ],
+        "note": "StartOfRefresh objectives are checked at the start of Refresh — before retrieve, draw missions, advance-time, recruit/build, and deploy. If you satisfy the condition only after deploys (e.g. fresh units landed in Rebel-loyalty systems), the objective stays in hand and will be re-checked at the next Refresh."
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "refresh-retrieve",
+      "side": "Rebel",
+      "payload": {
+        "leaderIds": [
+          "princess-leia",
+          "jan-dodonna",
+          "general-madine",
+          "luke-skywalker",
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "refresh-retrieve",
+      "side": "Empire",
+      "payload": {
+        "leaderIds": [
+          "darth-vader",
+          "emperor-palpatine",
+          "admiral-piett",
+          "general-tagge",
+          "grand-moff-tarkin"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "draw-mission",
+      "side": "Rebel",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "lead-the-strike-team",
+          "seek-yoda"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "draw-mission",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "secret-weapons-research",
+          "display-of-power"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "draw-probe",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "probeIds": [
+          "probe-dantooine",
+          "probe-bespin"
+        ]
+      }
+    },
+    {
+      "turn": 2,
+      "kind": "draw-objective",
+      "side": "Rebel",
+      "payload": {
+        "count": 1,
+        "objectiveIds": [
+          "rebel-assault-1"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "advance-time",
+      "payload": {
+        "newValue": 3
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002702"
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "x-wing",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "systemId": "mustafar",
+        "unit": "u1002703"
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "corellian-corvette",
+        "candidates": [
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "corellian-corvette",
+        "systemId": "ryloth",
+        "unit": "u1002704"
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "tie-fighter",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "systemId": "alderaan",
+        "unit": "u1002705"
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "at-at",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-at",
+        "systemId": "alderaan",
+        "unit": "u1002706"
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "phase",
+      "payload": {
+        "phase": "Assignment"
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "seek-yoda",
+        "leaderIds": [
+          "luke-skywalker"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "lead-the-strike-team",
+        "leaderIds": [
+          "general-madine"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "rapid-mobilization",
+        "leaderIds": [
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "contingency-plan",
+        "leaderIds": [
+          "princess-leia",
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "skip-assignment",
+      "side": "Rebel"
+    },
+    {
+      "turn": 3,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "interrogation-droid",
+        "leaderIds": [
+          "darth-vader"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "gather-intel",
+        "leaderIds": [
+          "emperor-palpatine"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "long-range-probe",
+        "leaderIds": [
+          "admiral-piett"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "capture-rebel-operative",
+        "leaderIds": [
+          "general-tagge"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "skip-assignment",
+      "side": "Empire"
+    },
+    {
+      "turn": 3,
+      "kind": "phase",
+      "payload": {
+        "phase": "Command"
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "pass",
+      "side": "Rebel"
+    },
+    {
+      "turn": 3,
+      "kind": "pass",
+      "side": "Empire"
+    },
+    {
+      "turn": 3,
+      "kind": "phase",
+      "payload": {
+        "phase": "Refresh"
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "objective-check-not-met",
+      "side": "Rebel",
+      "payload": {
+        "objectives": [
+          {
+            "id": "defend-the-people-1",
+            "name": "Defend The People",
+            "rulesText": "At least 4 Rebel systems contain a Rebel unit."
+          }
+        ],
+        "note": "StartOfRefresh objectives are checked at the start of Refresh — before retrieve, draw missions, advance-time, recruit/build, and deploy. If you satisfy the condition only after deploys (e.g. fresh units landed in Rebel-loyalty systems), the objective stays in hand and will be re-checked at the next Refresh."
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "refresh-retrieve",
+      "side": "Rebel",
+      "payload": {
+        "leaderIds": [
+          "luke-skywalker",
+          "general-madine",
+          "mon-mothma",
+          "princess-leia",
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "refresh-retrieve",
+      "side": "Empire",
+      "payload": {
+        "leaderIds": [
+          "darth-vader",
+          "emperor-palpatine",
+          "admiral-piett",
+          "general-tagge"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "draw-mission",
+      "side": "Rebel",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "base-defenses",
+          "establish-trade-relations"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "draw-mission",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "interrogation",
+          "detained"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "detained"
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "interrogation"
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "draw-probe",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "probeIds": [
+          "probe-mustafar",
+          "probe-malastare"
+        ]
+      }
+    },
+    {
+      "turn": 3,
+      "kind": "draw-objective",
+      "side": "Rebel",
+      "payload": {
+        "count": 1,
+        "objectiveIds": [
+          "death-star-plans-2"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "advance-time",
+      "payload": {
+        "newValue": 4
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "RecruitActionCardPick",
+        "cards": [
+          "its-a-trap",
+          "wookie-guardian"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "recruit-leader",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "admiral-ackbar",
+        "cardId": "its-a-trap"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "recruit-pick-resolved",
+      "side": "Rebel",
+      "payload": {
+        "kept": "its-a-trap",
+        "bottomed": "wookie-guardian"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "RecruitActionCardPick",
+        "cards": [
+          "public-support",
+          "proceeding-as-planned"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "recruit-leader",
+      "side": "Empire",
+      "payload": {
+        "leaderId": "janus-greejatus",
+        "cardId": "public-support"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "recruit-pick-resolved",
+      "side": "Empire",
+      "payload": {
+        "kept": "public-support",
+        "bottomed": "proceeding-as-planned"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "ryloth"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 2,
+        "sourceSystemId": "sullust"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "rebel-base"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "alderaan"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "coruscant"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "mandalore"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "slot": 2,
+        "sourceSystemId": "mygeeto"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-at",
+        "slot": 2,
+        "sourceSystemId": "mygeeto"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "nal-hutta"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "slot": 1,
+        "sourceSystemId": "nal-hutta"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-st",
+        "slot": 1,
+        "sourceSystemId": "saleucami"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "BuildPick",
+        "count": 3,
+        "autoApplied": 3
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "slot": 2,
+        "sourceSystemId": "mustafar"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "corellian-corvette",
+        "slot": 2,
+        "sourceSystemId": "mustafar"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "slot": 1,
+        "sourceSystemId": "rebel-base"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002707"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002708"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "x-wing",
+        "candidates": [
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "systemId": "ryloth",
+        "unit": "u1002709"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "alderaan",
+        "unit": "u1002710"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "alderaan",
+        "unit": "u1002711"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "coruscant",
+        "unit": "u1002712"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "coruscant",
+        "unit": "u1002713"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "tie-fighter",
+        "candidates": [
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "systemId": "mandalore",
+        "unit": "u1002714"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "at-st",
+        "candidates": [
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-st",
+        "systemId": "mandalore",
+        "unit": "u1002715"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "phase",
+      "payload": {
+        "phase": "Assignment"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "seek-yoda",
+        "leaderIds": [
+          "luke-skywalker"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "establish-trade-relations",
+        "leaderIds": [
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "lead-the-strike-team",
+        "leaderIds": [
+          "general-madine"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "base-defenses",
+        "leaderIds": [
+          "princess-leia"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "rapid-mobilization",
+        "leaderIds": [
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "contingency-plan",
+        "leaderIds": [
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "skip-assignment",
+      "side": "Rebel"
+    },
+    {
+      "turn": 4,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "interrogation-droid",
+        "leaderIds": [
+          "darth-vader"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "gather-intel",
+        "leaderIds": [
+          "emperor-palpatine"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "rule-by-fear",
+        "leaderIds": [
+          "janus-greejatus"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "long-range-probe",
+        "leaderIds": [
+          "admiral-piett"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "capture-rebel-operative",
+        "leaderIds": [
+          "general-tagge"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "skip-assignment",
+      "side": "Empire"
+    },
+    {
+      "turn": 4,
+      "kind": "phase",
+      "payload": {
+        "phase": "Command"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "place-leader",
+      "side": "Rebel",
+      "payload": {
+        "leaderId": "mon-mothma",
+        "systemId": "kashyyyk"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "reveal-mission",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "establish-trade-relations",
+        "targetSystemId": "kashyyyk",
+        "isAttempt": true
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "OpposeMission",
+        "missionId": "establish-trade-relations",
+        "attackerDice": 3,
+        "existing": [],
+        "poolSize": 1
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "pass",
+      "side": "Rebel"
+    },
+    {
+      "turn": 4,
+      "kind": "place-leader",
+      "side": "Empire",
+      "payload": {
+        "leaderId": "grand-moff-tarkin",
+        "systemId": "kashyyyk"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "mission-roll",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "establish-trade-relations",
+        "skill": "diplomacy",
+        "attacker": {
+          "dice": 3,
+          "successes": 2,
+          "portrait": 2,
+          "landoBonus": 0,
+          "total": 4,
+          "faces": [
+            "blank",
+            "direct-hit",
+            "direct-hit"
+          ]
+        },
+        "opposer": {
+          "side": "Empire",
+          "leaderIds": [
+            "grand-moff-tarkin"
+          ],
+          "dice": 1,
+          "successes": 1,
+          "faces": [
+            "hit"
+          ]
+        },
+        "result": "success"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "gain-loyalty",
+      "side": "Rebel",
+      "payload": {
+        "systemId": "kashyyyk",
+        "newLoyalty": "rebel"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "kashyyyk"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "kashyyyk"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "establish-trade-relations-built",
+      "side": "Rebel",
+      "payload": {
+        "systemId": "kashyyyk",
+        "slot": 1,
+        "added": [
+          "rebel-trooper",
+          "rebel-trooper"
+        ],
+        "note": "Added 2 unit(s) to build queue slot 1 (from Kashyyyk's resource icons)."
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "mission-discard",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "establish-trade-relations"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "pass",
+      "side": "Empire"
+    },
+    {
+      "turn": 4,
+      "kind": "phase",
+      "payload": {
+        "phase": "Refresh"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "objective-check-not-met",
+      "side": "Rebel",
+      "payload": {
+        "objectives": [
+          {
+            "id": "defend-the-people-1",
+            "name": "Defend The People",
+            "rulesText": "At least 4 Rebel systems contain a Rebel unit."
+          }
+        ],
+        "note": "StartOfRefresh objectives are checked at the start of Refresh — before retrieve, draw missions, advance-time, recruit/build, and deploy. If you satisfy the condition only after deploys (e.g. fresh units landed in Rebel-loyalty systems), the objective stays in hand and will be re-checked at the next Refresh."
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "refresh-retrieve",
+      "side": "Rebel",
+      "payload": {
+        "leaderIds": [
+          "luke-skywalker",
+          "general-madine",
+          "princess-leia",
+          "admiral-ackbar",
+          "jan-dodonna",
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "refresh-retrieve",
+      "side": "Empire",
+      "payload": {
+        "leaderIds": [
+          "darth-vader",
+          "emperor-palpatine",
+          "janus-greejatus",
+          "admiral-piett",
+          "general-tagge",
+          "grand-moff-tarkin"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "draw-mission",
+      "side": "Rebel",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "covert-operation",
+          "hit-and-run"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "draw-mission",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "carbon-freezing",
+          "fear-will-keep-them-in-line"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "fear-will-keep-them-in-line"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "carbon-freezing"
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "draw-probe",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "probeIds": [
+          "probe-ilum",
+          "probe-tatooine"
+        ]
+      }
+    },
+    {
+      "turn": 4,
+      "kind": "draw-objective",
+      "side": "Rebel",
+      "payload": {
+        "count": 1,
+        "objectiveIds": [
+          "heart-of-the-empire-2"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "advance-time",
+      "payload": {
+        "newValue": 5
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "kashyyyk",
+        "unit": "u1002716"
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "x-wing",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "systemId": "kashyyyk",
+        "unit": "u1002717"
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "corellian-corvette",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "corellian-corvette",
+        "systemId": "mustafar",
+        "unit": "u1002718"
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002719"
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "ryloth",
+        "unit": "u1002720"
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "tie-fighter",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "systemId": "alderaan",
+        "unit": "u1002721"
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "at-at",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-at",
+        "systemId": "alderaan",
+        "unit": "u1002722"
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "phase",
+      "payload": {
+        "phase": "Assignment"
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "seek-yoda",
+        "leaderIds": [
+          "luke-skywalker"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "lead-the-strike-team",
+        "leaderIds": [
+          "general-madine"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "base-defenses",
+        "leaderIds": [
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "covert-operation",
+        "leaderIds": [
+          "princess-leia",
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "rapid-mobilization",
+        "leaderIds": [
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "skip-assignment",
+      "side": "Rebel"
+    },
+    {
+      "turn": 5,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "interrogation-droid",
+        "leaderIds": [
+          "darth-vader"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "gather-intel",
+        "leaderIds": [
+          "emperor-palpatine"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "rule-by-fear",
+        "leaderIds": [
+          "janus-greejatus"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "long-range-probe",
+        "leaderIds": [
+          "admiral-piett"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "capture-rebel-operative",
+        "leaderIds": [
+          "general-tagge"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "skip-assignment",
+      "side": "Empire"
+    },
+    {
+      "turn": 5,
+      "kind": "phase",
+      "payload": {
+        "phase": "Command"
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "pass",
+      "side": "Rebel"
+    },
+    {
+      "turn": 5,
+      "kind": "pass",
+      "side": "Empire"
+    },
+    {
+      "turn": 5,
+      "kind": "phase",
+      "payload": {
+        "phase": "Refresh"
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "objective-check-not-met",
+      "side": "Rebel",
+      "payload": {
+        "objectives": [
+          {
+            "id": "defend-the-people-1",
+            "name": "Defend The People",
+            "rulesText": "At least 4 Rebel systems contain a Rebel unit."
+          },
+          {
+            "id": "heart-of-the-empire-2",
+            "name": "Heart Of The Empire",
+            "rulesText": "If the Coruscant system contains a Rebel unit and no Imperial units. Then return this card to your hand."
+          }
+        ],
+        "note": "StartOfRefresh objectives are checked at the start of Refresh — before retrieve, draw missions, advance-time, recruit/build, and deploy. If you satisfy the condition only after deploys (e.g. fresh units landed in Rebel-loyalty systems), the objective stays in hand and will be re-checked at the next Refresh."
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "refresh-retrieve",
+      "side": "Rebel",
+      "payload": {
+        "leaderIds": [
+          "luke-skywalker",
+          "general-madine",
+          "mon-mothma",
+          "princess-leia",
+          "jan-dodonna",
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "refresh-retrieve",
+      "side": "Empire",
+      "payload": {
+        "leaderIds": [
+          "darth-vader",
+          "emperor-palpatine",
+          "janus-greejatus",
+          "admiral-piett",
+          "general-tagge"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "draw-mission",
+      "side": "Rebel",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "plant-false-lead",
+          "support-of-mon-calamari"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "support-of-mon-calamari"
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "draw-mission",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "homing-beacon",
+          "address-delays"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "address-delays"
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "homing-beacon"
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "draw-probe",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "probeIds": [
+          "probe-toydaria",
+          "probe-felucia"
+        ]
+      }
+    },
+    {
+      "turn": 5,
+      "kind": "draw-objective",
+      "side": "Rebel",
+      "payload": {
+        "count": 1,
+        "objectiveIds": [
+          "leave-no-one-behind-2"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "advance-time",
+      "payload": {
+        "newValue": 6
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "RecruitActionCardPick",
+        "cards": [
+          "son-of-skywalker",
+          "one-in-a-million"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "recruit-action-only",
+      "side": "Rebel",
+      "payload": {
+        "cardId": "son-of-skywalker"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "recruit-pick-resolved",
+      "side": "Rebel",
+      "payload": {
+        "kept": "son-of-skywalker",
+        "bottomed": "one-in-a-million"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "RecruitActionCardPick",
+        "cards": [
+          "ready-for-action",
+          "target-the-generator"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "recruit-leader",
+      "side": "Empire",
+      "payload": {
+        "leaderId": "general-veers",
+        "cardId": "target-the-generator"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "recruit-pick-resolved",
+      "side": "Empire",
+      "payload": {
+        "kept": "target-the-generator",
+        "bottomed": "ready-for-action"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "kashyyyk"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "kashyyyk"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "ryloth"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 2,
+        "sourceSystemId": "sullust"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "rebel-base"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "alderaan"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "coruscant"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "mandalore"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "slot": 2,
+        "sourceSystemId": "mygeeto"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-at",
+        "slot": 2,
+        "sourceSystemId": "mygeeto"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "nal-hutta"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "slot": 1,
+        "sourceSystemId": "nal-hutta"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-st",
+        "slot": 1,
+        "sourceSystemId": "saleucami"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "BuildPick",
+        "count": 3,
+        "autoApplied": 5
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "slot": 2,
+        "sourceSystemId": "mustafar"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "corellian-corvette",
+        "slot": 2,
+        "sourceSystemId": "mustafar"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "slot": 1,
+        "sourceSystemId": "rebel-base"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "kashyyyk",
+        "unit": "u1002723"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "kashyyyk",
+        "unit": "u1002724"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002725"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002726"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "x-wing",
+        "candidates": [
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "systemId": "ryloth",
+        "unit": "u1002727"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "alderaan",
+        "unit": "u1002728"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "alderaan",
+        "unit": "u1002729"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "coruscant",
+        "unit": "u1002730"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "coruscant",
+        "unit": "u1002731"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "tie-fighter",
+        "candidates": [
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "systemId": "mandalore",
+        "unit": "u1002732"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "at-st",
+        "candidates": [
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-st",
+        "systemId": "mandalore",
+        "unit": "u1002733"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "phase",
+      "payload": {
+        "phase": "Assignment"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "seek-yoda",
+        "leaderIds": [
+          "luke-skywalker"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "lead-the-strike-team",
+        "leaderIds": [
+          "general-madine"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "base-defenses",
+        "leaderIds": [
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "covert-operation",
+        "leaderIds": [
+          "princess-leia",
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "rapid-mobilization",
+        "leaderIds": [
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "skip-assignment",
+      "side": "Rebel"
+    },
+    {
+      "turn": 6,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "interrogation-droid",
+        "leaderIds": [
+          "darth-vader"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "gather-intel",
+        "leaderIds": [
+          "emperor-palpatine"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "capture-rebel-operative",
+        "leaderIds": [
+          "general-veers"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "rule-by-fear",
+        "leaderIds": [
+          "janus-greejatus"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "long-range-probe",
+        "leaderIds": [
+          "admiral-piett"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "research-and-development",
+        "leaderIds": [
+          "grand-moff-tarkin"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "skip-assignment",
+      "side": "Empire"
+    },
+    {
+      "turn": 6,
+      "kind": "phase",
+      "payload": {
+        "phase": "Command"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "pass",
+      "side": "Rebel"
+    },
+    {
+      "turn": 6,
+      "kind": "pass",
+      "side": "Empire"
+    },
+    {
+      "turn": 6,
+      "kind": "phase",
+      "payload": {
+        "phase": "Refresh"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "objective-check-not-met",
+      "side": "Rebel",
+      "payload": {
+        "objectives": [
+          {
+            "id": "defend-the-people-1",
+            "name": "Defend The People",
+            "rulesText": "At least 4 Rebel systems contain a Rebel unit."
+          },
+          {
+            "id": "heart-of-the-empire-2",
+            "name": "Heart Of The Empire",
+            "rulesText": "If the Coruscant system contains a Rebel unit and no Imperial units. Then return this card to your hand."
+          }
+        ],
+        "note": "StartOfRefresh objectives are checked at the start of Refresh — before retrieve, draw missions, advance-time, recruit/build, and deploy. If you satisfy the condition only after deploys (e.g. fresh units landed in Rebel-loyalty systems), the objective stays in hand and will be re-checked at the next Refresh."
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "play-objective",
+      "side": "Rebel",
+      "payload": {
+        "objectiveId": "leave-no-one-behind-2",
+        "reputation": 1
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "gain-reputation",
+      "side": "Rebel",
+      "payload": {
+        "newValue": 13
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "refresh-retrieve",
+      "side": "Rebel",
+      "payload": {
+        "leaderIds": [
+          "luke-skywalker",
+          "general-madine",
+          "mon-mothma",
+          "princess-leia",
+          "jan-dodonna",
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "refresh-retrieve",
+      "side": "Empire",
+      "payload": {
+        "leaderIds": [
+          "darth-vader",
+          "emperor-palpatine",
+          "general-veers",
+          "janus-greejatus",
+          "admiral-piett",
+          "grand-moff-tarkin"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "draw-mission",
+      "side": "Rebel",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "daring-rescue",
+          "hidden-fleet"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "hidden-fleet"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "daring-rescue"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "draw-mission",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "lure-of-the-dark-side",
+          "intercept-transmissions"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "intercept-transmissions"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "lure-of-the-dark-side"
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "draw-probe",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "probeIds": [
+          "probe-naboo",
+          "probe-yavin"
+        ]
+      }
+    },
+    {
+      "turn": 6,
+      "kind": "draw-objective",
+      "side": "Rebel",
+      "payload": {
+        "count": 1,
+        "objectiveIds": [
+          "popular-support-2"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "advance-time",
+      "payload": {
+        "newValue": 7
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "kashyyyk",
+        "unit": "u1002734"
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "x-wing",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "systemId": "kashyyyk",
+        "unit": "u1002735"
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "corellian-corvette",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "corellian-corvette",
+        "systemId": "mustafar",
+        "unit": "u1002736"
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "tie-fighter",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "systemId": "alderaan",
+        "unit": "u1002737"
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "at-at",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-at",
+        "systemId": "alderaan",
+        "unit": "u1002738"
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "phase",
+      "payload": {
+        "phase": "Assignment"
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "seek-yoda",
+        "leaderIds": [
+          "luke-skywalker"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "lead-the-strike-team",
+        "leaderIds": [
+          "general-madine"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "base-defenses",
+        "leaderIds": [
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "covert-operation",
+        "leaderIds": [
+          "princess-leia",
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "plant-false-lead",
+        "leaderIds": [
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "skip-assignment",
+      "side": "Rebel"
+    },
+    {
+      "turn": 7,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "interrogation-droid",
+        "leaderIds": [
+          "darth-vader"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "gather-intel",
+        "leaderIds": [
+          "emperor-palpatine"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "capture-rebel-operative",
+        "leaderIds": [
+          "general-veers"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "rule-by-fear",
+        "leaderIds": [
+          "janus-greejatus"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "long-range-probe",
+        "leaderIds": [
+          "admiral-piett"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "research-and-development",
+        "leaderIds": [
+          "general-tagge"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "skip-assignment",
+      "side": "Empire"
+    },
+    {
+      "turn": 7,
+      "kind": "phase",
+      "payload": {
+        "phase": "Command"
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "pass",
+      "side": "Rebel"
+    },
+    {
+      "turn": 7,
+      "kind": "place-leader",
+      "side": "Empire",
+      "payload": {
+        "leaderId": "emperor-palpatine",
+        "systemId": "kashyyyk"
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "reveal-mission",
+      "side": "Empire",
+      "payload": {
+        "missionId": "gather-intel",
+        "targetSystemId": "kashyyyk",
+        "isAttempt": true
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "OpposeMission",
+        "missionId": "gather-intel",
+        "attackerDice": 2,
+        "existing": [],
+        "poolSize": 0
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "place-leader",
+      "side": "Empire",
+      "payload": {
+        "leaderId": "janus-greejatus",
+        "systemId": "mygeeto"
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "reveal-mission",
+      "side": "Empire",
+      "payload": {
+        "missionId": "rule-by-fear",
+        "targetSystemId": "mygeeto",
+        "isAttempt": true
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "OpposeMission",
+        "missionId": "rule-by-fear",
+        "attackerDice": 2,
+        "existing": [],
+        "poolSize": 0
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "pass",
+      "side": "Empire"
+    },
+    {
+      "turn": 7,
+      "kind": "phase",
+      "payload": {
+        "phase": "Refresh"
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "objective-check-not-met",
+      "side": "Rebel",
+      "payload": {
+        "objectives": [
+          {
+            "id": "defend-the-people-1",
+            "name": "Defend The People",
+            "rulesText": "At least 4 Rebel systems contain a Rebel unit."
+          },
+          {
+            "id": "heart-of-the-empire-2",
+            "name": "Heart Of The Empire",
+            "rulesText": "If the Coruscant system contains a Rebel unit and no Imperial units. Then return this card to your hand."
+          },
+          {
+            "id": "popular-support-2",
+            "name": "Popular Support",
+            "rulesText": "If at least 6 systems have Rebel loyalty."
+          }
+        ],
+        "note": "StartOfRefresh objectives are checked at the start of Refresh — before retrieve, draw missions, advance-time, recruit/build, and deploy. If you satisfy the condition only after deploys (e.g. fresh units landed in Rebel-loyalty systems), the objective stays in hand and will be re-checked at the next Refresh."
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "refresh-retrieve",
+      "side": "Rebel",
+      "payload": {
+        "leaderIds": [
+          "luke-skywalker",
+          "general-madine",
+          "mon-mothma",
+          "princess-leia",
+          "jan-dodonna",
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "refresh-retrieve",
+      "side": "Empire",
+      "payload": {
+        "leaderIds": [
+          "darth-vader",
+          "general-veers",
+          "admiral-piett",
+          "general-tagge",
+          "emperor-palpatine",
+          "janus-greejatus"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "draw-mission",
+      "side": "Rebel",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "wookie-uprising",
+          "stolen-plans"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "stolen-plans"
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "wookie-uprising"
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "draw-mission",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "imperial-propaganda",
+          "collect-bounty"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "draw-probe",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "probeIds": [
+          "probe-geonosis",
+          "probe-kashyyyk"
+        ]
+      }
+    },
+    {
+      "turn": 7,
+      "kind": "draw-objective",
+      "side": "Rebel",
+      "payload": {
+        "count": 1,
+        "objectiveIds": [
+          "liberation-2"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "advance-time",
+      "payload": {
+        "newValue": 8
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "kashyyyk"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "kashyyyk"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "ryloth"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 2,
+        "sourceSystemId": "sullust"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "rebel-base"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "alderaan"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "coruscant"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "mandalore"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "slot": 2,
+        "sourceSystemId": "mygeeto"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-at",
+        "slot": 2,
+        "sourceSystemId": "mygeeto"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "nal-hutta"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "slot": 1,
+        "sourceSystemId": "nal-hutta"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-st",
+        "slot": 1,
+        "sourceSystemId": "saleucami"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "BuildPick",
+        "count": 3,
+        "autoApplied": 5
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "slot": 2,
+        "sourceSystemId": "mustafar"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "corellian-corvette",
+        "slot": 2,
+        "sourceSystemId": "mustafar"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "slot": 1,
+        "sourceSystemId": "rebel-base"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "kashyyyk",
+        "unit": "u1002739"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "kashyyyk",
+        "unit": "u1002740"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002741"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002742"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "x-wing",
+        "candidates": [
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "systemId": "ryloth",
+        "unit": "u1002743"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "alderaan",
+        "unit": "u1002744"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "alderaan",
+        "unit": "u1002745"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "coruscant",
+        "unit": "u1002746"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "coruscant",
+        "unit": "u1002747"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "tie-fighter",
+        "candidates": [
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "systemId": "mandalore",
+        "unit": "u1002748"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "at-st",
+        "candidates": [
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-st",
+        "systemId": "mandalore",
+        "unit": "u1002749"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "phase",
+      "payload": {
+        "phase": "Assignment"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "seek-yoda",
+        "leaderIds": [
+          "luke-skywalker"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "lead-the-strike-team",
+        "leaderIds": [
+          "general-madine"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "base-defenses",
+        "leaderIds": [
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "covert-operation",
+        "leaderIds": [
+          "princess-leia",
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "rapid-mobilization",
+        "leaderIds": [
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "skip-assignment",
+      "side": "Rebel"
+    },
+    {
+      "turn": 8,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "interrogation-droid",
+        "leaderIds": [
+          "darth-vader"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "capture-rebel-operative",
+        "leaderIds": [
+          "general-veers"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "trade-negotiations",
+        "leaderIds": [
+          "emperor-palpatine"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "long-range-probe",
+        "leaderIds": [
+          "admiral-piett"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "imperial-propaganda",
+        "leaderIds": [
+          "janus-greejatus"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "research-and-development",
+        "leaderIds": [
+          "grand-moff-tarkin"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "skip-assignment",
+      "side": "Empire"
+    },
+    {
+      "turn": 8,
+      "kind": "phase",
+      "payload": {
+        "phase": "Command"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "pass",
+      "side": "Rebel"
+    },
+    {
+      "turn": 8,
+      "kind": "pass",
+      "side": "Empire"
+    },
+    {
+      "turn": 8,
+      "kind": "phase",
+      "payload": {
+        "phase": "Refresh"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "objective-check-not-met",
+      "side": "Rebel",
+      "payload": {
+        "objectives": [
+          {
+            "id": "defend-the-people-1",
+            "name": "Defend The People",
+            "rulesText": "At least 4 Rebel systems contain a Rebel unit."
+          },
+          {
+            "id": "heart-of-the-empire-2",
+            "name": "Heart Of The Empire",
+            "rulesText": "If the Coruscant system contains a Rebel unit and no Imperial units. Then return this card to your hand."
+          },
+          {
+            "id": "popular-support-2",
+            "name": "Popular Support",
+            "rulesText": "If at least 6 systems have Rebel loyalty."
+          }
+        ],
+        "note": "StartOfRefresh objectives are checked at the start of Refresh — before retrieve, draw missions, advance-time, recruit/build, and deploy. If you satisfy the condition only after deploys (e.g. fresh units landed in Rebel-loyalty systems), the objective stays in hand and will be re-checked at the next Refresh."
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "refresh-retrieve",
+      "side": "Rebel",
+      "payload": {
+        "leaderIds": [
+          "luke-skywalker",
+          "general-madine",
+          "mon-mothma",
+          "princess-leia",
+          "jan-dodonna",
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "refresh-retrieve",
+      "side": "Empire",
+      "payload": {
+        "leaderIds": [
+          "darth-vader",
+          "general-veers",
+          "emperor-palpatine",
+          "admiral-piett",
+          "janus-greejatus",
+          "grand-moff-tarkin"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "draw-mission",
+      "side": "Rebel",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "rogue-squadron-raid",
+          "misdirection"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "misdirection"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "rogue-squadron-raid"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "draw-mission",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "double-our-efforts",
+          "hunt-them-down"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "hunt-them-down"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "double-our-efforts"
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "draw-probe",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "probeIds": [
+          "probe-utapau",
+          "probe-cato-neimoidia"
+        ]
+      }
+    },
+    {
+      "turn": 8,
+      "kind": "draw-objective",
+      "side": "Rebel",
+      "payload": {
+        "count": 1,
+        "objectiveIds": [
+          "death-star-plans-3"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "advance-time",
+      "payload": {
+        "newValue": 9
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "kashyyyk",
+        "unit": "u1002750"
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "x-wing",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "systemId": "kashyyyk",
+        "unit": "u1002751"
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "corellian-corvette",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "corellian-corvette",
+        "systemId": "mustafar",
+        "unit": "u1002752"
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "tie-fighter",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "systemId": "alderaan",
+        "unit": "u1002753"
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "at-at",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-at",
+        "systemId": "alderaan",
+        "unit": "u1002754"
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "phase",
+      "payload": {
+        "phase": "Assignment"
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "seek-yoda",
+        "leaderIds": [
+          "luke-skywalker"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "lead-the-strike-team",
+        "leaderIds": [
+          "general-madine"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "base-defenses",
+        "leaderIds": [
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "covert-operation",
+        "leaderIds": [
+          "princess-leia",
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "plant-false-lead",
+        "leaderIds": [
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "skip-assignment",
+      "side": "Rebel"
+    },
+    {
+      "turn": 9,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "interrogation-droid",
+        "leaderIds": [
+          "darth-vader"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "capture-rebel-operative",
+        "leaderIds": [
+          "general-veers"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "trade-negotiations",
+        "leaderIds": [
+          "emperor-palpatine"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "long-range-probe",
+        "leaderIds": [
+          "admiral-piett"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "imperial-propaganda",
+        "leaderIds": [
+          "janus-greejatus"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "collect-bounty",
+        "leaderIds": [
+          "general-tagge"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "skip-assignment",
+      "side": "Empire"
+    },
+    {
+      "turn": 9,
+      "kind": "phase",
+      "payload": {
+        "phase": "Command"
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "pass",
+      "side": "Rebel"
+    },
+    {
+      "turn": 9,
+      "kind": "pass",
+      "side": "Empire"
+    },
+    {
+      "turn": 9,
+      "kind": "phase",
+      "payload": {
+        "phase": "Refresh"
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "objective-check-not-met",
+      "side": "Rebel",
+      "payload": {
+        "objectives": [
+          {
+            "id": "defend-the-people-1",
+            "name": "Defend The People",
+            "rulesText": "At least 4 Rebel systems contain a Rebel unit."
+          },
+          {
+            "id": "heart-of-the-empire-2",
+            "name": "Heart Of The Empire",
+            "rulesText": "If the Coruscant system contains a Rebel unit and no Imperial units. Then return this card to your hand."
+          },
+          {
+            "id": "popular-support-2",
+            "name": "Popular Support",
+            "rulesText": "If at least 6 systems have Rebel loyalty."
+          }
+        ],
+        "note": "StartOfRefresh objectives are checked at the start of Refresh — before retrieve, draw missions, advance-time, recruit/build, and deploy. If you satisfy the condition only after deploys (e.g. fresh units landed in Rebel-loyalty systems), the objective stays in hand and will be re-checked at the next Refresh."
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "refresh-retrieve",
+      "side": "Rebel",
+      "payload": {
+        "leaderIds": [
+          "luke-skywalker",
+          "general-madine",
+          "mon-mothma",
+          "princess-leia",
+          "jan-dodonna",
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "refresh-retrieve",
+      "side": "Empire",
+      "payload": {
+        "leaderIds": [
+          "darth-vader",
+          "general-veers",
+          "emperor-palpatine",
+          "admiral-piett",
+          "janus-greejatus",
+          "general-tagge"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "draw-mission",
+      "side": "Rebel",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "public-uprising",
+          "plan-the-assault"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "plan-the-assault"
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "public-uprising"
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "draw-mission",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "probe-droid-initiative",
+          "retrieve-the-plans"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "retrieve-the-plans"
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "probe-droid-initiative"
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "draw-probe",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "probeIds": [
+          "probe-mon-calamari",
+          "probe-ryloth"
+        ]
+      }
+    },
+    {
+      "turn": 9,
+      "kind": "draw-objective",
+      "side": "Rebel",
+      "payload": {
+        "count": 1,
+        "objectiveIds": [
+          "major-victory-3"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "advance-time",
+      "payload": {
+        "newValue": 10
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "kashyyyk"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "kashyyyk"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "ryloth"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 2,
+        "sourceSystemId": "sullust"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "rebel-base"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "alderaan"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "coruscant"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "mandalore"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "slot": 2,
+        "sourceSystemId": "mygeeto"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-at",
+        "slot": 2,
+        "sourceSystemId": "mygeeto"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "nal-hutta"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "slot": 1,
+        "sourceSystemId": "nal-hutta"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-st",
+        "slot": 1,
+        "sourceSystemId": "saleucami"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "BuildPick",
+        "count": 3,
+        "autoApplied": 5
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "slot": 2,
+        "sourceSystemId": "mustafar"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "corellian-corvette",
+        "slot": 2,
+        "sourceSystemId": "mustafar"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "slot": 1,
+        "sourceSystemId": "rebel-base"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "kashyyyk",
+        "unit": "u1002755"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "kashyyyk",
+        "unit": "u1002756"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002757"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002758"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "x-wing",
+        "candidates": [
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "systemId": "ryloth",
+        "unit": "u1002759"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "alderaan",
+        "unit": "u1002760"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "alderaan",
+        "unit": "u1002761"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "coruscant",
+        "unit": "u1002762"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "coruscant",
+        "unit": "u1002763"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "tie-fighter",
+        "candidates": [
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "systemId": "mandalore",
+        "unit": "u1002764"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "at-st",
+        "candidates": [
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-st",
+        "systemId": "mandalore",
+        "unit": "u1002765"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "phase",
+      "payload": {
+        "phase": "Assignment"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "seek-yoda",
+        "leaderIds": [
+          "luke-skywalker"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "lead-the-strike-team",
+        "leaderIds": [
+          "general-madine"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "base-defenses",
+        "leaderIds": [
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "covert-operation",
+        "leaderIds": [
+          "princess-leia",
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "rapid-mobilization",
+        "leaderIds": [
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "skip-assignment",
+      "side": "Rebel"
+    },
+    {
+      "turn": 10,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "interrogation-droid",
+        "leaderIds": [
+          "darth-vader"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "capture-rebel-operative",
+        "leaderIds": [
+          "general-veers"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "trade-negotiations",
+        "leaderIds": [
+          "emperor-palpatine"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "long-range-probe",
+        "leaderIds": [
+          "admiral-piett"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "imperial-propaganda",
+        "leaderIds": [
+          "janus-greejatus"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "research-and-development",
+        "leaderIds": [
+          "grand-moff-tarkin"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "skip-assignment",
+      "side": "Empire"
+    },
+    {
+      "turn": 10,
+      "kind": "phase",
+      "payload": {
+        "phase": "Command"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "pass",
+      "side": "Rebel"
+    },
+    {
+      "turn": 10,
+      "kind": "pass",
+      "side": "Empire"
+    },
+    {
+      "turn": 10,
+      "kind": "phase",
+      "payload": {
+        "phase": "Refresh"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "objective-check-not-met",
+      "side": "Rebel",
+      "payload": {
+        "objectives": [
+          {
+            "id": "defend-the-people-1",
+            "name": "Defend The People",
+            "rulesText": "At least 4 Rebel systems contain a Rebel unit."
+          },
+          {
+            "id": "heart-of-the-empire-2",
+            "name": "Heart Of The Empire",
+            "rulesText": "If the Coruscant system contains a Rebel unit and no Imperial units. Then return this card to your hand."
+          },
+          {
+            "id": "popular-support-2",
+            "name": "Popular Support",
+            "rulesText": "If at least 6 systems have Rebel loyalty."
+          }
+        ],
+        "note": "StartOfRefresh objectives are checked at the start of Refresh — before retrieve, draw missions, advance-time, recruit/build, and deploy. If you satisfy the condition only after deploys (e.g. fresh units landed in Rebel-loyalty systems), the objective stays in hand and will be re-checked at the next Refresh."
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "refresh-retrieve",
+      "side": "Rebel",
+      "payload": {
+        "leaderIds": [
+          "luke-skywalker",
+          "general-madine",
+          "mon-mothma",
+          "princess-leia",
+          "jan-dodonna",
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "refresh-retrieve",
+      "side": "Empire",
+      "payload": {
+        "leaderIds": [
+          "darth-vader",
+          "general-veers",
+          "emperor-palpatine",
+          "admiral-piett",
+          "janus-greejatus",
+          "grand-moff-tarkin"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "draw-mission",
+      "side": "Rebel",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "misdirection",
+          "hidden-fleet"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "hidden-fleet"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "misdirection"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "draw-mission",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "double-our-efforts",
+          "carbon-freezing"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "carbon-freezing"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "double-our-efforts"
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "draw-probe",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "probeIds": [
+          "probe-kessel",
+          "probe-dathomir"
+        ]
+      }
+    },
+    {
+      "turn": 10,
+      "kind": "draw-objective",
+      "side": "Rebel",
+      "payload": {
+        "count": 1,
+        "objectiveIds": [
+          "establish-outposts-3"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "advance-time",
+      "payload": {
+        "newValue": 11
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "kashyyyk",
+        "unit": "u1002766"
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "x-wing",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "systemId": "kashyyyk",
+        "unit": "u1002767"
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "corellian-corvette",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "corellian-corvette",
+        "systemId": "mustafar",
+        "unit": "u1002768"
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "tie-fighter",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "systemId": "alderaan",
+        "unit": "u1002769"
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "at-at",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-at",
+        "systemId": "alderaan",
+        "unit": "u1002770"
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "phase",
+      "payload": {
+        "phase": "Assignment"
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "seek-yoda",
+        "leaderIds": [
+          "luke-skywalker"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "lead-the-strike-team",
+        "leaderIds": [
+          "general-madine"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "base-defenses",
+        "leaderIds": [
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "covert-operation",
+        "leaderIds": [
+          "princess-leia",
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "plant-false-lead",
+        "leaderIds": [
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "skip-assignment",
+      "side": "Rebel"
+    },
+    {
+      "turn": 11,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "interrogation-droid",
+        "leaderIds": [
+          "darth-vader"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "capture-rebel-operative",
+        "leaderIds": [
+          "general-veers"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "trade-negotiations",
+        "leaderIds": [
+          "emperor-palpatine"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "long-range-probe",
+        "leaderIds": [
+          "admiral-piett"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "imperial-propaganda",
+        "leaderIds": [
+          "janus-greejatus"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "collect-bounty",
+        "leaderIds": [
+          "general-tagge"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "skip-assignment",
+      "side": "Empire"
+    },
+    {
+      "turn": 11,
+      "kind": "phase",
+      "payload": {
+        "phase": "Command"
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "pass",
+      "side": "Rebel"
+    },
+    {
+      "turn": 11,
+      "kind": "pass",
+      "side": "Empire"
+    },
+    {
+      "turn": 11,
+      "kind": "phase",
+      "payload": {
+        "phase": "Refresh"
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "objective-check-not-met",
+      "side": "Rebel",
+      "payload": {
+        "objectives": [
+          {
+            "id": "defend-the-people-1",
+            "name": "Defend The People",
+            "rulesText": "At least 4 Rebel systems contain a Rebel unit."
+          },
+          {
+            "id": "heart-of-the-empire-2",
+            "name": "Heart Of The Empire",
+            "rulesText": "If the Coruscant system contains a Rebel unit and no Imperial units. Then return this card to your hand."
+          },
+          {
+            "id": "popular-support-2",
+            "name": "Popular Support",
+            "rulesText": "If at least 6 systems have Rebel loyalty."
+          },
+          {
+            "id": "establish-outposts-3",
+            "name": "Establish Outposts",
+            "rulesText": "At least 5 systems contain a Rebel unit."
+          }
+        ],
+        "note": "StartOfRefresh objectives are checked at the start of Refresh — before retrieve, draw missions, advance-time, recruit/build, and deploy. If you satisfy the condition only after deploys (e.g. fresh units landed in Rebel-loyalty systems), the objective stays in hand and will be re-checked at the next Refresh."
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "refresh-retrieve",
+      "side": "Rebel",
+      "payload": {
+        "leaderIds": [
+          "luke-skywalker",
+          "general-madine",
+          "mon-mothma",
+          "princess-leia",
+          "jan-dodonna",
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "refresh-retrieve",
+      "side": "Empire",
+      "payload": {
+        "leaderIds": [
+          "darth-vader",
+          "general-veers",
+          "emperor-palpatine",
+          "admiral-piett",
+          "janus-greejatus",
+          "general-tagge"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "draw-mission",
+      "side": "Rebel",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "stolen-plans",
+          "wookie-uprising"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "wookie-uprising"
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "stolen-plans"
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "draw-mission",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "homing-beacon",
+          "hunt-them-down"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "hunt-them-down"
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "homing-beacon"
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "draw-probe",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "probeIds": [
+          "probe-ord-mantell",
+          "probe-rodia"
+        ]
+      }
+    },
+    {
+      "turn": 11,
+      "kind": "draw-objective",
+      "side": "Rebel",
+      "payload": {
+        "count": 1,
+        "objectiveIds": [
+          "inspire-sympathy-3"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "advance-time",
+      "payload": {
+        "newValue": 12
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "kashyyyk"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "kashyyyk"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "ryloth"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 2,
+        "sourceSystemId": "sullust"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "slot": 1,
+        "sourceSystemId": "rebel-base"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "alderaan"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "coruscant"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "mandalore"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "slot": 2,
+        "sourceSystemId": "mygeeto"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-at",
+        "slot": 2,
+        "sourceSystemId": "mygeeto"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "slot": 1,
+        "sourceSystemId": "nal-hutta"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "slot": 1,
+        "sourceSystemId": "nal-hutta"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-st",
+        "slot": 1,
+        "sourceSystemId": "saleucami"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "BuildPick",
+        "count": 3,
+        "autoApplied": 5
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "slot": 2,
+        "sourceSystemId": "mustafar"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "corellian-corvette",
+        "slot": 2,
+        "sourceSystemId": "mustafar"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "build-queue",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "slot": 1,
+        "sourceSystemId": "rebel-base"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "kashyyyk",
+        "unit": "u1002771"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "kashyyyk",
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "kashyyyk",
+        "unit": "u1002772"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002773"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "rebel-trooper",
+        "candidates": [
+          "mustafar",
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "rebel-trooper",
+        "systemId": "mustafar",
+        "unit": "u1002774"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "choice-request",
+      "side": "Rebel",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "x-wing",
+        "candidates": [
+          "ryloth",
+          "sullust",
+          "rebel-base-space"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "deploy",
+      "side": "Rebel",
+      "payload": {
+        "typeId": "x-wing",
+        "systemId": "ryloth",
+        "unit": "u1002775"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "alderaan",
+        "unit": "u1002776"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "alderaan",
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "alderaan",
+        "unit": "u1002777"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "coruscant",
+        "unit": "u1002778"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "stormtrooper",
+        "candidates": [
+          "coruscant",
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "stormtrooper",
+        "systemId": "coruscant",
+        "unit": "u1002779"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "tie-fighter",
+        "candidates": [
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "tie-fighter",
+        "systemId": "mandalore",
+        "unit": "u1002780"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "choice-request",
+      "side": "Empire",
+      "payload": {
+        "kind": "DeployUnitPick",
+        "typeId": "at-st",
+        "candidates": [
+          "mandalore",
+          "mygeeto",
+          "nal-hutta",
+          "saleucami"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "deploy",
+      "side": "Empire",
+      "payload": {
+        "typeId": "at-st",
+        "systemId": "mandalore",
+        "unit": "u1002781"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "phase",
+      "payload": {
+        "phase": "Assignment"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "seek-yoda",
+        "leaderIds": [
+          "luke-skywalker"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "lead-the-strike-team",
+        "leaderIds": [
+          "general-madine"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "base-defenses",
+        "leaderIds": [
+          "mon-mothma"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "covert-operation",
+        "leaderIds": [
+          "princess-leia",
+          "jan-dodonna"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "assign-leader",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "rapid-mobilization",
+        "leaderIds": [
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "skip-assignment",
+      "side": "Rebel"
+    },
+    {
+      "turn": 12,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "interrogation-droid",
+        "leaderIds": [
+          "darth-vader"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "capture-rebel-operative",
+        "leaderIds": [
+          "general-veers"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "trade-negotiations",
+        "leaderIds": [
+          "emperor-palpatine"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "long-range-probe",
+        "leaderIds": [
+          "admiral-piett"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "imperial-propaganda",
+        "leaderIds": [
+          "janus-greejatus"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "assign-leader",
+      "side": "Empire",
+      "payload": {
+        "missionId": "research-and-development",
+        "leaderIds": [
+          "grand-moff-tarkin"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "skip-assignment",
+      "side": "Empire"
+    },
+    {
+      "turn": 12,
+      "kind": "phase",
+      "payload": {
+        "phase": "Command"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "pass",
+      "side": "Rebel"
+    },
+    {
+      "turn": 12,
+      "kind": "pass",
+      "side": "Empire"
+    },
+    {
+      "turn": 12,
+      "kind": "phase",
+      "payload": {
+        "phase": "Refresh"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "objective-check-not-met",
+      "side": "Rebel",
+      "payload": {
+        "objectives": [
+          {
+            "id": "defend-the-people-1",
+            "name": "Defend The People",
+            "rulesText": "At least 4 Rebel systems contain a Rebel unit."
+          },
+          {
+            "id": "heart-of-the-empire-2",
+            "name": "Heart Of The Empire",
+            "rulesText": "If the Coruscant system contains a Rebel unit and no Imperial units. Then return this card to your hand."
+          },
+          {
+            "id": "popular-support-2",
+            "name": "Popular Support",
+            "rulesText": "If at least 6 systems have Rebel loyalty."
+          },
+          {
+            "id": "establish-outposts-3",
+            "name": "Establish Outposts",
+            "rulesText": "At least 5 systems contain a Rebel unit."
+          },
+          {
+            "id": "inspire-sympathy-3",
+            "name": "Inspire Sympathy",
+            "rulesText": "Gain 1 reputation for each destroyed system. [Variable reputation; field 'reputation' here is 0 as a placeholder.]"
+          }
+        ],
+        "note": "StartOfRefresh objectives are checked at the start of Refresh — before retrieve, draw missions, advance-time, recruit/build, and deploy. If you satisfy the condition only after deploys (e.g. fresh units landed in Rebel-loyalty systems), the objective stays in hand and will be re-checked at the next Refresh."
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "refresh-retrieve",
+      "side": "Rebel",
+      "payload": {
+        "leaderIds": [
+          "luke-skywalker",
+          "general-madine",
+          "mon-mothma",
+          "princess-leia",
+          "jan-dodonna",
+          "admiral-ackbar"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "refresh-retrieve",
+      "side": "Empire",
+      "payload": {
+        "leaderIds": [
+          "darth-vader",
+          "general-veers",
+          "emperor-palpatine",
+          "admiral-piett",
+          "janus-greejatus",
+          "grand-moff-tarkin"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "draw-mission",
+      "side": "Rebel",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "rogue-squadron-raid",
+          "plan-the-assault"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "plan-the-assault"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "mission-hand-trim",
+      "side": "Rebel",
+      "payload": {
+        "missionId": "rogue-squadron-raid"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "draw-mission",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "missionIds": [
+          "intercept-transmissions",
+          "address-delays"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "address-delays"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "mission-hand-trim",
+      "side": "Empire",
+      "payload": {
+        "missionId": "intercept-transmissions"
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "draw-probe",
+      "side": "Empire",
+      "payload": {
+        "count": 2,
+        "probeIds": [
+          "probe-sullust",
+          "probe-corellia"
+        ]
+      }
+    },
+    {
+      "turn": 12,
+      "kind": "draw-objective",
+      "side": "Rebel",
+      "payload": {
+        "count": 1,
+        "objectiveIds": [
+          "return-of-the-jedi-3"
+        ]
+      }
+    },
+    {
+      "turn": 13,
+      "kind": "advance-time",
+      "payload": {
+        "newValue": 13
+      }
+    },
+    {
+      "turn": 13,
+      "kind": "game-over",
+      "payload": {
+        "winner": "Rebel",
+        "reason": "reputation-time"
+      }
+    }
+  ]
+}

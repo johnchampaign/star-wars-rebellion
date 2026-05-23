@@ -432,10 +432,7 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   // can owe a choice (e.g. OpposeMission during the other side's turn,
   // CombatAttackerTactics/CombatDefenderTactics mid-combat).
   if (G.pendingChoice && G.pendingChoice.kind === 'OpposeMission' && G.pendingChoice.opposerSide === side) {
-    console.log('[ai] handleOpposeMission', { side, choice: G.pendingChoice });
-    const ok = handleOpposeMission(G, side);
-    console.log('[ai] handleOpposeMission done', { ok, newChoice: G.pendingChoice?.kind });
-    return ok;
+    return handleOpposeMission(G, side);
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'CombatAttackerTactics' && G.pendingChoice.side === side) {
     return handleCombatAttackerTactics(G);
