@@ -1591,62 +1591,167 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
 // Infiltration Pick Modal — Rebel looks at 2 objectives, picks one to keep on top
 // ============================================================================
 
+/** Shared drag-and-drop "top vs bottom of deck" pick modal. The two
+ *  drawn cards start one-per-slot (A on top, B on bottom). The player
+ *  drags any card to any slot; the other card auto-snaps to the
+ *  remaining slot. Click-to-swap is supported as a fallback for users
+ *  who don't want to drag.
+ *
+ *  Slot semantics differ between the two callers (Infiltration: "stays
+ *  on top of deck" vs Covert Operation: "kept in hand"). The labels
+ *  prop renders the right wording. */
+function TopBottomCardPickModal({ G, cardIds, color, title, blurb, topLabel, bottomLabel, topHint, bottomHint, onConfirm }: {
+  G: GameState;
+  cardIds: [string, string];
+  color: string;
+  title: string;
+  blurb: string;
+  topLabel: string;
+  bottomLabel: string;
+  topHint: string;
+  bottomHint: string;
+  onConfirm: (topCardId: string, bottomCardId: string) => void;
+}) {
+  // Slot assignments; both start filled.
+  const [topSlot, setTopSlot] = useState<string>(cardIds[0]);
+  const [bottomSlot, setBottomSlot] = useState<string>(cardIds[1]);
+  const [hoverSlot, setHoverSlot] = useState<'top' | 'bottom' | null>(null);
+
+  // Drop a card on a slot — swap with whatever's there.
+  const dropOn = (targetSlot: 'top' | 'bottom', cardId: string) => {
+    if (targetSlot === 'top') {
+      if (topSlot === cardId) return;             // already there
+      setBottomSlot(topSlot);                     // current top → bottom
+      setTopSlot(cardId);
+    } else {
+      if (bottomSlot === cardId) return;
+      setTopSlot(bottomSlot);
+      setBottomSlot(cardId);
+    }
+    setHoverSlot(null);
+  };
+
+  const onDragStart = (cardId: string) => (e: React.DragEvent) => {
+    e.dataTransfer.setData('text/plain', cardId);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+  const onDragOver = (slot: 'top' | 'bottom') => (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (hoverSlot !== slot) setHoverSlot(slot);
+  };
+  const onDragLeave = () => setHoverSlot(null);
+  const onDrop = (slot: 'top' | 'bottom') => (e: React.DragEvent) => {
+    e.preventDefault();
+    const cid = e.dataTransfer.getData('text/plain');
+    if (cid) dropOn(slot, cid);
+  };
+
+  const renderCard = (cardId: string) => {
+    const o = G.catalog.objectives[cardId];
+    return (
+      <div
+        draggable
+        onDragStart={onDragStart(cardId)}
+        style={{
+          background: '#0c0d10', border: '1px solid #2a2d34', borderRadius: 4,
+          padding: 8, cursor: 'grab', userSelect: 'none',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+        }}
+      >
+        {o?.image && (
+          <img src={`${CARD_IMAGE_BASE}/${o.image}`} alt={o.name ?? cardId}
+            draggable={false}
+            style={{ width: 180, height: 'auto', borderRadius: 3,
+              boxShadow: '0 0 12px rgba(0,0,0,0.6)' }} />
+        )}
+        <div style={{ fontSize: 12, color: '#fff', fontWeight: 600, textAlign: 'center' }}>
+          {o?.name ?? cardId}
+        </div>
+        <div style={{ fontSize: 10, color: '#ffd54a', fontWeight: 700 }}>
+          +{o?.reputation ?? 0} reputation
+        </div>
+      </div>
+    );
+  };
+
+  const renderSlot = (slot: 'top' | 'bottom', label: string, hint: string, cardId: string) => {
+    const highlighted = hoverSlot === slot;
+    return (
+      <div
+        onDragOver={onDragOver(slot)}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop(slot)}
+        onClick={() => {
+          // Click-to-swap fallback: tap a card in one slot to send the
+          // OTHER card here. Common when not using a mouse for drag.
+          const otherCard = slot === 'top' ? bottomSlot : topSlot;
+          dropOn(slot, otherCard);
+        }}
+        style={{
+          flex: 1, padding: 10,
+          background: highlighted ? `${color}22` : '#1a1c22',
+          border: `2px ${highlighted ? 'solid' : 'dashed'} ${color}`,
+          borderRadius: 6,
+          minHeight: 280,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+        }}
+      >
+        <div style={{ color, fontSize: 12, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+          {label}
+        </div>
+        <div style={{ color: '#888', fontSize: 11, textAlign: 'center', minHeight: 14 }}>
+          {hint}
+        </div>
+        {renderCard(cardId)}
+      </div>
+    );
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 640, width: '92%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <div style={{ fontSize: 14, color, fontWeight: 700, marginBottom: 6 }}>{title}</div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>{blurb}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {renderSlot('top', topLabel, topHint, topSlot)}
+          {renderSlot('bottom', bottomLabel, bottomHint, bottomSlot)}
+        </div>
+        <div style={{ marginTop: 14, textAlign: 'right' }}>
+          <button onClick={() => onConfirm(topSlot, bottomSlot)}
+            style={{ padding: '8px 22px', background: color, color: '#000',
+              border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 700, fontSize: 14 }}>
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InfiltrationPickModal({ G, choice, onPick }: {
   G: GameState;
   choice: { kind: 'InfiltrationPick'; topId: string; bottomId: string };
   onPick: (keepOnTopId: string) => void;
 }) {
-  const opt = (id: string) => {
-    const o = G.catalog.objectives[id];
-    return { id, name: o?.name ?? id, rep: o?.reputation ?? 0, text: o?.rulesText ?? '' };
-  };
-  const cards = [opt(choice.topId), opt(choice.bottomId)];
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 1000,
-      }}
-    >
-      <div style={{
-        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 640, width: '92%',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
-      }}>
-        <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
-          Infiltration — pick which objective to keep on top
-        </div>
-        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>
-          You looked at the top 2 cards of your objective deck. Pick the one you want to
-          stay on top (drawn next Refresh). The other goes to the bottom.
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          {cards.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => onPick(c.id)}
-              style={{
-                textAlign: 'left',
-                padding: 10,
-                background: '#0c0d10',
-                border: '1px solid #2a2d34',
-                color: '#e8e8ea', borderRadius: 4,
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
-                <strong style={{ fontSize: 13 }}>{c.name}</strong>
-                <span style={{ marginLeft: 'auto', fontSize: 11, color: '#ffd54a', fontWeight: 700 }}>
-                  +{c.rep} reputation
-                </span>
-              </div>
-              <div style={{ fontSize: 11, color: '#aaa', lineHeight: 1.4 }}>{c.text}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
+    <TopBottomCardPickModal
+      G={G}
+      cardIds={[choice.topId, choice.bottomId]}
+      color="#aae0ff"
+      title="Infiltration — order the top 2 objective cards"
+      blurb="You looked at the top 2 cards of your objective deck. Drag (or click) to place one on top (drawn next refresh) and the other on the bottom."
+      topLabel="Top of deck"
+      topHint="Drawn next Refresh phase."
+      bottomLabel="Bottom of deck"
+      bottomHint="Returned to the bottom; you'll see it again later."
+      onConfirm={(topCardId, _bottomCardId) => onPick(topCardId)}
+    />
   );
 }
 
@@ -2137,53 +2242,20 @@ function CovertOperationPickModal({ G, choice, onPick }: {
     const o = G.catalog.objectives[id];
     return { id, name: o?.name ?? id, rep: o?.reputation ?? 0, text: o?.rulesText ?? '' };
   };
-  const cards = [opt(choice.drawnIds[0]), opt(choice.drawnIds[1])];
+  void opt; // (helper no longer used; modal delegates to TopBottomCardPickModal)
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 1000,
-      }}
-    >
-      <div style={{
-        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 640, width: '92%',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
-      }}>
-        <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
-          Covert Operation — keep one objective in hand
-        </div>
-        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>
-          You drew the top 2 objective cards. Pick one to keep in your hand
-          (immediately available); the other goes to the bottom of the deck.
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          {cards.map((c) => (
-            <button
-              key={c.id}
-              onClick={() => onPick(c.id)}
-              style={{
-                textAlign: 'left',
-                padding: 10,
-                background: '#0c0d10',
-                border: '1px solid #2a2d34',
-                color: '#e8e8ea', borderRadius: 4,
-                cursor: 'pointer',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
-                <strong style={{ fontSize: 13 }}>{c.name}</strong>
-                <span style={{ marginLeft: 'auto', fontSize: 11, color: '#ffd54a', fontWeight: 700 }}>
-                  +{c.rep} reputation
-                </span>
-              </div>
-              <div style={{ fontSize: 11, color: '#aaa', lineHeight: 1.4 }}>{c.text}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
+    <TopBottomCardPickModal
+      G={G}
+      cardIds={choice.drawnIds}
+      color="#aae0ff"
+      title="Covert Operation — keep one objective, bottom the other"
+      blurb="You drew the top 2 objective cards. Drag (or click) to place one in your hand (immediately available) and the other on the bottom of the deck."
+      topLabel="Keep in hand"
+      topHint="Immediately available to play when its trigger fires."
+      bottomLabel="Bottom of deck"
+      bottomHint="Returned to the bottom; you'll see it again later."
+      onConfirm={(topCardId, _bottomCardId) => onPick(topCardId)}
+    />
   );
 }
 
