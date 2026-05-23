@@ -1049,6 +1049,11 @@ function BuildPickModal({ G, choice, onSubmit }: {
       iconShape: 'triangle' | 'circle' | 'square';
       legalUnitTypes: string[];
     }[];
+    autoApplied: {
+      sourceSystemId: string;
+      slot: 1 | 2 | 3;
+      unitTypeId: string;
+    }[];
   };
   onSubmit: (choices: string[]) => void;
 }) {
@@ -1084,6 +1089,31 @@ function BuildPickModal({ G, choice, onSubmit }: {
           Each resource icon below allows more than one unit type. Pick which
           to add to your build queue. Units go to the slot number printed
           beside the resource icon.
+        </div>
+
+        {choice.autoApplied.length > 0 && (
+          <details open style={{ marginBottom: 12, background: '#1a1f1a', borderRadius: 4, padding: 8 }}>
+            <summary style={{ cursor: 'pointer', color: '#80dc78', fontSize: 12, fontWeight: 600 }}>
+              Already auto-added this turn ({choice.autoApplied.length} unit{choice.autoApplied.length === 1 ? '' : 's'})
+            </summary>
+            <div style={{ fontSize: 11, color: '#aaa', marginTop: 6, lineHeight: 1.4 }}>
+              These resource icons only had one legal unit type, so they were
+              applied without asking:
+              <ul style={{ marginTop: 4, marginBottom: 0, paddingLeft: 18 }}>
+                {choice.autoApplied.map((a, i) => (
+                  <li key={i} style={{ color: '#cbc4b0' }}>
+                    <strong style={{ color: '#fff' }}>{unitName(a.unitTypeId)}</strong>
+                    {' '}from <em>{sysName(a.sourceSystemId)}</em>
+                    {' '}<span style={{ color: '#666' }}>→ slot {a.slot}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </details>
+        )}
+
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+          Choices needed ({choice.picks.length})
         </div>
 
         {choice.picks.map((p, i) => (

@@ -1124,10 +1124,16 @@ function refreshBuildIfApplicable(G: GameState, logStart: number): boolean {
   // Build happens on every EVEN turn (verified against the printed board).
   if (G.timeMarker % 2 !== 0) return false;
 
-  const pendingBySide: { side: Side; picks: BuildPickEntry[] }[] = [];
+  type AutoApplied = {
+    sourceSystemId: SystemId | 'rebel-base';
+    slot: 1 | 2 | 3;
+    unitTypeId: string;
+  };
+  const pendingBySide: { side: Side; picks: BuildPickEntry[]; autoApplied: AutoApplied[] }[] = [];
 
   for (const side of ['Rebel', 'Empire'] as const) {
     const sidePicks: BuildPickEntry[] = [];
+    const sideAutoApplied: AutoApplied[] = [];
     const otherSide = side === 'Rebel' ? 'Empire' : 'Rebel';
 
     for (const [sysId, ss] of Object.entries(G.map.systems)) {
@@ -1151,6 +1157,7 @@ function refreshBuildIfApplicable(G: GameState, logStart: number): boolean {
         if (legal.length === 0) continue;
         if (legal.length === 1) {
           M.buildToQueue(G, side, legal[0], slot, sysId);
+          sideAutoApplied.push({ sourceSystemId: sysId, slot, unitTypeId: legal[0] });
         } else {
           sidePicks.push({
             sourceSystemId: sysId, slot,
@@ -1174,6 +1181,7 @@ function refreshBuildIfApplicable(G: GameState, logStart: number): boolean {
       if (baseProduces) {
         // Ground triangle has only one legal type — auto-apply.
         M.buildToQueue(G, 'Rebel', 'rebel-trooper', 1, 'rebel-base');
+        sideAutoApplied.push({ sourceSystemId: 'rebel-base', slot: 1, unitTypeId: 'rebel-trooper' });
         // Space triangle is the X-Wing / Y-Wing choice.
         sidePicks.push({
           sourceSystemId: 'rebel-base', slot: 1,
@@ -1183,7 +1191,7 @@ function refreshBuildIfApplicable(G: GameState, logStart: number): boolean {
       }
     }
 
-    if (sidePicks.length > 0) pendingBySide.push({ side, picks: sidePicks });
+    if (sidePicks.length > 0) pendingBySide.push({ side, picks: sidePicks, autoApplied: sideAutoApplied });
   }
 
   if (pendingBySide.length === 0) return false; // no choices needed
@@ -1197,9 +1205,14 @@ function promoteNextBuildPick(G: GameState): void {
   const r = G.refreshPaused;
   if (!r || r.pendingBuildPicks.length === 0) return;
   const next = r.pendingBuildPicks[0];
-  G.pendingChoice = { kind: 'BuildPick', side: next.side, picks: next.picks };
+  G.pendingChoice = {
+    kind: 'BuildPick',
+    side: next.side,
+    picks: next.picks,
+    autoApplied: next.autoApplied,
+  };
   log(G, { kind: 'choice-request', side: next.side, payload: {
-    kind: 'BuildPick', count: next.picks.length,
+    kind: 'BuildPick', count: next.picks.length, autoApplied: next.autoApplied.length,
   }});
 }
 

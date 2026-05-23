@@ -192,6 +192,15 @@ export type ChoiceRequest =
         iconShape: 'triangle' | 'circle' | 'square';
         legalUnitTypes: UnitTypeId[];
       }[];
+      /** Builds already auto-applied to this side's queue earlier in
+       *  the same refresh (icons with only one legal unit type). Shown
+       *  as context in the modal so the player sees the full build
+       *  picture, not just the ambiguous icons. */
+      autoApplied: {
+        sourceSystemId: SystemId | 'rebel-base';
+        slot: 1 | 2 | 3;
+        unitTypeId: UnitTypeId;
+      }[];
     }
   | {
       // Rebel may reroll one blank die via Yoda's ring (once per round, only
@@ -546,6 +555,13 @@ export type GameState = {
         iconType: Theater;
         iconShape: 'triangle' | 'circle' | 'square';
         legalUnitTypes: UnitTypeId[];
+      }[];
+      // Single-choice icon builds already applied this refresh — shown
+      // in the BuildPick modal as context.
+      autoApplied: {
+        sourceSystemId: SystemId | 'rebel-base';
+        slot: 1 | 2 | 3;
+        unitTypeId: UnitTypeId;
       }[];
     }[];
   };
