@@ -401,6 +401,17 @@ export function assignLeader(G: GameState, side: Side, missionId: string, leader
   f.missionHand.splice(mi, 1);
   f.leadersOnMissions.push({ missionId, leaderIds: [...leaderIds] });
   log(G, { kind: 'assign-leader', side, payload: { missionId, leaderIds } });
+
+  // RAW: players ALTERNATE during Assignment (RR p.4). After this side
+  // assigns, control passes to the opponent — unless they've already
+  // signalled done, in which case the current side keeps going.
+  const opp: Side = side === 'Rebel' ? 'Empire' : 'Rebel';
+  const done = assignmentDone(G);
+  if (!done.has(opp)) {
+    G.currentPlayer = opp;
+  }
+  // If opponent has already passed but current side still has leaders,
+  // current side keeps the turn until they pass too.
   return { ok: true };
 }
 
