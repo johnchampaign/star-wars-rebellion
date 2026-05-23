@@ -1842,15 +1842,42 @@ function MissionReportModal({ G, report, onDismiss }: {
           {renderSidePanel(report.opposerSide, report.opposerLeaders, report.opposerDice, undefined, 'right')}
         </div>
 
-        {/* Outcome banner */}
+        {/* Outcome banner — large, unambiguous about whether the
+            mission's effect fires. */}
         <div style={{
-          padding: '10px 16px', borderRadius: 4, marginBottom: 14,
-          background: '#0c0d10', border: `3px solid ${resultColor}`,
+          padding: '14px 16px', borderRadius: 4, marginBottom: 14,
+          background: report.result === 'failure' ? '#2a0d0a' : '#0d2a14',
+          border: `3px solid ${resultColor}`,
           textAlign: 'center',
         }}>
-          <span style={{ fontSize: 18, fontWeight: 800, color: resultColor, letterSpacing: 1 }}>
+          <div style={{ fontSize: 28, fontWeight: 900, color: resultColor, letterSpacing: 2, lineHeight: 1 }}>
             {resultLabel}
-          </span>
+          </div>
+          {/* Math summary: attacker total vs opposer total. */}
+          {(report.attackerDice || report.opposerDice) && (
+            <div style={{ fontSize: 13, color: '#ccc', marginTop: 8, fontFamily: 'monospace' }}>
+              Attacker
+              {' '}
+              <strong style={{ color: '#fff' }}>
+                {report.attackerTotal ?? (report.attackerDice?.successes ?? 0)}
+              </strong>
+              {' '}{report.result === 'failure' ? '<' : '>'}{' '}
+              Opposer
+              {' '}
+              <strong style={{ color: '#fff' }}>
+                {report.opposerDice?.successes ?? 0}
+              </strong>
+              {report.result === 'failure' && ' (ties go to defender)'}
+            </div>
+          )}
+          {/* What this means for the mission's effect. */}
+          <div style={{ fontSize: 13, color: '#fff', marginTop: 10, fontWeight: 600 }}>
+            {report.result === 'failure'
+              ? '✗ Mission effect does NOT fire. No card play, no peek, no objective change.'
+              : report.result === 'auto-success'
+                ? '✓ Mission effect fires — no opposition possible.'
+                : '✓ Mission effect fires.'}
+          </div>
         </div>
 
         <div style={{ textAlign: 'right' }}>
