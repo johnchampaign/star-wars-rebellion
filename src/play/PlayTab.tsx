@@ -55,9 +55,10 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'SpecialDieSpend':          return pc.side === side;
     case 'CombatStartActionCards':   return pc.side === side;
     case 'RetreatDecision':          return pc.side === side;
-    // Infiltration / Stolen Plans are always Rebel choices.
+    // Infiltration / Stolen Plans / Plan The Assault are always Rebel choices.
     case 'InfiltrationPick':         return side === 'Rebel';
     case 'StolenPlansReorder':       return side === 'Rebel';
+    case 'PlanTheAssaultShips':      return side === 'Rebel';
     // Other ChoiceRequest kinds (system / leader picks, etc.) are
     // human-initiated and shouldn't auto-fire the AI loop.
     default:                         return false;
@@ -498,6 +499,21 @@ export default function PlayTab() {
 
       {/* Sub-choice modals: only render when no report is queued in front,
          so the player sees the mission's report FIRST and then chooses. */}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'PlanTheAssaultShips'
+        && humanSide === 'Rebel' && (
+        <PlanTheAssaultShipsModal
+          G={G}
+          choice={G.pendingChoice}
+          onSubmit={(shipIds) => {
+            const r = phases.resolvePlanTheAssaultShips(G, shipIds);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'InfiltrationPick'
@@ -1458,6 +1474,99 @@ function InfiltrationPickModal({ G, choice, onPick }: {
               <div style={{ fontSize: 11, color: '#aaa', lineHeight: 1.4 }}>{c.text}</div>
             </button>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Plan The Assault — pick ships to send from Rebel Base to target system
+// ============================================================================
+
+function PlanTheAssaultShipsModal({ G, choice, onSubmit }: {
+  G: GameState;
+  choice: {
+    kind: 'PlanTheAssaultShips';
+    side: Side;
+    targetSystemId: string;
+    availableShipIds: string[];
+  };
+  onSubmit: (shipIds: string[]) => void;
+}) {
+  const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  const baseUnits = G.map.rebelBaseSpace.units;
+  const ships = choice.availableShipIds
+    .map((sid) => baseUnits.find((u) => u.instanceId === sid))
+    .filter((u): u is NonNullable<typeof u> => !!u);
+
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(choice.availableShipIds));
+  const toggle = (sid: string) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(sid)) next.delete(sid); else next.add(sid);
+      return next;
+    });
+  };
+  const allOn = picked.size === choice.availableShipIds.length;
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 22, maxWidth: 560, width: '92%',
+      }}>
+        <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
+          Plan The Assault — pick ships to send to {targetName}
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>
+          Move any number of your ships from the Rebel Base to {targetName} as
+          if it were adjacent. Ground units stay behind. Combat will start
+          immediately after.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {ships.length === 0 && (
+            <div style={{ color: '#666', fontStyle: 'italic', fontSize: 12 }}>
+              (no ships at the Rebel Base — mission resolves without combat)
+            </div>
+          )}
+          {ships.map((u) => {
+            const t = G.catalog.unitTypes[u.typeId];
+            return (
+              <label key={u.instanceId} style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: 4,
+                background: '#1f2128', borderRadius: 3, cursor: 'pointer',
+              }}>
+                <input
+                  type="checkbox"
+                  checked={picked.has(u.instanceId)}
+                  onChange={() => toggle(u.instanceId)}
+                />
+                <span style={{ color: '#fff', fontSize: 13 }}>
+                  {t?.name ?? u.typeId}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center' }}>
+          <button
+            onClick={() => setPicked(allOn ? new Set() : new Set(choice.availableShipIds))}
+            style={{ padding: '4px 10px', background: '#2a2c33', color: '#fff',
+              border: '1px solid #555', borderRadius: 3, cursor: 'pointer', fontSize: 11 }}
+          >
+            {allOn ? 'Select none' : 'Select all'}
+          </button>
+          <button
+            onClick={() => onSubmit(Array.from(picked))}
+            style={{ padding: '6px 18px', background: '#aae0ff', color: '#000',
+              border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
+          >
+            Send {picked.size} ship{picked.size === 1 ? '' : 's'} & start combat
+          </button>
         </div>
       </div>
     </div>

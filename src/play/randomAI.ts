@@ -71,6 +71,12 @@ export function stepOnce(G: GameState, side: Side): boolean {
     const r = phases.resolveStolenPlansPick(G, best);
     return r.ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'PlanTheAssaultShips' && side === 'Rebel') {
+    // AI: send every available ship.
+    const c = G.pendingChoice;
+    const r = phases.resolvePlanTheAssaultShips(G, c.availableShipIds);
+    return r.ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'InfiltrationPick' && side === 'Rebel') {
     const c = G.pendingChoice;
     const repTop = G.catalog.objectives[c.topId]?.reputation ?? 0;

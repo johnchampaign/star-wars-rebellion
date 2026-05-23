@@ -839,11 +839,35 @@ const dailyRescueGroup: EffectHandler = (G, ctx) => {
   return true;
 };
 
-const planTheAssault: EffectHandler = (G, _ctx) => {
-  notImplemented(G, 'mission:plan-the-assault',
-    'Plan the Assault not implemented',
-    'Should let you move ships from Rebel Base space to the target system, then resolve combat. ' +
-    'Needs a unit-selection UI.');
+const planTheAssault: EffectHandler = (G, ctx) => {
+  // "Move ships (but not ground units) from the Rebel Base space to this
+  // system as if they were adjacent. Then resolve a combat in this system."
+  // We queue a ship-selection choice; the resolver moves the picks then
+  // kicks off combat via combat.beginCombat.
+  const targetSystemId = ctx.targetSystemId;
+  if (!targetSystemId) return true;
+  const baseUnits = G.map.rebelBaseSpace.units;
+  const availableShips = baseUnits
+    .filter((u) => {
+      if (u.side !== 'Rebel') return false;
+      const t = G.catalog.unitTypes[u.typeId];
+      return t?.theater === 'space';
+    })
+    .map((u) => u.instanceId);
+  if (availableShips.length === 0) {
+    // No ships to send — mission resolves without combat.
+    log(G, { kind: 'plan-the-assault-no-ships', side: 'Rebel', payload: { targetSystemId } });
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'PlanTheAssaultShips',
+    side: 'Rebel',
+    targetSystemId,
+    availableShipIds: availableShips,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'PlanTheAssaultShips', targetSystemId, available: availableShips.length,
+  }});
   return true;
 };
 

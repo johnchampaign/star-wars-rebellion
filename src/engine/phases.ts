@@ -762,6 +762,43 @@ export function resolveStolenPlansPick(G: GameState, cardId: string): { ok: bool
 
 /** Apply the Rebel's Infiltration pick. `keepOnTopId` is one of the two
  *  cards revealed; the other goes to the bottom of the objective deck. */
+/** Resolve Plan The Assault's ship-selection. `shipIds` are unit instance
+ *  IDs from the rebel-base-space that the Rebel sends to the target system.
+ *  After moving, kicks off combat at the target. */
+export function resolvePlanTheAssaultShips(G: GameState, shipIds: string[]): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'PlanTheAssaultShips') {
+    return { ok: false, reason: 'no-pending-plan-the-assault' };
+  }
+  // Validate every pick is in the available list.
+  for (const sid of shipIds) {
+    if (!choice.availableShipIds.includes(sid)) {
+      return { ok: false, reason: `illegal-ship:${sid}` };
+    }
+  }
+  const targetSystemId = choice.targetSystemId;
+  // Move each picked ship from rebel-base-space to the target system.
+  // (M.moveUnit handles invariants like reveal-base checks.)
+  for (const sid of shipIds) {
+    M.moveUnit(G, sid, 'rebel-base-space', targetSystemId);
+  }
+  log(G, { kind: 'plan-the-assault-move', side: 'Rebel', payload: {
+    targetSystemId, shipsSent: shipIds.length,
+  }});
+  G.pendingChoice = undefined;
+
+  // Kick off combat at the target if both sides now have units there.
+  // Source system for retreat purposes = rebel-base-space.
+  beginCombat(G, 'Rebel', 'rebel-base-space', targetSystemId);
+  runCombat(G);
+
+  // If combat is paused for a choice, leave it. Otherwise resume mission
+  // resolution machinery (mission discard + advance command turn).
+  if (G.pendingChoice || G.pendingCombat) return { ok: true };
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 export function resolveInfiltrationPick(G: GameState, keepOnTopId: string): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;
   if (!choice || choice.kind !== 'InfiltrationPick') {

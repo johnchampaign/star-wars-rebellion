@@ -203,6 +203,14 @@ export type ChoiceRequest =
       }[];
     }
   | {
+      // Plan The Assault: Rebel picks which ships in rebel-base-space to
+      // move to the target system (which then triggers combat).
+      kind: 'PlanTheAssaultShips';
+      side: Side;            // always 'Rebel'
+      targetSystemId: SystemId;
+      availableShipIds: UnitInstanceId[];
+    }
+  | {
       // Rebel may reroll one blank die via Yoda's ring (once per round, only
       // if the Yoda holder is at this system). Posted after the dice roll
       // but before tactic-card windows.
