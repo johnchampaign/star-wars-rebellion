@@ -309,5 +309,26 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react(), devPlugin()],
     server: { port: 5173 },
+    build: {
+      rollupOptions: {
+        output: {
+          // Peel React + the engine off the main app bundle so the warning
+          // clears and browsers can cache the heavy bits independently of
+          // app-code churn.
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom'],
+            'engine': [
+              './src/engine/phases.ts',
+              './src/engine/combat.ts',
+              './src/engine/mechanics.ts',
+              './src/engine/handlers/index.ts',
+              './src/engine/missionTargets.ts',
+              './src/engine/objectives.ts',
+              './src/engine/setup.ts',
+            ],
+          },
+        },
+      },
+    },
   };
 });
