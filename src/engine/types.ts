@@ -353,6 +353,31 @@ export type ChoiceRequest =
       // into success. Post-finalize trigger.
       // Son of Skywalker (Rebel): after Luke's mission succeeds, may discard
       // the card to pull Seek Yoda or Daring Rescue into the Rebel's hand.
+      // Noble Sacrifice (Rebel/Obi-Wan): when Obi-Wan is captured, may
+      // discard this card to eliminate Obi-Wan instead, gaining 1 reputation.
+      kind: 'NobleSacrificeOffer';
+      side: Side; // 'Rebel'
+    }
+  | {
+      // It Is Your Destiny (Empire/Vader): after a Rebel rescue at a system
+      // where Vader is, may discard this card to have Vader capture one of
+      // the rescuing leaders.
+      kind: 'ItIsYourDestinyOffer';
+      side: Side; // 'Empire'
+      candidates: LeaderId[]; // rescuing leaders to potentially capture
+    }
+  | {
+      // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
+      // mission, may discard this card to relocate Lando or Obi-Wan from
+      // their current system to the mission's target system. The relocated
+      // leader then participates in opposition normally.
+      kind: 'UndercoverOffer';
+      side: Side; // 'Rebel'
+      missionId: string;
+      targetSystemId: SystemId;
+      candidates: LeaderId[]; // {lando, obi-wan} subset that is on the board somewhere off-target
+    }
+  | {
       kind: 'SonOfSkywalkerOffer';
       side: Side; // 'Rebel'
       missionId: string; // the just-succeeded mission

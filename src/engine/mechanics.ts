@@ -431,6 +431,19 @@ export function captureLeader(G: GameState, leaderId: LeaderId, ring: 'captured'
   e.capturedLeaders.push({ leaderId, ring, systemId: capturedSystemId });
   log(G, { kind: 'capture-leader', payload: { leaderId, ring, systemId: capturedSystemId } });
 
+  // Noble Sacrifice (Rebel/Obi-Wan) Special-timing trigger: if Obi-Wan was
+  // just captured and the Rebel holds Noble Sacrifice, post a choice for
+  // the Rebel to discard the card to eliminate Obi-Wan for +1 reputation.
+  // Only fires inside a mission context to avoid surprise triggers from
+  // setup or other system-driven captures.
+  if (leaderId === 'obi-wan-kenobi'
+    && G.pendingMission
+    && G.rebel.actionHand.includes('noble-sacrifice')
+    && !G.pendingChoice) {
+    G.pendingChoice = { kind: 'NobleSacrificeOffer', side: 'Rebel' };
+    log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'NobleSacrificeOffer' } });
+  }
+
   // If no Imperial units are at the captured leader's system, the leader is
   // immediately rescued (rr p.3).
   maybeAutoRescue(G, capturedSystemId);
@@ -465,11 +478,35 @@ export function rescueLeader(G: GameState, leaderId: LeaderId, reason: string = 
   // a captured leader and *can* be rescued (the ring is just bookkeeping for
   // which leader is the "second" capture). The Rebel just doesn't get back
   // the reputation lost to Carbon Freezing — that's handled at mission time.
+  const rescuedSystemId = e.capturedLeaders[i].systemId;
   e.capturedLeaders.splice(i, 1);
   const destKey = G.rebelBaseRevealed ? G.rebelBaseSystemId : 'rebel-base-space';
   if (!G.rebel.leadersOnBoard[destKey]) G.rebel.leadersOnBoard[destKey] = [];
   G.rebel.leadersOnBoard[destKey].push(leaderId);
   log(G, { kind: 'rescue-leader', payload: { leaderId, dest: destKey, reason } });
+
+  // It Is Your Destiny (Empire/Vader) Special trigger: if Vader is at the
+  // rescue system, Empire may discard the card to capture one of the
+  // rescuing leaders. Only fires inside a mission rescue context.
+  if (G.pendingMission
+    && G.pendingMission.resolverSide === 'Rebel'
+    && G.pendingMission.targetSystemId === rescuedSystemId
+    && (G.empire.leadersOnBoard[rescuedSystemId] ?? []).includes('darth-vader')
+    && G.empire.actionHand.includes('it-is-your-destiny')
+    && !G.pendingChoice) {
+    const candidates = (G.pendingMission.leaderIds as LeaderId[])
+      .filter((lid) => lid !== leaderId); // can't capture the rescuee themselves
+    if (candidates.length > 0) {
+      G.pendingChoice = {
+        kind: 'ItIsYourDestinyOffer',
+        side: 'Empire',
+        candidates,
+      };
+      log(G, { kind: 'choice-request', side: 'Empire', payload: {
+        kind: 'ItIsYourDestinyOffer', candidates: candidates.length,
+      }});
+    }
+  }
 }
 
 // ----- Leader attachments ("rings") --------------------------------------

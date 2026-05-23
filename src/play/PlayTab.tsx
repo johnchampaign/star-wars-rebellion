@@ -902,6 +902,41 @@ export default function PlayTab() {
 
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'NobleSacrificeOffer'
+        && G.pendingChoice.side === humanSide && (
+        <NobleSacrificeOfferModal onAccept={(accept) => {
+          const r = phases.resolveNobleSacrificeOffer(G, accept);
+          if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+          persist(); refresh();
+        }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'ItIsYourDestinyOffer'
+        && G.pendingChoice.side === humanSide && (
+        <ItIsYourDestinyOfferModal G={G} choice={G.pendingChoice}
+          onPick={(lid) => {
+            const r = phases.resolveItIsYourDestinyOffer(G, lid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'UndercoverOffer'
+        && G.pendingChoice.side === humanSide && (
+        <UndercoverOfferModal G={G} choice={G.pendingChoice}
+          onPick={(lid) => {
+            const r = phases.resolveUndercoverOffer(G, lid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'SonOfSkywalkerOffer'
         && G.pendingChoice.side === humanSide && (
         <SonOfSkywalkerOfferModal G={G} choice={G.pendingChoice}
@@ -6222,6 +6257,120 @@ function DetainedTargetPickModal({
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function NobleSacrificeOfferModal({
+  onAccept,
+}: {
+  onAccept: (accept: boolean) => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 480, width: '92%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Noble Sacrifice — eliminate Obi-Wan?</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+          Obi-Wan has just been captured. Discard Noble Sacrifice to eliminate him instead,
+          gaining +1 reputation. He becomes one with the Force.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="tab-button active" onClick={() => onAccept(true)} style={{ fontWeight: 700 }}>
+            Discard → eliminate for +1 rep
+          </button>
+          <button className="tab-button" onClick={() => onAccept(false)}>
+            Keep, accept capture
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ItIsYourDestinyOfferModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { candidates: string[] };
+  onPick: (leaderId: string | null) => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>It Is Your Destiny — capture a rescuer?</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          A Rebel rescue just happened at Vader's system. Discard the card to have Vader capture one of these rescuers:
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {choice.candidates.map((lid) => {
+            const l = G.catalog.leaders[lid];
+            return (
+              <button key={lid} className="tab-button" onClick={() => onPick(lid)} style={{ textAlign: 'left' }}>
+                Capture {l?.name ?? lid}
+              </button>
+            );
+          })}
+        </div>
+        <button className="tab-button" onClick={() => onPick(null)}>
+          Keep, skip
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function UndercoverOfferModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { missionId: string; targetSystemId: string; candidates: string[] };
+  onPick: (leaderId: string | null) => void;
+}) {
+  const m = G.catalog.missions[choice.missionId];
+  const sysName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Undercover — relocate to {sysName}?</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          Empire is attempting <b>{m?.name ?? choice.missionId}</b> at <b>{sysName}</b>.
+          Discard Undercover to move Lando or Obi-Wan to that system; they'll join opposition.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {choice.candidates.map((lid) => {
+            const l = G.catalog.leaders[lid];
+            return (
+              <button key={lid} className="tab-button" onClick={() => onPick(lid)} style={{ textAlign: 'left' }}>
+                Move {l?.name ?? lid}
+              </button>
+            );
+          })}
+        </div>
+        <button className="tab-button" onClick={() => onPick(null)}>
+          Keep Undercover, skip
+        </button>
       </div>
     </div>
   );

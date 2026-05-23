@@ -704,6 +704,33 @@ export function revealMission(
     }});
     return { ok: true };
   }
+  // Undercover (Rebel/Lando|Obi-Wan): if Empire reveals an attempt mission
+  // AND Rebel holds Undercover AND Lando or Obi-Wan is on the board (but
+  // not already at the target system), offer to relocate them to the
+  // target — they'll then participate in opposition.
+  if (side === 'Empire' && card.isAttempt && G.rebel.actionHand.includes('undercover')) {
+    const undercoverCandidates: LeaderId[] = [];
+    for (const lid of ['lando-calrissian', 'obi-wan-kenobi'] as LeaderId[]) {
+      for (const [sysId, list] of Object.entries(G.rebel.leadersOnBoard)) {
+        if (list.includes(lid) && sysId !== targetSystemId) {
+          undercoverCandidates.push(lid);
+          break;
+        }
+      }
+    }
+    if (undercoverCandidates.length > 0) {
+      G.pendingChoice = {
+        kind: 'UndercoverOffer',
+        side: 'Rebel',
+        missionId, targetSystemId,
+        candidates: undercoverCandidates,
+      };
+      log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+        kind: 'UndercoverOffer', missionId, candidates: undercoverCandidates.length,
+      }});
+      return { ok: true };
+    }
+  }
 
   return continueRevealAfterSpecialOffer(G, pending);
 }
@@ -1764,6 +1791,97 @@ function continueAfterRingTrigger(G: GameState, pm: MissionResolution): void {
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   }
+}
+
+/** Noble Sacrifice: Rebel chooses to eliminate captured Obi-Wan for +1 rep,
+ *  or accept the capture. */
+export function resolveNobleSacrificeOffer(G: GameState, accept: boolean): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'NobleSacrificeOffer') return { ok: false, reason: 'no-pending' };
+  if (accept) {
+    const handIdx = G.rebel.actionHand.indexOf('noble-sacrifice');
+    if (handIdx < 0) return { ok: false, reason: 'card-not-in-hand' };
+    // Remove Obi-Wan from capturedLeaders.
+    const e = G.empire;
+    if (!e.capturedLeaders) return { ok: false, reason: 'no-captured' };
+    const ci = e.capturedLeaders.findIndex((c) => c.leaderId === 'obi-wan-kenobi');
+    if (ci < 0) return { ok: false, reason: 'obi-not-captured' };
+    e.capturedLeaders.splice(ci, 1);
+    // Add to Rebel eliminated leaders.
+    if (!G.rebel.eliminatedLeaders.includes('obi-wan-kenobi')) {
+      G.rebel.eliminatedLeaders.push('obi-wan-kenobi');
+    }
+    // Discard the card.
+    G.rebel.actionHand.splice(handIdx, 1);
+    G.rebel.actionDiscard.push('noble-sacrifice');
+    // +1 Rebel reputation.
+    M.gainReputation(G, 1);
+    log(G, { kind: 'noble-sacrifice-applied', side: 'Rebel', payload: {
+      explanation: 'Noble Sacrifice — Obi-Wan eliminated for +1 reputation.',
+    }});
+  } else {
+    log(G, { kind: 'noble-sacrifice-skipped', side: 'Rebel', payload: {} });
+  }
+  G.pendingChoice = undefined;
+  // Don't resume mission flow — captureLeader is called from many contexts.
+  // If we're mid-mission, the next caller will check pendingChoice/G.pendingMission.
+  // For Noble Sacrifice we just clear the choice and let the original
+  // call-chain continue naturally.
+  return { ok: true };
+}
+
+/** It Is Your Destiny: Empire picks one rescuing leader to capture, or skip. */
+export function resolveItIsYourDestinyOffer(G: GameState, leaderId: LeaderId | null): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'ItIsYourDestinyOffer') return { ok: false, reason: 'no-pending' };
+  if (leaderId !== null) {
+    if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'bad-leader' };
+    const i = G.empire.actionHand.indexOf('it-is-your-destiny');
+    if (i < 0) return { ok: false, reason: 'card-not-in-hand' };
+    G.empire.actionHand.splice(i, 1);
+    G.empire.actionDiscard.push('it-is-your-destiny');
+    G.pendingChoice = undefined;
+    M.captureLeader(G, leaderId, 'captured');
+    log(G, { kind: 'it-is-your-destiny-applied', side: 'Empire', payload: {
+      capturedLeader: leaderId,
+      explanation: 'Vader captures a rescuer.',
+    }});
+  } else {
+    log(G, { kind: 'it-is-your-destiny-skipped', side: 'Empire', payload: {} });
+    G.pendingChoice = undefined;
+  }
+  return { ok: true };
+}
+
+/** Undercover: Rebel picks Lando or Obi-Wan to relocate to the target system,
+ *  or skip. Then continues the reveal flow. */
+export function resolveUndercoverOffer(G: GameState, leaderId: LeaderId | null): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'UndercoverOffer') return { ok: false, reason: 'no-pending' };
+  const pm = G.pendingMission;
+  if (!pm) return { ok: false, reason: 'no-mission' };
+  if (leaderId !== null) {
+    if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'bad-leader' };
+    const i = G.rebel.actionHand.indexOf('undercover');
+    if (i < 0) return { ok: false, reason: 'card-not-in-hand' };
+    G.rebel.actionHand.splice(i, 1);
+    G.rebel.actionDiscard.push('undercover');
+    // Remove leader from current system, place at target.
+    for (const list of Object.values(G.rebel.leadersOnBoard)) {
+      const j = list.indexOf(leaderId);
+      if (j >= 0) list.splice(j, 1);
+    }
+    if (!G.rebel.leadersOnBoard[pc.targetSystemId]) G.rebel.leadersOnBoard[pc.targetSystemId] = [];
+    G.rebel.leadersOnBoard[pc.targetSystemId].push(leaderId);
+    log(G, { kind: 'undercover-applied', side: 'Rebel', payload: {
+      leaderId, targetSystemId: pc.targetSystemId,
+    }});
+  } else {
+    log(G, { kind: 'undercover-skipped', side: 'Rebel', payload: {} });
+  }
+  G.pendingChoice = undefined;
+  continueRevealAfterSpecialOffer(G, pm);
+  return { ok: true };
 }
 
 /** Son of Skywalker: Rebel chooses one of Seek Yoda or Daring Rescue from

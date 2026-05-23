@@ -153,6 +153,29 @@ export function stepOnce(G: GameState, side: Side): boolean {
     }
     return phases.resolveRetrieveThePlansPick(G, best).ok;
   }
+  // Noble Sacrifice: always accept (+1 reputation, Obi out of capture).
+  if (G.pendingChoice && G.pendingChoice.kind === 'NobleSacrificeOffer' && G.pendingChoice.side === side) {
+    return phases.resolveNobleSacrificeOffer(G, true).ok;
+  }
+  // It Is Your Destiny: always capture highest-value rescuer.
+  if (G.pendingChoice && G.pendingChoice.kind === 'ItIsYourDestinyOffer' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    let best = c.candidates[0];
+    let bestScore = -1;
+    for (const lid of c.candidates) {
+      const l = G.catalog.leaders[lid];
+      if (!l) continue;
+      const sk = l.skills;
+      const score = (sk.diplomacy ?? 0) + (sk.intel ?? 0) + (sk.specOps ?? 0) + (sk.logistics ?? 0);
+      if (score > bestScore) { best = lid; bestScore = score; }
+    }
+    return phases.resolveItIsYourDestinyOffer(G, best).ok;
+  }
+  // Undercover: always relocate the first available candidate.
+  if (G.pendingChoice && G.pendingChoice.kind === 'UndercoverOffer' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    return phases.resolveUndercoverOffer(G, c.candidates[0] ?? null).ok;
+  }
   // Son of Skywalker offer: always pull a mission (free card).
   if (G.pendingChoice && G.pendingChoice.kind === 'SonOfSkywalkerOffer' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
