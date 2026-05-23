@@ -351,6 +351,30 @@ export type ChoiceRequest =
       // C-3PO (Human-Cyborg Relations ring): after a diplomacy mission
       // fails, the Rebel may discard the C-3PO ring to convert the failure
       // into success. Post-finalize trigger.
+      // Son of Skywalker (Rebel): after Luke's mission succeeds, may discard
+      // the card to pull Seek Yoda or Daring Rescue into the Rebel's hand.
+      kind: 'SonOfSkywalkerOffer';
+      side: Side; // 'Rebel'
+      missionId: string; // the just-succeeded mission
+      candidates: string[]; // missionIds available to pull
+    }
+  | {
+      // Blindside (Empire/Boba|Greejatus): may discard before opposition so
+      // the Rebel cannot send pool leaders to oppose this mission.
+      kind: 'BlindsideOffer';
+      side: Side; // 'Empire'
+      missionId: string;
+      targetSystemId: SystemId;
+    }
+  | {
+      // Wookie Guardian (Rebel/Chewbacca): may discard to auto-fail an
+      // Empire special-ops mission attempted at a system where Chewie is.
+      kind: 'WookieGuardianOffer';
+      side: Side; // 'Rebel'
+      missionId: string;
+      targetSystemId: SystemId;
+    }
+  | {
       kind: 'C3POOffer';
       side: Side; // 'Rebel'
       missionId: string;
@@ -890,6 +914,9 @@ export type MissionResolution = {
   // Rebel leader the Empire is going after, when multiple are co-located.
   // Undefined for system-target missions or when there's only one candidate.
   targetLeaderId?: LeaderId;
+  // Blindside flag: if true, the opposer cannot send pool leaders to oppose
+  // this mission. Set during the Blindside pre-opposition trigger.
+  blindsideActive?: boolean;
   leaderIds: LeaderId[];
   stage: 'reveal' | 'oppose' | 'roll' | 'effect' | 'failed' | 'done';
   // Mid-roll stash for R2-D2 mission flip. resolveOpposition pauses here

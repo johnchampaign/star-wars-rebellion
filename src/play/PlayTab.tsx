@@ -902,6 +902,42 @@ export default function PlayTab() {
 
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'SonOfSkywalkerOffer'
+        && G.pendingChoice.side === humanSide && (
+        <SonOfSkywalkerOfferModal G={G} choice={G.pendingChoice}
+          onPick={(mid) => {
+            const r = phases.resolveSonOfSkywalkerOffer(G, mid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'BlindsideOffer'
+        && G.pendingChoice.side === humanSide && (
+        <BlindsideOfferModal G={G} choice={G.pendingChoice}
+          onAccept={(accept) => {
+            const r = phases.resolveBlindsideOffer(G, accept);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'WookieGuardianOffer'
+        && G.pendingChoice.side === humanSide && (
+        <WookieGuardianOfferModal G={G} choice={G.pendingChoice}
+          onAccept={(accept) => {
+            const r = phases.resolveWookieGuardianOffer(G, accept);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'C3POOffer'
         && G.pendingChoice.side === humanSide && (
         <C3POOfferModal G={G} choice={G.pendingChoice}
@@ -6185,6 +6221,120 @@ function DetainedTargetPickModal({
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SonOfSkywalkerOfferModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { candidates: string[] };
+  onPick: (missionId: string | null) => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 480, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Son of Skywalker — pull a mission</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          Luke's mission succeeded. Discard Son of Skywalker to pull one of these into your hand.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {choice.candidates.map((mid) => {
+            const m = G.catalog.missions[mid];
+            return (
+              <button key={mid} className="tab-button" onClick={() => onPick(mid)} style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 600 }}>{m?.name ?? mid}</div>
+                {m?.rulesText && <div style={{ fontSize: 10, opacity: 0.8 }}>{m.rulesText}</div>}
+              </button>
+            );
+          })}
+        </div>
+        <button className="tab-button" onClick={() => onPick(null)}>
+          Keep Son of Skywalker, skip
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BlindsideOfferModal({
+  G, choice, onAccept,
+}: {
+  G: GameState;
+  choice: { missionId: string; targetSystemId: string };
+  onAccept: (accept: boolean) => void;
+}) {
+  const m = G.catalog.missions[choice.missionId];
+  const sysName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 480, width: '92%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Blindside — deny pool opposers?</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+          Revealing <b>{m?.name ?? choice.missionId}</b> at <b>{sysName}</b>.
+          Discard Blindside to prevent the Rebel from sending pool leaders to oppose this mission.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="tab-button active" onClick={() => onAccept(true)} style={{ fontWeight: 700 }}>
+            Discard Blindside
+          </button>
+          <button className="tab-button" onClick={() => onAccept(false)}>
+            Keep, allow pool opposition
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WookieGuardianOfferModal({
+  G, choice, onAccept,
+}: {
+  G: GameState;
+  choice: { missionId: string; targetSystemId: string };
+  onAccept: (accept: boolean) => void;
+}) {
+  const m = G.catalog.missions[choice.missionId];
+  const sysName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 480, width: '92%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Wookie Guardian — auto-stop?</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+          Empire is attempting <b>{m?.name ?? choice.missionId}</b> (special-ops) at <b>{sysName}</b>,
+          where Chewbacca is. Discard Wookie Guardian to auto-fail it before the roll.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="tab-button active" onClick={() => onAccept(true)} style={{ fontWeight: 700 }}>
+            Discard Wookie Guardian → auto-fail
+          </button>
+          <button className="tab-button" onClick={() => onAccept(false)}>
+            Keep, let it proceed
+          </button>
         </div>
       </div>
     </div>

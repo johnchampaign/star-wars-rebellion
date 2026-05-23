@@ -153,6 +153,19 @@ export function stepOnce(G: GameState, side: Side): boolean {
     }
     return phases.resolveRetrieveThePlansPick(G, best).ok;
   }
+  // Son of Skywalker offer: always pull a mission (free card).
+  if (G.pendingChoice && G.pendingChoice.kind === 'SonOfSkywalkerOffer' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    return phases.resolveSonOfSkywalkerOffer(G, c.candidates[0] ?? null).ok;
+  }
+  // Blindside: always accept (denies pool opposition; clear upside).
+  if (G.pendingChoice && G.pendingChoice.kind === 'BlindsideOffer' && G.pendingChoice.side === side) {
+    return phases.resolveBlindsideOffer(G, true).ok;
+  }
+  // Wookie Guardian: always accept (auto-fails Empire specOps).
+  if (G.pendingChoice && G.pendingChoice.kind === 'WookieGuardianOffer' && G.pendingChoice.side === side) {
+    return phases.resolveWookieGuardianOffer(G, true).ok;
+  }
   // C-3PO offer: always accept (converts failure → success; no downside).
   if (G.pendingChoice && G.pendingChoice.kind === 'C3POOffer' && G.pendingChoice.side === side) {
     return phases.resolveC3POOffer(G, true).ok;

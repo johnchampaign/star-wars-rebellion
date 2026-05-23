@@ -671,45 +671,83 @@ export function revealMission(
 
   log(G, { kind: 'reveal-mission', side, payload: { missionId, targetSystemId, isAttempt: card.isAttempt } });
 
+  // Pre-opposition Special-card triggers.
+  // Blindside (Empire/Boba|Greejatus): if Boba or Greejatus is the resolver
+  // AND Empire holds Blindside in hand, offer to discard so Rebel can't
+  // send pool opposers.
+  if (side === 'Empire' && card.isAttempt
+    && G.empire.actionHand.includes('blindside')
+    && (assigned.leaderIds.includes('boba-fett') || assigned.leaderIds.includes('janus-greejatus'))) {
+    G.pendingChoice = {
+      kind: 'BlindsideOffer',
+      side: 'Empire',
+      missionId, targetSystemId,
+    };
+    log(G, { kind: 'choice-request', side: 'Empire', payload: {
+      kind: 'BlindsideOffer', missionId,
+    }});
+    return { ok: true };
+  }
+  // Wookie Guardian (Rebel/Chewie): if Empire reveals a specOps attempt at
+  // a system where Chewie is, AND Rebel holds Wookie Guardian, offer to
+  // discard to auto-fail.
+  if (side === 'Empire' && card.isAttempt && card.skill === 'specOps'
+    && G.rebel.actionHand.includes('wookie-guardian')
+    && (G.rebel.leadersOnBoard[targetSystemId] ?? []).includes('chewbacca')) {
+    G.pendingChoice = {
+      kind: 'WookieGuardianOffer',
+      side: 'Rebel',
+      missionId, targetSystemId,
+    };
+    log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+      kind: 'WookieGuardianOffer', missionId,
+    }});
+    return { ok: true };
+  }
+
+  return continueRevealAfterSpecialOffer(G, pending);
+}
+
+/** Post-blindside / post-wookie-guardian continuation of revealMission.
+ *  Extracted so the offer resolvers can re-enter the standard reveal flow. */
+function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolution): { ok: boolean } {
+  const card = G.catalog.missions[pending.missionId];
+  if (!card) return { ok: false };
   // Attempt missions: pause for the OPPOSING player to choose whether to
-  // oppose (and which leader to send from pool). If they decline AND no
-  // existing leaders are at the target → mission auto-succeeds (no roll).
+  // oppose (and which leader to send from pool).
   if (pending.stage === 'oppose') {
-    const oppSide: Side = side === 'Rebel' ? 'Empire' : 'Rebel';
+    const oppSide: Side = pending.resolverSide === 'Rebel' ? 'Empire' : 'Rebel';
     const oppFaction = oppSide === 'Rebel' ? G.rebel : G.empire;
-    // Existing opposer leaders include any captured Rebel leaders at the
-    // target system (per RR — captured leaders oppose missions at them).
-    const existing = opposerLeadersAt(G, oppSide, targetSystemId, missionId);
-    const pool = oppFaction.leaderPool.slice();
+    const existing = opposerLeadersAt(G, oppSide, pending.targetSystemId, pending.missionId);
+    const pool = pending.blindsideActive ? [] : oppFaction.leaderPool.slice();
     const skill = card.skill as string;
-    const countsAll = missionCountsAllSkills(G, missionId);
+    const countsAll = missionCountsAllSkills(G, pending.missionId);
     const attackerDice = countsAll
       ? totalAllSkills(G, pending.leaderIds as LeaderId[])
       : totalSkill(G, pending.leaderIds as LeaderId[], skill);
 
     G.pendingChoice = {
       kind: 'OpposeMission',
-      missionId, targetSystemId, opposerSide: oppSide,
+      missionId: pending.missionId, targetSystemId: pending.targetSystemId, opposerSide: oppSide,
       skill, attackerDice,
       poolLeaders: pool,
       existingAtTarget: existing,
     };
     log(G, { kind: 'choice-request', side: oppSide, payload: {
-      kind: 'OpposeMission', missionId, attackerDice, existing, poolSize: pool.length,
+      kind: 'OpposeMission', missionId: pending.missionId, attackerDice, existing, poolSize: pool.length,
     }});
-    return { ok: true }; // pause; resolveOpposition will continue
+    return { ok: true };
   }
 
-  // (stage was already 'effect' for non-attempt missions — fall through.)
   if (maybePostMissionRingTrigger(G, pending)) return { ok: true };
   if (pending.stage === 'effect') {
-    runMissionEffect(G, side, missionId, targetSystemId, assigned.leaderIds, targetLeaderId);
+    runMissionEffect(G, pending.resolverSide, pending.missionId, pending.targetSystemId, pending.leaderIds as LeaderId[], pending.targetLeaderId);
     if (G.pendingChoice) return { ok: true };
-    discardOrReturnMission(G, side, missionId);
+    discardOrReturnMission(G, pending.resolverSide, pending.missionId);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pending.stage === 'failed') {
-    discardOrReturnMission(G, side, missionId);
+    discardOrReturnMission(G, pending.resolverSide, pending.missionId);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   }
@@ -1674,21 +1712,39 @@ function maybePostMissionRingTrigger(G: GameState, pm: MissionResolution): boole
   if (pm.stage === 'effect') {
     const hasFalcon = G.rebel.actionHand.includes('the-milleninium-falcon');
     const hanOrChewie = (pm.leaderIds as LeaderId[]).some((l) => l === 'han-solo' || l === 'chewbacca');
-    const candidates = (G.empire.capturedLeaders ?? [])
+    const falconCandidates = (G.empire.capturedLeaders ?? [])
       .filter((c) => c.systemId === pm.targetSystemId)
       .map((c) => c.leaderId);
-    if (hasFalcon && hanOrChewie && candidates.length > 0) {
+    if (hasFalcon && hanOrChewie && falconCandidates.length > 0) {
       G.pendingChoice = {
         kind: 'FalconOffer',
         side: 'Rebel',
         missionId: pm.missionId,
         targetSystemId: pm.targetSystemId,
-        candidates,
+        candidates: falconCandidates,
       };
       log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-        kind: 'FalconOffer', missionId: pm.missionId, candidates: candidates.length,
+        kind: 'FalconOffer', missionId: pm.missionId, candidates: falconCandidates.length,
       }});
       return true;
+    }
+    // Son of Skywalker: Luke present + card in hand + Seek Yoda or Daring Rescue in deck.
+    const hasSoS = G.rebel.actionHand.includes('son-of-skywalker');
+    const lukePresent = (pm.leaderIds as LeaderId[]).some((l) => l === 'luke-skywalker' || l === 'luke-skywalker-jedi');
+    if (hasSoS && lukePresent) {
+      const sosCandidates = G.rebel.missionDeck.filter((mid) => mid === 'seek-yoda' || mid === 'daring-rescue');
+      if (sosCandidates.length > 0) {
+        G.pendingChoice = {
+          kind: 'SonOfSkywalkerOffer',
+          side: 'Rebel',
+          missionId: pm.missionId,
+          candidates: sosCandidates,
+        };
+        log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+          kind: 'SonOfSkywalkerOffer', missionId: pm.missionId, candidates: sosCandidates.length,
+        }});
+        return true;
+      }
     }
   }
   return false;
@@ -1708,6 +1764,84 @@ function continueAfterRingTrigger(G: GameState, pm: MissionResolution): void {
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   }
+}
+
+/** Son of Skywalker: Rebel chooses one of Seek Yoda or Daring Rescue from
+ *  the deck (or skip). The chosen mission moves into hand; card discards. */
+export function resolveSonOfSkywalkerOffer(G: GameState, missionIdOrNull: string | null): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'SonOfSkywalkerOffer') return { ok: false, reason: 'no-pending' };
+  const pm = G.pendingMission;
+  if (!pm) return { ok: false, reason: 'no-mission' };
+  if (missionIdOrNull !== null) {
+    if (!pc.candidates.includes(missionIdOrNull)) return { ok: false, reason: 'bad-mission' };
+    const i = G.rebel.actionHand.indexOf('son-of-skywalker');
+    if (i < 0) return { ok: false, reason: 'card-not-in-hand' };
+    G.rebel.actionHand.splice(i, 1);
+    G.rebel.actionDiscard.push('son-of-skywalker');
+    const j = G.rebel.missionDeck.indexOf(missionIdOrNull);
+    if (j >= 0) G.rebel.missionDeck.splice(j, 1);
+    G.rebel.missionHand.push(missionIdOrNull);
+    log(G, { kind: 'son-of-skywalker-applied', side: 'Rebel', payload: {
+      pulledMissionId: missionIdOrNull,
+    }});
+  } else {
+    log(G, { kind: 'son-of-skywalker-skipped', side: 'Rebel', payload: {} });
+  }
+  G.pendingChoice = undefined;
+  continueAfterRingTrigger(G, pm);
+  return { ok: true };
+}
+
+/** Blindside: Empire chooses to discard the card (suppressing pool oppose)
+ *  or skip. Continues into the standard reveal flow. */
+export function resolveBlindsideOffer(G: GameState, accept: boolean): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'BlindsideOffer') return { ok: false, reason: 'no-pending' };
+  const pm = G.pendingMission;
+  if (!pm) return { ok: false, reason: 'no-mission' };
+  if (accept) {
+    const i = G.empire.actionHand.indexOf('blindside');
+    if (i < 0) return { ok: false, reason: 'card-not-in-hand' };
+    G.empire.actionHand.splice(i, 1);
+    G.empire.actionDiscard.push('blindside');
+    pm.blindsideActive = true;
+    log(G, { kind: 'blindside-applied', side: 'Empire', payload: { missionId: pm.missionId } });
+  } else {
+    log(G, { kind: 'blindside-skipped', side: 'Empire', payload: { missionId: pm.missionId } });
+  }
+  G.pendingChoice = undefined;
+  continueRevealAfterSpecialOffer(G, pm);
+  return { ok: true };
+}
+
+/** Wookie Guardian: Rebel chooses to discard the card (auto-failing the
+ *  Empire specOps mission) or skip. */
+export function resolveWookieGuardianOffer(G: GameState, accept: boolean): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'WookieGuardianOffer') return { ok: false, reason: 'no-pending' };
+  const pm = G.pendingMission;
+  if (!pm) return { ok: false, reason: 'no-mission' };
+  if (accept) {
+    const i = G.rebel.actionHand.indexOf('wookie-guardian');
+    if (i < 0) return { ok: false, reason: 'card-not-in-hand' };
+    G.rebel.actionHand.splice(i, 1);
+    G.rebel.actionDiscard.push('wookie-guardian');
+    pm.stage = 'failed';
+    log(G, { kind: 'wookie-guardian-applied', side: 'Rebel', payload: {
+      missionId: pm.missionId, explanation: 'Chewbacca auto-stops the Empire special-ops mission.',
+    }});
+    G.pendingChoice = undefined;
+    // Continue to the standard 'failed' path directly.
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    G.pendingMission = undefined;
+    if (!G.isGameOver) advanceCommandTurn(G);
+    return { ok: true };
+  }
+  log(G, { kind: 'wookie-guardian-skipped', side: 'Rebel', payload: { missionId: pm.missionId } });
+  G.pendingChoice = undefined;
+  continueRevealAfterSpecialOffer(G, pm);
+  return { ok: true };
 }
 
 /** C-3PO: Rebel chooses whether to discard the C-3PO ring to convert a
