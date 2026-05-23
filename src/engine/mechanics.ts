@@ -212,14 +212,12 @@ export function gainLoyalty(G: GameState, side: Side, systemId: SystemId, amount
 
   const target = side === 'Rebel' ? 'rebel' : 'imperial';
   for (let i = 0; i < amount; i++) {
-    // Subjugation is Imperial military occupation (rr p.8). A subjugated
-    // system is already Imperial-controlled, so Empire's gain-loyalty here
-    // has no game effect; per the rule, subjugation NEVER coexists with
-    // Imperial loyalty. Treat as already-loyal.
-    if (ss.subjugated && side === 'Empire') {
-      log(G, { kind: 'loyalty-already', side, payload: { systemId, loyalty: 'imperial-via-subjugation' } });
-      continue;
-    }
+    // Subjugation is Imperial military occupation (rr p.8). It overlays
+    // the underneath loyalty (neutral or Rebel) but never coexists with
+    // Imperial loyalty. So Empire gaining loyalty here STILL works on
+    // the underneath value: subjugated+neutral → imperial (and
+    // recomputeSubjugation clears the marker); subjugated+rebel → still
+    // subjugated+neutral after one gain. Don't short-circuit.
     if (ss.loyalty === target) {
       // Already loyal — no further effect. Log explicitly so a player can see
       // *why* a successful mission produced no visible change.
