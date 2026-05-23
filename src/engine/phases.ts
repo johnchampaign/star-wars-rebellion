@@ -1601,11 +1601,28 @@ function refreshPlayStartOfRefreshObjectives(G: GameState): void {
   if (!hand || hand.length === 0) return;
   type Eligible = { id: string; rep: number };
   const eligible: Eligible[] = [];
+  // Track "in-hand but condition not met" objectives so we can surface
+  // them in the log. Players who satisfy the condition LATER in the same
+  // refresh (e.g. via deploy) often report this as a bug — explaining
+  // up front saves a problem-report round-trip.
+  const checkedNotMet: { id: string; name: string; rulesText?: string }[] = [];
   for (const id of hand) {
     const card = G.catalog.objectives[id];
     if (!card || card.timing !== 'StartOfRefresh') continue;
-    if (!objectiveConditionMet(G, id)) continue;
+    if (!objectiveConditionMet(G, id)) {
+      checkedNotMet.push({ id, name: card.name, rulesText: card.rulesText });
+      continue;
+    }
     eligible.push({ id, rep: objectiveReputationGain(G, id) });
+  }
+  if (checkedNotMet.length > 0) {
+    log(G, { kind: 'objective-check-not-met', side: 'Rebel', payload: {
+      objectives: checkedNotMet,
+      note: 'StartOfRefresh objectives are checked at the start of Refresh — before retrieve, ' +
+            'draw missions, advance-time, recruit/build, and deploy. If you satisfy the ' +
+            'condition only after deploys (e.g. fresh units landed in Rebel-loyalty systems), ' +
+            'the objective stays in hand and will be re-checked at the next Refresh.',
+    }});
   }
   if (eligible.length === 0) return;
   // RR p.10: only one objective per refresh. Auto-pick highest rep.
