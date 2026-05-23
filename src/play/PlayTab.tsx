@@ -3400,6 +3400,79 @@ function EnlargedRebelBase({ G, rect }: { G: GameState; rect: MaskRect }) {
 // Small circular leader portraits clustered around a center point on the
 // board. Rebel leaders use a blue ring, Empire red. Tooltip shows leader
 // names so you can mouse over to identify them.
+/** Hover-enlarge panel for one of the six build-queue trays. The kind
+ *  string is "<slot>-<side>" e.g. "1-rebel" or "3-empire". */
+function EnlargedBuildQueue({ G, kind }: { G: GameState; kind: string }) {
+  const unitStyle = useUnitStyle();
+  const m = kind.match(/^build-([123])-(rebel|empire)$/);
+  if (!m) return null;
+  const slot = Number(m[1]) as 1 | 2 | 3;
+  const side: Side = m[2] === 'rebel' ? 'Rebel' : 'Empire';
+  const queue = (side === 'Rebel' ? G.rebel : G.empire).buildQueue[slot];
+  const grouped = groupTypeIds(queue);
+  const sideColorVal = side === 'Rebel' ? '#aae0ff' : '#ffaaaa';
+  const slotLabel = slot === 1 ? '1 — deploys next refresh'
+                  : slot === 2 ? '2 — slides to 1 next refresh'
+                                : '3 — slides to 2 next refresh';
+  return (
+    <div
+      style={{
+        position: 'absolute', top: 6, right: 6,
+        width: 360,
+        background: '#0c0d10',
+        border: `2px solid ${sideColorVal}`,
+        borderRadius: 4, padding: 12,
+        pointerEvents: 'none',
+        boxShadow: '0 4px 12px rgba(0,0,0,0.6)',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+        <strong style={{ fontSize: 14, color: sideColorVal, flex: 1 }}>
+          {side} build queue · slot {slot}
+        </strong>
+        <span style={{ fontSize: 11, color: '#888' }}>{queue.length} unit{queue.length === 1 ? '' : 's'}</span>
+      </div>
+      <div style={{ fontSize: 11, color: '#aaa', marginBottom: 10 }}>{slotLabel}</div>
+      {grouped.length === 0 ? (
+        <div style={{ color: '#666', fontStyle: 'italic', fontSize: 12 }}>(empty)</div>
+      ) : (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {grouped.map((g) => {
+            const t = G.catalog.unitTypes[g.typeId];
+            const url = unitImageUrl(g.typeId, UNIT_IMAGE_BASE, unitStyle);
+            return (
+              <div key={g.typeId} style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                width: 72,
+              }}>
+                <div style={{ position: 'relative', width: 56, height: 56 }}>
+                  {url ? (
+                    <img src={url} width={56} height={56} alt={t?.name ?? g.typeId} />
+                  ) : (
+                    <div style={{ width: 56, height: 56, background: '#222' }} />
+                  )}
+                  {g.count > 1 && (
+                    <span style={{
+                      position: 'absolute', bottom: -3, right: -3,
+                      background: '#000', color: '#fff', borderRadius: '50%',
+                      fontSize: 11, fontWeight: 700, width: 20, height: 20,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      border: `1.5px solid ${sideColorVal}`,
+                    }}>{g.count}</span>
+                  )}
+                </div>
+                <div style={{ color: '#fff', fontSize: 10, marginTop: 4, textAlign: 'center', lineHeight: 1.2 }}>
+                  {t?.name ?? g.typeId}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LeaderPips({ G, systemId, centerX, centerY }: {
   G: GameState; systemId: string; centerX: number; centerY: number;
 }) {
@@ -3572,6 +3645,8 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
   const BOARD_SCALE = DISPLAY_W / NATIVE_W;
   const [hoverSystemId, setHoverSystemId] = useState<string | null>(null);
   const [hoverRebelBase, setHoverRebelBase] = useState<boolean>(false);
+  // Build-queue hover: "1-rebel" | "2-empire" | etc.
+  const [hoverBuildKind, setHoverBuildKind] = useState<string | null>(null);
   const hoverSystem = hoverSystemId ? systems.find((s) => s.id === hoverSystemId) : null;
   const rebelBaseRect = masks.find((r) => r.kind === 'rebel-base');
 
@@ -3659,16 +3734,25 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
               );
             }
           }
+          const isBuild = r.kind.startsWith('build-');
           return (
-            <g key={r.id} pointerEvents="none">
+            <g key={r.id} pointerEvents={isBuild ? 'all' : 'none'}
+              onMouseEnter={isBuild ? () => setHoverBuildKind(r.kind) : undefined}
+              onMouseLeave={isBuild ? () => setHoverBuildKind(null) : undefined}
+            >
               <rect
                 x={x} y={y} width={w} height={h}
-                style={{ fill: 'rgba(20,25,30,0.85)', stroke: 'rgba(120,140,160,0.5)', strokeWidth: 1 }}
+                style={{
+                  fill: 'rgba(20,25,30,0.85)',
+                  stroke: hoverBuildKind === r.kind ? '#ffd54a' : 'rgba(120,140,160,0.5)',
+                  strokeWidth: hoverBuildKind === r.kind ? 2 : 1,
+                  cursor: isBuild ? 'help' : 'default',
+                }}
               />
-              <text x={x + 6} y={y + 14} style={{ fill: '#aaa', fontSize: 10, fontWeight: 600 }}>
+              <text x={x + 6} y={y + 14} style={{ fill: '#aaa', fontSize: 10, fontWeight: 600, pointerEvents: 'none' }}>
                 {title}
               </text>
-              {content}
+              <g pointerEvents="none">{content}</g>
             </g>
           );
         })}
@@ -3850,6 +3934,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
       {/* Enlarged sector preview, fixed top-right of the board */}
       {hoverSystem && <EnlargedSector G={G} system={hoverSystem} />}
       {hoverRebelBase && rebelBaseRect && <EnlargedRebelBase G={G} rect={rebelBaseRect} />}
+      {hoverBuildKind && <EnlargedBuildQueue G={G} kind={hoverBuildKind} />}
 
       {/* Legend */}
       <div style={{
@@ -5292,15 +5377,31 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
         )}
 
         <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
-          <button className="tab-button" onClick={onClose}>Cancel</button>
-          <button className="tab-button" onClick={handleCopy}>Copy to clipboard</button>
-          <button
-            className="tab-button active"
-            onClick={handleReportProblem}
-            disabled={submitState.status === 'submitting' || !description.trim()}
-          >
-            Report a problem
-          </button>
+          {submitState.status === 'ok' && submitState.issueUrl ? (
+            // After a successful submission, collapse the bottom row to a
+            // single Close button. The user has nothing further to do here —
+            // the issue is filed; the modal should get out of the way.
+            <button
+              className="tab-button active"
+              onClick={onClose}
+              autoFocus
+              style={{ fontWeight: 700 }}
+            >
+              Close
+            </button>
+          ) : (
+            <>
+              <button className="tab-button" onClick={onClose}>Cancel</button>
+              <button className="tab-button" onClick={handleCopy}>Copy to clipboard</button>
+              <button
+                className="tab-button active"
+                onClick={handleReportProblem}
+                disabled={submitState.status === 'submitting' || !description.trim()}
+              >
+                Report a problem
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

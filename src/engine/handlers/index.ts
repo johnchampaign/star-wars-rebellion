@@ -618,10 +618,25 @@ const establishTradeRelations: EffectHandler = (G, ctx) => {
   const ss = G.map.systems[sysId];
   if (!sysDef || !ss) return true;
   const slot = (sysDef.buildSlot ?? 1) as 1 | 2 | 3;
+  const added: string[] = [];
   for (const icon of sysDef.resources) {
     const choice = defaultUnitForIcon('Rebel', icon.type, icon.shape);
-    if (choice) M.buildToQueue(G, 'Rebel', choice, slot);
+    if (choice) {
+      // Pass sourceSystemId so the build-queue log entry is searchable
+      // back to this mission (and the refresh-report can show "built X
+      // from Y" attribution).
+      M.buildToQueue(G, 'Rebel', choice, slot, sysId);
+      added.push(choice);
+    }
   }
+  // Loud summary event the UI/log can surface — RAW outcome: "place units
+  // on the build queue using this system's resource icons and number."
+  log(G, { kind: 'establish-trade-relations-built', side: 'Rebel', payload: {
+    systemId: sysId, slot, added,
+    note: added.length === 0
+      ? 'System has no resource icons; no units added to the queue.'
+      : `Added ${added.length} unit(s) to build queue slot ${slot} (from ${sysDef.name}'s resource icons).`,
+  }});
   return true;
 };
 
