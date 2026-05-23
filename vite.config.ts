@@ -1,7 +1,29 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
+
+/** Production-build plugin: rewrites dist/dev-assets/objectives.json to strip
+ *  the rulesText on every objective card. Keeps id/name/stage/reputation/
+ *  timing/effectKey so the engine still works; the user's local dev build
+ *  (vite dev) is untouched and shows the full text. */
+function redactObjectivesInProd() {
+  return {
+    name: 'swr-redact-objectives',
+    apply: 'build' as const,
+    closeBundle() {
+      const path = resolve(process.cwd(), 'dist', 'dev-assets', 'objectives.json');
+      try {
+        const raw = readFileSync(path, 'utf8');
+        const data = JSON.parse(raw) as { objectives: Array<{ rulesText?: string }> };
+        for (const c of data.objectives ?? []) c.rulesText = '(text omitted in public build)';
+        writeFileSync(path, JSON.stringify(data, null, 2));
+      } catch (e) {
+        console.warn('[swr-redact-objectives] could not redact:', e);
+      }
+    },
+  };
+}
 
 /**
  * Dev-only plugin that exposes two POST endpoints:
@@ -307,7 +329,7 @@ export default defineConfig(({ mode }) => {
     if (process.env[k] === undefined) process.env[k] = env[k];
   }
   return {
-    plugins: [react(), devPlugin()],
+    plugins: [react(), devPlugin(), redactObjectivesInProd()],
     server: { port: 5173 },
     build: {
       rollupOptions: {

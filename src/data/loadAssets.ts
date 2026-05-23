@@ -36,7 +36,19 @@ export const loadBoardMask  = () => loadJson<BoardMaskFile>('board-mask.json').c
 } as BoardMaskFile));
 export const loadActions    = () => loadJson<ActionsFile>('actions.json');
 export const loadMissions   = () => loadJson<MissionsFile>('missions.json');
-export const loadObjectives = () => loadJson<ObjectivesFile>('objectives.json');
+export const loadObjectives = async (): Promise<ObjectivesFile> => {
+  const data = await loadJson<ObjectivesFile>('objectives.json');
+  // Production builds redact objective rulesText. The engine matches on
+  // effectKey + id (never on text), so this is purely a UI redaction.
+  // Local dev (vite dev) still shows the full text.
+  if (import.meta.env.PROD) {
+    return {
+      ...data,
+      objectives: (data.objectives ?? []).map((c) => ({ ...c, rulesText: '(text omitted in public build)' })),
+    };
+  }
+  return data;
+};
 export const loadTactics    = () => loadJson<TacticsFile>('tactics.json');
 export const loadProbes     = () => loadJson<ProbesFile>('probes.json');
 
