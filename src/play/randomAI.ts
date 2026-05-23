@@ -246,8 +246,9 @@ function rebelMissionTargetScore(
   baseDist: Map<string, number> | null,
 ): number {
   let s = 0;
-  const sys = G.catalog.systems[targetSysId];
-  if (!sys) return -Infinity;
+  const sysDef = G.catalog.systems[targetSysId];
+  const sysState = G.map.systems[targetSysId];
+  if (!sysDef) return -Infinity;
   if (baseDist) {
     const d = distFrom(baseDist, targetSysId);
     if (d <= 1) s -= 6;
@@ -255,7 +256,20 @@ function rebelMissionTargetScore(
   }
   if (missionId === 'establish-trade-relations' || missionId === 'wookie-uprising'
     || missionId === 'support-of-mon-calamari') {
-    s += (sys.resources?.length ?? 0) * 2;
+    s += (sysDef.resources?.length ?? 0) * 2;
+    // Don't target a system that's already Rebel-loyal — wasted loyalty gain.
+    if (sysState?.loyalty === 'rebel' && !sysState.subjugated) s -= 6;
+  }
+  // Sabotage (Rebel mission) should target ENEMY systems, never own.
+  // Issues #10, #13: the AI was sabotaging Bespin / Alderaan when those
+  // were Rebel-loyal, which is strategic self-harm.
+  if (missionId === 'sabotage') {
+    if (sysState?.loyalty === 'rebel' && !sysState.subjugated) {
+      s -= 20; // huge penalty — never sabotage own system
+    } else if (sysState?.loyalty === 'imperial' || sysState?.subjugated) {
+      s += 6; // reward sabotaging Imperial-controlled systems
+    }
+    if (sysState?.sabotage) s -= 10; // already sabotaged
   }
   return s;
 }
