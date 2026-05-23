@@ -14,13 +14,40 @@
 // Used by both the play UI (to filter the target dropdown) and the engine's
 // revealMission (to reject known-illegal targets).
 
-import type { GameState, Side, SystemId } from './types';
+import type { GameState, LeaderId, Side, SystemId } from './types';
 
 export type TargetResult = {
   systemIds: SystemId[];
   permissive: boolean;       // true if we couldn't narrow it; caller should hint
   note?: string;
 };
+
+/** Enumerate (system, leader) pairs for leader-target missions (Collect
+ *  Bounty, Detained, Capture Rebel Operative). Returns null for system-target
+ *  missions; the UI then falls back to a system dropdown. */
+export function missionLeaderTargets(
+  G: GameState, side: Side, missionId: string
+): { systemId: SystemId; leaderId: LeaderId }[] | null {
+  const card = G.catalog.missions[missionId];
+  if (!card || !card.rulesText) return null;
+  const t = card.rulesText.toLowerCase();
+  // Only on-board-Rebel-leader missions for now. Captured-leader-target
+  // missions (Carbon Freezing, Daring Rescue, For The Greater Good) are
+  // handled separately at the system level.
+  const isLeaderTarget =
+    t.includes('against a rebel leader') ||
+    t.includes('against the rebel leader');
+  if (!isLeaderTarget) return null;
+  // Reuse the system-level filter to scope where leaders are allowed.
+  const sysScope = missionTargets(G, side, missionId);
+  const allowedSystems = sysScope.permissive ? Object.keys(G.map.systems) : sysScope.systemIds;
+  const out: { systemId: SystemId; leaderId: LeaderId }[] = [];
+  for (const sysId of allowedSystems) {
+    const leaders = G.rebel.leadersOnBoard[sysId] ?? [];
+    for (const lid of leaders) out.push({ systemId: sysId, leaderId: lid });
+  }
+  return out;
+}
 
 type Pred = (id: SystemId) => boolean;
 

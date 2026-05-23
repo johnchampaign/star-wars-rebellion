@@ -606,7 +606,8 @@ export function activateSystem(
  *  `pendingMission` to walk through opposition. Effect handler invocation
  *  comes in a later task. */
 export function revealMission(
-  G: GameState, side: Side, missionId: string, targetSystemId: SystemId
+  G: GameState, side: Side, missionId: string, targetSystemId: SystemId,
+  targetLeaderId?: LeaderId,
 ): { ok: boolean; reason?: string } {
   if (G.phase !== 'Command') return { ok: false, reason: 'wrong-phase' };
   if (G.currentPlayer !== side) return { ok: false, reason: 'not-your-turn' };
@@ -660,6 +661,7 @@ export function revealMission(
     missionId,
     resolverSide: side,
     targetSystemId,
+    targetLeaderId,
     leaderIds: [...assigned.leaderIds],
     stage: card.isAttempt ? 'oppose' : 'effect',
   };
@@ -698,7 +700,7 @@ export function revealMission(
 
   // (stage was already 'effect' for non-attempt missions — fall through.)
   if (pending.stage === 'effect') {
-    runMissionEffect(G, side, missionId, targetSystemId, assigned.leaderIds);
+    runMissionEffect(G, side, missionId, targetSystemId, assigned.leaderIds, targetLeaderId);
     if (G.pendingChoice) return { ok: true };
     discardOrReturnMission(G, side, missionId);
     G.pendingMission = undefined;
@@ -830,7 +832,7 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
 
   // Continue mission resolution.
   if (pm.stage === 'effect') {
-    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[]);
+    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId);
     if (G.pendingChoice) return { ok: true }; // sub-choice triggered (e.g. Infiltration)
     discardOrReturnMission(G, pm.resolverSide, pm.missionId);
     G.pendingMission = undefined;
@@ -986,7 +988,7 @@ function continueMissionFromStash(G: GameState, pm: MissionResolution): void {
   );
   pm.r2d2Pending = undefined;
   if (pm.stage === 'effect') {
-    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[]);
+    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId);
     if (G.pendingChoice) return;
     discardOrReturnMission(G, pm.resolverSide, pm.missionId);
     G.pendingMission = undefined;
@@ -1087,7 +1089,7 @@ export function resolveR2D2MissionFlip(G: GameState, flipIndex: number | null): 
   );
   pm.r2d2Pending = undefined;
   if (pm.stage === 'effect') {
-    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[]);
+    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId);
     if (G.pendingChoice) return { ok: true };
     discardOrReturnMission(G, pm.resolverSide, pm.missionId);
     G.pendingMission = undefined;
@@ -1562,7 +1564,7 @@ export function resolveInfiltrationPick(G: GameState, keepOnTopId: string): { ok
   return { ok: true };
 }
 
-function runMissionEffect(G: GameState, side: Side, missionId: string, targetSystemId: SystemId, leaderIds: LeaderId[]): void {
+function runMissionEffect(G: GameState, side: Side, missionId: string, targetSystemId: SystemId, leaderIds: LeaderId[], targetLeaderId?: LeaderId): void {
   const card = G.catalog.missions[missionId];
   if (!card) return;
   // Prefer explicit effectKey if set and registered; otherwise fall back to
@@ -1574,7 +1576,7 @@ function runMissionEffect(G: GameState, side: Side, missionId: string, targetSys
     log(G, { kind: 'note', payload: { msg: `no handler for mission ${missionId}` } });
     return;
   }
-  const ctx = Handlers.makeContext(side, { kind: 'mission', id: missionId }, { targetSystemId, leaderIds });
+  const ctx = Handlers.makeContext(side, { kind: 'mission', id: missionId }, { targetSystemId, targetLeaderId, leaderIds });
   Handlers.invokeByKey(G, key, ctx);
 }
 

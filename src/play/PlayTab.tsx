@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo, createContext, useContext } from 'react';
 import { loadAllForEngine, loadBoardMask, MAP_IMAGE_URL, MARKER_IMAGE_BASE, UNIT_IMAGE_BASE, LEADER_IMAGE_BASE, CARD_IMAGE_BASE, diceImageUrl } from '../data/loadAssets';
 import { UNIT_IMAGE, groupByType, groupTypeIds, getUnitStyle, setUnitStyle, nextStyle, unitImageUrl, type UnitImageStyle } from './unitImages';
-import { missionTargets } from '../engine/missionTargets';
+import { missionTargets, missionLeaderTargets } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce } from './randomAI';
 
 const LS_HUMAN_SIDE = 'rebellion-human-side';
@@ -390,9 +390,9 @@ export default function PlayTab() {
     return true;
   };
 
-  const onRevealMission = (missionId: string, targetSystemId: string) => {
+  const onRevealMission = (missionId: string, targetSystemId: string, targetLeaderId?: string) => {
     if (!G) return false;
-    const r = phases.revealMission(G, G.currentPlayer, missionId, targetSystemId);
+    const r = phases.revealMission(G, G.currentPlayer, missionId, targetSystemId, targetLeaderId);
     if (!r.ok) {
       alert(`Cannot reveal: ${r.reason}`);
       return false;
@@ -4361,7 +4361,7 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
   G: GameState;
   side: Side;
   onActivate: (leaderId: string, targetSystemId: string, moveOrders: phases.MoveOrder[]) => boolean | void;
-  onReveal: (missionId: string, targetSystemId: string) => boolean | void;
+  onReveal: (missionId: string, targetSystemId: string, targetLeaderId?: string) => boolean | void;
   onPass: () => void;
 }) {
   const f = side === 'Rebel' ? G.rebel : G.empire;
@@ -4414,15 +4414,17 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
   const [mode, setMode] = useState<'activate' | 'reveal'>('activate');
   const [revealMissionId, setRevealMissionId] = useState<string | null>(null);
   const [revealTargetSysId, setRevealTargetSysId] = useState<string | null>(null);
+  const [revealTargetLeaderId, setRevealTargetLeaderId] = useState<string | null>(null);
 
   const assignedMissions = f.leadersOnMissions;
 
   const handleReveal = () => {
     if (!revealMissionId || !revealTargetSysId) return;
-    const ok = onReveal(revealMissionId, revealTargetSysId);
+    const ok = onReveal(revealMissionId, revealTargetSysId, revealTargetLeaderId ?? undefined);
     if (ok !== false) {
       setRevealMissionId(null);
       setRevealTargetSysId(null);
+      setRevealTargetLeaderId(null);
     }
   };
 
@@ -4523,36 +4525,77 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
           </div>
           {revealMissionId && (() => {
             const targets = missionTargets(G, side, revealMissionId);
+            const leaderTargets = missionLeaderTargets(G, side, revealMissionId);
+            const isLeaderPick = leaderTargets !== null;
             return (
             <>
               <div style={{ fontSize: 12, color: '#aaa', marginBottom: 4 }}>
-                Step 2 — pick the target system
-                {targets.note && (
+                Step 2 — pick the target {isLeaderPick ? 'leader' : 'system'}
+                {targets.note && !isLeaderPick && (
                   <span style={{ marginLeft: 6, color: targets.permissive ? '#ff8866' : '#80dc78' }}>
                     {targets.note}
                   </span>
                 )}
               </div>
-              {targets.systemIds.length === 0 && (
+              {isLeaderPick && leaderTargets!.length === 0 && (
+                <div style={{ color: '#ff8866', fontSize: 12, marginBottom: 6 }}>
+                  No Rebel leaders on the board to target.
+                </div>
+              )}
+              {!isLeaderPick && targets.systemIds.length === 0 && (
                 <div style={{ color: '#ff8866', fontSize: 12, marginBottom: 6 }}>
                   No legal targets for this mission right now.
                 </div>
               )}
-              <select
-                value={revealTargetSysId ?? ''}
-                onChange={(e) => setRevealTargetSysId(e.target.value || null)}
-                disabled={targets.systemIds.length === 0}
-                style={{
-                  background: '#0c0d10', color: '#e8e8ea',
-                  border: '1px solid #3a3d44', borderRadius: 3, padding: '4px 8px', fontSize: 12,
-                  minWidth: 220,
-                }}
-              >
-                <option value="">— pick target system —</option>
-                {[...targets.systemIds].sort().map((sysId) => (
-                  <option key={sysId} value={sysId}>{G.catalog.systems[sysId]?.name ?? sysId}</option>
-                ))}
-              </select>
+              {isLeaderPick ? (
+                <select
+                  value={revealTargetLeaderId ? `${revealTargetSysId}|${revealTargetLeaderId}` : ''}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    if (!v) { setRevealTargetSysId(null); setRevealTargetLeaderId(null); return; }
+                    const [s, l] = v.split('|');
+                    setRevealTargetSysId(s);
+                    setRevealTargetLeaderId(l);
+                  }}
+                  disabled={leaderTargets!.length === 0}
+                  style={{
+                    background: '#0c0d10', color: '#e8e8ea',
+                    border: '1px solid #3a3d44', borderRadius: 3, padding: '4px 8px', fontSize: 12,
+                    minWidth: 260,
+                  }}
+                >
+                  <option value="">— pick target leader —</option>
+                  {leaderTargets!
+                    .map((t) => ({
+                      ...t,
+                      sysName: G.catalog.systems[t.systemId]?.name ?? t.systemId,
+                      leaderName: G.catalog.leaders[t.leaderId]?.name ?? t.leaderId,
+                    }))
+                    .sort((a, b) =>
+                      a.sysName.localeCompare(b.sysName) || a.leaderName.localeCompare(b.leaderName))
+                    .map((t) => (
+                      <option key={`${t.systemId}|${t.leaderId}`} value={`${t.systemId}|${t.leaderId}`}>
+                        {t.sysName} — {t.leaderName}
+                      </option>
+                    ))}
+                </select>
+              ) : (
+                <select
+                  value={revealTargetSysId ?? ''}
+                  onChange={(e) => setRevealTargetSysId(e.target.value || null)}
+                  disabled={targets.systemIds.length === 0}
+                  style={{
+                    background: '#0c0d10', color: '#e8e8ea',
+                    border: '1px solid #3a3d44', borderRadius: 3, padding: '4px 8px', fontSize: 12,
+                    minWidth: 220,
+                  }}
+                >
+                  <option value="">— pick target system —</option>
+                  {[...targets.systemIds].sort().map((sysId) => (
+                    <option key={sysId} value={sysId}>{G.catalog.systems[sysId]?.name ?? sysId}</option>
+                  ))}
+                </select>
+              )}
               <div style={{ marginTop: 8 }}>
                 <button
                   className="tab-button active"

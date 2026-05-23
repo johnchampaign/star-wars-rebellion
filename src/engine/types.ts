@@ -746,6 +746,10 @@ export type MissionResolution = {
   missionId: string;
   resolverSide: Side;
   targetSystemId: SystemId;
+  // For leader-target missions (e.g. Collect Bounty, Detained): the specific
+  // Rebel leader the Empire is going after, when multiple are co-located.
+  // Undefined for system-target missions or when there's only one candidate.
+  targetLeaderId?: LeaderId;
   leaderIds: LeaderId[];
   stage: 'reveal' | 'oppose' | 'roll' | 'effect' | 'failed' | 'done';
   // Mid-roll stash for R2-D2 mission flip. resolveOpposition pauses here

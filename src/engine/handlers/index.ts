@@ -528,14 +528,21 @@ const collectBounty: EffectHandler = (G, ctx) => {
   if (!sysId) return true;
   const rebelHere = G.rebel.leadersOnBoard[sysId] ?? [];
   if (rebelHere.length === 0) return true;
-  // Capture the most valuable Rebel leader here.
-  let best: { lid: string; v: number } | null = null;
-  for (const lid of rebelHere) {
-    const v = leaderValue(G, lid);
-    if (!best || v > best.v) best = { lid, v };
+  // Pick the specific leader the Empire targeted at mission reveal time.
+  // Fall back to highest-value if no explicit pick (legacy / AI without
+  // leader-aware picker).
+  let capturedId: string;
+  if (ctx.targetLeaderId && rebelHere.includes(ctx.targetLeaderId)) {
+    capturedId = ctx.targetLeaderId;
+  } else {
+    let best: { lid: string; v: number } | null = null;
+    for (const lid of rebelHere) {
+      const v = leaderValue(G, lid);
+      if (!best || v > best.v) best = { lid, v };
+    }
+    if (!best) return true;
+    capturedId = best.lid;
   }
-  if (!best) return true;
-  const capturedId = best.lid;
   M.captureLeader(G, capturedId, 'captured');
 
   // BFS from sysId for nearest system containing an Imperial unit.

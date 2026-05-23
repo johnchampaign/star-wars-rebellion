@@ -14,6 +14,9 @@ export type EffectContext = {
   // Resolution target — for missions, the chosen system. For tactic cards in
   // combat, the system where combat is taking place.
   targetSystemId?: SystemId;
+  // For leader-target missions (Collect Bounty, Detained, etc.) — the
+  // specific Rebel leader the Empire chose to go after. Undefined otherwise.
+  targetLeaderId?: LeaderId;
   // Leaders attached to the originating mission/action (for "leaders assigned
   // to this mission" rules).
   leaderIds: LeaderId[];
@@ -59,12 +62,13 @@ export function invokeByKey(G: GameState, key: string, ctx: EffectContext): bool
 /** Build a fresh EffectContext. */
 export function makeContext(
   actorSide: Side, card: EffectCard, opts: {
-    targetSystemId?: SystemId; leaderIds?: LeaderId[];
+    targetSystemId?: SystemId; targetLeaderId?: LeaderId; leaderIds?: LeaderId[];
   } = {}
 ): EffectContext {
   return {
     actorSide, card,
     targetSystemId: opts.targetSystemId,
+    targetLeaderId: opts.targetLeaderId,
     leaderIds: opts.leaderIds ?? [],
     pendingChoice: null,
     handlerState: null,
