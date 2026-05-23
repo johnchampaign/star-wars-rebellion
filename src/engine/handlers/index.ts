@@ -607,42 +607,30 @@ const collectBounty: EffectHandler = (G, ctx) => {
 /** "Move units from the 'Rebel Base' space to this system as if they were
  *  adjacent. Leaders in the 'Rebel Base' space do not prevent this."
  *  RAW: bypasses adjacency, but does NOT bypass transport restrictions.
- *  We greedy-pack: take all transport-capacity ships, then fit fighters/
- *  ground into available capacity (capital ships first, then fighters in
- *  order, then ground). Units that don't fit stay at the Rebel Base. */
+ *  Posts a HiddenFleetUnitPick choice so the Rebel can pick which units
+ *  to move (subject to transport rules validated on submit). */
 const hiddenFleet: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  const baseUnits = [...G.map.rebelBaseSpace.units].filter((u) => u.side === 'Rebel');
-  const T = (uid: string) => {
-    const u = baseUnits.find((x) => x.instanceId === uid);
-    return u ? G.catalog.unitTypes[u.typeId] : null;
-  };
-  // Always-mobile capacity ships first.
-  const capacityShipUids: string[] = [];
-  const restrictionUids: string[] = []; // fighters
-  const groundUids: string[] = [];
-  for (const u of baseUnits) {
-    const t = G.catalog.unitTypes[u.typeId];
-    if (!t || t.transport.immobile) continue;
-    if (t.transport.capacity > 0) capacityShipUids.push(u.instanceId);
-    else if (t.transport.restriction) restrictionUids.push(u.instanceId);
-    else if (t.theater === 'ground' && t.class !== 'structure') groundUids.push(u.instanceId);
+  const candidateUnitIds = G.map.rebelBaseSpace.units
+    .filter((u) => {
+      if (u.side !== 'Rebel') return false;
+      const t = G.catalog.unitTypes[u.typeId];
+      return !!t && !t.transport.immobile;
+    })
+    .map((u) => u.instanceId);
+  if (candidateUnitIds.length === 0) {
+    log(G, { kind: 'hidden-fleet-noop', side: 'Rebel', payload: { targetSystemId: sysId, reason: 'no-candidates' } });
+    return true;
   }
-  let capacity = capacityShipUids.reduce((sum, uid) => sum + (T(uid)?.transport.capacity ?? 0), 0);
-  const toMove: string[] = [...capacityShipUids];
-  // Fighters next, then ground — each consumes 1 capacity. Stop when full.
-  for (const uid of [...restrictionUids, ...groundUids]) {
-    if (capacity <= 0) break;
-    toMove.push(uid);
-    capacity--;
-  }
-  for (const uid of toMove) M.moveUnit(G, uid, 'rebel-base-space', sysId);
-  log(G, { kind: 'hidden-fleet-move', side: 'Rebel', payload: {
+  G.pendingChoice = {
+    kind: 'HiddenFleetUnitPick',
+    side: 'Rebel',
     targetSystemId: sysId,
-    moved: toMove.length,
-    leftBehind: baseUnits.length - toMove.length,
-    note: 'Adjacency bypassed; transport restrictions still enforced.',
+    candidateUnitIds,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'HiddenFleetUnitPick', targetSystemId: sysId, candidates: candidateUnitIds.length,
   }});
   return true;
 };

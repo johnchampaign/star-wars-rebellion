@@ -153,6 +153,48 @@ export function stepOnce(G: GameState, side: Side): boolean {
     }
     return phases.resolveRetrieveThePlansPick(G, best).ok;
   }
+  // Hidden Fleet: greedy-pack capital ships first, then fighters/ground
+  // up to capacity. Mirrors the old engine auto-pick heuristic.
+  if (G.pendingChoice && G.pendingChoice.kind === 'HiddenFleetUnitPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const baseUnits = G.map.rebelBaseSpace.units.filter((u) => c.candidateUnitIds.includes(u.instanceId));
+    const capShipIds: string[] = [];
+    const fighterIds: string[] = [];
+    const groundIds: string[] = [];
+    for (const u of baseUnits) {
+      const t = G.catalog.unitTypes[u.typeId];
+      if (!t) continue;
+      if (t.transport.capacity > 0) capShipIds.push(u.instanceId);
+      else if (t.transport.restriction) fighterIds.push(u.instanceId);
+      else if (t.theater === 'ground' && t.class !== 'structure') groundIds.push(u.instanceId);
+    }
+    let capacity = capShipIds.reduce((s, uid) => {
+      const u = baseUnits.find((x) => x.instanceId === uid);
+      return s + (u ? (G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0) : 0);
+    }, 0);
+    const picks = [...capShipIds];
+    for (const uid of [...fighterIds, ...groundIds]) {
+      if (capacity <= 0) break;
+      picks.push(uid); capacity--;
+    }
+    return phases.resolveHiddenFleetUnitPick(G, picks).ok;
+  }
+  // Temporary Alliance: default unit per icon (lowest-tier matching).
+  if (G.pendingChoice && G.pendingChoice.kind === 'TemporaryAllianceBuildPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const pickDefault = (icon: { theater: 'space' | 'ground'; shape: 'triangle' | 'circle' | 'square' }): string | null => {
+      if (icon.theater === 'space') {
+        if (icon.shape === 'triangle') return 'x-wing';
+        if (icon.shape === 'circle') return 'corellian-corvette';
+        return 'mc-cruiser';
+      }
+      if (icon.shape === 'triangle') return 'rebel-trooper';
+      // No square ground unit for Rebel — fall back to airspeeder.
+      return 'airspeeder';
+    };
+    const picks = c.icons.map(pickDefault);
+    return phases.resolveTemporaryAllianceBuildPick(G, picks).ok;
+  }
   // Contingency Plan: pick a random starting mission from the candidates.
   if (G.pendingChoice && G.pendingChoice.kind === 'ContingencyPlanPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;

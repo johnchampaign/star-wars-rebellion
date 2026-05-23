@@ -339,6 +339,25 @@ export type ChoiceRequest =
       // Contingency Plan (Rebel mission): after resolving, the Rebel picks
       // a starting mission from their hand and reassigns the resolver
       // leader to it.
+      // Hidden Fleet (Rebel mission): Rebel picks which units at the Rebel
+      // Base space to move to the target system. Engine validates transport
+      // rules (capacity-shipping for fighters/ground, immobile exclusion).
+      kind: 'HiddenFleetUnitPick';
+      side: Side; // 'Rebel'
+      targetSystemId: SystemId;
+      candidateUnitIds: UnitInstanceId[];
+    }
+  | {
+      // Temporary Alliance (Rebel action card): Rebel picks which unit type
+      // to queue for each of the chosen system's resource icons. Each icon
+      // is independent; legal types are constrained by the icon's
+      // theater + tier (lower-tier units are legal for higher-tier icons).
+      kind: 'TemporaryAllianceBuildPick';
+      side: Side; // 'Rebel'
+      systemId: SystemId;
+      icons: { theater: 'space' | 'ground'; shape: 'triangle' | 'circle' | 'square' }[];
+    }
+  | {
       kind: 'ContingencyPlanPick';
       side: Side; // always 'Rebel'
       leaderId: LeaderId; // the leader being reassigned

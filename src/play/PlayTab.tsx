@@ -902,6 +902,30 @@ export default function PlayTab() {
 
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'HiddenFleetUnitPick'
+        && G.pendingChoice.side === humanSide && (
+        <HiddenFleetUnitPickModal G={G} choice={G.pendingChoice}
+          onPick={(ids) => {
+            const r = phases.resolveHiddenFleetUnitPick(G, ids);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'TemporaryAllianceBuildPick'
+        && G.pendingChoice.side === humanSide && (
+        <TemporaryAllianceBuildPickModal G={G} choice={G.pendingChoice}
+          onPick={(picks) => {
+            const r = phases.resolveTemporaryAllianceBuildPick(G, picks);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'ContingencyPlanPick'
         && G.pendingChoice.side === humanSide && (
         <ContingencyPlanPickModal G={G} choice={G.pendingChoice}
@@ -6048,6 +6072,156 @@ function DetainedTargetPickModal({
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function HiddenFleetUnitPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'HiddenFleetUnitPick'; side: Side; targetSystemId: string; candidateUnitIds: string[] };
+  onPick: (ids: string[]) => void;
+}) {
+  const sysName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  const baseUnits = G.map.rebelBaseSpace.units.filter((u) => choice.candidateUnitIds.includes(u.instanceId));
+  const [picks, setPicks] = useState<Set<string>>(() => new Set(choice.candidateUnitIds));
+  const toggle = (uid: string) => {
+    const next = new Set(picks);
+    if (next.has(uid)) next.delete(uid); else next.add(uid);
+    setPicks(next);
+  };
+  // Live capacity hint (no validation — engine checks on submit).
+  let cap = 0, riders = 0;
+  for (const uid of picks) {
+    const u = baseUnits.find((x) => x.instanceId === uid);
+    if (!u) continue;
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t) continue;
+    if (t.transport.capacity > 0) cap += t.transport.capacity;
+    if (t.transport.restriction || (t.theater === 'ground' && t.class !== 'structure')) riders++;
+  }
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 580, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Hidden Fleet — pick units to move to {sysName}</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 8 }}>
+          Adjacency bypassed; transport rules still apply. Capital ships carry fighters/ground (1 capacity each).
+        </div>
+        <div style={{ color: cap >= riders ? '#80dc78' : '#ff8866', fontSize: 12, marginBottom: 8 }}>
+          Capacity: {cap} · Riders needing transport: {riders}
+          {cap >= riders ? '' : ' (insufficient transport)'}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {baseUnits.map((u) => {
+            const t = G.catalog.unitTypes[u.typeId];
+            const on = picks.has(u.instanceId);
+            return (
+              <label key={u.instanceId} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px',
+                border: `1px solid ${on ? '#80dc78' : '#2a2d34'}`, borderRadius: 3, fontSize: 12,
+              }}>
+                <input type="checkbox" checked={on} onChange={() => toggle(u.instanceId)} />
+                {t?.name ?? u.typeId}
+                {t && t.transport.capacity > 0 && (
+                  <span style={{ color: '#80dc78', fontSize: 10 }}>+{t.transport.capacity} cap</span>
+                )}
+                {t && t.transport.restriction && (
+                  <span style={{ color: '#ffaaaa', fontSize: 10 }}>needs ride</span>
+                )}
+                {t && t.theater === 'ground' && t.class !== 'structure' && (
+                  <span style={{ color: '#ffaaaa', fontSize: 10 }}>ground</span>
+                )}
+              </label>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="tab-button active" onClick={() => onPick([...picks])}>
+            Move {picks.size} unit{picks.size === 1 ? '' : 's'}
+          </button>
+          <button className="tab-button" onClick={() => setPicks(new Set())}>Select none</button>
+          <button className="tab-button" onClick={() => setPicks(new Set(choice.candidateUnitIds))}>Select all</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TemporaryAllianceBuildPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'TemporaryAllianceBuildPick'; side: Side; systemId: string; icons: { theater: 'space' | 'ground'; shape: 'triangle' | 'circle' | 'square' }[] };
+  onPick: (picks: (string | null)[]) => void;
+}) {
+  const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+  // Build legal-unit-type list per icon.
+  const legalForIcon = (icon: { theater: string; shape: string }): string[] => {
+    const need = tierRank[icon.shape] ?? 2;
+    return Object.values(G.catalog.unitTypes)
+      .filter((t) => t.side === 'Rebel'
+        && t.theater === icon.theater
+        && (tierRank[t.tier ?? 'square'] ?? 2) <= need
+        && t.class !== 'structure')
+      .map((t) => t.id);
+  };
+  const defaults = choice.icons.map((icon) => {
+    const opts = legalForIcon(icon);
+    return opts[opts.length - 1] ?? null; // highest tier ≤ icon
+  });
+  const [picks, setPicks] = useState<(string | null)[]>(defaults);
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Temporary Alliance — pick units for {sysName}</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          One pick per resource icon. Skip an icon to leave that slot empty.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+          {choice.icons.map((icon, i) => {
+            const opts = legalForIcon(icon);
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                <span style={{ color: '#aaa', minWidth: 110 }}>
+                  {icon.theater} · {icon.shape}
+                </span>
+                <select
+                  value={picks[i] ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value || null;
+                    setPicks((prev) => { const next = [...prev]; next[i] = v; return next; });
+                  }}
+                  style={{ background: '#0c0d10', color: '#e8e8ea', border: '1px solid #3a3d44', padding: '4px 8px', minWidth: 200 }}
+                >
+                  <option value="">— skip this icon —</option>
+                  {opts.map((tid) => (
+                    <option key={tid} value={tid}>{G.catalog.unitTypes[tid]?.name ?? tid}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+        </div>
+        <button className="tab-button active" onClick={() => onPick(picks)}>
+          Add to build queue
+        </button>
       </div>
     </div>
   );

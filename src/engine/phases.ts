@@ -1642,6 +1642,76 @@ export function resolveRapidMobilizationBasePick(
   return { ok: true };
 }
 
+/** Hidden Fleet: Rebel picks which units at Rebel Base space to move to the
+ *  mission's target system. Validates transport (no immobile, fighters and
+ *  ground require capacity-ship coverage) and rejects illegal picks. */
+export function resolveHiddenFleetUnitPick(
+  G: GameState, unitInstanceIds: string[]
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'HiddenFleetUnitPick') return { ok: false, reason: 'no-pending' };
+  // Allow an empty pick (Rebel chooses to move nothing).
+  for (const uid of unitInstanceIds) {
+    if (!choice.candidateUnitIds.includes(uid)) return { ok: false, reason: `not-a-candidate:${uid}` };
+  }
+  if (unitInstanceIds.length > 0) {
+    const v = validateMoveOrderTransport(G, 'Rebel', {
+      fromSystemId: 'rebel-base-space',
+      unitInstanceIds,
+    });
+    if (!v.ok) return { ok: false, reason: v.reason };
+  }
+  for (const uid of unitInstanceIds) M.moveUnit(G, uid, 'rebel-base-space', choice.targetSystemId);
+  log(G, { kind: 'hidden-fleet-move', side: 'Rebel', payload: {
+    targetSystemId: choice.targetSystemId, moved: unitInstanceIds.length,
+    movedIds: unitInstanceIds,
+  }});
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Temporary Alliance: Rebel picks the unit type to queue for each of the
+ *  chosen system's resource icons. typeIds[i] must be a legal unit for
+ *  icons[i] (tier ≤ icon tier, theater match). null entries are 'skip this
+ *  icon' (legal — RAW lets you decline). */
+export function resolveTemporaryAllianceBuildPick(
+  G: GameState, typeIds: (string | null)[]
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'TemporaryAllianceBuildPick') return { ok: false, reason: 'no-pending' };
+  if (typeIds.length !== choice.icons.length) return { ok: false, reason: 'length-mismatch' };
+  const sysDef = G.catalog.systems[choice.systemId];
+  if (!sysDef || !sysDef.buildSlot) return { ok: false, reason: 'no-build-slot' };
+  const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+  // Validate each pick.
+  for (let i = 0; i < typeIds.length; i++) {
+    const tid = typeIds[i];
+    if (tid === null) continue;
+    const icon = choice.icons[i];
+    const t = G.catalog.unitTypes[tid];
+    if (!t || t.side !== 'Rebel') return { ok: false, reason: `bad-type:${tid}` };
+    if (t.theater !== icon.theater) return { ok: false, reason: `theater-mismatch:${tid}` };
+    const need = tierRank[icon.shape] ?? 2;
+    const have = tierRank[t.tier ?? 'square'] ?? 2;
+    if (have > need) return { ok: false, reason: `tier-too-high:${tid}` };
+  }
+  let added = 0;
+  for (let i = 0; i < typeIds.length; i++) {
+    const tid = typeIds[i];
+    if (!tid) continue;
+    M.buildToQueue(G, 'Rebel', tid, sysDef.buildSlot, choice.systemId);
+    added++;
+  }
+  log(G, { kind: 'temporary-alliance-built', side: 'Rebel', payload: {
+    systemId: choice.systemId, added, picks: typeIds,
+  }});
+  G.pendingChoice = undefined;
+  // Action cards don't have a pendingMission to resume — clear and let the
+  // play UI continue naturally.
+  return { ok: true };
+}
+
 /** Contingency Plan: Rebel picks a starting mission from their hand to
  *  re-assign the resolver leader to. The leader goes onto leadersOnMissions,
  *  available to be revealed later this Command phase (or a future one). */
@@ -2701,26 +2771,23 @@ function applyAssignmentActionCardEffect(
       break;
     }
     case 'temporary-alliance': {
-      // Add the chosen neutral system's resource-icon units to the Rebel build queue.
+      // Post a TemporaryAllianceBuildPick choice so the Rebel picks the
+      // specific unit type for each of the system's resource icons.
       if (!systemId) break;
       const sysDef = G.catalog.systems[systemId];
-      if (!sysDef || !sysDef.buildSlot) {
+      if (!sysDef || !sysDef.buildSlot || sysDef.resources.length === 0) {
         log(G, { kind: 'action-card-noop', side, payload: { cardId, reason: 'no-build-icons' } });
         break;
       }
-      const slot = sysDef.buildSlot;
-      let added = 0;
-      for (const icon of sysDef.resources) {
-        // Pick a default unit for the icon: space → x-wing (triangle) / corellian-corvette / mc-cruiser by shape;
-        // ground → rebel-trooper / airspeeder / heavy-aa by shape. Player can refine via build pick UI later.
-        // Simplified: queue the smallest-tier unit matching theater. Engine doesn't gate this card.
-        const defaultId = pickDefaultUnitForIcon(side, icon);
-        if (defaultId) {
-          M.buildToQueue(G, side, defaultId, slot, systemId);
-          added++;
-        }
-      }
-      log(G, { kind: 'temporary-alliance-built', side, payload: { systemId, added, simplified: true } });
+      G.pendingChoice = {
+        kind: 'TemporaryAllianceBuildPick',
+        side: 'Rebel',
+        systemId,
+        icons: sysDef.resources.map((r) => ({ theater: r.type, shape: r.shape })),
+      };
+      log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+        kind: 'TemporaryAllianceBuildPick', systemId, iconCount: sysDef.resources.length,
+      }});
       break;
     }
     case 'our-most-desperate-hour': {
