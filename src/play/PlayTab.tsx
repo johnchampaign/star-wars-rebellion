@@ -177,34 +177,57 @@ export default function PlayTab() {
     if (!G0 || G0.isGameOver) return;
     const human = (localStorage.getItem(LS_HUMAN_SIDE) === 'Empire') ? 'Empire' : 'Rebel';
     const ai: Side = human === 'Rebel' ? 'Empire' : 'Rebel';
-    let didAny = false;
-    // Safety cap so a buggy AI can't lock the tab.
-    for (let safety = 0; safety < 500; safety++) {
-      const Gn = gameRef.current;
-      if (!Gn || Gn.isGameOver) break;
-      const owes = aiOwesChoice(Gn, ai);
-      // AI acts when it's its turn, OR when it owes ANY pending choice
-      // (opposition, combat tactics, build picks, retreat, etc.). If we
-      // don't fire here the game silently locks because nothing else
-      // will ever resolve an AI-owned choice posted on the human's turn.
-      if (Gn.currentPlayer !== ai && !owes) break;
-      let did = false;
-      try {
-        did = aiStepOnce(Gn, ai);
-      } catch (e) {
-        console.error('[ai] step threw', e);
-        break;
+    // Batched, time-bounded driver. Runs steps for up to ~40ms, then yields
+    // to the browser to repaint. Continues via setTimeout until the AI has
+    // nothing left to do. Keeps the UI responsive even when the AI has many
+    // sequential decisions to make (full Assignment phase + Command turns +
+    // combat resolution).
+    let totalSteps = 0;
+    const runBatch = () => {
+      const batchStart = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      let didAny = false;
+      let stepsThisBatch = 0;
+      for (;;) {
+        const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+        if (now - batchStart > 40) break; // yield to browser
+        if (totalSteps >= 2000) break;     // hard safety cap
+        if (stepsThisBatch >= 200) break;  // per-batch safety
+        const Gn = gameRef.current;
+        if (!Gn || Gn.isGameOver) break;
+        const owes = aiOwesChoice(Gn, ai);
+        if (Gn.currentPlayer !== ai && !owes) break;
+        let did = false;
+        try {
+          did = aiStepOnce(Gn, ai);
+        } catch (e) {
+          console.error('[ai] step threw', e);
+          break;
+        }
+        if (!did) break;
+        didAny = true;
+        stepsThisBatch++;
+        totalSteps++;
       }
-      if (!did) break;
-      didAny = true;
-    }
-    if (didAny) {
-      try {
-        const Gf = gameRef.current;
-        if (Gf && canEncode(Gf)) localStorage.setItem(LS_CURRENT, encode(Gf));
-      } catch { /* ignore */ }
-      setTick((t) => t + 1);
-    }
+      if (didAny) {
+        try {
+          const Gf = gameRef.current;
+          if (Gf && canEncode(Gf)) localStorage.setItem(LS_CURRENT, encode(Gf));
+        } catch { /* ignore */ }
+        setTick((t) => t + 1);
+      }
+      // Schedule another batch if there's still AI work to do.
+      const Gn2 = gameRef.current;
+      if (!Gn2 || Gn2.isGameOver) return;
+      if (totalSteps >= 2000) {
+        console.warn('[ai] runAILoop hit hard safety cap (2000 steps)');
+        return;
+      }
+      const owes2 = aiOwesChoice(Gn2, ai);
+      if (Gn2.currentPlayer === ai || owes2) {
+        setTimeout(runBatch, 0);
+      }
+    };
+    runBatch();
   }, []);
 
   const refresh = useCallback(() => {

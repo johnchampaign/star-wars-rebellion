@@ -181,37 +181,40 @@ function missionSituationalAdjust(G: GameState, missionId: string, side: Side): 
   return 0;
 }
 
-/** Cheap board-distance estimate: shortest adjacency hop count between two
- *  systems. Returns Infinity if unreachable. Used for "Empire near base"
- *  heuristics. Hard-capped at 10 hops. */
-function systemDistance(G: GameState, a: SystemId, b: SystemId, cap = 10): number {
-  if (a === b) return 0;
-  const seen = new Set<string>([a]);
-  let frontier: string[] = [a];
-  for (let d = 1; d <= cap; d++) {
+/** Single-source shortest-paths over the adjacency graph from `origin`.
+ *  Returns a Map of systemId → hop-count. Capped at maxHops to keep the
+ *  search tight. */
+function bfsDistances(G: GameState, origin: SystemId, maxHops = 10): Map<string, number> {
+  const dist = new Map<string, number>([[origin, 0]]);
+  let frontier: string[] = [origin];
+  for (let d = 1; d <= maxHops; d++) {
     const next: string[] = [];
     for (const s of frontier) {
       for (const n of (G.catalog.adjacency[s] ?? [])) {
-        if (n === b) return d;
-        if (!seen.has(n)) { seen.add(n); next.push(n); }
+        if (!dist.has(n)) { dist.set(n, d); next.push(n); }
       }
     }
     frontier = next;
     if (frontier.length === 0) break;
   }
-  return Infinity;
+  return dist;
+}
+
+/** Cached distance lookup. Caller passes the BFS map; absent entries are
+ *  treated as Infinity. */
+function distFrom(map: Map<string, number>, target: SystemId): number {
+  return map.get(target) ?? Infinity;
 }
 
 /** Count Empire units within 2 hops of the Rebel base. Used by Rebel AI
  *  to detect base threat. */
 function empireProximityToBase(G: GameState): number {
   if (!G.rebelBaseSystemId) return 0;
+  const dist = bfsDistances(G, G.rebelBaseSystemId, 2);
   let count = 0;
-  for (const sysId of Object.keys(G.map.systems)) {
-    const d = systemDistance(G, sysId, G.rebelBaseSystemId, 2);
-    if (d <= 2) {
-      count += G.map.systems[sysId].units.filter((u) => u.side === 'Empire').length;
-    }
+  for (const [sysId, d] of dist) {
+    if (d > 2) continue;
+    count += (G.map.systems[sysId]?.units ?? []).filter((u) => u.side === 'Empire').length;
   }
   return count;
 }
@@ -232,18 +235,20 @@ function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: 
   return s;
 }
 
-/** Score a target system for a Rebel mission. */
-function rebelMissionTargetScore(G: GameState, missionId: string, targetSysId: SystemId): number {
+/** Score a target system for a Rebel mission. `baseDist` is a precomputed
+ *  hop-count map from the Rebel base (or null when base is revealed/missing). */
+function rebelMissionTargetScore(
+  G: GameState, missionId: string, targetSysId: SystemId,
+  baseDist: Map<string, number> | null,
+): number {
   let s = 0;
   const sys = G.catalog.systems[targetSysId];
   if (!sys) return -Infinity;
-  // Don't target systems near the Rebel base (drawing attention).
-  if (G.rebelBaseSystemId && !G.rebelBaseRevealed) {
-    const d = systemDistance(G, targetSysId, G.rebelBaseSystemId, 3);
+  if (baseDist) {
+    const d = distFrom(baseDist, targetSysId);
     if (d <= 1) s -= 6;
     else if (d === 2) s -= 2;
   }
-  // Prefer high-resource systems for diplomacy.
   if (missionId === 'establish-trade-relations' || missionId === 'wookie-uprising'
     || missionId === 'support-of-mon-calamari') {
     s += (sys.resources?.length ?? 0) * 2;
@@ -316,10 +321,21 @@ type CommandAction =
   | { kind: 'pass'; score: number };
 
 /** Enumerate command-phase actions and score them. Returns highest-scoring
- *  action. */
+ *  action. Precomputes one BFS distance map from the Rebel base (when
+ *  hidden) for use across all per-system scoring. */
 function bestCommandAction(G: GameState, side: Side): CommandAction {
   const f = side === 'Rebel' ? G.rebel : G.empire;
   const actions: CommandAction[] = [];
+  const allSystemIds = Object.keys(G.map.systems);
+  const baseDist = (side === 'Rebel' && G.rebelBaseSystemId && !G.rebelBaseRevealed)
+    ? bfsDistances(G, G.rebelBaseSystemId, 3)
+    : null;
+  // Precompute the set of probe-eliminated systems for the Empire.
+  const eliminatedByProbe = side === 'Empire'
+    ? new Set((G.empire.probeHand ?? [])
+        .map((pid) => G.catalog.probes[pid]?.systemId)
+        .filter((s): s is string => !!s))
+    : new Set<string>();
 
   // 1) Revealing assigned missions whose skill cost is met.
   for (const am of f.leadersOnMissions) {
@@ -328,14 +344,13 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
     let skillSum = 0;
     for (const lid of am.leaderIds) skillSum += leaderSkillFit(G, lid as LeaderId, am.missionId);
     if (skillSum < card.skillCost) continue;
-    // Score: mission base value + best-target system score.
     const baseValue = missionBaseValue(am.missionId, side) + missionSituationalAdjust(G, am.missionId, side);
     let bestTarget: SystemId | null = null;
     let bestTargetScore = -Infinity;
-    for (const sysId of Object.keys(G.map.systems)) {
+    for (const sysId of allSystemIds) {
       const t = side === 'Empire'
         ? empireMissionTargetScore(G, am.missionId, sysId)
-        : rebelMissionTargetScore(G, am.missionId, sysId);
+        : rebelMissionTargetScore(G, am.missionId, sysId, baseDist);
       if (t > bestTargetScore) { bestTargetScore = t; bestTarget = sysId; }
     }
     if (!bestTarget) continue;
@@ -343,45 +358,41 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
       kind: 'reveal',
       missionId: am.missionId,
       targetSystemId: bestTarget,
-      score: baseValue + bestTargetScore + 6, // mission reveal gets a base bonus
+      score: baseValue + bestTargetScore + 6,
     });
   }
 
-  // 2) Activating systems. Only when there's a strategic purpose (move toward
-  //    base, contest a system, etc.). The base random heuristic was producing
-  //    pointless shuffles, so we make the AI activate only when it has a
-  //    concrete plan: Empire moves toward likely-base systems; Rebel moves
-  //    toward Imperial-loyalty systems they want to contest.
+  // 2) Activating systems. Pre-score each system once (not per-leader) since
+  //    the per-system signal doesn't change between leaders.
+  const systemScore = new Map<string, number>();
+  for (const sysId of allSystemIds) {
+    let ts = 0;
+    const sys = G.map.systems[sysId];
+    if (!sys) continue;
+    const hasEnemyUnits = sys.units.some((u) => u.side !== side);
+    const hasOwnUnits = sys.units.some((u) => u.side === side);
+    if (side === 'Empire') {
+      if (hasEnemyUnits) ts += 4;
+      if (eliminatedByProbe.has(sysId)) ts -= 4;
+    } else {
+      if (baseDist) {
+        const d = distFrom(baseDist, sysId);
+        if (d <= 1) ts -= 5;
+      }
+      if (sys.loyalty?.side === 'Empire') ts += 3;
+    }
+    if (hasOwnUnits) ts += 1;
+    systemScore.set(sysId, ts);
+  }
+  // For each pool leader, pick their best target.
   for (const leaderId of f.leaderPool as LeaderId[]) {
     const l = G.catalog.leaders[leaderId];
     if (!l) continue;
     if (l.tacticValues.space + l.tacticValues.ground === 0) continue;
-    // Pick best target for THIS leader.
     let bestT: SystemId | null = null;
     let bestTS = -Infinity;
-    for (const sysId of Object.keys(G.map.systems)) {
-      let ts = 0;
-      const sys = G.map.systems[sysId];
-      if (!sys) continue;
-      const hasEnemyUnits = sys.units.some((u) => u.side !== side);
-      const hasOwnUnits = sys.units.some((u) => u.side === side);
-      if (side === 'Empire') {
-        // Move toward systems where Rebel ground/space sit (possible base).
-        if (hasEnemyUnits) ts += 4;
-        // Probe-narrowed systems already eliminated → meh.
-        const eliminated = (G.empire.probeHand ?? [])
-          .some((pid) => G.catalog.probes[pid]?.systemId === sysId);
-        if (eliminated) ts -= 4;
-      } else {
-        // Rebel: avoid clustering near base. Approach Imperial-loyalty systems
-        // for contesting.
-        if (G.rebelBaseSystemId && !G.rebelBaseRevealed) {
-          const d = systemDistance(G, sysId, G.rebelBaseSystemId, 3);
-          if (d <= 1) ts -= 5;
-        }
-        if (sys.loyalty?.side === 'Empire') ts += 3;
-      }
-      if (hasOwnUnits) ts += 1;
+    for (const sysId of allSystemIds) {
+      const ts = systemScore.get(sysId) ?? 0;
       if (ts > bestTS) { bestTS = ts; bestT = sysId; }
     }
     if (!bestT || bestTS <= 0) continue;
@@ -393,10 +404,7 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
     });
   }
 
-  // 3) Pass — always an option; low baseline score so it loses to a real plan.
   actions.push({ kind: 'pass', score: 0.5 });
-
-  // Pick the best.
   actions.sort((a, b) => b.score - a.score);
   return actions[0]!;
 }
@@ -404,6 +412,20 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
 /** Run one AI action for `side`. Returns true if something happened (caller
  *  should re-render and may call again), false if nothing left to do. */
 export function stepOnce(G: GameState, side: Side): boolean {
+  if (G.isGameOver) return false;
+  const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const did = stepOnceInner(G, side);
+  const elapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
+  if (elapsed > 500) {
+    // Per-step budget exceeded — log so the slow path can be diagnosed.
+    console.warn(`[ai] slow stepOnce: ${elapsed.toFixed(0)}ms`, {
+      side, phase: G.phase, pendingChoice: G.pendingChoice?.kind, currentPlayer: G.currentPlayer,
+    });
+  }
+  return did;
+}
+
+function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.isGameOver) return false;
 
   // Pending-choice handlers run REGARDLESS of whose turn it is: an opponent
