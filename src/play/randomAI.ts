@@ -1,19 +1,404 @@
-// Minimal random AI for development. Makes valid, mostly-random choices in
-// every phase so a solo human can play through end-to-end. Intentionally dumb:
-// no heuristics, no lookahead. Replace with a real controller later.
+// Heuristic AI. Plays strategically per the user's directives:
+//
+// REBEL: prefer missions over moves. Keep the base hidden — don't move
+// units toward Empire-proximity areas. Use diplomacy. Prioritize
+// objective-advancing missions.
+//
+// EMPIRE: reserve 1-2 leaders for opposition. Use probes aggressively to
+// narrow the base location. Capture rebel leaders (cap at 1 to avoid
+// the auto-release). Use diplomacy on high-value systems.
+//
+// "Look-ahead per phase" interpretation: when making the first Assignment-
+// phase decision, the AI plans the full slate of leader-to-mission
+// assignments and commits to the best one; subsequent calls re-plan
+// against the updated state. For Command phase, each turn the AI scores
+// all available actions (reveal, activate, pass) and picks the best.
 //
 // Contract: stepOnce(G, side) performs exactly one engine call when it's `side`'s
 // turn. The caller is expected to call it in a loop (with refresh in between)
 // until G.currentPlayer flips back to the human, the game ends, or we're in a
 // state with no valid AI action.
 
-import type { GameState, Side, LeaderId } from '../engine/types';
+import type { GameState, Side, LeaderId, SystemId } from '../engine/types';
 import * as phases from '../engine/phases';
 import * as combat from '../engine/combat';
 
 function pick<T>(arr: T[]): T | undefined {
   if (arr.length === 0) return undefined;
   return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// ============================================================================
+// Strategy primitives
+// ============================================================================
+
+/** How many leaders the Empire AI tries to keep in the pool for opposition.
+ *  At least one when revealable missions exist. */
+const EMPIRE_RESERVE_LEADERS = 1;
+
+/** Static-ish strategic value of attempting a mission, before situational
+ *  modifiers. Higher = AI cares more about this mission. */
+function missionBaseValue(missionId: string, side: Side): number {
+  const empireValues: Record<string, number> = {
+    // Probe-card pulls — narrowing base
+    'gather-intel': 12,
+    'research-and-development': 10,
+    // Captures — rob the Rebel of a leader
+    'capture-rebel-operative': 11,
+    'collect-bounty': 10,
+    'detained': 8,
+    'carbon-freezing': 6,
+    'lure-of-the-dark-side': 9,
+    'interrogation': 7,
+    'interrogation-droid': 8,
+    'retrieve-the-plans': 8,
+    // Diplomacy / loyalty
+    'rule-by-fear': 9,
+    'trade-negotiations': 7,
+    'fear-will-keep-them-in-line': 7,
+    // Projects (build queue plumbing)
+    'construct-death-star': 14,
+    'construct-factory': 9,
+    'construct-super-star-destroyer': 11,
+    'oversee-project': 8,
+    'superlaser-online': 10,
+    // Subjugation / sabotage
+    'sabotage': 6,
+  };
+  const rebelValues: Record<string, number> = {
+    // Defensive / base protection
+    'hit-and-run': 9,
+    'hidden-fleet': 8,
+    'demolition': 8,
+    // Diplomacy / loyalty (user emphasized)
+    'wookie-uprising': 12,
+    'support-of-mon-calamari': 12,
+    'establish-trade-relations': 10,
+    'ignite-rebellion': 10,
+    'public-uprising': 10,
+    'for-the-greater-good': 11,
+    // Recruit / rescue
+    'daring-rescue': 12,
+    'an-old-friend': 9,
+    'seek-yoda': 11,
+    // Sabotage / info
+    'covert-operation': 8,
+    'plant-false-lead': 9,
+    'homing-beacon': 7,
+    'intercept-transmissions': 7,
+    'base-defenses': 8,
+    'stolen-plans': 9,
+    'misdirection': 7,
+    // Critical-path
+    'plan-the-assault': 10,
+    'lead-the-strike-team': 11,
+    'contingency-plan': 8,
+    'rapid-mobilization': 9,
+  };
+  const table = side === 'Empire' ? empireValues : rebelValues;
+  return table[missionId] ?? 5;
+}
+
+/** Skill-fit of a single leader for a single mission. Returns 0 if the
+ *  leader contributes none of the mission's required skill, else weighted
+ *  by skill icons. */
+function leaderSkillFit(G: GameState, leaderId: LeaderId, missionId: string): number {
+  const card = G.catalog.missions[missionId];
+  const leader = G.catalog.leaders[leaderId];
+  if (!card || !leader || !card.skill) return 0;
+  // Mission counts-all-skills special-case (rare).
+  const countsAll = card.id === 'interrogation-droid' || card.id === 'lure-of-the-dark-side';
+  if (countsAll) {
+    const sk = leader.skills;
+    return (sk.diplomacy ?? 0) + (sk.intel ?? 0) + (sk.specOps ?? 0) + (sk.logistics ?? 0);
+  }
+  return leader.skills[card.skill as keyof typeof leader.skills] ?? 0;
+}
+
+/** Bonus for the leader matching the mission's preferred portrait (the
+ *  illustrated leader on the card). Strong hint about intended-pairing. */
+function leaderPortraitBonus(G: GameState, leaderId: LeaderId, missionId: string): number {
+  const card = G.catalog.missions[missionId];
+  if (!card || !card.leaderPortrait) return 0;
+  return card.leaderPortrait === leaderId ? 4 : 0;
+}
+
+/** Hard-coded leader-mission pairings the engine especially values
+ *  (e.g. mission-card text rewards specific leaders). */
+function leaderMissionBespoke(leaderId: LeaderId, missionId: string): number {
+  // An Old Friend: Han at Bespin/Kashyyyk to recruit Lando/Chewie.
+  if (missionId === 'an-old-friend' && leaderId === 'han-solo') return 4;
+  // Seek Yoda → Luke gets the Jedi swap.
+  if (missionId === 'seek-yoda' && leaderId === 'luke-skywalker') return 5;
+  // Contingency Plan: Lando gives +2 successes later.
+  if (missionId === 'contingency-plan' && leaderId === 'lando-calrissian') return 3;
+  // Construct Death Star / SSD prefer Jerjerrod or Tarkin.
+  if (missionId === 'construct-death-star' && (leaderId === 'moff-jerjerrod' || leaderId === 'grand-moff-tarkin')) return 3;
+  // Build/queue work prefers Tarkin.
+  if ((missionId === 'oversee-project' || missionId === 'construct-factory')
+    && leaderId === 'grand-moff-tarkin') return 3;
+  return 0;
+}
+
+/** Combined "should this leader take this mission?" score. Returns -Infinity
+ *  if it would be illegal (mission requires a different leader by name). */
+function leaderMissionScore(G: GameState, leaderId: LeaderId, missionId: string, side: Side): number {
+  const card = G.catalog.missions[missionId];
+  if (!card) return -Infinity;
+  const fit = leaderSkillFit(G, leaderId, missionId);
+  // If the mission has a skill requirement and the leader contributes nothing,
+  // they're a poor pick unless we're combining with another leader.
+  // We still return a non-negative score (the planner can pair them).
+  const value = missionBaseValue(missionId, side);
+  const portrait = leaderPortraitBonus(G, leaderId, missionId);
+  const bespoke = leaderMissionBespoke(leaderId, missionId);
+  return value + fit * 2 + portrait + bespoke;
+}
+
+/** Does the Empire already hold a captured Rebel leader (cap at 1 — user's
+ *  point that a second capture releases the first)? */
+function empireHoldingCapture(G: GameState): boolean {
+  return (G.empire.capturedLeaders ?? []).some((c) => c.ring === 'captured');
+}
+
+/** A mission's situational adjustment: amplify or suppress based on board
+ *  state. E.g. capture missions are worthless if Empire already holds a
+ *  captured leader; probe missions are worthless once base is revealed. */
+function missionSituationalAdjust(G: GameState, missionId: string, side: Side): number {
+  if (side === 'Empire') {
+    const captureKinds = new Set(['capture-rebel-operative', 'collect-bounty', 'detained']);
+    if (captureKinds.has(missionId) && empireHoldingCapture(G)) return -10;
+    const probeKinds = new Set(['gather-intel', 'research-and-development']);
+    if (probeKinds.has(missionId) && G.rebelBaseRevealed) return -8;
+  }
+  if (side === 'Rebel') {
+    // Daring Rescue worthless unless there's a captured leader.
+    if (missionId === 'daring-rescue'
+      && (G.empire.capturedLeaders?.length ?? 0) === 0) return -8;
+    if (missionId === 'for-the-greater-good'
+      && (G.empire.capturedLeaders?.length ?? 0) === 0) return -8;
+  }
+  return 0;
+}
+
+/** Cheap board-distance estimate: shortest adjacency hop count between two
+ *  systems. Returns Infinity if unreachable. Used for "Empire near base"
+ *  heuristics. Hard-capped at 10 hops. */
+function systemDistance(G: GameState, a: SystemId, b: SystemId, cap = 10): number {
+  if (a === b) return 0;
+  const seen = new Set<string>([a]);
+  let frontier: string[] = [a];
+  for (let d = 1; d <= cap; d++) {
+    const next: string[] = [];
+    for (const s of frontier) {
+      for (const n of (G.catalog.adjacency[s] ?? [])) {
+        if (n === b) return d;
+        if (!seen.has(n)) { seen.add(n); next.push(n); }
+      }
+    }
+    frontier = next;
+    if (frontier.length === 0) break;
+  }
+  return Infinity;
+}
+
+/** Count Empire units within 2 hops of the Rebel base. Used by Rebel AI
+ *  to detect base threat. */
+function empireProximityToBase(G: GameState): number {
+  if (!G.rebelBaseSystemId) return 0;
+  let count = 0;
+  for (const sysId of Object.keys(G.map.systems)) {
+    const d = systemDistance(G, sysId, G.rebelBaseSystemId, 2);
+    if (d <= 2) {
+      count += G.map.systems[sysId].units.filter((u) => u.side === 'Empire').length;
+    }
+  }
+  return count;
+}
+
+/** Score a target system for an Empire mission, with situational bias. */
+function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: SystemId): number {
+  let s = 0;
+  const sys = G.catalog.systems[targetSysId];
+  if (!sys) return -Infinity;
+  // Generally prefer high-resource systems for build/diplomacy missions.
+  const resourceWeight = (sys.resources?.length ?? 0);
+  if (missionId.startsWith('rule-by-fear') || missionId.startsWith('trade-negotiations')
+    || missionId === 'fear-will-keep-them-in-line') {
+    s += resourceWeight * 2;
+  }
+  // Captures / probes don't care about target system per se.
+  if (missionId === 'gather-intel') s += 3;
+  return s;
+}
+
+/** Score a target system for a Rebel mission. */
+function rebelMissionTargetScore(G: GameState, missionId: string, targetSysId: SystemId): number {
+  let s = 0;
+  const sys = G.catalog.systems[targetSysId];
+  if (!sys) return -Infinity;
+  // Don't target systems near the Rebel base (drawing attention).
+  if (G.rebelBaseSystemId && !G.rebelBaseRevealed) {
+    const d = systemDistance(G, targetSysId, G.rebelBaseSystemId, 3);
+    if (d <= 1) s -= 6;
+    else if (d === 2) s -= 2;
+  }
+  // Prefer high-resource systems for diplomacy.
+  if (missionId === 'establish-trade-relations' || missionId === 'wookie-uprising'
+    || missionId === 'support-of-mon-calamari') {
+    s += (sys.resources?.length ?? 0) * 2;
+  }
+  return s;
+}
+
+// ============================================================================
+// Assignment planner
+// ============================================================================
+
+/** Plan the full Assignment phase: which leaders should go on which missions
+ *  for this side. Greedy: sort all (leader, mission) pairs by combined
+ *  score, then commit pairs in order while respecting one-leader-per-mission
+ *  constraints. Returns the list of planned pairings. */
+function planAssignment(G: GameState, side: Side): Array<{ missionId: string; leaderIds: LeaderId[] }> {
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  const pool = [...f.leaderPool];
+  const hand = [...f.missionHand];
+  if (pool.length === 0 || hand.length === 0) return [];
+
+  // Compute a score matrix for every (leader, mission) pair.
+  type Candidate = { leaderId: LeaderId; missionId: string; score: number };
+  const candidates: Candidate[] = [];
+  for (const missionId of hand) {
+    const sit = missionSituationalAdjust(G, missionId, side);
+    if (sit < -5) continue; // skip clearly-bad missions
+    for (const leaderId of pool as LeaderId[]) {
+      const base = leaderMissionScore(G, leaderId, missionId, side);
+      const score = base + sit;
+      if (score <= 0) continue;
+      candidates.push({ leaderId, missionId, score });
+    }
+  }
+  candidates.sort((a, b) => b.score - a.score);
+
+  const usedLeaders = new Set<string>();
+  const planMap = new Map<string, LeaderId[]>(); // missionId → leaders
+  for (const c of candidates) {
+    if (usedLeaders.has(c.leaderId)) continue;
+    const existing = planMap.get(c.missionId) ?? [];
+    const card = G.catalog.missions[c.missionId];
+    // A mission can take additional leaders only if the first one alone
+    // doesn't meet the skill cost.
+    if (existing.length > 0) {
+      const cost = card?.skillCost ?? 0;
+      const skillSum = existing.reduce((s, l) => s + leaderSkillFit(G, l, c.missionId), 0);
+      if (skillSum >= cost) continue; // already met; don't pile on
+    }
+    // Reserve check (Empire side).
+    if (side === 'Empire') {
+      const remaining = pool.length - usedLeaders.size;
+      if (remaining <= EMPIRE_RESERVE_LEADERS) break;
+    }
+    existing.push(c.leaderId);
+    usedLeaders.add(c.leaderId);
+    planMap.set(c.missionId, existing);
+  }
+
+  return Array.from(planMap.entries()).map(([missionId, leaderIds]) => ({ missionId, leaderIds }));
+}
+
+// ============================================================================
+// Command-phase action scorer
+// ============================================================================
+
+type CommandAction =
+  | { kind: 'reveal'; missionId: string; targetSystemId: SystemId; score: number }
+  | { kind: 'activate'; leaderId: LeaderId; targetSystemId: SystemId; score: number }
+  | { kind: 'pass'; score: number };
+
+/** Enumerate command-phase actions and score them. Returns highest-scoring
+ *  action. */
+function bestCommandAction(G: GameState, side: Side): CommandAction {
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  const actions: CommandAction[] = [];
+
+  // 1) Revealing assigned missions whose skill cost is met.
+  for (const am of f.leadersOnMissions) {
+    const card = G.catalog.missions[am.missionId];
+    if (!card || !card.skill) continue;
+    let skillSum = 0;
+    for (const lid of am.leaderIds) skillSum += leaderSkillFit(G, lid as LeaderId, am.missionId);
+    if (skillSum < card.skillCost) continue;
+    // Score: mission base value + best-target system score.
+    const baseValue = missionBaseValue(am.missionId, side) + missionSituationalAdjust(G, am.missionId, side);
+    let bestTarget: SystemId | null = null;
+    let bestTargetScore = -Infinity;
+    for (const sysId of Object.keys(G.map.systems)) {
+      const t = side === 'Empire'
+        ? empireMissionTargetScore(G, am.missionId, sysId)
+        : rebelMissionTargetScore(G, am.missionId, sysId);
+      if (t > bestTargetScore) { bestTargetScore = t; bestTarget = sysId; }
+    }
+    if (!bestTarget) continue;
+    actions.push({
+      kind: 'reveal',
+      missionId: am.missionId,
+      targetSystemId: bestTarget,
+      score: baseValue + bestTargetScore + 6, // mission reveal gets a base bonus
+    });
+  }
+
+  // 2) Activating systems. Only when there's a strategic purpose (move toward
+  //    base, contest a system, etc.). The base random heuristic was producing
+  //    pointless shuffles, so we make the AI activate only when it has a
+  //    concrete plan: Empire moves toward likely-base systems; Rebel moves
+  //    toward Imperial-loyalty systems they want to contest.
+  for (const leaderId of f.leaderPool as LeaderId[]) {
+    const l = G.catalog.leaders[leaderId];
+    if (!l) continue;
+    if (l.tacticValues.space + l.tacticValues.ground === 0) continue;
+    // Pick best target for THIS leader.
+    let bestT: SystemId | null = null;
+    let bestTS = -Infinity;
+    for (const sysId of Object.keys(G.map.systems)) {
+      let ts = 0;
+      const sys = G.map.systems[sysId];
+      if (!sys) continue;
+      const hasEnemyUnits = sys.units.some((u) => u.side !== side);
+      const hasOwnUnits = sys.units.some((u) => u.side === side);
+      if (side === 'Empire') {
+        // Move toward systems where Rebel ground/space sit (possible base).
+        if (hasEnemyUnits) ts += 4;
+        // Probe-narrowed systems already eliminated → meh.
+        const eliminated = (G.empire.probeHand ?? [])
+          .some((pid) => G.catalog.probes[pid]?.systemId === sysId);
+        if (eliminated) ts -= 4;
+      } else {
+        // Rebel: avoid clustering near base. Approach Imperial-loyalty systems
+        // for contesting.
+        if (G.rebelBaseSystemId && !G.rebelBaseRevealed) {
+          const d = systemDistance(G, sysId, G.rebelBaseSystemId, 3);
+          if (d <= 1) ts -= 5;
+        }
+        if (sys.loyalty?.side === 'Empire') ts += 3;
+      }
+      if (hasOwnUnits) ts += 1;
+      if (ts > bestTS) { bestTS = ts; bestT = sysId; }
+    }
+    if (!bestT || bestTS <= 0) continue;
+    actions.push({
+      kind: 'activate',
+      leaderId,
+      targetSystemId: bestT,
+      score: bestTS,
+    });
+  }
+
+  // 3) Pass — always an option; low baseline score so it loses to a real plan.
+  actions.push({ kind: 'pass', score: 0.5 });
+
+  // Pick the best.
+  actions.sort((a, b) => b.score - a.score);
+  return actions[0]!;
 }
 
 /** Run one AI action for `side`. Returns true if something happened (caller
@@ -603,81 +988,62 @@ export function stepOnce(G: GameState, side: Side): boolean {
       return r.ok;
     }
     case 'Assignment': {
-      // 50/50: try assigning one random leader to one random mission, else skip.
+      // Plan the full Assignment phase; execute one assignment per call.
+      // Re-plans every call so the latest state (including action-card
+      // recruits, leader captures, etc.) is reflected.
+      const plan = planAssignment(G, side);
+      // Find the first plan entry whose mission is still in hand AND whose
+      // leaders are still in the pool.
       const f = side === 'Rebel' ? G.rebel : G.empire;
-      if (Math.random() < 0.5 && f.missionHand.length > 0 && f.leaderPool.length > 0) {
-        const missionId = pick(f.missionHand)!;
-        const leaderId = pick(f.leaderPool)! as LeaderId;
-        const r = phases.assignLeader(G, side, missionId, [leaderId]);
+      for (const entry of plan) {
+        if (!f.missionHand.includes(entry.missionId)) continue;
+        if (!entry.leaderIds.every((l) => f.leaderPool.includes(l))) continue;
+        const r = phases.assignLeader(G, side, entry.missionId, entry.leaderIds);
         if (r.ok) return true;
-        // fall through to skip if invalid
       }
-      const r = phases.skipAssignment(G, side);
-      return r.ok;
+      // No useful assignments left — skip.
+      return phases.skipAssignment(G, side).ok;
     }
     case 'Command': {
-      // Priority 1: if any assigned mission has enough skill, reveal it
-      // (random target system). This keeps assigned missions from sitting
-      // unresolved forever.
-      const f = side === 'Rebel' ? G.rebel : G.empire;
-      const revealable = f.leadersOnMissions.filter((am) => {
-        const card = G.catalog.missions[am.missionId];
-        if (!card || !card.skill) return false;
-        let total = 0;
-        for (const lid of am.leaderIds) {
-          const ld = G.catalog.leaders[lid];
-          if (ld) total += ld.skills[card.skill as keyof typeof ld.skills] ?? 0;
-        }
-        return total >= card.skillCost;
-      });
-      if (revealable.length > 0 && Math.random() < 0.6) {
-        const am = pick(revealable)!;
+      const action = bestCommandAction(G, side);
+      if (action.kind === 'reveal') {
+        const r = phases.revealMission(G, side, action.missionId, action.targetSystemId);
+        if (r.ok) return true;
+        // If reveal failed (illegal target etc.) try a few fallback systems.
         const sysIds = Object.keys(G.map.systems);
         for (let attempt = 0; attempt < 5; attempt++) {
-          const targetSystemId = pick(sysIds)!;
-          const r = phases.revealMission(G, side, am.missionId, targetSystemId);
-          if (r.ok) return true;
+          const fallback = pick(sysIds)!;
+          const r2 = phases.revealMission(G, side, action.missionId, fallback);
+          if (r2.ok) return true;
         }
+        return phases.pass(G, side).ok;
       }
-      // 70%: try to activate a system with a random eligible leader + random
-      // target. 30%: pass. If activation fails (no eligible leader / engine
-      // rejection), fall through to pass so we don't get stuck.
-      const eligible = f.leaderPool.filter((lid) => {
-        const l = G.catalog.leaders[lid];
-        return l && (l.tacticValues.space + l.tacticValues.ground) > 0;
-      });
-      if (eligible.length > 0 && Math.random() < 0.70) {
-        const leaderId = pick(eligible)!;
-        const sysIds = Object.keys(G.map.systems);
-        // Try up to 5 random targets in case the first hits a friendly-leader
-        // block or other engine reject.
-        for (let attempt = 0; attempt < 5; attempt++) {
-          const targetSystemId = pick(sysIds)!;
-          // Maybe pull some units from one random adjacent friendly system.
-          const orders: phases.MoveOrder[] = [];
-          if (Math.random() < 0.5) {
-            const adj = G.catalog.adjacency[targetSystemId] ?? [];
-            const candidates = adj.filter((sysId) => {
-              if ((f.leadersOnBoard[sysId] ?? []).length > 0) return false;
-              const ss = G.map.systems[sysId];
-              return ss && ss.units.some((u) => u.side === side);
-            });
-            const fromId = pick(candidates);
-            if (fromId) {
-              const ss = G.map.systems[fromId];
-              const mine = ss.units.filter((u) => u.side === side);
-              // Move 1-3 random units.
-              const n = Math.min(mine.length, 1 + Math.floor(Math.random() * 3));
-              const shuffled = [...mine].sort(() => Math.random() - 0.5).slice(0, n);
-              orders.push({ fromSystemId: fromId, unitInstanceIds: shuffled.map((u) => u.instanceId) });
-            }
-          }
-          const r = phases.activateSystem(G, side, leaderId, targetSystemId, orders);
-          if (r.ok) return true;
+      if (action.kind === 'activate') {
+        // Bring along units from one adjacent friendly system if there's
+        // value in massing forces.
+        const orders: phases.MoveOrder[] = [];
+        const f = side === 'Rebel' ? G.rebel : G.empire;
+        const adj = G.catalog.adjacency[action.targetSystemId] ?? [];
+        const sources = adj.filter((sysId) => {
+          if ((f.leadersOnBoard[sysId] ?? []).length > 0) return false;
+          const ss = G.map.systems[sysId];
+          return ss && ss.units.some((u) => u.side === side);
+        });
+        if (sources.length > 0) {
+          const fromId = sources[0];
+          const ss = G.map.systems[fromId];
+          const mine = ss.units.filter((u) => u.side === side);
+          // Bring up to 3 units.
+          orders.push({
+            fromSystemId: fromId,
+            unitInstanceIds: mine.slice(0, 3).map((u) => u.instanceId),
+          });
         }
+        const r = phases.activateSystem(G, side, action.leaderId, action.targetSystemId, orders);
+        if (r.ok) return true;
+        return phases.pass(G, side).ok;
       }
-      const r = phases.pass(G, side);
-      return r.ok;
+      return phases.pass(G, side).ok;
     }
     default:
       return false;
@@ -687,8 +1053,12 @@ export function stepOnce(G: GameState, side: Side): boolean {
 function handleOpposeMission(G: GameState, side: Side): boolean {
   const c = G.pendingChoice as Extract<NonNullable<GameState['pendingChoice']>, { kind: 'OpposeMission' }>;
   const skill = c.skill;
-  // Pick the best pool leader: max matching-skill icons; ties broken by lowest
-  // total leader value (don't burn a strong leader as a 0-skill blocker).
+  // Existing opposers' skill dice.
+  const existingSkill = c.existingAtTarget.reduce((s, lid) => {
+    const ld = G.catalog.leaders[lid];
+    return s + ((ld?.skills as Record<string, number>)?.[skill] ?? 0);
+  }, 0);
+  // Find the best pool candidate.
   let best: { lid: LeaderId; m: number; v: number } | null = null;
   for (const lid of c.poolLeaders) {
     const ld = G.catalog.leaders[lid];
@@ -698,14 +1068,52 @@ function handleOpposeMission(G: GameState, side: Side): boolean {
            + ld.tacticValues.space + ld.tacticValues.ground;
     if (!best || m > best.m || (m === best.m && v < best.v)) best = { lid, m, v };
   }
+  // Dice math: ~0.5 successes per die. Mission attacker wins ties (no — they
+  // need strictly more). With portrait bonuses unknown to us here, treat as
+  // expected-equal contest.
+  const attExpected = c.attackerDice * 0.5;
+  const noOpposeExpected = existingSkill * 0.5;
+  // Auto-decline if we already have enough to win without burning a card,
+  // or if no pool candidate exists.
   let sentLeader: LeaderId | null = null;
   if (best) {
-    const haveExisting = c.existingAtTarget.length > 0;
-    if (best.m >= 1) sentLeader = best.lid;
-    else if (!haveExisting && c.attackerDice <= 1) sentLeader = best.lid;
+    const withBestExpected = (existingSkill + best.m) * 0.5;
+    // Send a pool leader if it materially improves the math AND
+    // (a) we currently lose without them, OR
+    // (b) the mission is high-impact for the attacker (captures, key effects).
+    const improves = withBestExpected > noOpposeExpected + 0.4;
+    const losingWithout = noOpposeExpected < attExpected - 0.5;
+    const highImpact = isHighImpactMissionForOpposer(c.missionId, side);
+    if (improves && (losingWithout || highImpact)) sentLeader = best.lid;
+    // Always send if there are NO existing opposers and the attacker has
+    // any dice — a guaranteed loss otherwise.
+    if (!sentLeader && existingSkill === 0 && c.attackerDice >= 1 && best.m >= 1) {
+      sentLeader = best.lid;
+    }
   }
   const r = phases.resolveOpposition(G, sentLeader);
   return r.ok;
+}
+
+/** Missions whose effect on the OPPOSING side is particularly bad; the
+ *  opposer should commit harder to stopping these. */
+function isHighImpactMissionForOpposer(missionId: string, opposerSide: Side): boolean {
+  if (opposerSide === 'Rebel') {
+    // Empire missions the Rebel REALLY wants to stop.
+    return new Set([
+      'capture-rebel-operative', 'collect-bounty', 'detained',
+      'gather-intel', 'research-and-development',
+      'lure-of-the-dark-side', 'carbon-freezing', 'interrogation-droid',
+      'retrieve-the-plans',
+    ]).has(missionId);
+  }
+  // Rebel missions the Empire REALLY wants to stop.
+  return new Set([
+    'daring-rescue', 'for-the-greater-good',
+    'plant-false-lead', 'stolen-plans',
+    'wookie-uprising', 'support-of-mon-calamari',
+    'lead-the-strike-team',
+  ]).has(missionId);
 }
 
 // ---------- Combat tactic-card heuristics --------------------------------
