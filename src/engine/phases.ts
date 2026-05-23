@@ -1642,6 +1642,100 @@ export function resolveRapidMobilizationBasePick(
   return { ok: true };
 }
 
+/** Brilliant Administrator: Empire picks the unit type per resource icon
+ *  at Tarkin's system and queues each pick. Mirror of Temporary Alliance for
+ *  Empire units. */
+export function resolveBrilliantAdministratorBuildPick(
+  G: GameState, typeIds: (string | null)[]
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'BrilliantAdministratorBuildPick') return { ok: false, reason: 'no-pending' };
+  if (typeIds.length !== choice.icons.length) return { ok: false, reason: 'length-mismatch' };
+  const sysDef = G.catalog.systems[choice.systemId];
+  if (!sysDef || !sysDef.buildSlot) return { ok: false, reason: 'no-build-slot' };
+  const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+  for (let i = 0; i < typeIds.length; i++) {
+    const tid = typeIds[i];
+    if (tid === null) continue;
+    const icon = choice.icons[i];
+    const t = G.catalog.unitTypes[tid];
+    if (!t || t.side !== 'Empire') return { ok: false, reason: `bad-type:${tid}` };
+    if (t.theater !== icon.theater) return { ok: false, reason: `theater-mismatch:${tid}` };
+    const need = tierRank[icon.shape] ?? 2;
+    const have = tierRank[t.tier ?? 'square'] ?? 2;
+    if (have > need) return { ok: false, reason: `tier-too-high:${tid}` };
+  }
+  let added = 0;
+  for (let i = 0; i < typeIds.length; i++) {
+    const tid = typeIds[i];
+    if (!tid) continue;
+    M.buildToQueue(G, 'Empire', tid, sysDef.buildSlot, choice.systemId);
+    added++;
+  }
+  log(G, { kind: 'brilliant-administrator-built', side: 'Empire', payload: {
+    systemId: choice.systemId, added, picks: typeIds,
+  }});
+  G.pendingChoice = undefined;
+  return { ok: true };
+}
+
+/** Catch Them By Surprise: Empire moves units from a chosen source to
+ *  Ozzel's system. Transport-validated; source must be adjacent. */
+export function resolveCatchThemBySurpriseMovePick(
+  G: GameState, sourceSystemId: SystemId, unitInstanceIds: string[]
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'CatchThemBySurpriseMovePick') return { ok: false, reason: 'no-pending' };
+  if (!choice.candidateSourceSystemIds.includes(sourceSystemId)) return { ok: false, reason: 'bad-source' };
+  if (unitInstanceIds.length > 0) {
+    const v = validateMoveOrderTransport(G, 'Empire', {
+      fromSystemId: sourceSystemId, unitInstanceIds,
+    });
+    if (!v.ok) return { ok: false, reason: v.reason };
+  }
+  for (const uid of unitInstanceIds) M.moveUnit(G, uid, sourceSystemId, choice.targetSystemId);
+  log(G, { kind: 'catch-them-by-surprise-move', side: 'Empire', payload: {
+    fromSystemId: sourceSystemId, toSystemId: choice.targetSystemId,
+    moved: unitInstanceIds.length, movedIds: unitInstanceIds,
+  }});
+  G.pendingChoice = undefined;
+  return { ok: true };
+}
+
+/** Scouting Mission: Empire relocates up to 4 TIE Fighters from any systems
+ *  to the target system, ignoring transport+adjacency. Triggers combat if
+ *  Rebel ships are present at the destination. */
+export function resolveScoutingMissionTIEPick(
+  G: GameState, unitInstanceIds: string[]
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'ScoutingMissionTIEPick') return { ok: false, reason: 'no-pending' };
+  if (unitInstanceIds.length > choice.maxPicks) return { ok: false, reason: 'too-many-picks' };
+  for (const uid of unitInstanceIds) {
+    if (!choice.candidateUnitIds.includes(uid)) return { ok: false, reason: `not-a-candidate:${uid}` };
+  }
+  // Locate each TIE's source system and move it.
+  for (const uid of unitInstanceIds) {
+    let fromSysId: SystemId | null = null;
+    for (const sid of Object.keys(G.map.systems)) {
+      if (G.map.systems[sid].units.some((u) => u.instanceId === uid)) { fromSysId = sid; break; }
+    }
+    if (!fromSysId) continue;
+    M.moveUnit(G, uid, fromSysId, choice.targetSystemId);
+  }
+  log(G, { kind: 'scouting-mission-relocate', side: 'Empire', payload: {
+    targetSystemId: choice.targetSystemId, moved: unitInstanceIds.length, movedIds: unitInstanceIds,
+  }});
+  G.pendingChoice = undefined;
+  // If Rebel ships present, trigger combat.
+  const ss = G.map.systems[choice.targetSystemId];
+  if (ss && ss.units.some((u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'space')) {
+    beginCombat(G, 'Empire', choice.targetSystemId, choice.targetSystemId);
+    runCombat(G);
+  }
+  return { ok: true };
+}
+
 /** Our Most Desperate Hour: Rebel picks a mission from the deck, pulls it
  *  into hand, and assigns Leia to it. */
 export function resolveOurMostDesperateHourPick(
@@ -3002,10 +3096,23 @@ function applyAssignmentActionCardEffect(
       break;
     }
     case 'brilliant-administrator': {
-      // "Immediately build with it" — grant Empire one free build action at this system.
-      G.actionCardFlags = G.actionCardFlags ?? {};
-      G.actionCardFlags.tarkinFreeBuildSystemId = systemId ?? undefined;
-      log(G, { kind: 'action-card-partial', side: 'Empire', payload: { cardId, note: 'Tarkin placed; "immediately build with it" needs manual build via your Command turn at this system.', systemId } });
+      // "Place Tarkin in an Imperial system and immediately build with it."
+      // Post a single-system build pick scoped to the system's resource icons.
+      if (!systemId) break;
+      const sysDef = G.catalog.systems[systemId];
+      if (!sysDef || !sysDef.buildSlot || sysDef.resources.length === 0) {
+        log(G, { kind: 'action-card-noop', side: 'Empire', payload: { cardId, reason: 'no-build-icons' } });
+        break;
+      }
+      G.pendingChoice = {
+        kind: 'BrilliantAdministratorBuildPick',
+        side: 'Empire',
+        systemId,
+        icons: sysDef.resources.map((r) => ({ theater: r.type, shape: r.shape })),
+      };
+      log(G, { kind: 'choice-request', side: 'Empire', payload: {
+        kind: 'BrilliantAdministratorBuildPick', systemId, iconCount: sysDef.resources.length,
+      }});
       break;
     }
     case 'local-rumors': {
@@ -3029,7 +3136,64 @@ function applyAssignmentActionCardEffect(
       break;
     }
     case 'catch-them-by-surprise': {
-      log(G, { kind: 'action-card-partial', side: 'Empire', payload: { cardId, note: 'Ozzel placed; move a fleet now via the standard activation UI (this card lets you move during Assignment).' } });
+      // "Move a fleet immediately." Ozzel's placement system is the move
+      // destination; the Empire picks a source from an adjacent system
+      // with Empire units, then which units to move.
+      if (!systemId) break;
+      const adj = G.catalog.adjacency[systemId] ?? [];
+      const candidateSourceSystemIds = adj.filter((sid) => {
+        const ss = G.map.systems[sid];
+        return ss && ss.units.some((u) => u.side === 'Empire');
+      });
+      if (candidateSourceSystemIds.length === 0) {
+        log(G, { kind: 'action-card-noop', side: 'Empire', payload: { cardId, reason: 'no-adjacent-empire-source' } });
+        break;
+      }
+      G.pendingChoice = {
+        kind: 'CatchThemBySurpriseMovePick',
+        side: 'Empire',
+        targetSystemId: systemId,
+        candidateSourceSystemIds,
+      };
+      log(G, { kind: 'choice-request', side: 'Empire', payload: {
+        kind: 'CatchThemBySurpriseMovePick', targetSystemId: systemId,
+        sources: candidateSourceSystemIds.length,
+      }});
+      break;
+    }
+    case 'scouting-mission': {
+      // "Move up to 4 TIE Fighters from any system(s) to this system,
+      //  ignoring transport restrictions and adjacency. If there are
+      //  Rebel ships in this system, resolve a combat."
+      if (!systemId) break;
+      const candidateUnitIds: string[] = [];
+      for (const sid of Object.keys(G.map.systems)) {
+        if (sid === systemId) continue;
+        for (const u of G.map.systems[sid].units) {
+          if (u.side === 'Empire' && u.typeId === 'tie-fighter') candidateUnitIds.push(u.instanceId);
+        }
+      }
+      if (candidateUnitIds.length === 0) {
+        // No TIEs elsewhere — still trigger combat if Rebel ships present.
+        const ss = G.map.systems[systemId];
+        if (ss && ss.units.some((u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'space')) {
+          beginCombat(G, 'Empire', systemId, systemId);
+          runCombat(G);
+        }
+        log(G, { kind: 'action-card-noop', side: 'Empire', payload: { cardId, reason: 'no-tie-fighters-elsewhere' } });
+        break;
+      }
+      G.pendingChoice = {
+        kind: 'ScoutingMissionTIEPick',
+        side: 'Empire',
+        targetSystemId: systemId,
+        candidateUnitIds,
+        maxPicks: 4,
+      };
+      log(G, { kind: 'choice-request', side: 'Empire', payload: {
+        kind: 'ScoutingMissionTIEPick', targetSystemId: systemId,
+        candidates: candidateUnitIds.length,
+      }});
       break;
     }
     case 'proceeding-as-planned': {

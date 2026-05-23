@@ -345,6 +345,34 @@ export type ChoiceRequest =
       // Our Most Desperate Hour (Rebel action card, Leia): Rebel searches
       // their full mission deck for any mission, takes it into hand, and
       // assigns Leia to it. RAW info-leak: the search reveals the deck.
+      // Brilliant Administrator (Empire/Tarkin): immediately build at Tarkin's
+      // system using its resource icons. Mirror of TemporaryAllianceBuildPick
+      // for Empire units.
+      kind: 'BrilliantAdministratorBuildPick';
+      side: Side; // 'Empire'
+      systemId: SystemId;
+      icons: { theater: 'space' | 'ground'; shape: 'triangle' | 'circle' | 'square' }[];
+    }
+  | {
+      // Catch Them By Surprise (Empire/Ozzel): immediate fleet move during
+      // Assignment. Pick a source system adjacent to Ozzel's system, pick
+      // units. Transport-validated on submit.
+      kind: 'CatchThemBySurpriseMovePick';
+      side: Side; // 'Empire'
+      targetSystemId: SystemId; // Ozzel's placement system
+      candidateSourceSystemIds: SystemId[]; // adjacent systems with Empire units
+    }
+  | {
+      // Scouting Mission (Empire): pick up to 4 TIE Fighters from any
+      // systems to relocate to the leader's system. Ignores transport &
+      // adjacency. If Rebel ships present at the destination, combat fires.
+      kind: 'ScoutingMissionTIEPick';
+      side: Side; // 'Empire'
+      targetSystemId: SystemId;
+      candidateUnitIds: UnitInstanceId[]; // all TIE Fighters anywhere
+      maxPicks: 4;
+    }
+  | {
       kind: 'OurMostDesperateHourPick';
       side: Side; // 'Rebel'
       candidates: string[]; // missionIds in the Rebel's deck

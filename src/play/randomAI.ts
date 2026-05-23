@@ -153,6 +153,54 @@ export function stepOnce(G: GameState, side: Side): boolean {
     }
     return phases.resolveRetrieveThePlansPick(G, best).ok;
   }
+  // Brilliant Administrator: default to highest-tier-legal per icon (mirror of TA AI).
+  if (G.pendingChoice && G.pendingChoice.kind === 'BrilliantAdministratorBuildPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+    const pickDefault = (icon: { theater: 'space' | 'ground'; shape: 'triangle' | 'circle' | 'square' }): string | null => {
+      const need = tierRank[icon.shape] ?? 2;
+      const legal = Object.values(G.catalog.unitTypes)
+        .filter((t) => t.side === 'Empire' && t.theater === icon.theater
+          && (tierRank[t.tier ?? 'square'] ?? 2) <= need && t.class !== 'structure')
+        .map((t) => t.id);
+      return legal[legal.length - 1] ?? null;
+    };
+    return phases.resolveBrilliantAdministratorBuildPick(G, c.icons.map(pickDefault)).ok;
+  }
+  // Catch Them By Surprise: pick first source, move all Empire units there
+  // that can travel (greedy-pack).
+  if (G.pendingChoice && G.pendingChoice.kind === 'CatchThemBySurpriseMovePick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const src = c.candidateSourceSystemIds[0];
+    if (!src) return phases.resolveCatchThemBySurpriseMovePick(G, '', []).ok;
+    const units = G.map.systems[src].units.filter((u) => u.side === 'Empire');
+    // Use the same greedy-pack heuristic.
+    const capShipIds: string[] = [];
+    const fighterIds: string[] = [];
+    const groundIds: string[] = [];
+    for (const u of units) {
+      const t = G.catalog.unitTypes[u.typeId];
+      if (!t || t.transport.immobile) continue;
+      if (t.transport.capacity > 0) capShipIds.push(u.instanceId);
+      else if (t.transport.restriction) fighterIds.push(u.instanceId);
+      else if (t.theater === 'ground' && t.class !== 'structure') groundIds.push(u.instanceId);
+    }
+    let cap = capShipIds.reduce((s, uid) => {
+      const u = units.find((x) => x.instanceId === uid);
+      return s + (u ? (G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0) : 0);
+    }, 0);
+    const picks = [...capShipIds];
+    for (const uid of [...fighterIds, ...groundIds]) {
+      if (cap <= 0) break;
+      picks.push(uid); cap--;
+    }
+    return phases.resolveCatchThemBySurpriseMovePick(G, src, picks).ok;
+  }
+  // Scouting Mission: relocate up to 4 TIEs from candidates.
+  if (G.pendingChoice && G.pendingChoice.kind === 'ScoutingMissionTIEPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    return phases.resolveScoutingMissionTIEPick(G, c.candidateUnitIds.slice(0, c.maxPicks)).ok;
+  }
   // Our Most Desperate Hour: pick a random mission from the deck.
   if (G.pendingChoice && G.pendingChoice.kind === 'OurMostDesperateHourPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;

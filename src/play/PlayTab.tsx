@@ -902,6 +902,42 @@ export default function PlayTab() {
 
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'BrilliantAdministratorBuildPick'
+        && G.pendingChoice.side === humanSide && (
+        <BrilliantAdministratorBuildPickModal G={G} choice={G.pendingChoice}
+          onPick={(picks) => {
+            const r = phases.resolveBrilliantAdministratorBuildPick(G, picks);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'CatchThemBySurpriseMovePick'
+        && G.pendingChoice.side === humanSide && (
+        <CatchThemBySurpriseMovePickModal G={G} choice={G.pendingChoice}
+          onPick={(srcId, ids) => {
+            const r = phases.resolveCatchThemBySurpriseMovePick(G, srcId, ids);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'ScoutingMissionTIEPick'
+        && G.pendingChoice.side === humanSide && (
+        <ScoutingMissionTIEPickModal G={G} choice={G.pendingChoice}
+          onPick={(ids) => {
+            const r = phases.resolveScoutingMissionTIEPick(G, ids);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'OurMostDesperateHourPick'
         && G.pendingChoice.side === humanSide && (
         <MissionListPickModal G={G} choice={G.pendingChoice}
@@ -6126,6 +6162,228 @@ function DetainedTargetPickModal({
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function BrilliantAdministratorBuildPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'BrilliantAdministratorBuildPick'; side: Side; systemId: string; icons: { theater: 'space' | 'ground'; shape: 'triangle' | 'circle' | 'square' }[] };
+  onPick: (picks: (string | null)[]) => void;
+}) {
+  const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+  const legalForIcon = (icon: { theater: string; shape: string }): string[] => {
+    const need = tierRank[icon.shape] ?? 2;
+    return Object.values(G.catalog.unitTypes)
+      .filter((t) => t.side === 'Empire'
+        && t.theater === icon.theater
+        && (tierRank[t.tier ?? 'square'] ?? 2) <= need
+        && t.class !== 'structure')
+      .map((t) => t.id);
+  };
+  const defaults = choice.icons.map((icon) => {
+    const opts = legalForIcon(icon);
+    return opts[opts.length - 1] ?? null;
+  });
+  const [picks, setPicks] = useState<(string | null)[]>(defaults);
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Brilliant Administrator — build at {sysName}</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          Tarkin grants an immediate build at this system. One unit per resource icon.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+          {choice.icons.map((icon, i) => {
+            const opts = legalForIcon(icon);
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                <span style={{ color: '#aaa', minWidth: 110 }}>{icon.theater} · {icon.shape}</span>
+                <select
+                  value={picks[i] ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value || null;
+                    setPicks((prev) => { const next = [...prev]; next[i] = v; return next; });
+                  }}
+                  style={{ background: '#0c0d10', color: '#e8e8ea', border: '1px solid #3a3d44', padding: '4px 8px', minWidth: 200 }}
+                >
+                  <option value="">— skip this icon —</option>
+                  {opts.map((tid) => (
+                    <option key={tid} value={tid}>{G.catalog.unitTypes[tid]?.name ?? tid}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+        </div>
+        <button className="tab-button active" onClick={() => onPick(picks)}>
+          Add to build queue
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function CatchThemBySurpriseMovePickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { targetSystemId: string; candidateSourceSystemIds: string[] };
+  onPick: (sourceSystemId: string, ids: string[]) => void;
+}) {
+  const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  const [srcId, setSrcId] = useState<string | null>(null);
+  const [picks, setPicks] = useState<Set<string>>(new Set());
+  const sourceUnits = srcId
+    ? G.map.systems[srcId].units.filter((u) => u.side === 'Empire')
+    : [];
+  const toggle = (uid: string) => {
+    const next = new Set(picks);
+    if (next.has(uid)) next.delete(uid); else next.add(uid);
+    setPicks(next);
+  };
+  let cap = 0, riders = 0;
+  for (const uid of picks) {
+    const u = sourceUnits.find((x) => x.instanceId === uid);
+    if (!u) continue;
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t) continue;
+    if (t.transport.capacity > 0) cap += t.transport.capacity;
+    if (t.transport.restriction || (t.theater === 'ground' && t.class !== 'structure')) riders++;
+  }
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 620, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Catch Them By Surprise — move fleet to {targetName}</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 8 }}>
+          Ozzel's immediate fleet move. Pick an adjacent source system, then units to bring. Transport rules apply.
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <select value={srcId ?? ''}
+            onChange={(e) => { setSrcId(e.target.value || null); setPicks(new Set()); }}
+            style={{ background: '#0c0d10', color: '#e8e8ea', border: '1px solid #3a3d44', padding: '4px 8px' }}
+          >
+            <option value="">— pick source system —</option>
+            {choice.candidateSourceSystemIds.map((sid) => (
+              <option key={sid} value={sid}>{G.catalog.systems[sid]?.name ?? sid}</option>
+            ))}
+          </select>
+        </div>
+        {srcId && (
+          <>
+            <div style={{ color: cap >= riders ? '#80dc78' : '#ff8866', fontSize: 12, marginBottom: 8 }}>
+              Capacity: {cap} · Riders: {riders} {cap >= riders ? '' : '(insufficient transport)'}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+              {sourceUnits.map((u) => {
+                const t = G.catalog.unitTypes[u.typeId];
+                const on = picks.has(u.instanceId);
+                return (
+                  <label key={u.instanceId} style={{
+                    display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px',
+                    border: `1px solid ${on ? '#80dc78' : '#2a2d34'}`, borderRadius: 3, fontSize: 12,
+                  }}>
+                    <input type="checkbox" checked={on} onChange={() => toggle(u.instanceId)} />
+                    {t?.name ?? u.typeId}
+                    {t && t.transport.capacity > 0 && <span style={{ color: '#80dc78', fontSize: 10 }}>+{t.transport.capacity} cap</span>}
+                    {t && t.transport.restriction && <span style={{ color: '#ffaaaa', fontSize: 10 }}>needs ride</span>}
+                    {t && t.theater === 'ground' && t.class !== 'structure' && <span style={{ color: '#ffaaaa', fontSize: 10 }}>ground</span>}
+                  </label>
+                );
+              })}
+            </div>
+          </>
+        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="tab-button active" disabled={!srcId}
+            onClick={() => srcId && onPick(srcId, [...picks])}
+          >Move {picks.size} unit{picks.size === 1 ? '' : 's'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScoutingMissionTIEPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { targetSystemId: string; candidateUnitIds: string[]; maxPicks: number };
+  onPick: (ids: string[]) => void;
+}) {
+  const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  const [picks, setPicks] = useState<Set<string>>(new Set());
+  // Map TIE Fighter instance → source system name for display.
+  const tieInfo = choice.candidateUnitIds.map((uid) => {
+    for (const sid of Object.keys(G.map.systems)) {
+      if (G.map.systems[sid].units.some((u) => u.instanceId === uid)) {
+        return { uid, sysId: sid, sysName: G.catalog.systems[sid]?.name ?? sid };
+      }
+    }
+    return { uid, sysId: '?', sysName: '?' };
+  });
+  const toggle = (uid: string) => {
+    const next = new Set(picks);
+    if (next.has(uid)) next.delete(uid);
+    else if (next.size < choice.maxPicks) next.add(uid);
+    setPicks(next);
+  };
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 540, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Scouting Mission — relocate TIE Fighters to {targetName}</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 8 }}>
+          Pick up to {choice.maxPicks} TIE Fighters from any systems. Ignores transport + adjacency.
+          If Rebel ships are at {targetName}, combat resolves automatically.
+        </div>
+        <div style={{ color: '#80dc78', fontSize: 12, marginBottom: 8 }}>
+          {picks.size} / {choice.maxPicks} selected
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {tieInfo.map(({ uid, sysName }) => {
+            const on = picks.has(uid);
+            const atCap = !on && picks.size >= choice.maxPicks;
+            return (
+              <label key={uid} style={{
+                display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px',
+                border: `1px solid ${on ? '#80dc78' : '#2a2d34'}`, borderRadius: 3, fontSize: 12,
+                opacity: atCap ? 0.4 : 1,
+              }}>
+                <input type="checkbox" checked={on} onChange={() => toggle(uid)} disabled={atCap} />
+                TIE Fighter
+                <span style={{ color: '#aaa', fontSize: 10 }}>from {sysName}</span>
+              </label>
+            );
+          })}
+        </div>
+        <button className="tab-button active" onClick={() => onPick([...picks])}>
+          Relocate {picks.size} TIE{picks.size === 1 ? '' : 's'}
+        </button>
       </div>
     </div>
   );
