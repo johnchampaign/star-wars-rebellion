@@ -348,6 +348,25 @@ export type ChoiceRequest =
       // Brilliant Administrator (Empire/Tarkin): immediately build at Tarkin's
       // system using its resource icons. Mirror of TemporaryAllianceBuildPick
       // for Empire units.
+      // C-3PO (Human-Cyborg Relations ring): after a diplomacy mission
+      // fails, the Rebel may discard the C-3PO ring to convert the failure
+      // into success. Post-finalize trigger.
+      kind: 'C3POOffer';
+      side: Side; // 'Rebel'
+      missionId: string;
+      targetSystemId: SystemId;
+    }
+  | {
+      // Millennium Falcon ring: after a Rebel mission success at a system
+      // containing captured leaders, may discard the Falcon ring to rescue
+      // one of them. Post-finalize trigger.
+      kind: 'FalconOffer';
+      side: Side; // 'Rebel'
+      missionId: string;
+      targetSystemId: SystemId;
+      candidates: LeaderId[]; // captured-leader IDs at the target system
+    }
+  | {
       kind: 'BrilliantAdministratorBuildPick';
       side: Side; // 'Empire'
       systemId: SystemId;

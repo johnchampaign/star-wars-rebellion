@@ -902,6 +902,30 @@ export default function PlayTab() {
 
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'C3POOffer'
+        && G.pendingChoice.side === humanSide && (
+        <C3POOfferModal G={G} choice={G.pendingChoice}
+          onAccept={(accept) => {
+            const r = phases.resolveC3POOffer(G, accept);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'FalconOffer'
+        && G.pendingChoice.side === humanSide && (
+        <FalconOfferModal G={G} choice={G.pendingChoice}
+          onPick={(lid) => {
+            const r = phases.resolveFalconOffer(G, lid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'BrilliantAdministratorBuildPick'
         && G.pendingChoice.side === humanSide && (
         <BrilliantAdministratorBuildPickModal G={G} choice={G.pendingChoice}
@@ -6162,6 +6186,83 @@ function DetainedTargetPickModal({
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function C3POOfferModal({
+  G, choice, onAccept,
+}: {
+  G: GameState;
+  choice: { kind: 'C3POOffer'; missionId: string; targetSystemId: string };
+  onAccept: (accept: boolean) => void;
+}) {
+  const m = G.catalog.missions[choice.missionId];
+  const sysName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 480, width: '92%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>C-3PO — convert failure to success?</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+          Your diplomacy mission <b>{m?.name ?? choice.missionId}</b> at <b>{sysName}</b> just failed.
+          You can discard the C-3PO ring to flip it to a success.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="tab-button active" onClick={() => onAccept(true)} style={{ fontWeight: 700 }}>
+            Discard C-3PO → succeed
+          </button>
+          <button className="tab-button" onClick={() => onAccept(false)}>
+            Keep C-3PO, accept failure
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FalconOfferModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'FalconOffer'; missionId: string; targetSystemId: string; candidates: string[] };
+  onPick: (leaderId: string | null) => void;
+}) {
+  const sysName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Millennium Falcon — rescue a captured leader?</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          Mission succeeded at <b>{sysName}</b>. Discard the Falcon ring to rescue one of these captured leaders.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {choice.candidates.map((lid) => {
+            const l = G.catalog.leaders[lid];
+            return (
+              <button key={lid} className="tab-button" onClick={() => onPick(lid)} style={{ textAlign: 'left' }}>
+                Rescue {l?.name ?? lid}
+              </button>
+            );
+          })}
+        </div>
+        <button className="tab-button" onClick={() => onPick(null)}>
+          Keep Falcon, skip rescue
+        </button>
       </div>
     </div>
   );

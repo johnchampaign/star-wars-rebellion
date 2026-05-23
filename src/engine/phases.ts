@@ -701,6 +701,7 @@ export function revealMission(
   }
 
   // (stage was already 'effect' for non-attempt missions — fall through.)
+  if (maybePostMissionRingTrigger(G, pending)) return { ok: true };
   if (pending.stage === 'effect') {
     runMissionEffect(G, side, missionId, targetSystemId, assigned.leaderIds, targetLeaderId);
     if (G.pendingChoice) return { ok: true };
@@ -833,6 +834,7 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
   }
 
   // Continue mission resolution.
+  if (maybePostMissionRingTrigger(G, pm)) return { ok: true };
   if (pm.stage === 'effect') {
     runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId);
     if (G.pendingChoice) return { ok: true }; // sub-choice triggered (e.g. Infiltration)
@@ -1002,6 +1004,7 @@ function continueMissionFromStash(G: GameState, pm: MissionResolution): void {
     stash.portrait, stash.oppLeaderIds,
   );
   pm.r2d2Pending = undefined;
+  if (maybePostMissionRingTrigger(G, pm)) return;
   if (pm.stage === 'effect') {
     runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId);
     if (G.pendingChoice) return;
@@ -1103,6 +1106,7 @@ export function resolveR2D2MissionFlip(G: GameState, flipIndex: number | null): 
     stash.portrait, stash.oppLeaderIds,
   );
   pm.r2d2Pending = undefined;
+  if (maybePostMissionRingTrigger(G, pm)) return { ok: true };
   if (pm.stage === 'effect') {
     runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId);
     if (G.pendingChoice) return { ok: true };
@@ -1639,6 +1643,121 @@ export function resolveRapidMobilizationBasePick(
   }});
   G.pendingChoice = undefined;
   finishRapidMobilization(G);
+  return { ok: true };
+}
+
+/** Post-finalize ring triggers. Called after finalizeMissionRoll sets
+ *  pm.stage. Returns true if a choice was posted (caller pauses; the choice
+ *  resolver will continue the mission flow). C-3PO and Falcon are mutually
+ *  exclusive in that the stage gates them: C-3PO only on 'failed' diplomacy,
+ *  Falcon only on 'effect' (success). */
+function maybePostMissionRingTrigger(G: GameState, pm: MissionResolution): boolean {
+  if (pm.resolverSide !== 'Rebel') return false;
+  // C-3PO: failed diplomacy.
+  if (pm.stage === 'failed') {
+    const card = G.catalog.missions[pm.missionId];
+    if (card?.skill === 'diplomacy' && G.rebel.actionHand.includes('human-cyborg-relations')) {
+      G.pendingChoice = {
+        kind: 'C3POOffer',
+        side: 'Rebel',
+        missionId: pm.missionId,
+        targetSystemId: pm.targetSystemId,
+      };
+      log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+        kind: 'C3POOffer', missionId: pm.missionId, targetSystemId: pm.targetSystemId,
+      }});
+      return true;
+    }
+  }
+  // Falcon: success at a system with captured leaders, Han or Chewie among
+  // the resolvers, and the Falcon card in hand.
+  if (pm.stage === 'effect') {
+    const hasFalcon = G.rebel.actionHand.includes('the-milleninium-falcon');
+    const hanOrChewie = (pm.leaderIds as LeaderId[]).some((l) => l === 'han-solo' || l === 'chewbacca');
+    const candidates = (G.empire.capturedLeaders ?? [])
+      .filter((c) => c.systemId === pm.targetSystemId)
+      .map((c) => c.leaderId);
+    if (hasFalcon && hanOrChewie && candidates.length > 0) {
+      G.pendingChoice = {
+        kind: 'FalconOffer',
+        side: 'Rebel',
+        missionId: pm.missionId,
+        targetSystemId: pm.targetSystemId,
+        candidates,
+      };
+      log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+        kind: 'FalconOffer', missionId: pm.missionId, candidates: candidates.length,
+      }});
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Shared continuation: after a ring-offer resolves (accepted or skipped),
+ *  process pm.stage just like the original call sites do. */
+function continueAfterRingTrigger(G: GameState, pm: MissionResolution): void {
+  if (pm.stage === 'effect') {
+    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId);
+    if (G.pendingChoice) return;
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    G.pendingMission = undefined;
+    if (!G.isGameOver) advanceCommandTurn(G);
+  } else if (pm.stage === 'failed') {
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    G.pendingMission = undefined;
+    if (!G.isGameOver) advanceCommandTurn(G);
+  }
+}
+
+/** C-3PO: Rebel chooses whether to discard the C-3PO ring to convert a
+ *  failed diplomacy mission to a success. */
+export function resolveC3POOffer(G: GameState, accept: boolean): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'C3POOffer') return { ok: false, reason: 'no-pending' };
+  const pm = G.pendingMission;
+  if (!pm) return { ok: false, reason: 'no-mission' };
+  if (accept) {
+    const i = G.rebel.actionHand.indexOf('human-cyborg-relations');
+    if (i < 0) return { ok: false, reason: 'card-not-in-hand' };
+    G.rebel.actionHand.splice(i, 1);
+    G.rebel.actionDiscard.push('human-cyborg-relations');
+    pm.stage = 'effect';
+    log(G, { kind: 'c3po-applied', side: 'Rebel', payload: {
+      missionId: pm.missionId, targetSystemId: pm.targetSystemId,
+      explanation: 'C-3PO ring discarded — diplomacy failure converted to success.',
+    }});
+  } else {
+    log(G, { kind: 'c3po-skipped', side: 'Rebel', payload: { missionId: pm.missionId } });
+  }
+  G.pendingChoice = undefined;
+  continueAfterRingTrigger(G, pm);
+  return { ok: true };
+}
+
+/** Millennium Falcon: Rebel chooses to discard the Falcon ring and rescue
+ *  one captured leader at the target system (or skip). */
+export function resolveFalconOffer(G: GameState, leaderId: LeaderId | null): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'FalconOffer') return { ok: false, reason: 'no-pending' };
+  const pm = G.pendingMission;
+  if (!pm) return { ok: false, reason: 'no-mission' };
+  if (leaderId !== null) {
+    if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'bad-leader' };
+    const i = G.rebel.actionHand.indexOf('the-milleninium-falcon');
+    if (i < 0) return { ok: false, reason: 'card-not-in-hand' };
+    G.rebel.actionHand.splice(i, 1);
+    G.rebel.actionDiscard.push('the-milleninium-falcon');
+    M.rescueLeader(G, leaderId, 'millennium-falcon');
+    log(G, { kind: 'falcon-applied', side: 'Rebel', payload: {
+      missionId: pm.missionId, targetSystemId: pm.targetSystemId, leaderId,
+      explanation: `Millennium Falcon ring discarded — rescued ${leaderId} from ${pm.targetSystemId}.`,
+    }});
+  } else {
+    log(G, { kind: 'falcon-skipped', side: 'Rebel', payload: { missionId: pm.missionId } });
+  }
+  G.pendingChoice = undefined;
+  continueAfterRingTrigger(G, pm);
   return { ok: true };
 }
 

@@ -153,6 +153,25 @@ export function stepOnce(G: GameState, side: Side): boolean {
     }
     return phases.resolveRetrieveThePlansPick(G, best).ok;
   }
+  // C-3PO offer: always accept (converts failure → success; no downside).
+  if (G.pendingChoice && G.pendingChoice.kind === 'C3POOffer' && G.pendingChoice.side === side) {
+    return phases.resolveC3POOffer(G, true).ok;
+  }
+  // Falcon offer: always rescue the highest-value captured leader.
+  if (G.pendingChoice && G.pendingChoice.kind === 'FalconOffer' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    // Pick whichever has the highest combined skill total — a rough proxy.
+    let best = c.candidates[0];
+    let bestScore = -1;
+    for (const lid of c.candidates) {
+      const l = G.catalog.leaders[lid];
+      if (!l) continue;
+      const sk = l.skills;
+      const score = (sk.diplomacy ?? 0) + (sk.intel ?? 0) + (sk.specOps ?? 0) + (sk.logistics ?? 0);
+      if (score > bestScore) { best = lid; bestScore = score; }
+    }
+    return phases.resolveFalconOffer(G, best).ok;
+  }
   // Brilliant Administrator: default to highest-tier-legal per icon (mirror of TA AI).
   if (G.pendingChoice && G.pendingChoice.kind === 'BrilliantAdministratorBuildPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
