@@ -519,8 +519,10 @@ const interrogation: EffectHandler = (G, _ctx) => {
 };
 
 /** "Capture that leader. Then move both that leader and this leader to the
- *  closest system that contains an Imperial unit." Auto: capture; move skipped
- *  (closest-system + leader-relocation needs more infra). */
+ *  closest system that contains an Imperial unit." BFS over adjacency from
+ *  the mission system; ties broken by first-discovered order (deterministic
+ *  via Object.keys iteration order on the adjacency list). If the mission
+ *  system itself has Imperial units, distance=0 and nothing moves. */
 const collectBounty: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
@@ -532,10 +534,59 @@ const collectBounty: EffectHandler = (G, ctx) => {
     const v = leaderValue(G, lid);
     if (!best || v > best.v) best = { lid, v };
   }
-  if (best) M.captureLeader(G, best.lid, 'captured');
-  notImplemented(G, 'mission:collect-bounty-move',
-    'Collect Bounty — relocation skipped',
-    'Captured the leader. Relocation of attacker+captive to the closest Imperial-occupied system is not implemented yet.');
+  if (!best) return true;
+  const capturedId = best.lid;
+  M.captureLeader(G, capturedId, 'captured');
+
+  // BFS from sysId for nearest system containing an Imperial unit.
+  const hasImperial = (id: string): boolean => {
+    const ss = G.map.systems[id];
+    return !!ss && ss.units.some((u) => u.side === 'Empire');
+  };
+  let dest: string | null = null;
+  const seen = new Set<string>([sysId]);
+  const queue: string[] = [sysId];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    if (hasImperial(cur)) { dest = cur; break; }
+    const nbrs = G.catalog.adjacency[cur] ?? [];
+    for (const n of nbrs) {
+      if (!seen.has(n)) { seen.add(n); queue.push(n); }
+    }
+  }
+  if (!dest) {
+    log(G, { kind: 'collect-bounty-no-imperial-system', side: 'Empire',
+      payload: { sourceSystemId: sysId, capturedLeaderId: capturedId } });
+    return true;
+  }
+
+  // Update captured leader's recorded location.
+  if (G.empire.capturedLeaders) {
+    const cap = G.empire.capturedLeaders.find((c) => c.leaderId === capturedId);
+    if (cap) cap.systemId = dest;
+  }
+
+  // Move the bounty-hunter leader(s) (those assigned to the mission) to dest.
+  const moved: string[] = [];
+  for (const lid of ctx.leaderIds) {
+    const fromList = G.empire.leadersOnBoard[sysId];
+    if (fromList) {
+      const i = fromList.indexOf(lid);
+      if (i >= 0) {
+        fromList.splice(i, 1);
+        if (fromList.length === 0) delete G.empire.leadersOnBoard[sysId];
+        if (!G.empire.leadersOnBoard[dest]) G.empire.leadersOnBoard[dest] = [];
+        G.empire.leadersOnBoard[dest].push(lid);
+        moved.push(lid);
+      }
+    }
+  }
+  log(G, { kind: 'collect-bounty-relocate', side: 'Empire', payload: {
+    fromSystemId: sysId, toSystemId: dest, capturedLeaderId: capturedId,
+    bountyHunters: moved,
+  }});
+  // Captured leader landing on a system that itself has no Imperial units
+  // would auto-rescue — but BFS guarantees `dest` has Imperials, so we're safe.
   return true;
 };
 
