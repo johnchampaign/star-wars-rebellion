@@ -668,6 +668,15 @@ const establishTradeRelations: EffectHandler = (G, ctx) => {
   const sysDef = G.catalog.systems[sysId];
   const ss = G.map.systems[sysId];
   if (!sysDef || !ss) return true;
+  // RAW: a sabotage marker prevents building OR deploying units at this
+  // system. Skip the build step here if sabotaged — loyalty gain still applies.
+  if (ss.sabotage) {
+    log(G, { kind: 'establish-trade-relations-built', side: 'Rebel', payload: {
+      systemId: sysId, slot: sysDef.buildSlot ?? 1, added: [],
+      note: 'Sabotage marker present — no units added to the build queue.',
+    }});
+    return true;
+  }
   const slot = (sysDef.buildSlot ?? 1) as 1 | 2 | 3;
   const added: string[] = [];
   for (const icon of sysDef.resources) {

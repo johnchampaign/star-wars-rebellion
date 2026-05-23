@@ -3471,6 +3471,11 @@ function applyAssignmentActionCardEffect(
         log(G, { kind: 'action-card-noop', side, payload: { cardId, reason: 'no-build-icons' } });
         break;
       }
+      // Sabotage blocks all building at this system (RAW).
+      if (G.map.systems[systemId]?.sabotage) {
+        log(G, { kind: 'action-card-noop', side, payload: { cardId, reason: 'sabotage-blocks-build' } });
+        break;
+      }
       G.pendingChoice = {
         kind: 'TemporaryAllianceBuildPick',
         side: 'Rebel',
@@ -3593,6 +3598,11 @@ function applyAssignmentActionCardEffect(
       const sysDef = G.catalog.systems[systemId];
       if (!sysDef || !sysDef.buildSlot || sysDef.resources.length === 0) {
         log(G, { kind: 'action-card-noop', side: 'Empire', payload: { cardId, reason: 'no-build-icons' } });
+        break;
+      }
+      // Sabotage blocks all building at this system (RAW).
+      if (G.map.systems[systemId]?.sabotage) {
+        log(G, { kind: 'action-card-noop', side: 'Empire', payload: { cardId, reason: 'sabotage-blocks-build' } });
         break;
       }
       G.pendingChoice = {
