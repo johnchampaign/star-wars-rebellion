@@ -87,6 +87,20 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'DetainedTargetPick':       return pc.side === side;
     case 'RetrieveThePlansPick':     return pc.side === side;
     case 'InterrogationDroidDecoyPick': return pc.side === side;
+    // Response-card offers fired mid-mission-reveal. These post a choice to
+    // the OPPOSING side during the active side's turn — without listing them
+    // here, runAILoop's gate sees "not my currentPlayer + don't owe a choice"
+    // and exits, leaving the offer orphaned. The originating mission's
+    // continuation chain then never runs and the mission silently vanishes.
+    case 'UndercoverOffer':          return pc.side === side;
+    case 'BlindsideOffer':           return pc.side === side;
+    case 'WookieGuardianOffer':      return pc.side === side;
+    case 'NobleSacrificeOffer':      return pc.side === side;
+    case 'ItIsYourDestinyOffer':     return pc.side === side;
+    case 'OneInAMillionOffer':       return pc.side === side;
+    case 'C3POOffer':                return pc.side === side;
+    case 'FalconOffer':              return pc.side === side;
+    case 'SonOfSkywalkerOffer':      return pc.side === side;
     // Other ChoiceRequest kinds (system / leader picks, etc.) are
     // human-initiated and shouldn't auto-fire the AI loop.
     default:                         return false;
