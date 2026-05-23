@@ -43,6 +43,13 @@ export function stepOnce(G: GameState, side: Side): boolean {
     return handleCombatAssignDamage(G);
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'YodaReroll' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    if (c.context === 'mission') {
+      // AI: always reroll the first blank (it's a free upgrade — same
+      // policy as the auto-apply we replaced).
+      const idx = c.blankIndices[0] ?? null;
+      return phases.resolveYodaMissionReroll(G, idx).ok;
+    }
     return handleYodaReroll(G);
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'R2D2Flip' && G.pendingChoice.side === side) {

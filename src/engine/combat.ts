@@ -383,7 +383,8 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
         pa.phase = 'awaitingYodaReroll';
         G.pendingChoice = {
           kind: 'YodaReroll',
-          side: 'Rebel', theater: pa.theater, systemId: c.systemId,
+          side: 'Rebel', context: 'combat',
+          theater: pa.theater, systemId: c.systemId,
           blankIndices: blanks, holderLeaderId: yodaHolder,
         };
         log(G, { kind: 'choice-request', side: 'Rebel', payload: {

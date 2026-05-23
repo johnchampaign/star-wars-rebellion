@@ -289,7 +289,7 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
         {pc?.kind === 'CombatAssignDamage' && isHumanDecision && (
           <AssignDamagePanel G={G} choice={pc} c={c} onPersist={onPersist} />
         )}
-        {pc?.kind === 'YodaReroll' && isHumanDecision && (
+        {pc?.kind === 'YodaReroll' && pc.context === 'combat' && isHumanDecision && (
           <YodaRerollPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'R2D2Flip' && pc.context === 'combat' && isHumanDecision && (

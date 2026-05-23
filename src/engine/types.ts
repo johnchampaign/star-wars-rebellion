@@ -457,11 +457,18 @@ export type ChoiceRequest =
       // but before tactic-card windows.
       kind: 'YodaReroll';
       side: Side;        // always 'Rebel' but kept for consistency
-      theater: Theater;
+      // 'combat' = re-roll a blank in pendingCombat.pendingAttack.dice
+      // 'mission' = re-roll a blank in the stashed mission roll
+      context: 'combat' | 'mission';
+      // Combat-only: which theater (for the panel header).
+      theater?: Theater;
       systemId: SystemId;
-      // Indices into the in-flight pendingAttack.dice that are still blank.
+      // Indices into the relevant faces array that are blank.
       blankIndices: number[];
       holderLeaderId: LeaderId;
+      // Mission-only: snapshot of the roll's faces (for display in the
+      // panel). The resolver re-reads them from pm.r2d2Pending stash.
+      missionFaces?: string[];
     }
   | {
       // RR p.5 "Combat Actions": each special die produced by an attacker's

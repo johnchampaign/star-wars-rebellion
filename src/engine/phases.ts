@@ -35,7 +35,7 @@ function missionDieScore(face: string): number {
  *    Blank = 0.
  *  Per RR p.6 Component Limitations: 5 red + 5 black max per mission. */
 function rollMissionDice(
-  G: GameState, n: number, side: Side, systemId: SystemId,
+  G: GameState, n: number, _side: Side, _systemId: SystemId,
 ): { successes: number; faces: string[]; colors: ('red' | 'black')[] } {
   const red = Math.min(n, 5);
   const black = Math.min(Math.max(0, n - 5), 5);
@@ -49,9 +49,9 @@ function rollMissionDice(
     const r = rollDie(G.rng, 'black');
     faces.push(r.face); colors.push('black');
   }
-  // Yoda ring: if this side has the Yoda holder at the system and hasn't
-  // used the reroll this round, reroll one blank die.
-  tryYodaReroll(G, side, systemId, faces, colors);
+  // Yoda ring is no longer auto-applied here. Mission-side Yoda is offered
+  // as a player choice in resolveOpposition (mirrors the combat-side
+  // YodaReroll pause). Combat-side Yoda is handled in combat.ts.
   let successes = 0;
   for (const f of faces) successes += missionDieScore(f);
   return { successes, faces, colors };
@@ -790,45 +790,42 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
     // AND the Rebel holds R2-D2 AND that Empire roll has a non-blank die,
     // stash the partial state and post the choice. The resolver applies
     // the flip and re-enters this function to finalise.
-    const empireRoll =
-      pm.resolverSide === 'Empire' ? { faces: att.faces, colors: att.colors, who: 'attacker' as const } :
-      c.opposerSide === 'Empire' ? { faces: opp.faces, colors: opp.colors, who: 'opposer' as const } :
-      null;
-    if (empireRoll && G.rebel.actionHand.includes('resourceful-astromech')) {
-      const flippable = empireRoll.faces
-        .map((f, i) => f !== 'blank' ? i : -1)
-        .filter((i) => i >= 0);
-      if (flippable.length > 0) {
-        pm.r2d2Pending = {
-          attDice: attackerDice,
-          opposerDice,
-          attFaces: [...att.faces],
-          attColors: [...att.colors],
-          attSuccesses: att.successes,
-          oppFaces: [...opp.faces],
-          oppColors: [...opp.colors],
-          oppSuccesses: opp.successes,
-          portrait,
-          oppLeaderIds: [...oppLeaderIds] as LeaderId[],
-          empireSide: empireRoll.who,
-        };
-        G.pendingChoice = {
-          kind: 'R2D2Flip',
-          side: 'Rebel',
-          context: 'mission',
-          systemId: pm.targetSystemId,
-          flippableDieIndices: flippable,
-          missionFaces: [...empireRoll.faces],
-        };
-        log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-          kind: 'R2D2Flip', context: 'mission',
-          flippable: flippable.length,
-        }});
-        return { ok: true };
-      }
-    }
+    // Build the partial-resolution stash that BOTH Yoda and R2-D2 mission
+    // pauses share. Either pause point uses the same fields; resolvers
+    // apply their effect to the appropriate side's faces and continue.
+    const empireSideOfRoll: 'attacker' | 'opposer' | null =
+      pm.resolverSide === 'Empire' ? 'attacker' :
+      c.opposerSide === 'Empire' ? 'opposer' : null;
+    pm.r2d2Pending = {
+      attDice: attackerDice,
+      opposerDice,
+      attFaces: [...att.faces],
+      attColors: [...att.colors],
+      attSuccesses: att.successes,
+      oppFaces: [...opp.faces],
+      oppColors: [...opp.colors],
+      oppSuccesses: opp.successes,
+      portrait,
+      oppLeaderIds: [...oppLeaderIds] as LeaderId[],
+      empireSide: empireSideOfRoll ?? 'attacker', // unused if no Empire roll
+    };
 
-    finalizeMissionRoll(G, pm, c, skill, attackerDice, opposerDice, att.faces, opp.faces, att.successes, opp.successes, portrait, oppLeaderIds as LeaderId[]);
+    // Yoda mission pause: Rebel may discard the once-per-round reroll on
+    // a blank die in their OWN roll. Mirrors the combat-side YodaReroll
+    // pause point in advanceAttackToTactics.
+    const yodaPosted = maybePostMissionYodaReroll(G, pm);
+    if (yodaPosted) return { ok: true };
+
+    // R2-D2 mission pause: Rebel may discard the ring to flip 1 Empire
+    // die to blank.
+    const r2d2Posted = maybePostMissionR2D2(G, pm);
+    if (r2d2Posted) return { ok: true };
+
+    finalizeMissionRoll(G, pm, c, skill, attackerDice, opposerDice,
+      pm.r2d2Pending.attFaces, pm.r2d2Pending.oppFaces,
+      pm.r2d2Pending.attSuccesses, pm.r2d2Pending.oppSuccesses,
+      portrait, oppLeaderIds as LeaderId[]);
+    pm.r2d2Pending = undefined;
   }
 
   // Continue mission resolution.
@@ -898,6 +895,150 @@ function finalizeMissionRoll(
   pm.stage = succeeded ? 'effect' : 'failed';
 }
 
+/** Post the mission-context Yoda reroll choice if eligible. Returns true
+ *  if a choice was posted (caller pauses). Eligibility: Yoda ring holder
+ *  is on the Rebel side at the mission's target system, the reroll hasn't
+ *  been used this round, AND the Rebel-side roll (attacker if Rebel is
+ *  resolver, else opposer) has at least one blank die. */
+function maybePostMissionYodaReroll(G: GameState, pm: MissionResolution): boolean {
+  if (G.yodaRerollUsedThisRound) return false;
+  const yoda = findYodaHolder(G);
+  if (!yoda) return false;
+  const here = G.rebel.leadersOnBoard[pm.targetSystemId] ?? [];
+  if (!here.includes(yoda)) return false;
+  const stash = pm.r2d2Pending;
+  if (!stash) return false;
+  // Pick the Rebel-side roll's faces.
+  const rebelFaces = pm.resolverSide === 'Rebel' ? stash.attFaces : stash.oppFaces;
+  const blanks = rebelFaces.map((f, i) => f === 'blank' ? i : -1).filter((i) => i >= 0);
+  if (blanks.length === 0) return false;
+  G.pendingChoice = {
+    kind: 'YodaReroll',
+    side: 'Rebel',
+    context: 'mission',
+    systemId: pm.targetSystemId,
+    blankIndices: blanks,
+    holderLeaderId: yoda,
+    missionFaces: [...rebelFaces],
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'YodaReroll', context: 'mission', blanks: blanks.length,
+  }});
+  return true;
+}
+
+/** Post the mission-context R2-D2 flip choice if eligible. Returns true
+ *  if posted. Eligibility: Rebel holds the Resourceful Astromech card AND
+ *  an Empire side (attacker or opposer) rolled a non-blank face. */
+function maybePostMissionR2D2(G: GameState, pm: MissionResolution): boolean {
+  if (!G.rebel.actionHand.includes('resourceful-astromech')) return false;
+  const stash = pm.r2d2Pending;
+  if (!stash) return false;
+  // Determine which side is Empire-rolled.
+  const c = G.catalog.missions[pm.missionId];
+  if (!c) return false;
+  const opposerSide = pm.resolverSide === 'Rebel' ? 'Empire' as Side : 'Rebel' as Side;
+  const empireIsAttacker = pm.resolverSide === 'Empire';
+  const empireIsOpposer = opposerSide === 'Empire';
+  if (!empireIsAttacker && !empireIsOpposer) return false;
+  const empireSide = empireIsAttacker ? 'attacker' : 'opposer';
+  const empireFaces = empireSide === 'attacker' ? stash.attFaces : stash.oppFaces;
+  const flippable = empireFaces.map((f, i) => f !== 'blank' ? i : -1).filter((i) => i >= 0);
+  if (flippable.length === 0) return false;
+  // Stash already has empireSide stored; rewrite in case the field was
+  // defaulted to 'attacker' when no Empire roll existed at stash-build
+  // time. (Currently maybePostMissionYodaReroll runs first and doesn't
+  // touch this — but be defensive in case order changes later.)
+  stash.empireSide = empireSide;
+  G.pendingChoice = {
+    kind: 'R2D2Flip',
+    side: 'Rebel',
+    context: 'mission',
+    systemId: pm.targetSystemId,
+    flippableDieIndices: flippable,
+    missionFaces: [...empireFaces],
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'R2D2Flip', context: 'mission', flippable: flippable.length,
+  }});
+  return true;
+}
+
+/** Continue mission resolution from the stash. Called by both Yoda and
+ *  R2-D2 mission resolvers after they've applied their effect. */
+function continueMissionFromStash(G: GameState, pm: MissionResolution): void {
+  const stash = pm.r2d2Pending;
+  if (!stash) return;
+  // Check the OTHER potential pause point. Yoda runs first, then R2-D2.
+  // If R2-D2 was already resolved (or skipped), we finalize.
+  if (!pm.r2d2Pending) return;
+  // Try R2-D2 (won't post if Yoda already used; the R2-D2 path checks
+  // its own conditions).
+  if (maybePostMissionR2D2(G, pm)) return;
+  // Both pause points cleared. Finalize the roll.
+  const c = { skill: G.catalog.missions[pm.missionId]?.skill ?? '', opposerSide: pm.resolverSide === 'Rebel' ? 'Empire' as Side : 'Rebel' as Side };
+  finalizeMissionRoll(
+    G, pm, c, c.skill,
+    stash.attDice, stash.opposerDice,
+    stash.attFaces, stash.oppFaces,
+    stash.attSuccesses, stash.oppSuccesses,
+    stash.portrait, stash.oppLeaderIds,
+  );
+  pm.r2d2Pending = undefined;
+  if (pm.stage === 'effect') {
+    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[]);
+    if (G.pendingChoice) return;
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    G.pendingMission = undefined;
+    if (!G.isGameOver) advanceCommandTurn(G);
+  } else if (pm.stage === 'failed') {
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    G.pendingMission = undefined;
+    if (!G.isGameOver) advanceCommandTurn(G);
+  }
+}
+
+/** Resolve a mission-context Yoda reroll. rerollIndex === null → skip
+ *  (preserve the reroll for a later roll this round). Otherwise reroll
+ *  the chosen blank die, recompute the side's successes, then continue. */
+export function resolveYodaMissionReroll(G: GameState, rerollIndex: number | null): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'YodaReroll' || pc.context !== 'mission') return { ok: false, reason: 'no-pending' };
+  const pm = G.pendingMission;
+  if (!pm || !pm.r2d2Pending) return { ok: false, reason: 'no-stash' };
+  const stash = pm.r2d2Pending;
+  if (rerollIndex !== null) {
+    // Rebel-side faces array (attacker if Rebel resolved, else opposer).
+    const facesArr = pm.resolverSide === 'Rebel' ? stash.attFaces : stash.oppFaces;
+    const colorsArr = pm.resolverSide === 'Rebel' ? stash.attColors : stash.oppColors;
+    if (rerollIndex < 0 || rerollIndex >= facesArr.length) return { ok: false, reason: 'bad-index' };
+    if (facesArr[rerollIndex] !== 'blank') return { ok: false, reason: 'not-blank' };
+    const color = colorsArr[rerollIndex];
+    const fresh = rollDie(G.rng, color);
+    facesArr[rerollIndex] = fresh.face;
+    // Recompute successes on the Rebel side.
+    if (pm.resolverSide === 'Rebel') {
+      stash.attSuccesses = successesFromFaces(stash.attFaces);
+    } else {
+      stash.oppSuccesses = successesFromFaces(stash.oppFaces);
+    }
+    G.yodaRerollUsedThisRound = true;
+    const holderName = G.catalog.leaders[pc.holderLeaderId]?.name ?? pc.holderLeaderId;
+    log(G, { kind: 'yoda-reroll', side: 'Rebel', payload: {
+      context: 'mission', holder: pc.holderLeaderId, holderName,
+      systemId: pm.targetSystemId, color, oldFace: 'blank', newFace: fresh.face,
+      rule: "Yoda's training: once per round, reroll one blank die on a mission or combat attack rolled by the leader bearing the Yoda ring.",
+      explanation: `Yoda (carried by ${holderName} at ${G.catalog.systems[pm.targetSystemId]?.name ?? pm.targetSystemId}) ` +
+                   `rerolled a blank ${color} die → ${fresh.face === 'blank' ? 'still blank' : fresh.face}.`,
+    }});
+  } else {
+    log(G, { kind: 'yoda-skipped', side: 'Rebel', payload: { context: 'mission', systemId: pm.targetSystemId } });
+  }
+  G.pendingChoice = undefined;
+  continueMissionFromStash(G, pm);
+  return { ok: true };
+}
+
 /** Resolve a mission-context R2-D2 flip. flipIndex === null → skip (card
  *  stays in hand). Otherwise flip the chosen face in the stashed Empire-
  *  roll faces to blank, discard the card, then finalise the mission. */
@@ -934,8 +1075,8 @@ export function resolveR2D2MissionFlip(G: GameState, flipIndex: number | null): 
     log(G, { kind: 'r2d2-skipped', side: 'Rebel', payload: { context: 'mission', systemId: pm.targetSystemId } });
   }
   G.pendingChoice = undefined;
-  pm.r2d2Pending = undefined;
-  // Now finalise the mission roll with possibly-modified faces.
+  // R2-D2 is the LAST mission pause point — Yoda already ran (or wasn't
+  // eligible). Finalize directly without re-checking pause points.
   const c = { skill: G.catalog.missions[pm.missionId]?.skill ?? '', opposerSide: pm.resolverSide === 'Rebel' ? 'Empire' as Side : 'Rebel' as Side };
   finalizeMissionRoll(
     G, pm, c, c.skill,
@@ -944,7 +1085,7 @@ export function resolveR2D2MissionFlip(G: GameState, flipIndex: number | null): 
     stash.attSuccesses, stash.oppSuccesses,
     stash.portrait, stash.oppLeaderIds,
   );
-  // Continue mission resolution.
+  pm.r2d2Pending = undefined;
   if (pm.stage === 'effect') {
     runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[]);
     if (G.pendingChoice) return { ok: true };

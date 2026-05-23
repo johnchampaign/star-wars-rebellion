@@ -828,6 +828,18 @@ export default function PlayTab() {
           }} />
       )}
 
+      {/* Mission-context Yoda reroll (combat-context lives in CombatBoardLive). */}
+      {G.pendingChoice?.kind === 'YodaReroll'
+        && G.pendingChoice.context === 'mission'
+        && G.pendingChoice.side === humanSide && (
+        <YodaMissionRerollModal G={G} choice={G.pendingChoice}
+          onPick={(idx) => {
+            const r = phases.resolveYodaMissionReroll(G, idx);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
       {/* Mission-context R2-D2 (combat-context lives in CombatBoardLive). */}
       {G.pendingChoice?.kind === 'R2D2Flip'
         && G.pendingChoice.context === 'mission'
@@ -5689,6 +5701,81 @@ function ActionCardSystemPickModal({
 // ----- Refresh-phase deploy pick (#100) -----
 
 // ----- R2-D2 mission-context flip -----
+
+// ----- Mission-context Yoda reroll -----
+
+function YodaMissionRerollModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: {
+    kind: 'YodaReroll'; side: Side; context: 'combat' | 'mission';
+    systemId: string; blankIndices: number[]; holderLeaderId: string;
+    missionFaces?: string[];
+  };
+  onPick: (rerollIndex: number | null) => void;
+}) {
+  const faces = choice.missionFaces ?? [];
+  const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  const holderName = G.catalog.leaders[choice.holderLeaderId]?.name ?? choice.holderLeaderId;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2700,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #80dc78', borderRadius: 8,
+        padding: 24, maxWidth: 640, width: '92%',
+        boxShadow: '0 8px 32px rgba(128,220,120,0.4)',
+      }}>
+        <h3 style={{ color: '#80dc78', marginTop: 0 }}>
+          Yoda's training — reroll a blank die?
+        </h3>
+        <div style={{ color: '#cbc4b0', fontSize: 13, fontStyle: 'italic', marginBottom: 8 }}>
+          Yoda's training: once per round, reroll one blank die on a mission
+          or combat attack rolled by the leader bearing the Yoda ring.
+        </div>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+          <b>{holderName}</b> (Yoda ring holder) is at <b>{sysName}</b>.
+          You may reroll one blank die on your mission roll. The reroll is
+          once per round, so skipping here preserves it for any combat or
+          mission later this round.
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+          {faces.map((face, i) => {
+            const rerollable = choice.blankIndices.includes(i);
+            const glyph = face === 'hit' ? '✓' : face === 'direct-hit' ? '✶' : face === 'special' ? '◈' : '·';
+            return (
+              <button
+                key={i}
+                disabled={!rerollable}
+                onClick={() => onPick(i)}
+                style={{
+                  width: 56, height: 56, borderRadius: 6,
+                  background: face === 'blank' ? '#222' : '#357a3a',
+                  color: '#fff', fontSize: 24, fontWeight: 700,
+                  border: rerollable ? '2px solid #80dc78' : '1px solid #444',
+                  opacity: rerollable ? 1 : 0.4,
+                  cursor: rerollable ? 'pointer' : 'not-allowed',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                }}
+                title={rerollable ? `Reroll this ${face} die` : 'Not a blank — Yoda only rerolls blanks'}
+              >
+                <span>{glyph}</span>
+                <span style={{ fontSize: 9, fontWeight: 500, opacity: 0.8 }}>{face}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <button className="tab-button" onClick={() => onPick(null)}>
+            Skip (save Yoda for later this round)
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function R2D2MissionFlipModal({
   G, choice, onPick,
