@@ -262,6 +262,26 @@ export type ChoiceRequest =
       monCalaSubjugated: boolean;
     }
   | {
+      // Research & Development — Stage 1: Empire picks between
+      //   A: draw 2 project cards, keep 1, bottom 1
+      //   B: remove sabotage marker from target + draw 1 project card
+      // Option B is only available if the target has a sabotage marker.
+      kind: 'ResearchAndDevelopmentOption';
+      side: Side;             // always 'Empire'
+      targetSystemId: SystemId;
+      hasSabotage: boolean;
+      projectDeckSize: number;
+    }
+  | {
+      // Research & Development — Stage 2 (only if Option A chosen):
+      // Empire drew 2 project cards; picks which to keep, which to
+      // bottom of the project deck. Same shape as CovertOperationPick
+      // but the cards are projects (isProject missions).
+      kind: 'ResearchAndDevelopmentProjectPick';
+      side: Side;             // always 'Empire'
+      drawnIds: [string, string];
+    }
+  | {
       // Misdirection: Rebel picks which of their own leaders the
       // mission's protection applies to (defaults to the resolver
       // but RAW lets the player pick any Rebel leader).

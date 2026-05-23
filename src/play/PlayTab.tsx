@@ -73,6 +73,8 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'PublicUprisingPick':       return pc.side === side;
     case 'SupportOfMonCalamariPick': return pc.side === side;
     case 'MisdirectionPick':         return pc.side === side;
+    case 'ResearchAndDevelopmentOption':     return pc.side === side;
+    case 'ResearchAndDevelopmentProjectPick': return pc.side === side;
     // Other ChoiceRequest kinds (system / leader picks, etc.) are
     // human-initiated and shouldn't auto-fire the AI loop.
     default:                         return false;
@@ -590,6 +592,48 @@ export default function PlayTab() {
           }}
         />
       )}
+      {/* Research & Development — stage 1: option pick */}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'ResearchAndDevelopmentOption'
+        && humanSide === 'Empire' && (
+        <ResearchAndDevelopmentOptionModal
+          G={G}
+          choice={G.pendingChoice}
+          onPick={(opt) => {
+            const r = phases.resolveResearchAndDevelopmentOption(G, opt);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+      {/* Research & Development — stage 2: project keep-vs-bottom (Option A only) */}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'ResearchAndDevelopmentProjectPick'
+        && humanSide === 'Empire' && (
+        <TopBottomCardPickModal
+          G={G}
+          cardIds={G.pendingChoice.drawnIds}
+          color="#ffaaaa"
+          title="Research & Development — keep one project, bottom the other"
+          blurb="You drew the top 2 project cards. Drag (or click) to place one in your mission hand (available to assign later) and the other on the bottom of the project deck."
+          topLabel="Keep in hand"
+          topHint="Goes into your mission hand to assign later."
+          bottomLabel="Bottom of deck"
+          bottomHint="Returned to the bottom of the project deck."
+          lookupCard={(cid) => {
+            const m = G.catalog.missions[cid];
+            return { name: m?.name ?? cid, image: m?.image };
+          }}
+          onConfirm={(topCardId) => {
+            const r = phases.resolveResearchAndDevelopmentProjectPick(G, topCardId);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+
       {/* ----- Bulk-added card-choice modals (task #96) ----- */}
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
@@ -1591,6 +1635,54 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
 // Infiltration Pick Modal — Rebel looks at 2 objectives, picks one to keep on top
 // ============================================================================
 
+/** Research & Development — Option A vs B picker. Two big buttons; B
+ *  is greyed (but still legal) when there's no sabotage marker. */
+function ResearchAndDevelopmentOptionModal({ G, choice, onPick }: {
+  G: GameState;
+  choice: { kind: 'ResearchAndDevelopmentOption'; targetSystemId: string; hasSabotage: boolean; projectDeckSize: number };
+  onPick: (option: 'A' | 'B') => void;
+}) {
+  const sysName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      <div style={{ background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 22, maxWidth: 560, width: '92%' }}>
+        <div style={{ fontSize: 14, color: '#ffaaaa', fontWeight: 700, marginBottom: 6 }}>
+          Research & Development at {sysName} — pick one
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 14 }}>
+          Project deck has {choice.projectDeckSize} card{choice.projectDeckSize === 1 ? '' : 's'} remaining.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button onClick={() => onPick('A')}
+            style={{ textAlign: 'left', padding: 12, background: '#0c0d10', border: '1px solid #2a2d34',
+              borderRadius: 4, color: '#e8e8ea', cursor: 'pointer' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>A: Draw 2 project cards</div>
+            <div style={{ fontSize: 11, color: '#aaa' }}>
+              Keep 1, place the other on the bottom of the project deck.
+            </div>
+          </button>
+          <button onClick={() => onPick('B')}
+            style={{ textAlign: 'left', padding: 12, background: '#0c0d10',
+              border: choice.hasSabotage ? '1px solid #80dc78' : '1px solid #2a2d34',
+              borderRadius: 4, color: '#e8e8ea', cursor: 'pointer' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>
+              B: Remove sabotage + draw 1 project card
+              {choice.hasSabotage && <span style={{ color: '#80dc78', marginLeft: 6, fontSize: 11 }}>(sabotage present)</span>}
+            </div>
+            <div style={{ fontSize: 11, color: '#aaa' }}>
+              {choice.hasSabotage
+                ? `Removes the sabotage marker from ${sysName} and draws 1 project card.`
+                : 'No sabotage marker at this system — Option A is strictly better, but B is still legal (just draws 1).'}
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Shared drag-and-drop "top vs bottom of deck" pick modal. The two
  *  drawn cards start one-per-slot (A on top, B on bottom). The player
  *  drags any card to any slot; the other card auto-snaps to the
@@ -1600,7 +1692,7 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
  *  Slot semantics differ between the two callers (Infiltration: "stays
  *  on top of deck" vs Covert Operation: "kept in hand"). The labels
  *  prop renders the right wording. */
-function TopBottomCardPickModal({ G, cardIds, color, title, blurb, topLabel, bottomLabel, topHint, bottomHint, onConfirm }: {
+function TopBottomCardPickModal({ G, cardIds, color, title, blurb, topLabel, bottomLabel, topHint, bottomHint, lookupCard, onConfirm }: {
   G: GameState;
   cardIds: [string, string];
   color: string;
@@ -1610,8 +1702,18 @@ function TopBottomCardPickModal({ G, cardIds, color, title, blurb, topLabel, bot
   bottomLabel: string;
   topHint: string;
   bottomHint: string;
+  /** Map a cardId to display fields. Defaults to objective lookup so
+   *  existing Infiltration / Covert callers keep working without
+   *  passing this prop. Pass a different lookup for project cards. */
+  lookupCard?: (cardId: string) => { name: string; image?: string; reputation?: number };
   onConfirm: (topCardId: string, bottomCardId: string) => void;
 }) {
+  const defaultLookup = (cardId: string) => {
+    const o = G.catalog.objectives[cardId];
+    return { name: o?.name ?? cardId, image: o?.image, reputation: o?.reputation };
+  };
+  const lookup = lookupCard ?? defaultLookup;
+  void G; // satisfy unused-locals when lookupCard is provided
   // Slot assignments; both start filled.
   const [topSlot, setTopSlot] = useState<string>(cardIds[0]);
   const [bottomSlot, setBottomSlot] = useState<string>(cardIds[1]);
@@ -1648,7 +1750,7 @@ function TopBottomCardPickModal({ G, cardIds, color, title, blurb, topLabel, bot
   };
 
   const renderCard = (cardId: string) => {
-    const o = G.catalog.objectives[cardId];
+    const info = lookup(cardId);
     return (
       <div
         draggable
@@ -1659,18 +1761,20 @@ function TopBottomCardPickModal({ G, cardIds, color, title, blurb, topLabel, bot
           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
         }}
       >
-        {o?.image && (
-          <img src={`${CARD_IMAGE_BASE}/${o.image}`} alt={o.name ?? cardId}
+        {info.image && (
+          <img src={`${CARD_IMAGE_BASE}/${info.image}`} alt={info.name}
             draggable={false}
             style={{ width: 180, height: 'auto', borderRadius: 3,
               boxShadow: '0 0 12px rgba(0,0,0,0.6)' }} />
         )}
         <div style={{ fontSize: 12, color: '#fff', fontWeight: 600, textAlign: 'center' }}>
-          {o?.name ?? cardId}
+          {info.name}
         </div>
-        <div style={{ fontSize: 10, color: '#ffd54a', fontWeight: 700 }}>
-          +{o?.reputation ?? 0} reputation
-        </div>
+        {typeof info.reputation === 'number' && (
+          <div style={{ fontSize: 10, color: '#ffd54a', fontWeight: 700 }}>
+            +{info.reputation} reputation
+          </div>
+        )}
       </div>
     );
   };

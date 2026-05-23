@@ -872,6 +872,69 @@ export function resolveHomingBeaconPlace(G: GameState, leaderId: string, systemI
   return { ok: true };
 }
 
+/** R&D Stage 1: Empire picks Option A (peek-and-keep) or B (cleanse + draw 1). */
+export function resolveResearchAndDevelopmentOption(G: GameState, option: 'A' | 'B'): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'ResearchAndDevelopmentOption') return { ok: false, reason: 'no-pending' };
+  if (option === 'B' && !choice.hasSabotage) {
+    // B is technically still legal RAW — the sabotage clause is just a
+    // no-op — but warn the caller and proceed.
+  }
+  G.pendingChoice = undefined;
+  if (option === 'B') {
+    const ss = G.map.systems[choice.targetSystemId];
+    if (ss?.sabotage) {
+      ss.sabotage = false;
+      log(G, { kind: 'sabotage-removed', side: 'Empire', payload: { systemId: choice.targetSystemId } });
+    }
+    const drawn = G.empire.projectDeck?.shift();
+    if (drawn) {
+      G.empire.missionHand.push(drawn);
+      log(G, { kind: 'project-draw', side: 'Empire', payload: { count: 1, drawn: [drawn] } });
+    }
+    resumeMissionAfterChoice(G);
+    return { ok: true };
+  }
+  // Option A — draw 2, queue the keep-vs-bottom pick.
+  const a = G.empire.projectDeck?.shift();
+  const b = G.empire.projectDeck?.shift();
+  if (!a && !b) {
+    resumeMissionAfterChoice(G);
+    return { ok: true };
+  }
+  if (a && !b) {
+    G.empire.missionHand.push(a);
+    log(G, { kind: 'project-draw', side: 'Empire', payload: { count: 1, drawn: [a] } });
+    resumeMissionAfterChoice(G);
+    return { ok: true };
+  }
+  G.pendingChoice = {
+    kind: 'ResearchAndDevelopmentProjectPick',
+    side: 'Empire',
+    drawnIds: [a!, b!],
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'ResearchAndDevelopmentProjectPick', candidates: [a, b],
+  }});
+  return { ok: true };
+}
+
+/** R&D Stage 2: Empire picks which drawn project to keep; other goes to bottom. */
+export function resolveResearchAndDevelopmentProjectPick(G: GameState, keepInHandId: string): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'ResearchAndDevelopmentProjectPick') return { ok: false, reason: 'no-pending' };
+  const [a, b] = choice.drawnIds;
+  if (keepInHandId !== a && keepInHandId !== b) return { ok: false, reason: 'invalid-pick' };
+  const kept = keepInHandId;
+  const bottomed = keepInHandId === a ? b : a;
+  G.empire.missionHand.push(kept);
+  if (G.empire.projectDeck) G.empire.projectDeck.push(bottomed);
+  log(G, { kind: 'project-peek', side: 'Empire', payload: { drawn: [a, b], kept, bottomed } });
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Destroy up to N health worth of units. Used by Hunt Them Down,
  *  Hit And Run, Wookie Uprising. Caller passes the selected instance
  *  IDs; engine validates total health <= budget then destroys each. */

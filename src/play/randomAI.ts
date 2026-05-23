@@ -162,6 +162,16 @@ export function stepOnce(G: GameState, side: Side): boolean {
     }
     return phases.resolveMisdirectionPick(G, best).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'ResearchAndDevelopmentOption' && side === 'Empire') {
+    // AI: cleanse sabotage if available (B), else peek-and-keep (A).
+    const c = G.pendingChoice;
+    return phases.resolveResearchAndDevelopmentOption(G, c.hasSabotage ? 'B' : 'A').ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'ResearchAndDevelopmentProjectPick' && side === 'Empire') {
+    // AI: keep the first card (heuristic — both project cards are valuable).
+    const c = G.pendingChoice;
+    return phases.resolveResearchAndDevelopmentProjectPick(G, c.drawnIds[0]).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'OverseeProjectPick' && side === 'Empire') {
     const c = G.pendingChoice;
     const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };

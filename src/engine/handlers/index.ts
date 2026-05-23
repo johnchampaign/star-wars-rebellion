@@ -195,23 +195,22 @@ const gatherIntel: EffectHandler = (G, ctx) => {
 };
 
 const researchAndDevelopment: EffectHandler = (G, ctx) => {
-  // Two options: (a) Draw 2 project cards, keep 1, bottom the other.
-  //              (b) Remove sabotage marker from this system and draw 1.
-  // Auto: take (b) if THIS system has a sabotage marker (high-value cleanup);
-  // otherwise (a).
+  // RAW: Empire picks between (A) draw 2 project cards, keep 1, bottom 1;
+  // and (B) remove sabotage marker from this system + draw 1 project card.
   if (!G.empire.projectDeck) return true;
   const sysId = ctx.targetSystemId;
-  const ss = sysId ? G.map.systems[sysId] : null;
-  if (ss?.sabotage) {
-    ss.sabotage = false;
-    const drawn = G.empire.projectDeck.shift();
-    if (drawn) G.empire.missionHand.push(drawn);
-    return true;
-  }
-  const a = G.empire.projectDeck.shift();
-  const b = G.empire.projectDeck.shift();
-  if (a) G.empire.missionHand.push(a);
-  if (b) G.empire.projectDeck.push(b);
+  if (!sysId) return true;
+  const ss = G.map.systems[sysId];
+  G.pendingChoice = {
+    kind: 'ResearchAndDevelopmentOption',
+    side: 'Empire',
+    targetSystemId: sysId,
+    hasSabotage: !!ss?.sabotage,
+    projectDeckSize: G.empire.projectDeck.length,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'ResearchAndDevelopmentOption', hasSabotage: !!ss?.sabotage,
+  }});
   return true;
 };
 

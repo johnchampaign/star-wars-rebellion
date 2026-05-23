@@ -8,7 +8,10 @@
       "Bash(cd \"C:\\\\Users\\\\johnc\\\\Claude Games\\\\Star Wars Rebellion\" && mkdir -p public/dev-assets/dice && cp vmod_extracted/images/Dice*.png public/dev-assets/dice/ && ls public/dev-assets/dice/)",
       "Bash(gh --version)",
       "Bash(gh auth *)",
-      "Bash(gh repo *)"
+      "Bash(gh repo *)",
+      "Bash(powershell -NoProfile -Command \"Get-Process node -ErrorAction SilentlyContinue | Select-Object Id,ProcessName,StartTime\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue; Write-Host 'killed'\")",
+      "Bash(powershell -NoProfile -Command \"Stop-Process -Name node -Force -ErrorAction SilentlyContinue\")"
     ]
   }
 }
