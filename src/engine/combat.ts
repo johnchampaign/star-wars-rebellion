@@ -213,6 +213,17 @@ export function runCombat(G: GameState): void {
     // Retreat decision (RR pp.5-6) — each side may retreat at most once
     // per combat. Defender goes first per RAW; then attacker.
     if (!c.retreatStepDoneThisRound) {
+      // Skip the retreat step entirely if combat is effectively over (no
+      // shared theater still has both sides). Offering retreat to a side
+      // whose opponent is already wiped is pointless and reads as a bug.
+      const stillContested =
+        bothSidesHaveTheater(G, c.systemId, 'space') ||
+        bothSidesHaveTheater(G, c.systemId, 'ground');
+      if (!stillContested) {
+        c.retreatStepDoneThisRound = true;
+        c.step = 'Ended';
+        break;
+      }
       c.retreatDecidedThisRound = c.retreatDecidedThisRound ?? [];
       for (const side of [other(c.attackerSide), c.attackerSide] as const) {
         if (c.retreated.includes(side)) continue; // already retreated this combat

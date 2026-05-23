@@ -3446,6 +3446,9 @@ function EnlargedSector({ G, system }: { G: GameState; system: System }) {
   const grouped = groupByType(state.units);
   const rebelLeaders = G.rebel.leadersOnBoard[system.id] ?? [];
   const empireLeaders = G.empire.leadersOnBoard[system.id] ?? [];
+  // Captured Rebel leaders held by the Empire at this system (bug #8).
+  const capturedHere = (G.empire.capturedLeaders ?? [])
+    .filter((c) => c.systemId === system.id);
   const isBaseRevealed = G.rebelBaseRevealed && system.id === G.rebelBaseSystemId;
 
   // Loyalty status text + marker icon
@@ -3606,7 +3609,7 @@ function EnlargedSector({ G, system }: { G: GameState; system: System }) {
         </div>
 
         {/* Leaders */}
-        {(rebelLeaders.length > 0 || empireLeaders.length > 0) && (
+        {(rebelLeaders.length > 0 || empireLeaders.length > 0 || capturedHere.length > 0) && (
           <div>
             <div style={{ fontSize: 11, color: '#aaa', textShadow: '0 0 4px rgba(0,0,0,0.9)', marginBottom: 4 }}>
               Leaders
@@ -3614,12 +3617,20 @@ function EnlargedSector({ G, system }: { G: GameState; system: System }) {
             <div style={{ fontSize: 13 }}>
               {rebelLeaders.length > 0 && (
                 <div style={{ color: '#aae0ff', textShadow: '0 0 4px rgba(0,0,0,0.9)' }}>
-                  Rebel: {rebelLeaders.join(', ')}
+                  Rebel: {rebelLeaders.map((lid) => G.catalog.leaders[lid]?.name ?? lid).join(', ')}
                 </div>
               )}
               {empireLeaders.length > 0 && (
                 <div style={{ color: '#ffaaaa', textShadow: '0 0 4px rgba(0,0,0,0.9)' }}>
-                  Empire: {empireLeaders.join(', ')}
+                  Empire: {empireLeaders.map((lid) => G.catalog.leaders[lid]?.name ?? lid).join(', ')}
+                </div>
+              )}
+              {capturedHere.length > 0 && (
+                <div style={{ color: '#ffcc66', textShadow: '0 0 4px rgba(0,0,0,0.9)' }}>
+                  Captured: {capturedHere.map((c) =>
+                    (G.catalog.leaders[c.leaderId]?.name ?? c.leaderId)
+                    + (c.ring === 'carbonite' ? ' (carbonite)' : '')
+                  ).join(', ')}
                 </div>
               )}
             </div>
@@ -4052,7 +4063,11 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
               const side = m[2] === 'rebel' ? 'Rebel' as Side : 'Empire' as Side;
               const queue = (side === 'Rebel' ? G.rebel : G.empire).buildQueue[slot];
               const grouped = groupTypeIds(queue);
-              title = `Build queue ${slot} (${side})`;
+              // Short label — the rects are narrow on the right edge of the
+              // board and a fuller label like "Build queue 3 (Empire)"
+              // overflows past the printed map (bug #7). Hover to see the
+              // full breakdown.
+              title = `BQ${slot} ${side === 'Rebel' ? 'R' : 'E'}`;
               content = (
                 <>
                   <text x={x + 6} y={y + 30} style={{ fill: sideColor(side), fontSize: 12, fontWeight: 700, pointerEvents: 'none' }}>
