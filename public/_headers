@@ -1,0 +1,23 @@
+# Cloudflare Pages per-path headers.
+# Vite emits content-hashed JS/CSS asset names (e.g. index-CJ4FEjo1.js), so
+# those can be cached forever — their URL changes on every deploy. The entry
+# HTML and the unhashed dev-assets JSON files DO NOT change name when their
+# content changes, so they MUST NOT be cached or stale-content bugs creep in
+# (the iPad-still-showing-objective-text bug is the canonical example).
+
+# Entry HTML: never cache. Always revalidate.
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# Static JSON assets (catalogs, masks): short cache + must-revalidate so users
+# pick up content updates within minutes, but we don't hammer the origin for
+# every request.
+/dev-assets/*.json
+  Cache-Control: public, max-age=300, must-revalidate
+
+# Hashed JS/CSS assets: cache aggressively. Their URL embeds a content hash.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
