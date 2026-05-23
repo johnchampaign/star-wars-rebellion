@@ -1080,16 +1080,21 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       // Re-plans every call so the latest state (including action-card
       // recruits, leader captures, etc.) is reflected.
       const plan = planAssignment(G, side);
-      // Find the first plan entry whose mission is still in hand AND whose
-      // leaders are still in the pool.
       const f = side === 'Rebel' ? G.rebel : G.empire;
       for (const entry of plan) {
         if (!f.missionHand.includes(entry.missionId)) continue;
         if (!entry.leaderIds.every((l) => f.leaderPool.includes(l))) continue;
-        const r = phases.assignLeader(G, side, entry.missionId, entry.leaderIds);
+        // Hard rule (both sides): never assign a leader to a mission they
+        // can't perform. Drop any leader with zero skill fit for this
+        // mission's required skill. The planner already filters these
+        // out, but this is a defensive check so the rule holds even if
+        // the planner is later refactored.
+        const useful = entry.leaderIds.filter((lid) =>
+          leaderSkillFit(G, lid as LeaderId, entry.missionId) > 0);
+        if (useful.length === 0) continue;
+        const r = phases.assignLeader(G, side, entry.missionId, useful);
         if (r.ok) return true;
       }
-      // No useful assignments left — skip.
       return phases.skipAssignment(G, side).ok;
     }
     case 'Command': {
