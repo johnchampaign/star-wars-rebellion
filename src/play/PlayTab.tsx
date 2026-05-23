@@ -60,6 +60,11 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'StolenPlansReorder':       return side === 'Rebel';
     case 'PlanTheAssaultShips':      return side === 'Rebel';
     case 'CovertOperationPick':      return side === 'Rebel';
+    case 'OverseeProjectPick':       return pc.side === side;
+    case 'CaptureOperativePick':     return pc.side === side;
+    case 'CarbonFreezingPick':       return pc.side === side;
+    case 'LureOfTheDarkSidePick':    return pc.side === side;
+    case 'HomingBeaconPlace':        return pc.side === side;
     // Other ChoiceRequest kinds (system / leader picks, etc.) are
     // human-initiated and shouldn't auto-fire the AI loop.
     default:                         return false;
@@ -509,6 +514,83 @@ export default function PlayTab() {
           choice={G.pendingChoice}
           onSubmit={(shipIds) => {
             const r = phases.resolvePlanTheAssaultShips(G, shipIds);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'OverseeProjectPick'
+        && humanSide === 'Empire' && (
+        <OverseeProjectPickModal
+          G={G}
+          choice={G.pendingChoice}
+          onPick={(qi, slot) => {
+            const r = phases.resolveOverseeProjectPick(G, qi, slot);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'CaptureOperativePick'
+        && humanSide === 'Empire' && (
+        <SimpleLeaderPickModal
+          G={G}
+          color="#ffaaaa"
+          title="Capture Rebel Operative — pick a leader to capture"
+          candidates={G.pendingChoice.candidates}
+          onPick={(lid) => {
+            const r = phases.resolveCaptureOperativePick(G, lid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'CarbonFreezingPick'
+        && humanSide === 'Empire' && (
+        <SimpleLeaderPickModal
+          G={G}
+          color="#ffaaaa"
+          title="Carbon Freezing — pick a captured leader to freeze"
+          candidates={G.pendingChoice.candidates}
+          onPick={(lid) => {
+            const r = phases.resolveCarbonFreezingPick(G, lid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'LureOfTheDarkSidePick'
+        && humanSide === 'Empire' && (
+        <SimpleLeaderPickModal
+          G={G}
+          color="#ffaaaa"
+          title="Lure Of The Dark Side — pick a captured leader to flip"
+          candidates={G.pendingChoice.candidates}
+          onPick={(lid) => {
+            const r = phases.resolveLureOfTheDarkSidePick(G, lid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'HomingBeaconPlace'
+        && humanSide === 'Empire' && (
+        <HomingBeaconPlaceModal
+          G={G}
+          choice={G.pendingChoice}
+          onSubmit={(lid, sid) => {
+            const r = phases.resolveHomingBeaconPlace(G, lid, sid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }}
@@ -1501,6 +1583,156 @@ function InfiltrationPickModal({ G, choice, onPick }: {
 // ============================================================================
 // Covert Operation Pick Modal — Rebel draws 2 objectives, keeps 1 in hand
 // ============================================================================
+
+/** Generic single-leader-pick modal — used by Capture Rebel Operative,
+ *  Carbon Freezing, and Lure Of The Dark Side. */
+function SimpleLeaderPickModal({ G, color, title, candidates, onPick }: {
+  G: GameState;
+  color: string;
+  title: string;
+  candidates: string[];
+  onPick: (leaderId: string) => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 640, width: '92%',
+      }}>
+        <div style={{ fontSize: 14, color, fontWeight: 700, marginBottom: 10 }}>{title}</div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {candidates.map((lid) => {
+            const l = G.catalog.leaders[lid];
+            return (
+              <button
+                key={lid}
+                onClick={() => onPick(lid)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 8,
+                  padding: 8, background: '#0c0d10', border: '1px solid #2a2d34',
+                  borderRadius: 4, color: '#e8e8ea', cursor: 'pointer',
+                }}
+              >
+                {l?.image && (
+                  <img src={`${LEADER_IMAGE_BASE}/${l.image}`} alt={l.name}
+                    width={48} height={48}
+                    style={{ borderRadius: '50%', border: `2px solid ${color}`, objectFit: 'cover' }} />
+                )}
+                <span style={{ fontSize: 13 }}>{l?.name ?? lid}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Oversee Project pick: choose 1 queued Empire unit from slot 1 or 2 to deploy. */
+function OverseeProjectPickModal({ G, choice, onPick }: {
+  G: GameState;
+  choice: { kind: 'OverseeProjectPick'; targetSystemId: string;
+    candidates: { slot: 1 | 2; queueIndex: number; unitTypeId: string }[] };
+  onPick: (queueIndex: number, slot: 1 | 2) => void;
+}) {
+  const sysName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 600, width: '92%',
+      }}>
+        <div style={{ fontSize: 14, color: '#ffaaaa', fontWeight: 700, marginBottom: 6 }}>
+          Oversee Project — pick a queued unit to deploy at {sysName}
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
+          Choose 1 unit on build space 1 or 2 to deploy here immediately.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {choice.candidates.map((c, i) => {
+            const t = G.catalog.unitTypes[c.unitTypeId];
+            return (
+              <button
+                key={i}
+                onClick={() => onPick(c.queueIndex, c.slot)}
+                style={{
+                  textAlign: 'left', padding: 8, background: '#0c0d10',
+                  border: '1px solid #2a2d34', borderRadius: 4, color: '#e8e8ea',
+                  cursor: 'pointer', fontSize: 13,
+                }}
+              >
+                <strong>{t?.name ?? c.unitTypeId}</strong>
+                <span style={{ color: '#888', fontSize: 11, marginLeft: 8 }}>
+                  build slot {c.slot}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Homing Beacon: Empire picks a captured leader to rescue + system to place them in. */
+function HomingBeaconPlaceModal({ G, choice, onSubmit }: {
+  G: GameState;
+  choice: { kind: 'HomingBeaconPlace'; leaderCandidates: string[]; systemCandidates: string[] };
+  onSubmit: (leaderId: string, systemId: string) => void;
+}) {
+  const [leader, setLeader] = useState(choice.leaderCandidates[0]);
+  const [sys, setSys] = useState(choice.systemCandidates[0]);
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 640, width: '92%',
+      }}>
+        <div style={{ fontSize: 14, color: '#ffaaaa', fontWeight: 700, marginBottom: 6 }}>
+          Homing Beacon — release a leader to expose the Rebel base region
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
+          Rescue 1 captured Rebel leader; place them in any system in the
+          Rebel base's region. (Placement reveals the region to the Empire.)
+        </div>
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: '#aaa', marginBottom: 4 }}>Leader to release:</div>
+          <select value={leader} onChange={(e) => setLeader(e.target.value)}
+            style={{ background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '4px 6px', width: '100%' }}>
+            {choice.leaderCandidates.map((lid) => (
+              <option key={lid} value={lid}>{G.catalog.leaders[lid]?.name ?? lid}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 11, color: '#aaa', marginBottom: 4 }}>Place in system:</div>
+          <select value={sys} onChange={(e) => setSys(e.target.value)}
+            style={{ background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '4px 6px', width: '100%' }}>
+            {choice.systemCandidates.map((sid) => (
+              <option key={sid} value={sid}>{G.catalog.systems[sid]?.name ?? sid}</option>
+            ))}
+          </select>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <button onClick={() => onSubmit(leader, sys)}
+            style={{ padding: '6px 18px', background: '#ffaaaa', color: '#000',
+              border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
+            Release & place
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function CovertOperationPickModal({ G, choice, onPick }: {
   G: GameState;

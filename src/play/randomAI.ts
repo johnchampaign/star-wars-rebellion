@@ -77,6 +77,59 @@ export function stepOnce(G: GameState, side: Side): boolean {
     const r = phases.resolvePlanTheAssaultShips(G, c.availableShipIds);
     return r.ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'OverseeProjectPick' && side === 'Empire') {
+    const c = G.pendingChoice;
+    const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+    let best = c.candidates[0];
+    for (const cand of c.candidates.slice(1)) {
+      const r = tierRank[G.catalog.unitTypes[cand.unitTypeId]?.tier ?? 'triangle'] ?? 0;
+      const rBest = tierRank[G.catalog.unitTypes[best.unitTypeId]?.tier ?? 'triangle'] ?? 0;
+      if (r > rBest || (r === rBest && cand.slot < best.slot)) best = cand;
+    }
+    return phases.resolveOverseeProjectPick(G, best.queueIndex, best.slot).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'CaptureOperativePick' && side === 'Empire') {
+    const c = G.pendingChoice;
+    // Pick highest-value Rebel leader (catalog skills sum).
+    let best = c.candidates[0]; let bestV = -1;
+    for (const lid of c.candidates) {
+      const l = G.catalog.leaders[lid];
+      const v = l ? (l.skills.diplomacy + l.skills.intel + l.skills.specOps + l.skills.logistics + l.tacticValues.space + l.tacticValues.ground) : 0;
+      if (v > bestV) { best = lid; bestV = v; }
+    }
+    return phases.resolveCaptureOperativePick(G, best).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'CarbonFreezingPick' && side === 'Empire') {
+    const c = G.pendingChoice;
+    let best = c.candidates[0]; let bestV = -1;
+    for (const lid of c.candidates) {
+      const l = G.catalog.leaders[lid];
+      const v = l ? (l.skills.diplomacy + l.skills.intel + l.skills.specOps + l.skills.logistics) : 0;
+      if (v > bestV) { best = lid; bestV = v; }
+    }
+    return phases.resolveCarbonFreezingPick(G, best).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'LureOfTheDarkSidePick' && side === 'Empire') {
+    const c = G.pendingChoice;
+    let best = c.candidates[0]; let bestV = -1;
+    for (const lid of c.candidates) {
+      const l = G.catalog.leaders[lid];
+      const v = l ? (l.skills.diplomacy + l.skills.intel + l.skills.specOps + l.skills.logistics) : 0;
+      if (v > bestV) { best = lid; bestV = v; }
+    }
+    return phases.resolveLureOfTheDarkSidePick(G, best).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'HomingBeaconPlace' && side === 'Empire') {
+    const c = G.pendingChoice;
+    // AI: rescue highest-value leader; place at first system in region.
+    let best = c.leaderCandidates[0]; let bestV = -1;
+    for (const lid of c.leaderCandidates) {
+      const l = G.catalog.leaders[lid];
+      const v = l ? (l.skills.diplomacy + l.skills.intel + l.skills.specOps + l.skills.logistics) : 0;
+      if (v > bestV) { best = lid; bestV = v; }
+    }
+    return phases.resolveHomingBeaconPlace(G, best, c.systemCandidates[0]).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'CovertOperationPick' && side === 'Rebel') {
     // AI: keep the higher-rep card.
     const c = G.pendingChoice;

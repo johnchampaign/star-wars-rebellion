@@ -799,6 +799,79 @@ export function resolvePlanTheAssaultShips(G: GameState, shipIds: string[]): { o
   return { ok: true };
 }
 
+/** Oversee Project: Empire picks which queued unit to deploy. */
+export function resolveOverseeProjectPick(G: GameState, queueIndex: number, slot: 1 | 2): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'OverseeProjectPick') return { ok: false, reason: 'no-pending' };
+  const q = G.empire.buildQueue;
+  if (!q[slot] || queueIndex < 0 || queueIndex >= q[slot].length) return { ok: false, reason: 'bad-index' };
+  const typeId = q[slot].splice(queueIndex, 1)[0];
+  M.deployUnit(G, 'Empire', typeId, choice.targetSystemId);
+  log(G, { kind: 'oversee-project-pick', side: 'Empire', payload: { typeId, slot, targetSystemId: choice.targetSystemId } });
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Capture Rebel Operative: Empire picks which Rebel leader to capture. */
+export function resolveCaptureOperativePick(G: GameState, leaderId: string): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'CaptureOperativePick') return { ok: false, reason: 'no-pending' };
+  if (!choice.candidates.includes(leaderId)) return { ok: false, reason: 'bad-leader' };
+  M.captureLeader(G, leaderId, 'captured');
+  log(G, { kind: 'capture-operative-pick', side: 'Empire', payload: { leaderId } });
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Carbon Freezing: Empire picks which captured leader gets the carbonite ring. */
+export function resolveCarbonFreezingPick(G: GameState, leaderId: string): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'CarbonFreezingPick') return { ok: false, reason: 'no-pending' };
+  if (!choice.candidates.includes(leaderId)) return { ok: false, reason: 'bad-leader' };
+  const entry = G.empire.capturedLeaders?.find((c) => c.leaderId === leaderId);
+  if (entry) {
+    entry.ring = 'carbonite';
+    log(G, { kind: 'carbonite-applied', payload: { leaderId, systemId: entry.systemId } });
+  }
+  M.loseReputation(G, 1);
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Lure Of The Dark Side: Empire picks which captured leader to flip. */
+export function resolveLureOfTheDarkSidePick(G: GameState, leaderId: string): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'LureOfTheDarkSidePick') return { ok: false, reason: 'no-pending' };
+  if (!choice.candidates.includes(leaderId)) return { ok: false, reason: 'bad-leader' };
+  const ok = M.flipLeaderToImperial(G, leaderId);
+  if (ok && leaderId === 'luke-skywalker') M.loseReputation(G, 1);
+  log(G, { kind: 'lure-dark-side-pick', side: 'Empire', payload: { leaderId, flipped: ok } });
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+/** Homing Beacon: Empire picks a captured leader to rescue AND a system in
+ *  the Rebel base's region to place them in. */
+export function resolveHomingBeaconPlace(G: GameState, leaderId: string, systemId: string): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'HomingBeaconPlace') return { ok: false, reason: 'no-pending' };
+  if (!choice.leaderCandidates.includes(leaderId)) return { ok: false, reason: 'bad-leader' };
+  if (!choice.systemCandidates.includes(systemId)) return { ok: false, reason: 'bad-system' };
+  M.rescueLeader(G, leaderId, 'homing-beacon');
+  M.placeLeader(G, 'Rebel', leaderId, systemId);
+  const baseDef = G.catalog.systems[G.rebelBaseSystemId];
+  log(G, { kind: 'homing-beacon-place', side: 'Empire', payload: {
+    leaderId, systemId, regionRevealed: baseDef?.region,
+  }});
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Resolve Covert Operation's keep-vs-bottom pick. Distinct from
  *  Infiltration: the kept card lands in HAND, not back on top of the deck. */
 export function resolveCovertOperationPick(G: GameState, keepInHandId: string): { ok: boolean; reason?: string } {

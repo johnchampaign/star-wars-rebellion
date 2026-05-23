@@ -156,6 +156,47 @@ export type ChoiceRequest =
       drawnIds: [string, string];
     }
   | {
+      // Oversee Project: Imperial player picks 1 unit from buildQueue
+      // space 1 or 2 to deploy at the target system.
+      kind: 'OverseeProjectPick';
+      side: Side;             // always 'Empire'
+      targetSystemId: SystemId;
+      candidates: { slot: 1 | 2; queueIndex: number; unitTypeId: UnitTypeId }[];
+    }
+  | {
+      // Capture Rebel Operative: Empire picks which Rebel leader at the
+      // target system to capture (when multiple are present).
+      kind: 'CaptureOperativePick';
+      side: Side;             // always 'Empire'
+      targetSystemId: SystemId;
+      candidates: LeaderId[];
+    }
+  | {
+      // Carbon Freezing: Empire picks which captured Rebel leader to
+      // promote to the Carbonite ring (when multiple captured w/o ring).
+      kind: 'CarbonFreezingPick';
+      side: Side;             // always 'Empire'
+      candidates: LeaderId[];
+    }
+  | {
+      // Lure Of The Dark Side: Empire picks which Rebel leader at the
+      // target system to flip with the Dark-Side ring.
+      kind: 'LureOfTheDarkSidePick';
+      side: Side;             // always 'Empire'
+      targetSystemId: SystemId;
+      candidates: LeaderId[];
+    }
+  | {
+      // Homing Beacon: Empire picks a Rebel leader to rescue from
+      // captured-state AND a system (in the Rebel base region) to place
+      // them in. Two-stage: leader pick, then system pick. We bundle
+      // both into one choice; UI presents both selectors.
+      kind: 'HomingBeaconPlace';
+      side: Side;             // always 'Empire'
+      leaderCandidates: LeaderId[];
+      systemCandidates: SystemId[];
+    };
+  | {
       kind: 'StolenPlansReorder';
       missionId: string;
       remaining: string[];      // objective card IDs still to be picked

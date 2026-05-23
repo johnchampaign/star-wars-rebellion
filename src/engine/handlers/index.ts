@@ -129,21 +129,25 @@ const rapidMobilization: EffectHandler = (G, _ctx) => {
 // ----- Imperial starting -----
 
 const captureRebelOperative: EffectHandler = (G, ctx) => {
-  // "Capture a Rebel leader in a system that contains an Imperial unit."
-  // Target system contains the Rebel leader; capture the highest-value one
-  // at that system. (captureLeader records where the leader was — required
-  // for the captured-leader-stays-at-a-system model.)
+  // RAW: "Capture a Rebel leader in a system that contains an Imperial
+  // unit." When multiple Rebel leaders are at the target, Empire chooses.
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
   const here = G.rebel.leadersOnBoard[sysId] ?? [];
   if (here.length === 0) return true;
-  let best = here[0];
-  let bestV = leaderValue(G, best);
-  for (const lid of here.slice(1)) {
-    const v = leaderValue(G, lid);
-    if (v > bestV) { best = lid; bestV = v; }
+  if (here.length === 1) {
+    M.captureLeader(G, here[0], 'captured');
+    return true;
   }
-  M.captureLeader(G, best, 'captured');
+  G.pendingChoice = {
+    kind: 'CaptureOperativePick',
+    side: 'Empire',
+    targetSystemId: sysId,
+    candidates: [...here],
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'CaptureOperativePick', count: here.length,
+  }});
   return true;
 };
 
@@ -219,27 +223,25 @@ const constructSuperStarDestroyer: EffectHandler = (G, ctx) => {
 };
 
 const overseeProject: EffectHandler = (G, ctx) => {
-  // Choose 1 Empire unit on space 1 or 2 of the build queue; deploy here.
-  // Auto: pick the *most valuable* unit available (square > circle > triangle),
-  // preferring earlier slots (slot 1 then slot 2) so we don't leave a built
-  // unit sitting if we have a less-developed one in slot 2.
+  // RAW: "Choose 1 Empire unit on space 1 or 2 of the build queue; deploy
+  // it in this system." Player picks; pause for OverseeProjectPick.
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
   const q = G.empire.buildQueue;
-  const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+  const candidates: { slot: 1 | 2; queueIndex: number; unitTypeId: string }[] = [];
   for (const slot of [1, 2] as const) {
-    if (q[slot].length === 0) continue;
-    let bestIdx = 0;
-    let bestRank = -1;
-    for (let i = 0; i < q[slot].length; i++) {
-      const t = G.catalog.unitTypes[q[slot][i]];
-      const r = tierRank[t?.tier ?? 'triangle'] ?? 0;
-      if (r > bestRank) { bestRank = r; bestIdx = i; }
-    }
-    const typeId = q[slot].splice(bestIdx, 1)[0];
-    M.deployUnit(G, 'Empire', typeId, sysId);
-    return true;
+    q[slot].forEach((tid, i) => candidates.push({ slot, queueIndex: i, unitTypeId: tid }));
   }
+  if (candidates.length === 0) return true; // nothing to deploy
+  G.pendingChoice = {
+    kind: 'OverseeProjectPick',
+    side: 'Empire',
+    targetSystemId: sysId,
+    candidates,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'OverseeProjectPick', count: candidates.length,
+  }});
   return true;
 };
 
@@ -569,32 +571,33 @@ const interceptTransmissions: EffectHandler = (G, _ctx) => {
   return true;
 };
 
-/** "Rescue captured leader. Rebel must place leader in any system in Rebel
- *  base's region." Auto: random in-region non-Coruscant system. */
+/** RAW: "Rescue 1 captured leader. The Rebel player must place this leader
+ *  in any system in the Rebel base's region." Empire picks WHICH leader to
+ *  rescue (counter-intuitive but the card is an Empire mission — Empire
+ *  benefits because the placement reveals the base's region) AND picks the
+ *  system. Both stages handled in one HomingBeaconPlace choice. */
 const homingBeacon: EffectHandler = (G, ctx) => {
-  // Target = the captured leader's system. Rescue that leader; Rebel must
-  // place them in any system in the Rebel base's region (auto-picked).
   const sysId = ctx.targetSystemId;
   if (!G.empire.capturedLeaders || G.empire.capturedLeaders.length === 0) return true;
-  const candidates = G.empire.capturedLeaders.filter((c) => !sysId || c.systemId === sysId);
-  if (candidates.length === 0) return true;
-  let best = candidates[0];
-  let bestV = leaderValue(G, best.leaderId);
-  for (const c of candidates.slice(1)) {
-    const v = leaderValue(G, c.leaderId);
-    if (v > bestV) { best = c; bestV = v; }
-  }
-  M.rescueLeader(G, best.leaderId, 'homing-beacon');
+  const leaderCandidates = G.empire.capturedLeaders
+    .filter((c) => !sysId || c.systemId === sysId)
+    .map((c) => c.leaderId);
+  if (leaderCandidates.length === 0) return true;
   const baseDef = G.catalog.systems[G.rebelBaseSystemId];
   if (!baseDef) return true;
-  const inRegion = Object.values(G.catalog.systems)
+  const systemCandidates = Object.values(G.catalog.systems)
     .filter((s) => s.region === baseDef.region && !s.isCoruscant)
     .map((s) => s.id);
-  if (inRegion.length > 0) {
-    const place = inRegion[nextInt(G.rng, inRegion.length)];
-    M.placeLeader(G, 'Rebel', best.leaderId, place);
-    log(G, { kind: 'note', payload: { msg: `homing-beacon: revealed Rebel base region (${baseDef.region}) by placing ${best.leaderId} at ${place}` } });
-  }
+  if (systemCandidates.length === 0) return true;
+  G.pendingChoice = {
+    kind: 'HomingBeaconPlace',
+    side: 'Empire',
+    leaderCandidates,
+    systemCandidates,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'HomingBeaconPlace', leaders: leaderCandidates.length, systems: systemCandidates.length,
+  }});
   return true;
 };
 
@@ -616,24 +619,41 @@ const plantFalseLead: EffectHandler = (G, _ctx) => {
 // ----- Hard / leader-attachment / hidden-info — stubs ---------------------
 
 const carbonFreezing: EffectHandler = (G, ctx) => {
-  // Per RR: attach the carbonite ring to a captured leader (replacing their
-  // normal captured ring). The freed 'captured' ring slot lets Empire capture
-  // another leader in the future. Rebel loses 1 reputation.
+  // RAW: attach the carbonite ring to a captured Rebel leader. Empire picks
+  // which one when multiple captured-state leaders are available.
   const sysId = ctx.targetSystemId;
-  if (!G.empire.capturedLeaders || G.empire.capturedLeaders.length === 0) return true;
-  const candidates = G.empire.capturedLeaders.filter((c) =>
-    (!sysId || c.systemId === sysId) && c.ring === 'captured');
-  if (candidates.length > 0) {
-    let best = candidates[0];
-    let bestV = leaderValue(G, best.leaderId);
-    for (const c of candidates.slice(1)) {
-      const v = leaderValue(G, c.leaderId);
-      if (v > bestV) { best = c; bestV = v; }
-    }
-    best.ring = 'carbonite';
-    log(G, { kind: 'carbonite-applied', payload: { leaderId: best.leaderId, systemId: best.systemId } });
+  if (!G.empire.capturedLeaders || G.empire.capturedLeaders.length === 0) {
+    M.loseReputation(G, 1);
+    return true;
   }
-  M.loseReputation(G, 1);
+  const candidates = G.empire.capturedLeaders
+    .filter((c) => (!sysId || c.systemId === sysId) && c.ring === 'captured')
+    .map((c) => c.leaderId);
+  if (candidates.length === 0) {
+    M.loseReputation(G, 1);
+    return true;
+  }
+  if (candidates.length === 1) {
+    // Single candidate — apply directly, no pause needed.
+    const lid = candidates[0];
+    const entry = G.empire.capturedLeaders.find((c) => c.leaderId === lid);
+    if (entry) {
+      entry.ring = 'carbonite';
+      log(G, { kind: 'carbonite-applied', payload: { leaderId: lid, systemId: entry.systemId } });
+    }
+    M.loseReputation(G, 1);
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'CarbonFreezingPick',
+    side: 'Empire',
+    candidates,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'CarbonFreezingPick', count: candidates.length,
+  }});
+  // Reputation loss is applied after the resolve fires (it's part of
+  // the card's effect either way — see resolver).
   return true;
 };
 
@@ -665,21 +685,30 @@ const seekYoda: EffectHandler = (G, ctx) => {
 };
 
 const lureOfTheDarkSide: EffectHandler = (G, ctx) => {
-  // Target must be a captured Rebel leader AT the target system. Flip them.
-  // If the target was Luke Skywalker, the Rebel loses 1 reputation.
+  // RAW: target a captured Rebel leader and flip them with the Dark Side
+  // ring. Empire picks WHICH captured leader (when multiple available).
+  // Bonus reputation loss if Luke is flipped.
   const sysId = ctx.targetSystemId;
   if (!G.empire.capturedLeaders || G.empire.capturedLeaders.length === 0) return true;
-  const candidates = G.empire.capturedLeaders.filter((c) => (!sysId || c.systemId === sysId)
-    && !M.hasAttachment(G, c.leaderId, 'dark-side'));
+  const candidates = G.empire.capturedLeaders
+    .filter((c) => (!sysId || c.systemId === sysId) && !M.hasAttachment(G, c.leaderId, 'dark-side'))
+    .map((c) => c.leaderId);
   if (candidates.length === 0) return true;
-  let best = candidates[0];
-  let bestV = leaderValue(G, best.leaderId);
-  for (const c of candidates.slice(1)) {
-    const v = leaderValue(G, c.leaderId);
-    if (v > bestV) { best = c; bestV = v; }
+  if (candidates.length === 1) {
+    const lid = candidates[0];
+    const ok = M.flipLeaderToImperial(G, lid);
+    if (ok && lid === 'luke-skywalker') M.loseReputation(G, 1);
+    return true;
   }
-  const ok = M.flipLeaderToImperial(G, best.leaderId);
-  if (ok && best.leaderId === 'luke-skywalker') M.loseReputation(G, 1);
+  G.pendingChoice = {
+    kind: 'LureOfTheDarkSidePick',
+    side: 'Empire',
+    targetSystemId: sysId ?? '',
+    candidates,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'LureOfTheDarkSidePick', count: candidates.length,
+  }});
   return true;
 };
 
