@@ -12,7 +12,8 @@
     "deploy": "npm run build && npx wrangler pages deploy dist --project-name star-wars-rebellion --branch master --commit-dirty=true",
     "copy-assets": "node scripts/copy-dev-assets.mjs",
     "composite-card-text": "node scripts/composite-card-text.mjs",
-    "composite-card-notice": "node scripts/composite-card-text.mjs --notice"
+    "composite-card-notice": "node scripts/composite-card-text.mjs --notice",
+    "verify:vmod": "node scripts/verify-vmod-loader.mjs"
   },
   "dependencies": {
     "html2canvas": "^1.4.1",

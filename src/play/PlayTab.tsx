@@ -6139,7 +6139,10 @@ function LoadArtModal({ currentMeta, onClose, onLoaded }: {
   const [progress, setProgress] = useState<LoadProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [showDiagnostic, setShowDiagnostic] = useState(false);
+  // Auto-open the diagnostic if there are mismatches — surfaces silent
+  // .vmod-version skew without making the player click a button to find
+  // out why their art looks half-loaded.
+  const [showDiagnosticManual, setShowDiagnosticManual] = useState<boolean | null>(null);
 
   // Compute expected-filename vs. found diagnostic. The "expected" list
   // is harvested from the engine catalogs + the static unit/marker/dice
@@ -6271,14 +6274,14 @@ function LoadArtModal({ currentMeta, onClose, onLoaded }: {
             }}>
               Clear cached art
             </button>
-            <button onClick={() => setShowDiagnostic((s) => !s)} style={{
+            <button onClick={() => setShowDiagnosticManual((s) => !(s ?? (diagnostic && diagnostic.missing.length > 0)))} style={{
               marginTop: 8, marginLeft: 6, background: '#0c0d10', color: '#aaa',
               border: '1px solid #3a3d44', padding: '4px 10px', borderRadius: 3,
               cursor: 'pointer', fontSize: 11,
             }}>
-              {showDiagnostic ? 'Hide diagnostic' : 'Diagnostic'}
+              {(showDiagnosticManual ?? (diagnostic && diagnostic.missing.length > 0)) ? 'Hide diagnostic' : 'Diagnostic'}
             </button>
-            {showDiagnostic && diagnostic && (
+            {(showDiagnosticManual ?? (diagnostic && diagnostic.missing.length > 0)) && diagnostic && (
               <div style={{
                 marginTop: 8, padding: 8, background: '#0c0d10',
                 border: '1px solid #2a2d34', borderRadius: 3,

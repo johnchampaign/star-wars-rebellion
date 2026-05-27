@@ -260,11 +260,23 @@ export async function loadVmodFromFile(
   return meta;
 }
 
-/** Look up the metadata for the currently-loaded .vmod, or null if none. */
+/** Look up the metadata for the currently-loaded .vmod, or null if none.
+ *  Returns null if metadata exists but reports zero files — this happens
+ *  when a previous version of the loader silently persisted an empty cache
+ *  (a broken-load state). Treating it as "not loaded" prompts the player
+ *  to re-upload instead of leaving them stuck behind an "art: loaded"
+ *  button that's actually pointing at nothing. */
 export async function getVmodMeta(): Promise<ArtMeta | null> {
   try {
     const meta = await dbGet<ArtMeta>(META_KEY);
-    return meta ?? null;
+    if (!meta) return null;
+    if (!meta.fileCount || meta.fileCount === 0) {
+      // Auto-clean the stale empty state so subsequent boots don't
+      // re-check the same junk metadata.
+      await dbClear();
+      return null;
+    }
+    return meta;
   } catch {
     return null;
   }
