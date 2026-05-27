@@ -907,6 +907,11 @@ export type MissionResolutionReport = {
   portraitBonus?: number;            // +2 if the assigned leader matches the card's portrait
   attackerTotal?: number;            // dice successes + portrait
   result: 'success' | 'failure' | 'auto-success';
+  /** Human-readable notes for response-card interventions that fired during
+   *  resolution (Undercover relocate, Blindside, Wookie Guardian, etc.).
+   *  Surfaced in MissionReportModal so the player understands WHY a mission
+   *  succeeded / failed / was diverted — "nothing happened" was opaque. */
+  interventions?: string[];
 };
 
 export type CombatReport = {
@@ -960,6 +965,10 @@ export type MissionResolution = {
   // Blindside flag: if true, the opposer cannot send pool leaders to oppose
   // this mission. Set during the Blindside pre-opposition trigger.
   blindsideActive?: boolean;
+  /** Human-readable notes accumulated during reveal/oppose for response-card
+   *  triggers (Undercover, Blindside, Wookie Guardian, etc.). Copied into the
+   *  MissionResolutionReport when the report is pushed. */
+  interventions?: string[];
   leaderIds: LeaderId[];
   stage: 'reveal' | 'oppose' | 'roll' | 'effect' | 'failed' | 'done';
   // Mid-roll stash for R2-D2 mission flip. resolveOpposition pauses here

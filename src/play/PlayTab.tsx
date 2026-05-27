@@ -3377,6 +3377,25 @@ function MissionReportModal({ G, report, onDismiss }: {
           </div>
         </div>
 
+        {/* Response-card intervention notes (Undercover, Blindside, Wookie
+         *  Guardian, etc.). Surfaced so the player knows WHY a mission was
+         *  diverted / auto-failed instead of seeing "nothing happened". */}
+        {report.interventions && report.interventions.length > 0 && (
+          <div style={{
+            padding: '10px 12px', borderRadius: 4, marginBottom: 14,
+            background: '#1a1410', border: '2px solid #d4a14a',
+          }}>
+            <div style={{ fontSize: 11, color: '#d4a14a', fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>
+              ACTION CARD INTERVENTIONS
+            </div>
+            {report.interventions.map((s, i) => (
+              <div key={i} style={{ fontSize: 13, color: '#f0e0c0', marginTop: i === 0 ? 0 : 4 }}>
+                • {s}
+              </div>
+            ))}
+          </div>
+        )}
+
         <div style={{ textAlign: 'right' }}>
           <button className="tab-button active" onClick={onDismiss} style={{ fontWeight: 700, fontSize: 14, padding: '8px 20px' }}>
             OK

@@ -852,6 +852,7 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
       opposerLeaders: [],
       skill: c.skill,
       result: 'auto-success',
+      interventions: pm.interventions ? [...pm.interventions] : undefined,
     });
     pm.stage = 'effect';
   } else {
@@ -986,6 +987,7 @@ function finalizeMissionRoll(
     portraitBonus: portrait,
     attackerTotal,
     result: succeeded ? 'success' : 'failure',
+    interventions: pm.interventions ? [...pm.interventions] : undefined,
   });
   pm.stage = succeeded ? 'effect' : 'failed';
 }
@@ -1996,6 +1998,9 @@ export function resolveUndercoverOffer(G: GameState, leaderId: LeaderId | null):
     log(G, { kind: 'undercover-applied', side: 'Rebel', payload: {
       leaderId, targetSystemId: pc.targetSystemId,
     }});
+    (pm.interventions ??= []).push(
+      `Rebel played Undercover: ${G.catalog.leaders[leaderId]?.name ?? leaderId} relocated to ${G.map.systems[pc.targetSystemId]?.name ?? pc.targetSystemId} to oppose.`,
+    );
   } else {
     log(G, { kind: 'undercover-skipped', side: 'Rebel', payload: {} });
   }
@@ -2045,6 +2050,9 @@ export function resolveBlindsideOffer(G: GameState, accept: boolean): { ok: bool
     G.empire.actionDiscard.push('blindside');
     pm.blindsideActive = true;
     log(G, { kind: 'blindside-applied', side: 'Empire', payload: { missionId: pm.missionId } });
+    (pm.interventions ??= []).push(
+      'Empire played Blindside: Rebel cannot send leaders from pool to oppose.',
+    );
   } else {
     log(G, { kind: 'blindside-skipped', side: 'Empire', payload: { missionId: pm.missionId } });
   }
@@ -2069,6 +2077,22 @@ export function resolveWookieGuardianOffer(G: GameState, accept: boolean): { ok:
     log(G, { kind: 'wookie-guardian-applied', side: 'Rebel', payload: {
       missionId: pm.missionId, explanation: 'Chewbacca auto-stops the Empire special-ops mission.',
     }});
+    (pm.interventions ??= []).push(
+      'Rebel played Wookie Guardian: Chewbacca auto-stops this Empire special-ops mission.',
+    );
+    // Push a fail-report so the player sees a modal explaining why the
+    // mission was auto-stopped (instead of the mission silently vanishing).
+    (G.missionReports ??= []).push({
+      missionId: pm.missionId,
+      resolverSide: pm.resolverSide,
+      targetSystemId: pm.targetSystemId,
+      attackerLeaders: [...pm.leaderIds] as LeaderId[],
+      opposerSide: pm.resolverSide === 'Rebel' ? 'Empire' : 'Rebel',
+      opposerLeaders: [],
+      skill: G.catalog.missions[pm.missionId]?.skill ?? '',
+      result: 'failure',
+      interventions: [...(pm.interventions ?? [])],
+    });
     G.pendingChoice = undefined;
     // Continue to the standard 'failed' path directly.
     discardOrReturnMission(G, pm.resolverSide, pm.missionId);
