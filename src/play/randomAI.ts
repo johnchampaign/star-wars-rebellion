@@ -1235,10 +1235,12 @@ function stepOnceInner(G: GameState, side: Side): boolean {
         return phases.pass(G, side).ok;
       }
       if (action.kind === 'activate') {
-        // Bring along units from one adjacent friendly system if there's
-        // value in massing forces. EMPIRE: leave a ground unit at the source
-        // so the source system stays subjugated/garrisoned (user's strategy
-        // of spreading out, keeping control of visited systems).
+        // Pull units from EVERY adjacent friendly system with no own
+        // leader present (one MoveOrder per source system). Was: one
+        // source only, which left Empire stacking leaders at the
+        // revealed-base system with no units to fight.
+        // EMPIRE: leave one ground unit at each source so the system
+        // stays subjugated/garrisoned. REBEL: bring everything.
         const orders: phases.MoveOrder[] = [];
         const f = side === 'Rebel' ? G.rebel : G.empire;
         const adj = G.catalog.adjacency[action.targetSystemId] ?? [];
@@ -1247,14 +1249,18 @@ function stepOnceInner(G: GameState, side: Side): boolean {
           const ss = G.map.systems[sysId];
           return ss && ss.units.some((u) => u.side === side);
         });
-        if (sources.length > 0) {
-          const fromId = sources[0];
+        // Empire-only: when invading the revealed base, ALSO pull from
+        // 1-hop-further systems (via leader-occupied intermediates) by
+        // including the intermediate-leader sources too. Multi-source
+        // pulls are the only way to mass enough force for a base assault
+        // on turn N when prior turns staged units at different staging
+        // systems.
+        for (const fromId of sources) {
           const ss = G.map.systems[fromId];
           const mine = ss.units.filter((u) => u.side === side);
           let pickIds: string[];
           if (side === 'Empire') {
-            // Sort: capital ships first (most valuable to bring), then
-            // fighters, then ground last. Reserve one ground unit at source.
+            // Capital ships first, then fighters, then ground (reserving 1).
             const sortedNonGround = mine.filter((u) => {
               const t = G.catalog.unitTypes[u.typeId];
               return !t || t.theater !== 'ground' || t.class === 'structure';
@@ -1263,14 +1269,10 @@ function stepOnceInner(G: GameState, side: Side): boolean {
               const t = G.catalog.unitTypes[u.typeId];
               return t && t.theater === 'ground' && t.class !== 'structure';
             });
-            // Keep one ground unit (the cheapest) at source if possible.
             const groundToBring = ground.length > 1 ? ground.slice(0, ground.length - 1) : [];
-            pickIds = [...sortedNonGround.slice(0, 3), ...groundToBring.slice(0, Math.max(0, 3 - sortedNonGround.length))]
-              .map((u) => u.instanceId);
+            pickIds = [...sortedNonGround, ...groundToBring].map((u) => u.instanceId);
           } else {
-            // Rebel: same shape as before — bring up to 3 units, no
-            // reservation (Rebel rarely wants to leave behind).
-            pickIds = mine.slice(0, 3).map((u) => u.instanceId);
+            pickIds = mine.map((u) => u.instanceId);
           }
           if (pickIds.length > 0) {
             orders.push({ fromSystemId: fromId, unitInstanceIds: pickIds });
