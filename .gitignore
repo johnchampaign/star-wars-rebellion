@@ -68,3 +68,6 @@ e96cd17d-*.png
 map_hires.png
 map_orig.png
 tournament-logs/
+# Scratch directory for ad-hoc extracts (.vmod inspection, screenshot
+# downloads, etc.) — anything dropped here is local-only.
+tmp/
