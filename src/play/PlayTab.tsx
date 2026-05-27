@@ -160,6 +160,23 @@ export default function PlayTab() {
   const [reportScreenshot, setReportScreenshot] = useState<string | null>(null);
   const [showUploadLogs, setShowUploadLogs] = useState(false);
   const [unitStyle, setUnitStyleState] = useState<UnitImageStyle>(getUnitStyle());
+  // Player-toggleable "images on / images off" switch. When OFF, every
+  // <img> and SVG <image> in the play tree is hidden via CSS, letting
+  // the text fallbacks (unit abbreviations, dice glyphs, etc.) carry the
+  // UI on their own. Useful when (a) the strict-image deploy is serving
+  // 1x1 placeholders that have white edges or stray pixels showing, or
+  // (b) a player just prefers a text-first view. Persisted across reloads.
+  const [imagesOff, setImagesOff] = useState<boolean>(
+    () => localStorage.getItem('rebellion-images-off') === '1',
+  );
+  const toggleImages = () => {
+    setImagesOff((v) => {
+      const next = !v;
+      if (next) localStorage.setItem('rebellion-images-off', '1');
+      else localStorage.removeItem('rebellion-images-off');
+      return next;
+    });
+  };
   const [humanSide, setHumanSide] = useState<Side>(() => {
     const stored = localStorage.getItem(LS_HUMAN_SIDE);
     return stored === 'Rebel' || stored === 'Empire' ? stored : 'Rebel';
@@ -469,7 +486,13 @@ export default function PlayTab() {
 
   return (
     <UnitStyleContext.Provider value={unitStyle}>
-    <div>
+    <div className={imagesOff ? 'images-off' : undefined}>
+      {/* Global rule that hides every <img> and SVG <image> tag when the
+       *  user has toggled images off. Scoped to descendants of the play
+       *  root so other tabs are unaffected. */}
+      <style>{`
+        .images-off img, .images-off image { visibility: hidden; }
+      `}</style>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
         <h2 style={{ margin: 0 }}>Play</h2>
         <span style={{ color: '#888', fontSize: 13 }}>
@@ -486,6 +509,9 @@ export default function PlayTab() {
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button className="tab-button" onClick={toggleUnitStyle} title="Toggle between Vassal mini photos and reference-sheet silhouettes">
             units: {unitStyle}
+          </button>
+          <button className="tab-button" onClick={toggleImages} title="Toggle images on/off — when off, only text labels show (useful with the strict-image deploy)">
+            images: {imagesOff ? 'off' : 'on'}
           </button>
           <button
             className="tab-button"
