@@ -84,10 +84,16 @@ function CardHover({ G, cardId, children }: {
   );
 }
 
-export function CombatBoardLive({ G, humanSide, onPersist }: {
+export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem }: {
   G: GameState;
   humanSide: Side;
   onPersist: () => void;
+  /** Opens the "Report a problem" dialog from inside the combat overlay.
+   *  Needed because the play-tab header (where the normal report button
+   *  lives) is hidden behind the full-screen combat board, so players
+   *  couldn't file a report while a combat was stuck (#26-ish — surfaced
+   *  in conversation, not as a GH issue). */
+  onReportProblem?: () => void;
 }) {
   const c = G.pendingCombat;
   if (!c) return null;
@@ -342,6 +348,7 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
         defender={defender}
         round={c.round}
         humanSide={humanSide}
+        onReportProblem={onReportProblem}
       />
 
       <TacticHandsBar
@@ -545,8 +552,9 @@ function TacticHandsBar({
   );
 }
 
-function Header({ systemName, attacker, defender, round, humanSide }: {
+function Header({ systemName, attacker, defender, round, humanSide, onReportProblem }: {
   systemName: string; attacker: Side; defender: Side; round: number; humanSide: Side;
+  onReportProblem?: () => void;
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
@@ -556,9 +564,24 @@ function Header({ systemName, attacker, defender, round, humanSide }: {
         {' '}attacks{' '}
         <span style={{ color: SIDE_COLOR[defender], fontWeight: 700 }}>{defender}</span>
       </div>
-      <div style={{ marginLeft: 'auto', fontSize: 13, color: '#aaa' }}>
-        You are <span style={{ color: SIDE_COLOR[humanSide], fontWeight: 700 }}>{humanSide}</span>
-        {' · '}Round {round}
+      <div style={{ marginLeft: 'auto', fontSize: 13, color: '#aaa', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <span>
+          You are <span style={{ color: SIDE_COLOR[humanSide], fontWeight: 700 }}>{humanSide}</span>
+          {' · '}Round {round}
+        </span>
+        {onReportProblem && (
+          <button
+            onClick={onReportProblem}
+            title="Report a stuck combat or other problem. The current game state (incl. mid-combat) gets attached to the GitHub issue."
+            style={{
+              background: '#2a1414', color: '#ff8866',
+              border: '1px solid #5a2a2a', padding: '4px 10px', borderRadius: 3,
+              cursor: 'pointer', fontSize: 12,
+            }}
+          >
+            Report a problem
+          </button>
+        )}
       </div>
     </div>
   );

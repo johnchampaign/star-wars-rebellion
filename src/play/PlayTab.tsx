@@ -1421,6 +1421,16 @@ export default function PlayTab() {
           G={G}
           humanSide={humanSide}
           onPersist={() => { persist(); refresh(); }}
+          onReportProblem={async () => {
+            // Same flow as the header's "Report a problem" button: capture
+            // the page screenshot first, then open the modal. Lets players
+            // file an issue while combat is stuck (where the header is
+            // hidden behind the combat overlay).
+            const { capturePageScreenshot } = await import('./screenshot');
+            const png = await capturePageScreenshot();
+            setReportScreenshot(png);
+            setShowReport(true);
+          }}
         />
       )}
 
