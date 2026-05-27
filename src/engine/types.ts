@@ -858,6 +858,10 @@ export type CombatState = {
   // pick), we stash the remaining cards + acting side here so the choice
   // resolver can continue processing.
   startOfCombatBatch?: { side: Side; remaining: string[] };
+  // Sides whose Start-of-Combat action-card window has already been offered
+  // (resolved or skipped). Prevents the ping-pong where both sides re-prompt
+  // each other forever after both pass with no cards.
+  startOfCombatSidesOffered?: Side[];
   // Whether the end-of-round retreat window has been resolved for the
   // current round. Reset at the start of each new round.
   retreatStepDoneThisRound?: boolean;

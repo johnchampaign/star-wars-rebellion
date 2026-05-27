@@ -2010,10 +2010,12 @@ export function resolveNobleSacrificeOffer(G: GameState, accept: boolean): { ok:
     log(G, { kind: 'noble-sacrifice-skipped', side: 'Rebel', payload: {} });
   }
   G.pendingChoice = undefined;
-  // Don't resume mission flow — captureLeader is called from many contexts.
-  // If we're mid-mission, the next caller will check pendingChoice/G.pendingMission.
-  // For Noble Sacrifice we just clear the choice and let the original
-  // call-chain continue naturally.
+  // captureLeader posted this choice mid-resolution and the original
+  // call-chain has already unwound (mission resolver bailed on pendingChoice).
+  // If we're still mid-mission, resume the mission flow so it doesn't strand.
+  if (G.pendingMission) {
+    resumeMissionAfterChoice(G);
+  }
   return { ok: true };
 }
 

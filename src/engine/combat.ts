@@ -163,9 +163,15 @@ export function runCombat(G: GameState): void {
   // or more action cards with timing 'StartOfCombat' (RR pp.4-5). Posted
   // once per combat, before round 1.
   if (!c.startOfCombatActionsDone) {
+    c.startOfCombatSidesOffered = c.startOfCombatSidesOffered ?? [];
     for (const side of [c.attackerSide, other(c.attackerSide)] as const) {
+      if (c.startOfCombatSidesOffered.includes(side)) continue;
       const playable = listStartOfCombatPlayable(G, c, side);
-      if (playable.length === 0) continue;
+      if (playable.length === 0) {
+        c.startOfCombatSidesOffered.push(side);
+        continue;
+      }
+      c.startOfCombatSidesOffered.push(side);
       G.pendingChoice = {
         kind: 'CombatStartActionCards',
         side, systemId: c.systemId, playable,
@@ -1362,9 +1368,14 @@ function processStartOfCombatBatch(G: GameState, c: CombatState): boolean {
  *  side's window (if they have playable cards), or mark the window done
  *  and continue combat. */
 function advanceStartOfCombatAfterSideDone(G: GameState, c: CombatState, side: Side): void {
+  c.startOfCombatSidesOffered = c.startOfCombatSidesOffered ?? [];
+  if (!c.startOfCombatSidesOffered.includes(side)) {
+    c.startOfCombatSidesOffered.push(side);
+  }
   const otherSide = other(side);
-  if (otherSide !== side) {
+  if (!c.startOfCombatSidesOffered.includes(otherSide)) {
     const other_playable = listStartOfCombatPlayable(G, c, otherSide);
+    c.startOfCombatSidesOffered.push(otherSide);
     if (other_playable.length > 0) {
       G.pendingChoice = {
         kind: 'CombatStartActionCards',
