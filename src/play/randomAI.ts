@@ -493,6 +493,16 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
         // here, especially if a first attack already happened (Pattern 4:
         // two-wave attack same turn).
         ts += 25;
+      } else if (G.rebelBaseRevealed && G.rebelBaseSystemId
+                 && (G.catalog.adjacency[G.rebelBaseSystemId] ?? []).includes(sysId)
+                 && empireLeadersHere === 0) {
+        // STAGING bonus: when the base is revealed but a single invasion
+        // didn't capture it, the AI needs to mass more force at adjacent
+        // systems before re-invading. Reward activating systems 1 hop
+        // from the base so units flow inward from 2+ hops out. (No bonus
+        // if a leader is already at this staging system — they can't
+        // move units out per game rules.)
+        ts += 18;
       } else if (empireLeadersHere > 0) {
         ts -= 5 * empireLeadersHere;
       }
@@ -1236,11 +1246,18 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       }
       if (action.kind === 'activate') {
         // Pull units from EVERY adjacent friendly system with no own
-        // leader present (one MoveOrder per source system). Was: one
-        // source only, which left Empire stacking leaders at the
-        // revealed-base system with no units to fight.
-        // EMPIRE: leave one ground unit at each source so the system
-        // stays subjugated/garrisoned. REBEL: bring everything.
+        // leader present (one MoveOrder per source system).
+        // Rules implemented (from playtester feedback):
+        //   1. Leader-occupied systems can't move units out (filtered).
+        //   2. Empire leaves 1 GROUND unit at SUBJUGATED systems only
+        //      (un-garrisoning a subjugated system loses subjugation;
+        //      non-subjugated own systems don't need a garrison).
+        //   3. Transport-capacity validation per source: ground units +
+        //      restriction-icon fighters consume transport capacity;
+        //      only capital ships (transport.capacity > 0) provide it.
+        //      Without enough capacity from this source's same-move
+        //      capital ships, the engine rejects the order — pick
+        //      conservatively to stay legal.
         const orders: phases.MoveOrder[] = [];
         const f = side === 'Rebel' ? G.rebel : G.empire;
         const adj = G.catalog.adjacency[action.targetSystemId] ?? [];
@@ -1249,31 +1266,56 @@ function stepOnceInner(G: GameState, side: Side): boolean {
           const ss = G.map.systems[sysId];
           return ss && ss.units.some((u) => u.side === side);
         });
-        // Empire-only: when invading the revealed base, ALSO pull from
-        // 1-hop-further systems (via leader-occupied intermediates) by
-        // including the intermediate-leader sources too. Multi-source
-        // pulls are the only way to mass enough force for a base assault
-        // on turn N when prior turns staged units at different staging
-        // systems.
         for (const fromId of sources) {
           const ss = G.map.systems[fromId];
+          if (!ss) continue;
           const mine = ss.units.filter((u) => u.side === side);
-          let pickIds: string[];
-          if (side === 'Empire') {
-            // Capital ships first, then fighters, then ground (reserving 1).
-            const sortedNonGround = mine.filter((u) => {
-              const t = G.catalog.unitTypes[u.typeId];
-              return !t || t.theater !== 'ground' || t.class === 'structure';
-            });
-            const ground = mine.filter((u) => {
-              const t = G.catalog.unitTypes[u.typeId];
-              return t && t.theater === 'ground' && t.class !== 'structure';
-            });
-            const groundToBring = ground.length > 1 ? ground.slice(0, ground.length - 1) : [];
-            pickIds = [...sortedNonGround, ...groundToBring].map((u) => u.instanceId);
-          } else {
-            pickIds = mine.map((u) => u.instanceId);
+          // Classify units at this source.
+          const capitalShips: typeof mine = [];
+          const fighters: typeof mine = []; // restriction-icon, need transport
+          const ground: typeof mine = [];   // need transport
+          for (const u of mine) {
+            const t = G.catalog.unitTypes[u.typeId];
+            if (!t || t.transport.immobile) continue;
+            if (t.transport.capacity > 0) capitalShips.push(u);
+            else if (t.theater === 'ground' && t.class !== 'structure') ground.push(u);
+            else if (t.transport.restriction) fighters.push(u);
           }
+          // Empire subjugation reserve: keep 1 ground at subjugated systems
+          // so the subjugation marker stays.
+          const groundReserve = (side === 'Empire' && ss.subjugated && ground.length > 0) ? 1 : 0;
+          const groundCandidates = ground.slice(0, Math.max(0, ground.length - groundReserve));
+          // Transport-capacity math: capital ships' total capacity must
+          // cover (fighters + ground) we move. Bring all capitals (they're
+          // valuable + provide capacity), then fit as many fighters/ground
+          // as capacity allows.
+          let capacity = 0;
+          for (const u of capitalShips) {
+            const t = G.catalog.unitTypes[u.typeId];
+            capacity += t?.transport.capacity ?? 0;
+          }
+          // Prefer fighters first (they're space, useful in space combat),
+          // then ground (useful for ground combat at target). Both consume
+          // 1 capacity each per RAW p.9.
+          const fightersToBring: typeof mine = [];
+          const groundToBring: typeof mine = [];
+          let used = 0;
+          for (const u of fighters) {
+            if (used >= capacity) break;
+            fightersToBring.push(u); used++;
+          }
+          for (const u of groundCandidates) {
+            if (used >= capacity) break;
+            groundToBring.push(u); used++;
+          }
+          // If no capacity-providing ships present, skip non-capital units
+          // entirely (engine would reject). Could still send capital-ship-
+          // only moves (useful for moving SDs alone).
+          const pickIds: string[] = [
+            ...capitalShips.map((u) => u.instanceId),
+            ...fightersToBring.map((u) => u.instanceId),
+            ...groundToBring.map((u) => u.instanceId),
+          ];
           if (pickIds.length > 0) {
             orders.push({ fromSystemId: fromId, unitInstanceIds: pickIds });
           }
