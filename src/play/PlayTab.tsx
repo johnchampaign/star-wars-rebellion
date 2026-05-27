@@ -5416,8 +5416,26 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
               const src = sysId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[sysId];
               const name = sysId === 'rebel-base-space' ? 'Rebel Base space' : (G.catalog.systems[sysId]?.name ?? sysId);
               const byType = groupByType(src.units.filter((u) => u.side === side));
+              // Live transport summary for this source. Sums capacity provided
+              // by SELECTED capacity-ships against capacity needed by SELECTED
+              // ground / restriction-icon units. Surfaces the "I have an AC
+              // here but didn't include it" pitfall before activation.
+              const sel = moveCounts[sysId] ?? {};
+              let capProvided = 0, capNeeded = 0, capAvailableUnselected = 0;
+              for (const g of byType) {
+                const t = G.catalog.unitTypes[g.typeId];
+                if (!t) continue;
+                const sCount = sel[g.typeId] ?? 0;
+                if (t.transport.capacity > 0) {
+                  capProvided += t.transport.capacity * sCount;
+                  capAvailableUnselected += t.transport.capacity * (g.count - sCount);
+                }
+                if (t.transport.restriction) capNeeded += sCount;
+                if (t.theater === 'ground' && t.class !== 'structure') capNeeded += sCount;
+              }
+              const short = capNeeded > capProvided;
               return (
-                <div key={sysId} style={{ background: '#0c0d10', padding: 6, borderRadius: 3, border: '1px solid #2a2d34' }}>
+                <div key={sysId} style={{ background: '#0c0d10', padding: 6, borderRadius: 3, border: short ? '1px solid #ff6b6b' : '1px solid #2a2d34' }}>
                   <div style={{ fontSize: 11, color: '#ccc', marginBottom: 4, fontWeight: 600 }}>{name}</div>
                   {byType.map((g) => {
                     const cur = moveCounts[sysId]?.[g.typeId] ?? 0;
@@ -5432,6 +5450,21 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
                       </div>
                     );
                   })}
+                  {(capNeeded > 0 || capProvided > 0) && (
+                    <div style={{
+                      marginTop: 6, paddingTop: 4, borderTop: '1px solid #2a2d34',
+                      fontSize: 10, color: short ? '#ff6b6b' : '#80dc78',
+                      fontWeight: short ? 700 : 400,
+                    }}>
+                      transport: {capProvided} capacity / {capNeeded} needed
+                      {short && capAvailableUnselected > 0 && (
+                        <span> — add a capacity ship from this source (+{capAvailableUnselected} available)</span>
+                      )}
+                      {short && capAvailableUnselected === 0 && (
+                        <span> — no capacity ships available; can't bring ground/fighters from here</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
