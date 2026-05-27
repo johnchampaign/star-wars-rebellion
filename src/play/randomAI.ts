@@ -460,6 +460,11 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
         ts += 2 + resourceWeight;
         // Already Empire-loyal (string compare — sys.loyalty is just a string).
         if (sys.loyalty === 'imperial') ts -= 2;
+        // GERRY STRATEGY: prioritize subjugating Rebel-loyal systems —
+        // strips Rebel production AND likely sits on the hidden base
+        // (Rebels favor their loyalty for placement). Heavier early when
+        // we should be spreading; tapers as timeMarker grows.
+        if (sys.loyalty === 'rebel') ts += 8 + Math.max(0, 4 - G.timeMarker);
       }
       // Base-narrowing pivot: when probe info has narrowed candidates,
       // strongly reward visiting remaining candidate systems (looking
@@ -636,6 +641,35 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'CombatStartActionCards' && G.pendingChoice.side === side) {
     return handleCombatStartActionCards(G);
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'PlanTheAssaultShips' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    // Pick a transport-valid subset: all capital ships (provide capacity),
+    // plus as many restriction-icon fighters as that capacity supports.
+    // Sending the raw availableShipIds typically fails validateMoveOrderTransport
+    // when fighters outnumber capacity → freeze.
+    const rebelBase = G.map.rebelBaseSpace;
+    const idToUnit = new Map(rebelBase.units.map((u) => [u.instanceId, u]));
+    const caps: string[] = [];
+    const fighters: string[] = [];
+    const others: string[] = [];
+    let capacity = 0;
+    for (const sid of c.availableShipIds) {
+      const u = idToUnit.get(sid);
+      if (!u) continue;
+      const t = G.catalog.unitTypes[u.typeId];
+      if (!t) continue;
+      if (t.transport.capacity > 0) { caps.push(sid); capacity += t.transport.capacity; }
+      else if (t.transport.restriction) fighters.push(sid);
+      else others.push(sid);
+    }
+    const picked = [...caps, ...others, ...fighters.slice(0, capacity)];
+    let r = phases.resolvePlanTheAssaultShips(G, picked);
+    // Fallback: if even that fails, try caps + others only.
+    if (!r.ok) r = phases.resolvePlanTheAssaultShips(G, [...caps, ...others]);
+    // Last resort: just caps (no fighters need transport).
+    if (!r.ok) r = phases.resolvePlanTheAssaultShips(G, caps);
+    return r.ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'RetreatDecision' && G.pendingChoice.side === side) {
     return handleRetreatDecision(G);
@@ -1403,7 +1437,16 @@ function handleOpposeMission(G: GameState, side: Side): boolean {
   // Auto-decline if we already have enough to win without burning a card,
   // or if no pool candidate exists.
   let sentLeader: LeaderId | null = null;
-  if (best) {
+  // GERRY STRATEGY: Empire skips opposition in the early game (T1-T4)
+  // unless the mission is genuinely high-impact. Every leader NOT spent
+  // opposing is a leader free to activate, spread, and subjugate —
+  // which is the Empire's real win condition. Late game (T5+) we
+  // resume the normal "always defend" math.
+  const empireEarlyGameSkip =
+    side === 'Empire' &&
+    G.timeMarker <= 4 &&
+    !isHighImpactMissionForOpposer(c.missionId, side);
+  if (best && !empireEarlyGameSkip) {
     const withBestExpected = (existingSkill + best.m) * 0.5;
     // Send a pool leader if it materially improves the math AND
     // (a) we currently lose without them, OR
