@@ -1498,7 +1498,16 @@ function OpposeMissionModal({ G, choice, onResolve }: {
           {choice.opposerSide} — oppose mission?
         </div>
         <div style={{ fontSize: 12, color: '#aaa', marginBottom: 8 }}>
-          <strong style={{ color: '#fff' }}>{card?.name ?? choice.missionId}</strong> at <strong style={{ color: '#ffd54a' }}>{targetName}</strong>
+          <CardNameHover
+            name={card?.name ?? choice.missionId}
+            image={card?.image}
+            rulesText={card?.rulesText}
+          >
+            <strong style={{ color: '#fff', borderBottom: '1px dotted #888' }}>
+              {card?.name ?? choice.missionId}
+            </strong>
+          </CardNameHover>
+          {' '}at <strong style={{ color: '#ffd54a' }}>{targetName}</strong>
           {' '}— attacker will roll <strong style={{ color: '#fff' }}>{choice.attackerDice}</strong> {choice.skill} dice.
         </div>
 
@@ -1926,6 +1935,71 @@ function HandTip({ count, cards }: {
             </div>
           ))}
         </div>
+      )}
+    </span>
+  );
+}
+
+// ============================================================================
+// CardNameHover — wrap a card name (mission / action / objective / tactic)
+// so hovering shows the card art + rules text. Use anywhere a card is
+// referenced by name in dialogs, modals, log lines, etc.
+// ============================================================================
+
+function CardNameHover({ name, image, rulesText, children, color }: {
+  name: string;
+  image?: string;
+  rulesText?: string;
+  children?: React.ReactNode;
+  color?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const TILE_W = 200;
+  const resolved = image ? getCachedArtUrlSync(image) : null;
+  return (
+    <span
+      style={{ position: 'relative', cursor: 'help', color: color ?? 'inherit' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      {children ?? name}
+      {open && (
+        <span
+          style={{
+            position: 'absolute', left: '50%', bottom: 'calc(100% + 6px)',
+            transform: 'translateX(-50%)',
+            zIndex: 6000,
+            display: 'block',
+            background: 'rgba(0,0,0,0.96)', border: '1px solid #555',
+            padding: 8, borderRadius: 4,
+            width: TILE_W + 16,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+            pointerEvents: 'none',
+            textAlign: 'center',
+          }}
+        >
+          {resolved ? (
+            <img src={resolved} alt={name}
+              style={{ width: TILE_W, height: 'auto', borderRadius: 4, border: '1px solid #333' }}
+            />
+          ) : (
+            <span style={{
+              display: 'inline-block', width: TILE_W, height: TILE_W * 1.4,
+              background: '#222', color: '#888', fontSize: 12,
+              padding: 8, boxSizing: 'border-box',
+            }}>{name}</span>
+          )}
+          <span style={{
+            display: 'block', color: '#fff', fontSize: 12, fontWeight: 600,
+            marginTop: 4, lineHeight: 1.2,
+          }}>{name}</span>
+          {rulesText && (
+            <span style={{
+              display: 'block', color: '#cbc4b0', fontSize: 11, marginTop: 3,
+              lineHeight: 1.35, textAlign: 'left', whiteSpace: 'normal',
+            }}>{rulesText}</span>
+          )}
+        </span>
       )}
     </span>
   );
