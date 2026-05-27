@@ -546,13 +546,25 @@ export default function PlayTab() {
           </button>
           <button
             className="tab-button"
-            onClick={async () => {
-              // Capture before mounting the modal so the screenshot
-              // shows the underlying game state, not the modal itself.
-              const { capturePageScreenshot } = await import('./screenshot');
-              const png = await capturePageScreenshot();
-              setReportScreenshot(png);
+            onClick={() => {
+              // Open the modal IMMEDIATELY so the user sees a response to
+              // their click. Capture the screenshot in the background and
+              // attach when it's ready. If html2canvas hangs or throws,
+              // the modal still works — user can submit without screenshot.
+              setReportScreenshot(null);
               setShowReport(true);
+              (async () => {
+                try {
+                  const { capturePageScreenshot } = await import('./screenshot');
+                  const png = await Promise.race([
+                    capturePageScreenshot(),
+                    new Promise<null>((r) => setTimeout(() => r(null), 5000)),
+                  ]);
+                  setReportScreenshot(png);
+                } catch (e) {
+                  console.warn('[report] background screenshot failed:', e);
+                }
+              })();
             }}
             title="Report a bug or share feedback"
           >
@@ -1421,15 +1433,24 @@ export default function PlayTab() {
           G={G}
           humanSide={humanSide}
           onPersist={() => { persist(); refresh(); }}
-          onReportProblem={async () => {
-            // Same flow as the header's "Report a problem" button: capture
-            // the page screenshot first, then open the modal. Lets players
-            // file an issue while combat is stuck (where the header is
-            // hidden behind the combat overlay).
-            const { capturePageScreenshot } = await import('./screenshot');
-            const png = await capturePageScreenshot();
-            setReportScreenshot(png);
+          onReportProblem={() => {
+            // Open the modal first; capture screenshot in background with
+            // a 5s timeout so html2canvas can't strand the user behind a
+            // dead click.
+            setReportScreenshot(null);
             setShowReport(true);
+            (async () => {
+              try {
+                const { capturePageScreenshot } = await import('./screenshot');
+                const png = await Promise.race([
+                  capturePageScreenshot(),
+                  new Promise<null>((r) => setTimeout(() => r(null), 5000)),
+                ]);
+                setReportScreenshot(png);
+              } catch (e) {
+                console.warn('[report] background screenshot failed:', e);
+              }
+            })();
           }}
         />
       )}
@@ -6038,6 +6059,12 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
 }) {
   const [description, setDescription] = useState('');
   const [includeScreenshot, setIncludeScreenshot] = useState<boolean>(!!screenshotBase64);
+  // Screenshot arrives asynchronously now (modal opens immediately on click,
+  // capture runs in the background with a 5s timeout). Flip the include flag
+  // ON when the screenshot lands so users who opened-then-waited get it.
+  useEffect(() => {
+    if (screenshotBase64) setIncludeScreenshot(true);
+  }, [screenshotBase64]);
   const stateCodec = canEncode(G) ? encode(G) : '(state is mid-resolution; codec not safe to capture)';
 
   const buildReport = () => ({
