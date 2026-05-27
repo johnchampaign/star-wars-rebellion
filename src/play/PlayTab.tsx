@@ -4200,6 +4200,56 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
               >
                 {s.name}
               </text>
+              {/* Inline resource / build-slot summary. Without the printed
+               *  Map.png art the system tile shows nothing about WHAT this
+               *  system is worth (build slot priority, resource icons,
+               *  loyalty). Render a compact glyph line right under the
+               *  system name. Format:
+               *    BQ[n] ▲●■  ·  L (subjugated → Sj-L)
+               *  where ▲/●/■ are the triangle/circle/square resource
+               *  shapes and space (blue) vs ground (orange) is colored. */}
+              {(() => {
+                const parts: React.ReactNode[] = [];
+                if (s.buildSlot != null) {
+                  parts.push(
+                    <tspan key="bs" style={{ fill: '#ffd54a', fontWeight: 700 }}>
+                      BQ{s.buildSlot}
+                    </tspan>
+                  );
+                }
+                if (s.resources.length > 0) {
+                  s.resources.forEach((res, i) => {
+                    const glyph = res.shape === 'triangle' ? '▲' : res.shape === 'circle' ? '●' : '■';
+                    const col = res.type === 'space' ? '#4fc3f7' : '#ffb74d';
+                    parts.push(
+                      <tspan key={`r${i}`} dx={4} style={{ fill: col, fontWeight: 700 }}>
+                        {glyph}
+                      </tspan>
+                    );
+                  });
+                }
+                // Loyalty marker (compact letter). Subjugated takes precedence.
+                if (state.subjugated) {
+                  parts.push(
+                    <tspan key="sj" dx={6} style={{ fill: '#ff7777', fontWeight: 700 }}>Sj</tspan>
+                  );
+                } else if (state.loyalty === 'rebel') {
+                  parts.push(<tspan key="l" dx={6} style={{ fill: '#aae0ff', fontWeight: 700 }}>R</tspan>);
+                } else if (state.loyalty === 'imperial') {
+                  parts.push(<tspan key="l" dx={6} style={{ fill: '#ffaaaa', fontWeight: 700 }}>I</tspan>);
+                }
+                if (state.sabotage) {
+                  parts.push(<tspan key="sb" dx={4} style={{ fill: '#ff3a3a', fontWeight: 700 }}>SAB</tspan>);
+                }
+                if (parts.length === 0) return null;
+                return (
+                  <text x={x} y={y + r + 22} textAnchor="middle"
+                    style={{ fontSize: 9, pointerEvents: 'none' }}
+                  >
+                    {parts}
+                  </text>
+                );
+              })()}
               {/* tiny unit-count label (R/E) on the planet for quick read */}
               {hasUnits && (
                 <g pointerEvents="none">
