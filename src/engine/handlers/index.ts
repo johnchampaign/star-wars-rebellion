@@ -55,6 +55,11 @@ function queueDestroyUpToHealth(
   const candidates = ss.units
     .filter((u) => u.side === opponentSide)
     .filter((u) => !theater || G.catalog.unitTypes[u.typeId]?.theater === theater)
+    // RAW: units with health.color === null (Death Star) can ONLY be destroyed
+    // by Death Star Plans. Exclude them from Hit And Run / Hunt Them Down /
+    // Wookie Uprising candidate sets. Their health.value is 0, so the budget
+    // gate `spent + 0 > budget` would otherwise let them die for free.
+    .filter((u) => G.catalog.unitTypes[u.typeId]?.health.color !== null)
     .map((u) => u.instanceId);
   if (candidates.length === 0) return false;
   G.pendingChoice = {
@@ -81,6 +86,10 @@ function destroyUpToHealthAuto(G: GameState, opponentSide: 'Rebel' | 'Empire', s
   const candidates = ss.units
     .filter((u) => u.side === opponentSide)
     .filter((u) => !theater || G.catalog.unitTypes[u.typeId]?.theater === theater)
+    // Same RAW guard as the choice-flow path: exclude indestructible-by-normal-
+    // means units (Death Star). Their health.value is 0, which would otherwise
+    // pass the `spent + h > budget` check and let them die for free.
+    .filter((u) => G.catalog.unitTypes[u.typeId]?.health.color !== null)
     .sort((a, b) => {
       const ta = G.catalog.unitTypes[a.typeId];
       const tb = G.catalog.unitTypes[b.typeId];
