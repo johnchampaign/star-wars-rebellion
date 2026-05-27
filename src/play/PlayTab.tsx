@@ -4454,12 +4454,12 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
             markers.push({ src: 'MarkerLoyaltyEmpire.png', offsetX: 0, offsetY: 0 });
           }
           if (state.subjugated) {
-            // If a loyalty marker is underneath, offset both noticeably so the
-            // hidden loyalty is visible at a glance. The subjugation marker still
-            // sits "on top" in game terms — it's the visible one to the right.
-            const dx = markers.length > 0 ? 20 : 0;
-            const dy = markers.length > 0 ? 14 : 0;
-            markers.push({ src: 'MarkerLoyaltySubjugated.png', offsetX: dx, offsetY: dy });
+            // Subjugation marker fully covers any underlying loyalty marker —
+            // matches the physical-board read where the disc sits on top of
+            // the loyalty hex. Underneath-loyalty info is still available in
+            // the hover/details panel; the visual was too cluttered with the
+            // previous offset layout.
+            markers.push({ src: 'MarkerLoyaltySubjugated.png', offsetX: 0, offsetY: 0 });
           }
           if (markers.length === 0 && !state.sabotage) return null;
           return (
