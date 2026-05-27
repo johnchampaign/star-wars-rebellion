@@ -53,9 +53,23 @@ export function setUnitStyle(style: UnitImageStyle): void {
 // stale FFG art from older deployments.
 const UNIT_IMG_BUST = import.meta.env.PROD ? `?v=${Date.now()}` : '';
 
-/** Build URL for a unit's image based on current style. */
+/** Build URL for a unit's image based on current style. When the player
+ *  has loaded a VASSAL .vmod via the in-browser uploader, prefer the
+ *  blob: URL backed by the cached PNG from the .vmod's images/ folder.
+ *  Falls through to the dev-assets path otherwise — which is a real PNG
+ *  in local dev (npm run copy-assets) and a 1×1 transparent placeholder
+ *  in the strict-image deploy. The silhouette/token styles aren't in the
+ *  .vmod, so we serve the raw Unit*.png when art is loaded; once the
+ *  player loads art, the style toggle effectively becomes a no-op. */
 export function unitImageUrl(typeId: string, base: string, style: UnitImageStyle): string | null {
   if (!UNIT_IMAGE[typeId]) return null;
+  // Import is lazy to avoid a circular boot dependency; the cache module
+  // is React-aware and the URL builder is not.
+  const cache = (globalThis as { __rebellionArtCache?: { getSync: (f: string) => string | null | undefined } }).__rebellionArtCache;
+  if (cache) {
+    const blobUrl = cache.getSync(UNIT_IMAGE[typeId]);
+    if (typeof blobUrl === 'string') return blobUrl;
+  }
   if (style === 'silhouette') return `${base}/silhouette/${typeId}.png${UNIT_IMG_BUST}`;
   return `${base}/token/${typeId}.png${UNIT_IMG_BUST}`;
 }

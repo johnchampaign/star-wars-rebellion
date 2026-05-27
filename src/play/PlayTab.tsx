@@ -3,10 +3,15 @@
 // and a "Report a problem" dialog that produces a downloadable JSON.
 
 import { useEffect, useRef, useState, useCallback, useMemo, createContext, useContext } from 'react';
-import { loadAllForEngine, loadBoardMask, MAP_IMAGE_URL, MARKER_IMAGE_BASE, UNIT_IMAGE_BASE, LEADER_IMAGE_BASE, CARD_IMAGE_BASE, IMG_BUST, diceImageUrl } from '../data/loadAssets';
+import { loadAllForEngine, loadBoardMask, MAP_IMAGE_URL, MARKER_IMAGE_BASE, UNIT_IMAGE_BASE, LEADER_IMAGE_BASE, CARD_IMAGE_BASE, IMG_BUST, diceImageUrl, vmodAssetUrl, mapImageUrl } from '../data/loadAssets';
 import { UNIT_IMAGE, groupByType, groupTypeIds, getUnitStyle, setUnitStyle, nextStyle, unitImageUrl, type UnitImageStyle } from './unitImages';
 import { missionTargets, missionLeaderTargets } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce } from './randomAI';
+import {
+  loadVmodFromFile, getVmodMeta, clearVmodCache, preloadAllBlobUrls,
+  notifyArtChanged, useArtLoaded,
+  type LoadProgress,
+} from './vmodArtCache';
 
 const LS_HUMAN_SIDE = 'rebellion-human-side';
 const LS_SIDE_PREF = 'rebellion-side-pref'; // 'Rebel' | 'Empire' | 'Random'
@@ -169,6 +174,22 @@ export default function PlayTab() {
   const [imagesOff, setImagesOff] = useState<boolean>(
     () => localStorage.getItem('rebellion-images-off') === '1',
   );
+  const artLoaded = useArtLoaded();
+  const [showLoadArt, setShowLoadArt] = useState(false);
+  // One-time boot: if a .vmod has been previously loaded, preload all
+  // blob URLs into the in-memory cache so the synchronous URL helpers
+  // (unitImageUrl, vmodAssetUrl, diceImageUrl) return blob:URLs starting
+  // from the very first render.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const meta = await getVmodMeta();
+      if (!meta || cancelled) return;
+      await preloadAllBlobUrls();
+      if (!cancelled) setTick((t) => t + 1);
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const toggleImages = () => {
     setImagesOff((v) => {
       const next = !v;
@@ -515,6 +536,15 @@ export default function PlayTab() {
           </button>
           <button
             className="tab-button"
+            onClick={() => setShowLoadArt(true)}
+            title={artLoaded.loaded
+              ? `Art loaded from ${artLoaded.meta?.vmodFilename ?? 'cached .vmod'} (${artLoaded.meta?.fileCount ?? 0} files). Click to re-load or clear.`
+              : 'Load VASSAL .vmod to populate game art (one-time, cached in browser).'}
+          >
+            art: {artLoaded.loaded ? 'loaded' : 'none'}
+          </button>
+          <button
+            className="tab-button"
             onClick={async () => {
               // Capture before mounting the modal so the screenshot
               // shows the underlying game state, not the modal itself.
@@ -663,6 +693,13 @@ export default function PlayTab() {
       {showUploadLogs && (
         <UploadLogsDialog
           onClose={() => setShowUploadLogs(false)}
+        />
+      )}
+      {showLoadArt && (
+        <LoadArtModal
+          currentMeta={artLoaded.meta}
+          onClose={() => setShowLoadArt(false)}
+          onLoaded={() => { refresh(); }}
         />
       )}
 
@@ -2375,7 +2412,7 @@ function TopBottomCardPickModal({ G, cardIds, color, title, blurb, topLabel, bot
         }}
       >
         {info.image && (
-          <img src={`${CARD_IMAGE_BASE}/${info.image}${IMG_BUST}`} alt={info.name}
+          <img src={vmodAssetUrl(info.image, CARD_IMAGE_BASE)} alt={info.name}
             draggable={false}
             style={{ width: 180, height: 'auto', borderRadius: 3,
               boxShadow: '0 0 12px rgba(0,0,0,0.6)' }} />
@@ -2509,7 +2546,7 @@ function SimpleLeaderPickModal({ G, color, title, candidates, onPick }: {
                 }}
               >
                 {l?.image && (
-                  <img src={`${LEADER_IMAGE_BASE}/${l.image}${IMG_BUST}`} alt={l.name}
+                  <img src={vmodAssetUrl(l.image, LEADER_IMAGE_BASE)} alt={l.name}
                     width={48} height={48}
                     style={{ borderRadius: '50%', border: `2px solid ${color}`, objectFit: 'cover' }} />
                 )}
@@ -3238,7 +3275,7 @@ function MissionReportModal({ G, report, onDismiss }: {
 }) {
   const card = G.catalog.missions[report.missionId];
   const sysName = G.catalog.systems[report.targetSystemId]?.name ?? report.targetSystemId;
-  const cardImg = card?.image ? `${CARD_IMAGE_BASE}/${card.image}${IMG_BUST}` : null;
+  const cardImg = card?.image ? vmodAssetUrl(card.image, CARD_IMAGE_BASE) : null;
   const resultColor =
     report.result === 'auto-success' ? '#80dc78' :
     report.result === 'success'      ? '#80dc78' :
@@ -3282,7 +3319,7 @@ function MissionReportModal({ G, report, onDismiss }: {
                 <div key={lid} style={{ textAlign: 'center' }}>
                   {ldr?.image && (
                     <img
-                      src={`${LEADER_IMAGE_BASE}/${ldr.image}${IMG_BUST}`}
+                      src={vmodAssetUrl(ldr.image, LEADER_IMAGE_BASE)}
                       width={64} height={64}
                       style={{ borderRadius: '50%', border: `2px solid ${color}`, objectFit: 'cover' }}
                       alt={ldr.name}
@@ -3537,7 +3574,7 @@ function EnlargedSector({ G, system }: { G: GameState; system: System }) {
       {/* Background art: planet crop with darkening overlay */}
       <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', zIndex: 0 }}>
         <img
-          src={MAP_IMAGE_URL}
+          src={mapImageUrl()}
           width={NATIVE_W}
           height={NATIVE_H}
           style={{ position: 'absolute', left: imgLeft, top: imgTop, filter: 'blur(0.5px)' }}
@@ -3568,10 +3605,10 @@ function EnlargedSector({ G, system }: { G: GameState; system: System }) {
         {/* Loyalty + status badges */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
           {loyaltyMarkerImg && (
-            <img src={`${MARKER_IMAGE_BASE}/${loyaltyMarkerImg}${IMG_BUST}`} width={28} height={28} alt="" />
+            <img src={vmodAssetUrl(loyaltyMarkerImg, MARKER_IMAGE_BASE)} width={28} height={28} alt="" />
           )}
           {state.subjugated && (
-            <img src={`${MARKER_IMAGE_BASE}/MarkerLoyaltySubjugated.png${IMG_BUST}`} width={28} height={28} alt="" />
+            <img src={vmodAssetUrl("MarkerLoyaltySubjugated.png", MARKER_IMAGE_BASE)} width={28} height={28} alt="" />
           )}
           <span style={{ fontSize: 14, fontWeight: 600, color: loyaltyColor, textShadow: '0 0 4px rgba(0,0,0,0.9)' }}>
             {state.subjugated
@@ -3949,7 +3986,7 @@ function LeaderPips({ G, systemId, centerX, centerY }: {
             <circle cx={cx} cy={centerY} r={SIZE / 2 + 1.5}
               style={{ fill: 'none', stroke: glowColor, strokeWidth: x.kind === 'active' ? 1 : 1.5, opacity: 0.75 }} />
             <image
-              href={`${LEADER_IMAGE_BASE}/${x.leader.image}${IMG_BUST}`}
+              href={vmodAssetUrl(x.leader.image, LEADER_IMAGE_BASE)}
               x={cx - SIZE / 2} y={centerY - SIZE / 2}
               width={SIZE} height={SIZE}
               clipPath={`url(#${clipId})`}
@@ -4118,7 +4155,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
 
   return (
     <div style={{ position: 'relative', display: 'inline-block', border: '1px solid #2a2d34' }}>
-      <img src={MAP_IMAGE_URL} width={DISPLAY_W} height={DISPLAY_H} alt="Board" />
+      <img src={mapImageUrl()} width={DISPLAY_W} height={DISPLAY_H} alt="Board" />
       <svg width={DISPLAY_W} height={DISPLAY_H} style={{ position: 'absolute', top: 0, left: 0 }}>
         {/* Rectangles — kind=hide masks; other kinds render game state on top */}
         {masks.map((r) => {
@@ -4401,7 +4438,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
               {markers.map((m, i) => (
                 <image
                   key={i}
-                  href={`${MARKER_IMAGE_BASE}/${m.src}${IMG_BUST}`}
+                  href={vmodAssetUrl(m.src, MARKER_IMAGE_BASE)}
                   x={mx + m.offsetX - markerSize / 2}
                   y={my + m.offsetY - markerSize / 2}
                   width={markerSize}
@@ -4462,9 +4499,9 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
         background: 'rgba(0,0,0,0.7)', padding: '6px 10px', borderRadius: 3,
         fontSize: 10, color: '#ccc', display: 'flex', gap: 12, flexWrap: 'wrap',
       }}>
-        <span><img src={`${MARKER_IMAGE_BASE}/MarkerLoyaltyRebel.png${IMG_BUST}`} width={14} height={14} style={{ verticalAlign: 'middle', marginRight: 4 }} alt="" /> Rebel</span>
-        <span><img src={`${MARKER_IMAGE_BASE}/MarkerLoyaltyEmpire.png${IMG_BUST}`} width={14} height={14} style={{ verticalAlign: 'middle', marginRight: 4 }} alt="" /> Imperial</span>
-        <span><img src={`${MARKER_IMAGE_BASE}/MarkerLoyaltySubjugated.png${IMG_BUST}`} width={14} height={14} style={{ verticalAlign: 'middle', marginRight: 4 }} alt="" /> subjugated</span>
+        <span><img src={vmodAssetUrl("MarkerLoyaltyRebel.png", MARKER_IMAGE_BASE)} width={14} height={14} style={{ verticalAlign: 'middle', marginRight: 4 }} alt="" /> Rebel</span>
+        <span><img src={vmodAssetUrl("MarkerLoyaltyEmpire.png", MARKER_IMAGE_BASE)} width={14} height={14} style={{ verticalAlign: 'middle', marginRight: 4 }} alt="" /> Imperial</span>
+        <span><img src={vmodAssetUrl("MarkerLoyaltySubjugated.png", MARKER_IMAGE_BASE)} width={14} height={14} style={{ verticalAlign: 'middle', marginRight: 4 }} alt="" /> subjugated</span>
         <span><span style={{ display: 'inline-block', width: 10, height: 10, background: 'transparent', border: '1px solid #80dc78', borderRadius: '50%', marginRight: 4, verticalAlign: 'middle' }} /> revealed Rebel base</span>
         <span>R<i>N</i> = Rebel units · E<i>N</i> = Empire units</span>
       </div>
@@ -6081,6 +6118,197 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
 // ============================================================================
 // Upload Logs Dialog — consent + bulk-publish archived games for AI training
 // ============================================================================
+
+// ============================================================================
+// Load VASSAL Art Modal
+// ============================================================================
+//
+// Lets the player upload their own copy of swr.vmod. We unzip it client-side
+// and persist every PNG to IndexedDB so the page renders the official art
+// without us ever hosting FFG bytes. The Google Drive link in the prompt
+// is just a suggested source; players who have their own copy can use that
+// instead.
+
+const VASSAL_DRIVE_URL = 'https://drive.google.com/file/d/1l0Tdrl_B5ceY_hAbjbqBClFg1ZToO0O0/view?usp=sharing';
+
+function LoadArtModal({ currentMeta, onClose, onLoaded }: {
+  currentMeta: { loadedAt: string; fileCount: number; totalBytes: number; vmodFilename?: string } | null;
+  onClose: () => void;
+  onLoaded: () => void;
+}) {
+  const [progress, setProgress] = useState<LoadProgress | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleFile = async (file: File) => {
+    setError(null);
+    setProgress({ phase: 'reading' });
+    try {
+      await loadVmodFromFile(file, setProgress);
+      await preloadAllBlobUrls();
+      notifyArtChanged();
+      onLoaded();
+      // Close shortly after success so the user sees the "done" state.
+      setTimeout(() => onClose(), 600);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      setProgress(null);
+    }
+  };
+
+  const handleClear = async () => {
+    if (!confirm('Clear all cached VASSAL art? You\'ll need to re-upload swr.vmod to restore it.')) return;
+    await clearVmodCache();
+    notifyArtChanged();
+    onLoaded();
+    onClose();
+  };
+
+  const overlay: React.CSSProperties = {
+    position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    zIndex: 1000,
+  };
+  const panel: React.CSSProperties = {
+    width: 560, maxWidth: '92vw', background: '#15171c',
+    border: '2px solid #4a5060', borderRadius: 6, padding: 20,
+    color: '#e8e8ea', boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+  };
+
+  const percent = progress?.total && progress.current
+    ? Math.round((progress.current / progress.total) * 100)
+    : 0;
+
+  return (
+    <div style={overlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={panel}>
+        <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 12 }}>
+          <h2 style={{ margin: 0, color: '#ffd54a', fontSize: 18 }}>Load VASSAL Art</h2>
+          <button onClick={onClose} style={{
+            marginLeft: 'auto', background: 'transparent', color: '#888',
+            border: 'none', cursor: 'pointer', fontSize: 18,
+          }}>×</button>
+        </div>
+
+        <div style={{ fontSize: 13, color: '#ccc', lineHeight: 1.5, marginBottom: 14 }}>
+          This game uses art from the official VASSAL <strong>Star Wars: Rebellion</strong> module.
+          We don't host the art — you bring your own copy. It's stored in your browser
+          (IndexedDB) and persists across sessions until you clear it.
+        </div>
+
+        <div style={{
+          padding: 10, background: '#0c0d10', borderRadius: 4,
+          border: '1px solid #2a2d34', fontSize: 12, marginBottom: 14, lineHeight: 1.5,
+        }}>
+          <strong style={{ color: '#80dc78' }}>How to get swr.vmod:</strong>
+          <ol style={{ margin: '6px 0 0 18px', padding: 0 }}>
+            <li>
+              Download from{' '}
+              <a href={VASSAL_DRIVE_URL} target="_blank" rel="noopener noreferrer"
+                style={{ color: '#4fc3f7' }}>this Google Drive link</a>
+              {' '}(or from{' '}
+              <a href="https://vassalengine.org/wiki/Module:Star_Wars:_Rebellion"
+                target="_blank" rel="noopener noreferrer"
+                style={{ color: '#4fc3f7' }}>vassalengine.org</a>)
+            </li>
+            <li>Drag the .vmod file into the box below, or click to pick it</li>
+          </ol>
+        </div>
+
+        {currentMeta && (
+          <div style={{
+            padding: 10, background: '#0d2014', borderRadius: 4,
+            border: '1px solid #2a5028', fontSize: 12, marginBottom: 14,
+          }}>
+            <div style={{ color: '#80dc78', fontWeight: 600, marginBottom: 4 }}>
+              ✓ Art currently loaded
+            </div>
+            <div style={{ color: '#aaa' }}>
+              {currentMeta.vmodFilename ?? '(.vmod)'} — {currentMeta.fileCount} files,{' '}
+              {(currentMeta.totalBytes / (1024 * 1024)).toFixed(1)} MB
+              · {new Date(currentMeta.loadedAt).toLocaleString()}
+            </div>
+            <button onClick={handleClear} style={{
+              marginTop: 8, background: '#2a1414', color: '#ff8866',
+              border: '1px solid #5a2a2a', padding: '4px 10px', borderRadius: 3,
+              cursor: 'pointer', fontSize: 11,
+            }}>
+              Clear cached art
+            </button>
+          </div>
+        )}
+
+        <label
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragOver(false);
+            const file = e.dataTransfer.files?.[0];
+            if (file) handleFile(file);
+          }}
+          style={{
+            display: 'block', padding: 30, textAlign: 'center',
+            background: dragOver ? '#1a2030' : '#0c0d10',
+            border: `2px dashed ${dragOver ? '#4fc3f7' : '#3a3d44'}`,
+            borderRadius: 6, cursor: progress ? 'wait' : 'pointer',
+            opacity: progress ? 0.6 : 1, marginBottom: 12,
+          }}
+        >
+          <input
+            type="file"
+            accept=".vmod,.zip,application/zip"
+            style={{ display: 'none' }}
+            disabled={!!progress}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleFile(file);
+            }}
+          />
+          <div style={{ fontSize: 14, color: '#ccc' }}>
+            {dragOver ? 'Drop swr.vmod here' : 'Drag swr.vmod here, or click to choose'}
+          </div>
+          <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
+            (.vmod is a renamed .zip — we extract images/ in-browser)
+          </div>
+        </label>
+
+        {progress && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: '#aaa', marginBottom: 4 }}>
+              {progress.phase === 'reading' && 'Reading file…'}
+              {progress.phase === 'unzipping' && 'Unzipping…'}
+              {progress.phase === 'storing' && (
+                <>Storing image {progress.current}/{progress.total}: <span style={{ color: '#fff' }}>{progress.filename}</span></>
+              )}
+              {progress.phase === 'done' && (
+                <span style={{ color: '#80dc78' }}>✓ Done — {progress.total} images cached</span>
+              )}
+            </div>
+            <div style={{ width: '100%', height: 6, background: '#0c0d10', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ width: `${percent}%`, height: '100%', background: '#4fc3f7', transition: 'width 0.15s' }} />
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div style={{
+            padding: 10, background: '#2a1414', borderRadius: 4,
+            border: '1px solid #5a2a2a', color: '#ff8866', fontSize: 12, marginBottom: 12,
+          }}>
+            ✗ {error}
+          </div>
+        )}
+
+        <div style={{ fontSize: 11, color: '#666', lineHeight: 1.5 }}>
+          Don't want to upload? You can play text-only — flip the <strong>images: off</strong> toggle
+          in the play header. Unit abbreviations, dice glyphs, and system summary lines carry
+          the UI without art.
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function UploadLogsDialog({ onClose }: { onClose: () => void }) {
   // Read archived games out of localStorage so we can show the count up-front.

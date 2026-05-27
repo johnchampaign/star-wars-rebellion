@@ -80,7 +80,33 @@ export function diceImageUrl(color: 'red' | 'black' | 'green', face: 'hit' | 'di
           : 'Blank';
   // Green is base-game-incomplete: only Blank + Direct shipped.
   if (color === 'green' && (face === 'hit' || face === 'special')) return null;
-  return `${DICE_IMAGE_BASE}/Dice${c}${f}.png${BUST}`;
+  const filename = `Dice${c}${f}.png`;
+  // Prefer blob: URL from the .vmod cache when the player has loaded
+  // their own copy of the module. See vmodArtCache.ts for the rationale.
+  const cache = (globalThis as { __rebellionArtCache?: { getSync: (f: string) => string | null | undefined } }).__rebellionArtCache;
+  if (cache) {
+    const blob = cache.getSync(filename);
+    if (typeof blob === 'string') return blob;
+  }
+  return `${DICE_IMAGE_BASE}/${filename}${BUST}`;
+}
+
+/** Generic .vmod-cache-aware URL builder for assets whose basename comes
+ *  from a catalog field (leader.image, card.image, marker filenames).
+ *  Returns a blob: URL when the .vmod is loaded and the filename is
+ *  cached, else falls back to the dev-assets path with cache-bust. */
+export function vmodAssetUrl(filename: string, base: string): string {
+  const cache = (globalThis as { __rebellionArtCache?: { getSync: (f: string) => string | null | undefined } }).__rebellionArtCache;
+  if (cache) {
+    const blob = cache.getSync(filename);
+    if (typeof blob === 'string') return blob;
+  }
+  return `${base}/${filename}${BUST}`;
+}
+
+/** Map.png — .vmod-cache-aware when art is loaded. */
+export function mapImageUrl(): string {
+  return vmodAssetUrl('Map.png', BASE);
 }
 
 /** Load all 8 JSON files needed by the engine in parallel. */

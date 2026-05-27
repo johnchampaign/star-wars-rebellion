@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { GameState, Side, UnitInstance, Theater, DieResult } from '../engine/types';
 import * as combat from '../engine/combat';
 import { stepOnce as aiStepOnce } from './randomAI';
+import { vmodAssetUrl, CARD_IMAGE_BASE } from '../data/loadAssets';
 
 const SIDE_COLOR = { Rebel: '#4fc3f7', Empire: '#ff8a80' } as const;
 
@@ -50,7 +51,7 @@ function CardHover({ G, cardId, children }: {
         }}>
           {card.image ? (
             <img
-              src={`/dev-assets/cards/${card.image}`}
+              src={vmodAssetUrl(card.image, CARD_IMAGE_BASE)}
               alt={card.name}
               style={{ width: TILE_W, height: 'auto', borderRadius: 4, border: '1px solid #333' }}
             />
