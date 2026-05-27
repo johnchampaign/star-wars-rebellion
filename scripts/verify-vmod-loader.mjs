@@ -108,6 +108,16 @@ async function loadVmod(buf, inputName = 'test.vmod') {
 
 const FILENAME_ALIASES = {
   'Map.png': ['Map-Redux.png'],
+  'DiceBlackBlank.png':   ['Black 1.PNG', 'Black 2.PNG'],
+  'DiceBlackHit.png':     ['Black 3.PNG', 'Black 4.PNG'],
+  'DiceBlackDirect.png':  ['Black 5.PNG'],
+  'DiceBlackSpecial.png': ['Black 6.PNG'],
+  'DiceRedBlank.png':     ['Red 12.PNG'],
+  'DiceRedHit.png':       ['Red 34.PNG'],
+  'DiceRedDirect.png':    ['Red 5.PNG'],
+  'DiceRedSpecial.png':   ['Red 6.PNG'],
+  'DiceGreenBlank.png':   ['Green 1.PNG'],
+  'DiceGreenDirect.png':  ['Green 5_6.PNG'],
 };
 
 function resolve(stored, caseIndex, filename) {
@@ -279,6 +289,12 @@ if (realPath) {
     'UnitShieldGenerator.png', 'UnitIonCannon.png',
     'LeaderEmpireDarthVader.png', 'LeaderRebelLukeSkywalker.png',
     'ActionCardEmpireBlindside.png', 'MissionEmpireRuleByFear.png',
+    // Dice — all 10 semantic names resolved via v1.2e numbered-face aliases.
+    'DiceBlackBlank.png', 'DiceBlackHit.png',
+    'DiceBlackDirect.png', 'DiceBlackSpecial.png',
+    'DiceRedBlank.png', 'DiceRedHit.png',
+    'DiceRedDirect.png', 'DiceRedSpecial.png',
+    'DiceGreenBlank.png', 'DiceGreenDirect.png',
   ];
   for (const name of core) {
     const r = resolve(stored, caseIndex, name);

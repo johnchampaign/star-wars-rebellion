@@ -111,6 +111,25 @@ const caseIndex = new Map<string, string>();
 const FILENAME_ALIASES: Record<string, string[]> = {
   // v1.2e renamed the board to Map-Redux.png. Older modules ship Map.png.
   'Map.png': ['Map-Redux.png'],
+  // v1.2e ships dice faces under "<Color> <faceNum>.PNG" instead of the
+  // semantic DiceXXX{Hit,Direct,Special,Blank}.png we expect. Mapping
+  // verified by visual inspection of each face + CRC duplicates in the
+  // archive (Black 1=2, Black 3=4 confirm the 2/2/1/1 distribution).
+  'DiceBlackBlank.png':   ['Black 1.PNG', 'Black 2.PNG'],
+  'DiceBlackHit.png':     ['Black 3.PNG', 'Black 4.PNG'],
+  'DiceBlackDirect.png':  ['Black 5.PNG'],
+  'DiceBlackSpecial.png': ['Black 6.PNG'],
+  // Red faces in v1.2e are already consolidated by filename — Red 12 is
+  // the file for faces 1 and 2 (both blank), Red 34 for faces 3 and 4
+  // (both hit), Red 5 for direct, Red 6 for special.
+  'DiceRedBlank.png':     ['Red 12.PNG'],
+  'DiceRedHit.png':       ['Red 34.PNG'],
+  'DiceRedDirect.png':    ['Red 5.PNG'],
+  'DiceRedSpecial.png':   ['Red 6.PNG'],
+  // Green is RoE-only; the base-game .vmod ships only blank + direct.
+  // (Hit and Special return null from diceImageUrl regardless.)
+  'DiceGreenBlank.png':   ['Green 1.PNG'],
+  'DiceGreenDirect.png':  ['Green 5_6.PNG'],
 };
 
 /** Get the blob: URL for a logical filename (e.g. "UnitTIE.png"). Returns
