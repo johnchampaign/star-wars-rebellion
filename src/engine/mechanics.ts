@@ -306,22 +306,49 @@ export function gainUnit(G: GameState, side: Side, typeId: UnitTypeId, systemId:
 }
 
 /** Destroy a unit (removes from board, returns to supply). */
+// Causes that are LEGAL for destroying an indestructible-except-by-special-means
+// unit (health.color === null — currently only the Death Star). Any other
+// cause is a programming error: per RAW, the Death Star can only be destroyed
+// by the Death Star Plans objectives. New paths that legitimately need to
+// remove such a unit must add their cause here AND have a RAW citation.
+const INDESTRUCTIBLE_DESTROY_ALLOWLIST = new Set<string>([
+  'death-star-plans',     // RR p.10 — Lvl2/Lvl3 Death Star Plans objectives.
+]);
+
 export function destroyUnit(G: GameState, unitInstanceId: UnitInstanceId, cause: string = 'unknown'): void {
+  const tryDestroy = (units: { instanceId: string; side: Side; typeId: string }[], sysId: string): boolean => {
+    const i = units.findIndex((u) => u.instanceId === unitInstanceId);
+    if (i < 0) return false;
+    const u = units[i];
+    const t = G.catalog.unitTypes[u.typeId];
+    // RAW invariant: units with health.color === null cannot be destroyed
+    // by ordinary combat / mission effects. If a non-allowlisted cause
+    // reaches here, refuse the destroy + log loudly so a future bug like
+    // the Hit And Run free-Death-Star kill (issue #28) gets caught at
+    // the destroyUnit boundary rather than slipping through a candidate
+    // filter we forgot to add elsewhere.
+    if (t?.health.color === null && !INDESTRUCTIBLE_DESTROY_ALLOWLIST.has(cause)) {
+      const msg = `INVARIANT: refused to destroy indestructible unit ${u.typeId} (${u.instanceId}) at ${sysId} via cause='${cause}'. Allowed causes: ${[...INDESTRUCTIBLE_DESTROY_ALLOWLIST].join(', ')}. This is a bug — fix the caller or add the cause to the allowlist with a RAW citation.`;
+      log(G, { kind: 'invariant-violation', side: u.side, payload: { rule: 'destroy-indestructible', typeId: u.typeId, unit: u.instanceId, systemId: sysId, cause } });
+      // Throw in dev so the bug is loud; in production the log entry above
+      // gives us the audit trail and we keep the unit alive (graceful degrade).
+      if (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production') {
+        throw new Error(msg);
+      }
+      console.error(msg);
+      return true; // matched the unit but refused — caller stops searching.
+    }
+    units.splice(i, 1);
+    log(G, { kind: 'destroy-unit', side: u.side, payload: { unit: u.instanceId, typeId: u.typeId, systemId: sysId, cause } });
+    return true;
+  };
   for (const [sysId, ss] of Object.entries(G.map.systems)) {
-    const i = ss.units.findIndex((u) => u.instanceId === unitInstanceId);
-    if (i >= 0) {
-      const [u] = ss.units.splice(i, 1);
-      // typeId included so post-hoc grep "what happened to my Death Star" works.
-      log(G, { kind: 'destroy-unit', side: u.side, payload: { unit: u.instanceId, typeId: u.typeId, systemId: sysId, cause } });
+    if (tryDestroy(ss.units, sysId)) {
       applyInvariants(G, [sysId]);
       return;
     }
   }
-  // Check rebel base space too
-  const i = G.map.rebelBaseSpace.units.findIndex((u) => u.instanceId === unitInstanceId);
-  if (i >= 0) {
-    const [u] = G.map.rebelBaseSpace.units.splice(i, 1);
-    log(G, { kind: 'destroy-unit', side: u.side, payload: { unit: u.instanceId, typeId: u.typeId, systemId: 'rebel-base-space', cause } });
+  if (tryDestroy(G.map.rebelBaseSpace.units, 'rebel-base-space')) {
     applyInvariants(G);
   }
 }
