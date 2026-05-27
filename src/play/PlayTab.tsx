@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo, createContext, useContext } from 'react';
 import { loadAllForEngine, loadBoardMask, MAP_IMAGE_URL, MARKER_IMAGE_BASE, UNIT_IMAGE_BASE, LEADER_IMAGE_BASE, CARD_IMAGE_BASE, IMG_BUST, diceImageUrl, vmodAssetUrl, mapImageUrl } from '../data/loadAssets';
 import { UNIT_IMAGE, groupByType, groupTypeIds, getUnitStyle, setUnitStyle, nextStyle, unitImageUrl, type UnitImageStyle } from './unitImages';
+import { capturePageScreenshot } from './screenshot';
 import { missionTargets, missionLeaderTargets } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce } from './randomAI';
 import {
@@ -555,7 +556,6 @@ export default function PlayTab() {
               setShowReport(true);
               (async () => {
                 try {
-                  const { capturePageScreenshot } = await import('./screenshot');
                   const png = await Promise.race([
                     capturePageScreenshot(),
                     new Promise<null>((r) => setTimeout(() => r(null), 5000)),
@@ -1441,7 +1441,6 @@ export default function PlayTab() {
             setShowReport(true);
             (async () => {
               try {
-                const { capturePageScreenshot } = await import('./screenshot');
                 const png = await Promise.race([
                   capturePageScreenshot(),
                   new Promise<null>((r) => setTimeout(() => r(null), 5000)),
