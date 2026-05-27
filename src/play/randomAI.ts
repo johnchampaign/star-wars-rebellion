@@ -962,8 +962,14 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     return phases.resolveInterrogationDroidDecoyPick(G, decoys).ok;
   }
 
-  // From here on, only act on our own turn.
-  if (G.currentPlayer !== side) return false;
+  // (The currentPlayer gate that used to live here has been moved DOWN to
+  // just before the proactive-command switch. Mission-resolution choices
+  // — StolenPlansReorder, InfiltrationPick, CovertOperationPick,
+  // DestroyUpToHealth, etc. — must fire regardless of whose turn it is,
+  // because they can be posted to one side while the OTHER side is
+  // currentPlayer (e.g. Rebel reveals a mission with a Rebel choice
+  // payload, then control passes to Empire before the choice is
+  // resolved). Pre-fix, the gate trapped them and caused freezes.)
 
   // If a player choice is pending and this side owns it, resolve it first.
   if (G.pendingChoice && G.pendingChoice.kind === 'StolenPlansReorder' && side === 'Rebel') {
@@ -1150,6 +1156,11 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const r = phases.resolveInfiltrationPick(G, keep);
     return r.ok;
   }
+
+  // From here on, only act on our own turn. Above are pendingChoice
+  // handlers that may fire even when it's the other side's turn.
+  if (G.currentPlayer !== side) return false;
+
   switch (G.phase) {
     case 'Setup': {
       // If we're the Rebel and a base pick is pending, pick first.
