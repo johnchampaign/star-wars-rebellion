@@ -825,6 +825,19 @@ function resumeMissionAfterChoice(G: GameState): void {
   discardOrReturnMission(G, pm.resolverSide, pm.missionId);
   G.pendingMission = undefined;
   if (!G.isGameOver) advanceCommandTurn(G);
+  // If a pendingCombat is sitting at its initial AddLeader step because
+  // beginCombat fired while THIS mission's pendingChoice was still set
+  // (so the activateSystem-side runCombat call bailed at runCombat's
+  // "if (G.pendingChoice) return" early-out), resume it now. Without
+  // this, the deferred combat freezes — pendingCombat exists, no
+  // pendingChoice, but nothing ever re-invokes runCombat. Reproduced
+  // by stuck-combat-live-state.json: Rebel reveals Hit And Run →
+  // DestroyUpToHealth pending → Empire activates a different system →
+  // beginCombat at ord-mantell → runCombat bails → DestroyUpToHealth
+  // resolves here → combat never advances.
+  if (G.pendingCombat && !G.pendingChoice && !G.isGameOver) {
+    runCombat(G);
+  }
 }
 
 /** Resolve a pending OpposeMission choice. `opposerLeaderId = null` declines
