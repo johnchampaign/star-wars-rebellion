@@ -4616,6 +4616,7 @@ function SetupPanel({ G, side, onDeploy, onAutoFill }: {
             {grouped.map((g) => {
               const isSelected = selectedType === g.typeId;
               const file = UNIT_IMAGE[g.typeId];
+              const unitName = G.catalog.unitTypes[g.typeId]?.name ?? g.typeId;
               return (
                 <button
                   key={g.typeId}
@@ -4627,14 +4628,26 @@ function SetupPanel({ G, side, onDeploy, onAutoFill }: {
                     border: '2px solid ' + (isSelected ? color : '#2a2d34'),
                     borderRadius: 4,
                     cursor: 'pointer',
-                    width: 56,
-                    height: 56,
+                    // Wider button to fit the unit name as a visible text
+                    // label — strict-image deploys ship transparent
+                    // placeholders, so the image alone is an empty square
+                    // and the player has no way to tell units apart.
+                    minWidth: 84,
+                    height: 64,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'flex-start',
+                    gap: 2,
                   }}
-                  title={g.typeId}
+                  title={unitName}
                 >
-                  {file && <img src={unitImageUrl(g.typeId, UNIT_IMAGE_BASE, unitStyle)!} width={44} height={44} alt={g.typeId} />}
+                  {file && <img src={unitImageUrl(g.typeId, UNIT_IMAGE_BASE, unitStyle)!} width={28} height={28} alt={unitName} />}
+                  <span style={{ fontSize: 9, color: isSelected ? '#000' : '#e8e8ea', textAlign: 'center', lineHeight: 1.1, fontWeight: 600 }}>
+                    {unitName}
+                  </span>
                   <span style={{
-                    position: 'absolute', bottom: 2, right: 2,
+                    position: 'absolute', top: 2, right: 2,
                     background: '#000', color: '#fff', borderRadius: '50%',
                     fontSize: 10, fontWeight: 700, width: 16, height: 16,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
