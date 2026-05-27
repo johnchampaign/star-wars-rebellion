@@ -6549,7 +6549,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
   const games = (() => {
     try {
       const raw = localStorage.getItem(LS_HISTORY);
-      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string }>) : [];
+      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string }>) : [];
     } catch { return []; }
   })();
   // Also offer to include the in-progress game (the current save) if it
@@ -6576,12 +6576,14 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
           encodedAt: g.encodedAt,
           winner: g.winner,
           winReason: g.winReason,
+          humanSide: g.humanSide,
           codec: g.codec,
           source: 'browser-game-archive',
         })),
         ...(inProgressCodec ? [{
           encodedAt: new Date().toISOString(),
           inProgress: true,
+          humanSide: (() => { try { return localStorage.getItem(LS_HUMAN_SIDE) || undefined; } catch { return undefined; } })(),
           codec: inProgressCodec,
           source: 'browser-in-progress',
         }] : []),
@@ -8336,15 +8338,23 @@ function DeployUnitPickModal({
 function archiveCompletedGame(G: GameState): void {
   try {
     const raw = localStorage.getItem(LS_HISTORY);
-    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string }> =
+    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string }> =
       raw ? JSON.parse(raw) : [];
     const codec = canEncode(G) ? encode(G) : null;
     if (!codec) return;
+    // Capture which side the human played so log analysts (and the AI-
+    // improvement loop) can tell at a glance whether the AI was Empire
+    // or Rebel. Read from the same localStorage key the play tab uses
+    // for the current human-side preference.
+    const humanSide = (() => {
+      try { return localStorage.getItem(LS_HUMAN_SIDE) || undefined; } catch { return undefined; }
+    })();
     history.unshift({
       encodedAt: new Date().toISOString(),
       winner: G.winner,
       winReason: G.winReason,
       codec,
+      humanSide,
     });
     while (history.length > HISTORY_CAP) history.pop();
     localStorage.setItem(LS_HISTORY, JSON.stringify(history));

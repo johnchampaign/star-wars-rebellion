@@ -454,6 +454,14 @@ function enterCommandPhase(G: GameState): void {
 export function pass(G: GameState, side: Side): { ok: boolean; reason?: string } {
   if (G.phase !== 'Command') return { ok: false, reason: 'wrong-phase' };
   if (G.currentPlayer !== side) return { ok: false, reason: 'not-your-turn' };
+  // Don't let the active side pass while ANY mid-resolution state is open.
+  // Passing triggers advanceCommandTurn → if both sides have passed, phase
+  // advances to Refresh, abandoning the open pendingMission/Choice/Combat
+  // and silently losing the mission outcome. The opponent (who owes the
+  // choice) needs a chance to resolve first.
+  if (G.pendingMission) return { ok: false, reason: 'mission-pending' };
+  if (G.pendingChoice) return { ok: false, reason: `choice-pending:${G.pendingChoice.kind}` };
+  if (G.pendingCombat) return { ok: false, reason: 'combat-pending' };
 
   if (!G.passedThisCommand.includes(side)) G.passedThisCommand.push(side);
   log(G, { kind: 'pass', side });
@@ -553,6 +561,12 @@ export function activateSystem(
   if (G.phase !== 'Command') return { ok: false, reason: 'wrong-phase' };
   if (G.currentPlayer !== side) return { ok: false, reason: 'not-your-turn' };
   if (G.passedThisCommand.includes(side)) return { ok: false, reason: 'already-passed' };
+  // Same rationale as revealMission's mid-resolution guard: don't let the
+  // AI initiate a new activation (which can itself trigger combat) while
+  // a prior mission/choice/combat is still resolving.
+  if (G.pendingMission) return { ok: false, reason: 'mission-pending' };
+  if (G.pendingChoice) return { ok: false, reason: `choice-pending:${G.pendingChoice.kind}` };
+  if (G.pendingCombat) return { ok: false, reason: 'combat-pending' };
 
   const f = faction(G, side);
   if (!f.leaderPool.includes(leaderId)) return { ok: false, reason: 'leader-not-in-pool' };
@@ -625,6 +639,14 @@ export function revealMission(
   if (G.phase !== 'Command') return { ok: false, reason: 'wrong-phase' };
   if (G.currentPlayer !== side) return { ok: false, reason: 'not-your-turn' };
   if (G.passedThisCommand.includes(side)) return { ok: false, reason: 'already-passed' };
+  // Refuse if there's an unresolved mid-action state. Without this, the AI
+  // loop would call revealMission again before the opponent's OpposeMission
+  // (or other mid-resolution choice) gets handled, overwriting pendingMission
+  // and silently dropping the prior mission's outcome. The human UI blocks
+  // this naturally (modal stack); the engine has to enforce it for AI play.
+  if (G.pendingMission) return { ok: false, reason: 'mission-already-resolving' };
+  if (G.pendingChoice) return { ok: false, reason: `choice-pending:${G.pendingChoice.kind}` };
+  if (G.pendingCombat) return { ok: false, reason: 'combat-pending' };
 
   // "Boba Fett, Where?" (Empire action card): "Rebels cannot attempt missions
   // or use action cards here." We check Boba Fett's live position rather than

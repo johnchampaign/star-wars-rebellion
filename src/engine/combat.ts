@@ -1755,6 +1755,34 @@ function endCombat(G: GameState): void {
   if (!G.isGameOver) maybePostDeathStarPlansChoice(G, c);
 
   G.pendingCombat = undefined;
+
+  // If this combat was triggered from inside a mission's effect handler
+  // (ignite-rebellion, wookie-uprising, etc.), the caller's
+  // continueRevealAfterSpecialOffer returned early when it saw the
+  // pendingChoice that runCombat posted. Now that combat is done and no
+  // new choice is pending, finish the mission: discard/return it and
+  // advance the command turn. Without this, pendingMission stays set
+  // forever and the engine's mid-resolution guards (revealMission /
+  // activateSystem / pass) lock the entire game.
+  if (!G.isGameOver && !G.pendingChoice && G.pendingMission && G.pendingMission.stage === 'effect') {
+    const pm = G.pendingMission;
+    const f = pm.resolverSide === 'Rebel' ? G.rebel : G.empire;
+    const card = G.catalog.missions[pm.missionId];
+    // Mirror discardOrReturnMission's logic to avoid a circular import.
+    if (card?.isStarting) {
+      f.missionHand.push(pm.missionId);
+      log(G, { kind: 'mission-return-to-hand', side: pm.resolverSide, payload: { missionId: pm.missionId } });
+    } else {
+      f.missionDiscard.push(pm.missionId);
+      log(G, { kind: 'mission-discard', side: pm.resolverSide, payload: { missionId: pm.missionId } });
+    }
+    G.pendingMission = undefined;
+    // Don't call advanceCommandTurn here directly — circular import would
+    // matter, and the AI loop's next stepOnce iteration handles flow
+    // naturally now that no pending state blocks it. The combat-resolving
+    // side's command-phase turn continues as if the mission had wrapped
+    // up cleanly.
+  }
 }
 
 /** Eligibility-check + post for Death Star Plans 2/3.
