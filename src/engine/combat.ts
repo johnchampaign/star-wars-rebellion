@@ -93,37 +93,49 @@ export function runCombat(G: GameState): void {
   if (G.pendingChoice) return; // a tactic-choice modal is open
   const c = G.pendingCombat;
 
-  // Step 1: Add Leader (rr p.5 step 1) — each side may add one leader from
-  // their pool to the combat. Auto: if no leader is here yet, add the
-  // highest-tactic-value one from the pool. Skip Start-of-Combat action-card
-  // triggers (deferred).
+  // Step 1: Add Leader (RR p.4-5 step 1) — each side that lacks a leader-
+  // with-tactic-values in the system MAY take one leader from their pool
+  // and place it. "May" is key: this is the player's call, not automatic.
+  // Engine posts a CombatAddLeaderPick choice; the AI handler picks the
+  // best one (or declines), the UI shows the human a modal with leader
+  // options + a "Don't add" button.
   if (c.step === 'AddLeader') {
+    c.addLeaderSidesOffered = c.addLeaderSidesOffered ?? [];
     for (const side of [c.attackerSide, other(c.attackerSide)] as const) {
+      if (c.addLeaderSidesOffered.includes(side)) continue;
       const f = side === 'Rebel' ? G.rebel : G.empire;
       const here = f.leadersOnBoard[c.systemId] ?? [];
-      // Per RR p.4 Combat step 1: "If a player does not have a leader **with
-      // tactic values** in the system, he may take one leader from his leader
-      // pool and place it in the system." A skill-only leader (no tactic
-      // values) doesn't disqualify adding a combat-capable one.
       const hasTacticLeaderHere = here.some((lid) => {
         const ldr = G.catalog.leaders[lid];
         return ldr && (ldr.tacticValues.space + ldr.tacticValues.ground) > 0;
       });
-      if (hasTacticLeaderHere) continue;
-      // Pick the best pool leader by combined tactic value.
-      let best: { id: string; v: number } | null = null;
+      if (hasTacticLeaderHere) {
+        c.addLeaderSidesOffered.push(side);
+        continue;
+      }
+      const candidates: string[] = [];
       for (const lid of f.leaderPool) {
         const ldr = G.catalog.leaders[lid];
         if (!ldr) continue;
         const v = ldr.tacticValues.space + ldr.tacticValues.ground;
-        if (v <= 0) continue; // skip leaders with no tactic dice (skill-only leaders)
-        if (!best || v > best.v) best = { id: lid, v };
+        if (v <= 0) continue; // skill-only leaders can't be the combat add
+        candidates.push(lid);
       }
-      if (best) {
-        M.placeLeader(G, side, best.id, c.systemId);
-        log(G, { kind: 'combat-add-leader', side, payload: { leaderId: best.id, tacticValue: best.v } });
-        c.report.addedLeaders.push({ side, leaderId: best.id, tacticValue: best.v });
+      if (candidates.length === 0) {
+        // No legal pool leader → nothing to choose; skip silently.
+        c.addLeaderSidesOffered.push(side);
+        continue;
       }
+      // Post the choice and pause.
+      c.addLeaderSidesOffered.push(side);
+      G.pendingChoice = {
+        kind: 'CombatAddLeaderPick',
+        side, systemId: c.systemId, candidates,
+      };
+      log(G, { kind: 'choice-request', side, payload: {
+        kind: 'CombatAddLeaderPick', candidates: candidates.length,
+      }});
+      return; // wait for resolveCombatAddLeaderPick
     }
     c.step = 'DrawTactics';
   }
@@ -1487,6 +1499,35 @@ export function resolveReadyForActionLeaderPick(
   const finished = processStartOfCombatBatch(G, c);
   if (!finished) return { ok: true };
   advanceStartOfCombatAfterSideDone(G, c, batchSide);
+  return { ok: true };
+}
+
+/** Resolve the Combat-step-1 "may add a leader from pool" choice.
+ *  `leaderId` = pick a pool leader (must be in candidates), or `null` to
+ *  decline. Pass through and continue runCombat to advance the step. */
+export function resolveCombatAddLeaderPick(
+  G: GameState, leaderId: LeaderId | null
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'CombatAddLeaderPick') return { ok: false, reason: 'no-pending' };
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  if (leaderId !== null && !pc.candidates.includes(leaderId)) {
+    return { ok: false, reason: 'bad-leader' };
+  }
+  G.pendingChoice = undefined;
+  if (leaderId !== null) {
+    M.placeLeader(G, pc.side, leaderId, c.systemId);
+    const ldr = G.catalog.leaders[leaderId];
+    const v = (ldr?.tacticValues.space ?? 0) + (ldr?.tacticValues.ground ?? 0);
+    log(G, { kind: 'combat-add-leader', side: pc.side, payload: { leaderId, tacticValue: v } });
+    c.report.addedLeaders.push({ side: pc.side, leaderId, tacticValue: v });
+  } else {
+    log(G, { kind: 'combat-add-leader-declined', side: pc.side, payload: {} });
+  }
+  // Re-enter runCombat — it'll either offer the other side this same choice
+  // or advance to DrawTactics.
+  runCombat(G);
   return { ok: true };
 }
 

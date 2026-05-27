@@ -117,6 +117,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem }: {
     pc?.kind === 'FullyOperationalTargetPick' ? pc.side :
     pc?.kind === 'TargetTheGeneratorPick' ? pc.side :
     pc?.kind === 'ReadyForActionLeaderPick' ? pc.side :
+    pc?.kind === 'CombatAddLeaderPick'   ? pc.side :
     pc?.kind === 'RetreatDecision'       ? pc.side : null;
   const isHumanDecision = decisionSide === humanSide;
   const waitingForAI = decisionSide !== null && !isHumanDecision;
@@ -456,6 +457,9 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem }: {
         )}
         {pc?.kind === 'ReadyForActionLeaderPick' && isHumanDecision && (
           <ReadyForActionPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'CombatAddLeaderPick' && isHumanDecision && (
+          <CombatAddLeaderPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'RetreatDecision' && isHumanDecision && (
           <RetreatPanel G={G} choice={pc} onPersist={onPersist} />
@@ -1514,6 +1518,45 @@ function ReadyForActionPanel({ G, choice, onPersist }: {
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Combat step 1: optional "add a leader from pool" ----------
+
+function CombatAddLeaderPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'CombatAddLeaderPick' }>;
+  onPersist: () => void;
+}) {
+  const submit = (leaderId: string | null) => {
+    const r = combat.resolveCombatAddLeaderPick(G, leaderId as never);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>{choice.side} — add a leader to this combat?</b>{' '}
+        You have no leader with tactic values here. You <i>may</i> place one leader
+        from your pool — they roll tactic dice but are at risk of capture / elimination.
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {choice.candidates.map((lid) => {
+          const ldr = G.catalog.leaders[lid];
+          const sp = ldr?.tacticValues.space ?? 0;
+          const gr = ldr?.tacticValues.ground ?? 0;
+          return (
+            <button key={lid} onClick={() => submit(lid)} style={btn('#80dc78')}>
+              {ldr?.name ?? lid}{' '}
+              <span style={{ fontSize: 10, opacity: 0.7 }}>(space {sp} / ground {gr})</span>
+            </button>
+          );
+        })}
+        <button onClick={() => submit(null)} style={btn('#ffd54a')}>
+          Don't add (no tactic dice this combat)
+        </button>
       </div>
     </div>
   );

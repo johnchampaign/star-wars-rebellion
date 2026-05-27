@@ -735,6 +735,17 @@ export type ChoiceRequest =
       candidates: LeaderId[];
     }
   | {
+      // RR p.4-5 Combat step 1: "If a player does not have a leader with
+      // tactic values in the system, he MAY take one leader from his leader
+      // pool and place it in the system." Optional — the player can decline,
+      // accepting 0 tactic-card draws (and any morale-cost from missing
+      // leadership). Posted once per combat per side that qualifies.
+      kind: 'CombatAddLeaderPick';
+      side: Side;
+      systemId: SystemId;
+      candidates: LeaderId[]; // pool leaders with tactic values > 0
+    }
+  | {
       // End-of-round retreat choice (RR pp.5-6). The attacker may retreat
       // to the system they moved from; the defender may retreat to any
       // adjacent system (and not the attacker's source). Each side may
@@ -850,6 +861,10 @@ export type CombatState = {
   // the start of each new round. Lets the resumable round loop skip
   // already-finished theater steps after a tactic-choice pause.
   roundTheatersDone?: Theater[];
+  // Sides that have already been offered the Combat-step-1 "add a leader
+  // from pool" choice. Prevents re-prompting after the player resolves.
+  // Same pattern as startOfCombatSidesOffered.
+  addLeaderSidesOffered?: Side[];
   // Whether the Start-of-Combat action-card window has been resolved.
   // Set after both sides confirm their picks (or skip); never re-prompted.
   startOfCombatActionsDone?: boolean;

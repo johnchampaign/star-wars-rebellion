@@ -642,6 +642,21 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'CombatStartActionCards' && G.pendingChoice.side === side) {
     return handleCombatStartActionCards(G);
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'CombatAddLeaderPick' && G.pendingChoice.side === side) {
+    // AI: always add the highest-tactic-value pool leader. Captures are bad
+    // but missing the tactic-card draws is worse for a side that has units
+    // here but no leader. Future tuning could decline when the combat is
+    // unwinnable anyway (e.g. defender vs overwhelming attacker).
+    const c = G.pendingChoice;
+    let best: { id: string; v: number } | null = null;
+    for (const lid of c.candidates) {
+      const ld = G.catalog.leaders[lid];
+      if (!ld) continue;
+      const v = ld.tacticValues.space + ld.tacticValues.ground;
+      if (!best || v > best.v) best = { id: lid, v };
+    }
+    return combat.resolveCombatAddLeaderPick(G, best?.id ?? null).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'PlanTheAssaultShips' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
     // Pick a transport-valid subset: all capital ships (provide capacity),
