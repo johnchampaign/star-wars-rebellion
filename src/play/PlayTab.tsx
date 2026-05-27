@@ -8594,6 +8594,46 @@ function DeployUnitPickModal({
           system you control (or subjugate, for Empire) with no enemy units,
           no sabotage, and that isn't remote.
         </div>
+        {(() => {
+          // Show the rest of the deploy queue (everything still to place this
+          // Refresh, both sides) so the player can decide whether to save a
+          // good system for the stronger unit coming up next.
+          const remaining = G.refreshPaused?.pendingDeployPicks ?? [];
+          // Skip [0] — that's THIS pick. The rest are upcoming.
+          const upcoming = remaining.slice(1);
+          if (upcoming.length === 0) return null;
+          const bySide: Record<string, Map<string, number>> = { Rebel: new Map(), Empire: new Map() };
+          for (const u of upcoming) {
+            const m = bySide[u.side];
+            m.set(u.typeId, (m.get(u.typeId) ?? 0) + 1);
+          }
+          const fmt = (m: Map<string, number>) => [...m.entries()]
+            .map(([tid, n]) => {
+              const name = G.catalog.unitTypes[tid]?.name ?? tid;
+              return n > 1 ? `${name}×${n}` : name;
+            })
+            .join(', ');
+          return (
+            <div style={{
+              background: '#0c0d10', border: '1px solid #2a2d34', borderRadius: 4,
+              padding: 8, marginBottom: 10, fontSize: 12,
+            }}>
+              <div style={{ color: '#888', marginBottom: 4 }}>
+                Still to deploy this Refresh ({upcoming.length}):
+              </div>
+              {bySide.Rebel.size > 0 && (
+                <div style={{ color: '#aae0ff' }}>
+                  Rebel: <span style={{ color: '#fff' }}>{fmt(bySide.Rebel)}</span>
+                </div>
+              )}
+              {bySide.Empire.size > 0 && (
+                <div style={{ color: '#ffaaaa' }}>
+                  Empire: <span style={{ color: '#fff' }}>{fmt(bySide.Empire)}</span>
+                </div>
+              )}
+            </div>
+          );
+        })()}
         <div style={{
           display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 6,
         }}>
