@@ -130,6 +130,28 @@ const FILENAME_ALIASES: Record<string, string[]> = {
   // (Hit and Special return null from diceImageUrl regardless.)
   'DiceGreenBlank.png':   ['Green 1.PNG'],
   'DiceGreenDirect.png':  ['Green 5_6.PNG'],
+  // v1.2e ships objective cards under "<Card Name>_Clear.png" instead of
+  // the ObjectiveLvlNXxx.png naming the older module used. Verified for
+  // Crippling Blow, Cut Supply Lines, Defend the People, Death Star Plans
+  // via user inspection of v1.2e archive; the rest follow the same
+  // pattern. Two cards named "Death Star Plans" share the same filename
+  // (one archive entry serves both stage 2 and stage 3 — the card art is
+  // identical between stages).
+  'ObjectiveLvl1CripplingBlow.png':    ['Crippling Blow_Clear.png'],
+  'ObjectiveLvl1CutSupplyLines.png':   ['Cut Supply Lines_Clear.png'],
+  'ObjectiveLvl1DefendThePeople.png':  ['Defend the People_Clear.png'],
+  'ObjectiveLvl1RebelAssault.png':     ['Rebel Assault_Clear.png'],
+  'ObjectiveLvl1RegionalSupport.png':  ['Regional Support_Clear.png'],
+  'ObjectiveLvl2DeathStarPlans.png':   ['Death Star Plans_Clear.png'],
+  'ObjectiveLvl2HeartOfTheEmpire.png': ['Heart of the Empire_Clear.png'],
+  'ObjectiveLvl2LeaveNoOneBehind.png': ['Leave No One Behind_Clear.png'],
+  'ObjectiveLvl2Liberation.png':       ['Liberation_Clear.png'],
+  'ObjectiveLvl2PopularSupport.png':   ['Popular Support_Clear.png'],
+  'ObjectiveLvl3DeathStarPlans.png':   ['Death Star Plans_Clear.png'],
+  'ObjectiveLvl3EstablishOutposts.png':['Establish Outposts_Clear.png'],
+  'ObjectiveLvl3InspireSympathy.png':  ['Inspire Sympathy_Clear.png'],
+  'ObjectiveLvl3MajorVictory.png':     ['Major Victory_Clear.png'],
+  'ObjectiveLvl3ReturnOfTheJedi.png':  ['Return of the Jedi_Clear.png'],
 };
 
 /** Get the blob: URL for a logical filename (e.g. "UnitTIE.png"). Returns
