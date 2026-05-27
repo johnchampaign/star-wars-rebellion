@@ -28,7 +28,8 @@
       "Bash(unzip -l /tmp/inner.vmod)",
       "mcp__Claude_Preview__preview_start",
       "Bash(mkdir -p tmp/dice)",
-      "Bash(unzip -o /tmp/inner.vmod -d tmp/dice \"images/Black *.PNG\" \"images/Red *.PNG\" \"images/Green *.PNG\")"
+      "Bash(unzip -o /tmp/inner.vmod -d tmp/dice \"images/Black *.PNG\" \"images/Red *.PNG\" \"images/Green *.PNG\")",
+      "Bash(cp \"C:/Users/johnc/Downloads/stuck-combat-live-state.json\" \"C:/Users/johnc/Claude Games/Star Wars Rebellion/public/stuck.json\")"
     ]
   }
 }

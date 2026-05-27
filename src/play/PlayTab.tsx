@@ -1487,7 +1487,7 @@ function OpposeMissionModal({ G, choice, onResolve }: {
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000,
+      zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
@@ -1580,7 +1580,7 @@ function StolenPlansReorderModal({ G, choice, onPick }: {
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000,
+      zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -1689,7 +1689,7 @@ function RefreshReportModal({ G, report, humanSide, onDismiss }: {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${sideC}`, borderRadius: 6,
@@ -1968,7 +1968,7 @@ function BuildPickModal({ G, choice, onSubmit }: {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
@@ -2093,7 +2093,7 @@ function CombatAttackerTacticsModal({ G, choice, onSubmit }: {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
@@ -2207,7 +2207,7 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
@@ -2307,7 +2307,7 @@ function ResearchAndDevelopmentOptionModal({ G, choice, onPick }: {
   const sysName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
       <div style={{ background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
         padding: 22, maxWidth: 560, width: '92%' }}>
         <div style={{ fontSize: 14, color: '#ffaaaa', fontWeight: 700, marginBottom: 6 }}>
@@ -2476,7 +2476,7 @@ function TopBottomCardPickModal({ G, cardIds, color, title, blurb, topLabel, bot
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
         padding: 20, maxWidth: 640, width: '92%',
@@ -2537,7 +2537,7 @@ function SimpleLeaderPickModal({ G, color, title, candidates, onPick }: {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
@@ -2589,7 +2589,7 @@ function SystemMultiPickModal({ G, choice, title, color, onSubmit }: {
   });
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
       <div style={{ background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
         padding: 20, maxWidth: 520, width: '92%' }}>
         <div style={{ fontSize: 14, color, fontWeight: 700, marginBottom: 6 }}>{title}</div>
@@ -2632,7 +2632,7 @@ function DestroyUpToHealthModal({ G, choice, onSubmit }: {
   const color = sideColor(choice.side);
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
       <div style={{ background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
         padding: 20, maxWidth: 520, width: '92%' }}>
         <div style={{ fontSize: 14, color, fontWeight: 700, marginBottom: 6 }}>
@@ -2681,7 +2681,7 @@ function RogueSquadronRaidModal({ G, choice, onSubmit }: {
     .reduce((s, c) => s + c.health, 0);
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
       <div style={{ background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
         padding: 20, maxWidth: 520, width: '92%' }}>
         <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
@@ -2738,7 +2738,7 @@ function DoubleOurEffortsModal({ G, choice, onSubmit }: {
   });
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
       <div style={{ background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
         padding: 20, maxWidth: 520, width: '92%' }}>
         <div style={{ fontSize: 14, color: '#ffaaaa', fontWeight: 700, marginBottom: 6 }}>
@@ -2781,7 +2781,7 @@ function PlanetaryConquestModal({ G, choice, onPick }: {
   const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
       <div style={{ background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
         padding: 20, maxWidth: 520, width: '92%' }}>
         <div style={{ fontSize: 14, color: '#ffaaaa', fontWeight: 700, marginBottom: 6 }}>
@@ -2844,7 +2844,7 @@ function PublicUprisingModal({ G, choice, onSubmit }: {
   const opt = (val: string, text: string) => <option value={val}>{text}</option>;
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
       <div style={{ background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
         padding: 20, maxWidth: 520, width: '92%' }}>
         <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
@@ -2898,7 +2898,7 @@ function SupportOfMonCalamariModal({ choice, onPick }: {
     ? 'Mon Calamari is already Rebel-loyal — gain has no effect.' : '';
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
       <div style={{ background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
         padding: 20, maxWidth: 520, width: '92%' }}>
         <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 10 }}>
@@ -2933,7 +2933,7 @@ function OverseeProjectPickModal({ G, choice, onPick }: {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
@@ -2982,7 +2982,7 @@ function HomingBeaconPlaceModal({ G, choice, onSubmit }: {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
@@ -3084,7 +3084,7 @@ function PlanTheAssaultShipsModal({ G, choice, onSubmit }: {
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -3165,7 +3165,7 @@ function CombatReportModal({ G, report, onDismiss }: {
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 1000,
+        zIndex: 5000,
       }}
       onClick={onDismiss}
     >
@@ -3493,7 +3493,7 @@ function NotImplementedModal({ notices, onDismiss }: {
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 1000,
+        zIndex: 5000,
       }}
       onClick={onDismiss}
     >
@@ -6277,7 +6277,7 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
   const overlay: React.CSSProperties = {
     position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    zIndex: 1000,
+    zIndex: 5000,
   };
   const panel: React.CSSProperties = {
     width: 560, maxWidth: '92vw', background: '#15171c',
@@ -6608,7 +6608,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
     <div
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
         padding: 24,
       }}
       onClick={onClose}
@@ -6703,7 +6703,7 @@ function PlayAssignmentActionCardModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
@@ -6755,7 +6755,7 @@ function ActionCardSystemPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
@@ -7019,7 +7019,7 @@ function DetainedTargetPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
@@ -7071,7 +7071,7 @@ function OneInAMillionMissionModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -7133,7 +7133,7 @@ function NobleSacrificeOfferModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -7168,7 +7168,7 @@ function ItIsYourDestinyOfferModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
@@ -7209,7 +7209,7 @@ function UndercoverOfferModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -7249,7 +7249,7 @@ function SonOfSkywalkerOfferModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -7291,7 +7291,7 @@ function BlindsideOfferModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
@@ -7328,7 +7328,7 @@ function WookieGuardianOfferModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -7365,7 +7365,7 @@ function C3POOfferModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -7401,7 +7401,7 @@ function FalconOfferModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -7456,7 +7456,7 @@ function BrilliantAdministratorBuildPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
@@ -7528,7 +7528,7 @@ function CatchThemBySurpriseMovePickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
@@ -7612,7 +7612,7 @@ function ScoutingMissionTIEPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
@@ -7665,7 +7665,7 @@ function MissionListPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
@@ -7717,7 +7717,7 @@ function StartEvacuationPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -7783,7 +7783,7 @@ function IndependentOperationEvacPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
@@ -7835,7 +7835,7 @@ function HiddenFleetUnitPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -7913,7 +7913,7 @@ function TemporaryAllianceBuildPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -7968,7 +7968,7 @@ function ContingencyPlanPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -8006,7 +8006,7 @@ function RapidMobilizationBranchModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -8065,7 +8065,7 @@ function RapidMobilizationMovePickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -8133,7 +8133,7 @@ function RapidMobilizationBasePickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -8168,7 +8168,7 @@ function RetrieveThePlansPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
@@ -8229,7 +8229,7 @@ function InterrogationDroidDecoyPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
@@ -8293,7 +8293,7 @@ function DeployUnitPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,

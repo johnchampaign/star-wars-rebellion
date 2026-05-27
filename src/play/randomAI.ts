@@ -527,6 +527,22 @@ export function stepOnce(G: GameState, side: Side): boolean {
 function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.isGameOver) return false;
 
+  // Universal safety net: if a pendingCombat exists with no pendingChoice
+  // currently posted, something stranded the combat sub-machine. Run it
+  // now to either (a) advance to the next step and post a fresh choice,
+  // or (b) finish the combat outright. This catches freezes like the
+  // one in stuck-combat-live-state.json where Empire activated a system
+  // while a Rebel mission's pendingChoice was still set — beginCombat
+  // created pendingCombat at step=AddLeader, the follow-up runCombat()
+  // bailed at "if (G.pendingChoice) return", and after the mission
+  // choice eventually cleared nothing re-invoked runCombat. Runs OK
+  // even on an active combat — runCombat reads c.step and resumes from
+  // wherever it left off.
+  if (G.pendingCombat && !G.pendingChoice) {
+    combat.runCombat(G);
+    return true; // re-render; the next step will handle whatever was queued
+  }
+
   // Pending-choice handlers run REGARDLESS of whose turn it is: an opponent
   // can owe a choice (e.g. OpposeMission during the other side's turn,
   // CombatAttackerTactics/CombatDefenderTactics mid-combat).
