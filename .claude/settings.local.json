@@ -25,7 +25,8 @@
       "Bash(mv \"e96cd17d-0839-4933-bfe0-544770a03332.png\" public/dev-assets/unit-tokens-sheet.png)",
       "Bash(unzip -l /tmp/swr.vmod)",
       "Bash(unzip -p /tmp/swr.vmod \"Star Wars Rebellion_v1.2e.vmod\")",
-      "Bash(unzip -l /tmp/inner.vmod)"
+      "Bash(unzip -l /tmp/inner.vmod)",
+      "mcp__Claude_Preview__preview_start"
     ]
   }
 }

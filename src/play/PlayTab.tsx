@@ -4126,6 +4126,12 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
   // Compute aggregate of Rebel Base space units (offboard staging area)
   const rbsUnits = G.map.rebelBaseSpace.units.length;
   const BOARD_SCALE = DISPLAY_W / NATIVE_W;
+  // When the player has loaded the .vmod, the printed map already shows
+  // system names + build-slot indicators + resource icons natively. The
+  // text overlays we render for strict-image mode then become redundant
+  // (and ugly — they sit on top of the printed banner). Hide them when
+  // art is loaded.
+  const artLoaded = useArtLoaded().loaded;
   const [hoverSystemId, setHoverSystemId] = useState<string | null>(null);
   const [hoverRebelBase, setHoverRebelBase] = useState<boolean>(false);
   // Build-queue hover: "1-rebel" | "2-empire" | etc.
@@ -4303,11 +4309,13 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
                   maxWidth={100}
                 />
               )}
-              <text x={x} y={y + r + 11} textAnchor="middle"
-                style={{ fill: '#fff', fontSize: 9, pointerEvents: 'none', opacity: 0.85 }}
-              >
-                {s.name}
-              </text>
+              {!artLoaded && (
+                <text x={x} y={y + r + 11} textAnchor="middle"
+                  style={{ fill: '#fff', fontSize: 9, pointerEvents: 'none', opacity: 0.85 }}
+                >
+                  {s.name}
+                </text>
+              )}
               {/* Inline resource / build-slot summary. Without the printed
                *  Map.png art the system tile shows nothing about WHAT this
                *  system is worth (build slot priority, resource icons,
@@ -4315,8 +4323,11 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
                *  system name. Format:
                *    BQ[n] ▲●■  ·  L (subjugated → Sj-L)
                *  where ▲/●/■ are the triangle/circle/square resource
-               *  shapes and space (blue) vs ground (orange) is colored. */}
-              {(() => {
+               *  shapes and space (blue) vs ground (orange) is colored.
+               *  Hidden when art is loaded — the printed map already shows
+               *  this info as the yellow buildslot icon + resource tokens
+               *  baked into each system tile. */}
+              {!artLoaded && (() => {
                 const parts: React.ReactNode[] = [];
                 if (s.buildSlot != null) {
                   parts.push(
@@ -6290,9 +6301,9 @@ function LoadArtModal({ currentMeta, onClose, onLoaded }: {
               border: '1px solid #3a3d44', padding: '4px 10px', borderRadius: 3,
               cursor: 'pointer', fontSize: 11,
             }}>
-              {(showDiagnosticManual ?? (diagnostic && diagnostic.missing.length > 0)) ? 'Hide diagnostic' : 'Diagnostic'}
+              {(showDiagnosticManual ?? (!!successReport || !!(diagnostic && diagnostic.missing.length > 0))) ? 'Hide diagnostic' : 'Diagnostic'}
             </button>
-            {(showDiagnosticManual ?? (diagnostic && diagnostic.missing.length > 0)) && diagnostic && (
+            {(showDiagnosticManual ?? (!!successReport || !!(diagnostic && diagnostic.missing.length > 0))) && diagnostic && (
               <div style={{
                 marginTop: 8, padding: 8, background: '#0c0d10',
                 border: '1px solid #2a2d34', borderRadius: 3,
