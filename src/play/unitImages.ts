@@ -53,16 +53,22 @@ export function setUnitStyle(style: UnitImageStyle): void {
 // stale FFG art from older deployments.
 const UNIT_IMG_BUST = import.meta.env.PROD ? `?v=${Date.now()}` : '';
 
-/** Build URL for a unit's image based on current style. When the player
- *  has loaded a VASSAL .vmod via the in-browser uploader, prefer the
- *  blob: URL backed by the cached PNG from the .vmod's images/ folder.
- *  Falls through to the dev-assets path otherwise — which is a real PNG
- *  in local dev (npm run copy-assets) and a 1×1 transparent placeholder
- *  in the strict-image deploy. The silhouette/token styles aren't in the
- *  .vmod, so we serve the raw Unit*.png when art is loaded; once the
- *  player loads art, the style toggle effectively becomes a no-op. */
+/** Build URL for a unit's image based on current style. Priority:
+ *    1. 'token' style → author-original art shipped from /dev-assets/
+ *       units/token/*.png (whitelisted past the strip-images step).
+ *    2. 'silhouette' style → /dev-assets/units/silhouette/*.png
+ *       (author-derived from reference sheets; ships in local dev only).
+ *    3. .vmod cache (vmod-derived Unit*.png from the player's uploaded
+ *       module) — used when neither author-original style has loaded.
+ *
+ *  Token wins over the .vmod cache because the token sheet is the
+ *  player's preferred display style (sized, alpha-masked, color-matched
+ *  to system tiles) and ships from our CDN with zero player setup. */
 export function unitImageUrl(typeId: string, base: string, style: UnitImageStyle): string | null {
   if (!UNIT_IMAGE[typeId]) return null;
+  if (style === 'silhouette') return `${base}/silhouette/${typeId}.png${UNIT_IMG_BUST}`;
+  if (style === 'token') return `${base}/token/${typeId}.png${UNIT_IMG_BUST}`;
+  // Fallback (style added in the future, or unrecognized): try .vmod cache.
   // Import is lazy to avoid a circular boot dependency; the cache module
   // is React-aware and the URL builder is not.
   const cache = (globalThis as { __rebellionArtCache?: { getSync: (f: string) => string | null | undefined } }).__rebellionArtCache;
@@ -70,7 +76,6 @@ export function unitImageUrl(typeId: string, base: string, style: UnitImageStyle
     const blobUrl = cache.getSync(UNIT_IMAGE[typeId]);
     if (typeof blobUrl === 'string') return blobUrl;
   }
-  if (style === 'silhouette') return `${base}/silhouette/${typeId}.png${UNIT_IMG_BUST}`;
   return `${base}/token/${typeId}.png${UNIT_IMG_BUST}`;
 }
 

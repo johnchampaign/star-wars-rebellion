@@ -19,7 +19,10 @@
       "Bash(pdftotext -l 8 sw03_learn_to_play_web.pdf -)",
       "Bash(extract-text \"Rebellion_v3.xlsx\")",
       "Bash(cd \"C:\\\\Users\\\\johnc\\\\Claude Games\\\\Star Wars Rebellion\" && stat -c '%s %n' public/dev-assets/cards/ObjectiveLvl1CripplingBlow.png 2>&1 | head -2 && echo --- deployed --- && curl -sI 'https://star-wars-rebellion.pages.dev/dev-assets/cards/ObjectiveLvl1CripplingBlow.png' | grep -i 'content-length\\\\|content-type')",
-      "Bash(cp /tmp/r16.png \"C:/Users/johnc/Claude Games/Star Wars Rebellion/reports/screenshots/report-2026-05-27T12-00-54.png\" 2>&1)"
+      "Bash(cp /tmp/r16.png \"C:/Users/johnc/Claude Games/Star Wars Rebellion/reports/screenshots/report-2026-05-27T12-00-54.png\" 2>&1)",
+      "Bash(find \"C:/Users/johnc/AppData\" -name \"e96cd17d-0839-4933-bfe0-544770a03332*\" 2>/dev/null | head -5; find \"C:/Users/johnc\" -maxdepth 4 -name \"e96cd17d-0839-4933-bfe0-544770a03332*\" 2>/dev/null | head -5)",
+      "Bash(mkdir -p public/dev-assets)",
+      "Bash(mv \"e96cd17d-0839-4933-bfe0-544770a03332.png\" public/dev-assets/unit-tokens-sheet.png)"
     ]
   }
 }

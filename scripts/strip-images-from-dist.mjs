@@ -32,21 +32,41 @@ const TINY_PNG = Buffer.from(
 
 let kept = 0;
 let replaced = 0;
+let whitelistKept = 0;
 
-function walk(dir) {
+// Whitelist: paths (relative to dist/dev-assets/) that are ORIGINAL ART
+// created by the project author (not FFG-derived), so they ship as-is
+// in the deploy. Match by prefix so a whole directory can be allowed
+// with one entry.
+const WHITELIST_PREFIXES = [
+  'units/token/',           // 18 per-unit token portraits cropped from
+                            // the author's own composite sheet (see
+                            // scripts/extract-unit-tokens.py).
+  'unit-tokens-sheet.png',  // the composite sheet itself
+];
+
+function isWhitelisted(relPath) {
+  const norm = relPath.replace(/\\/g, '/');
+  return WHITELIST_PREFIXES.some((p) => norm === p || norm.startsWith(p));
+}
+
+function walk(dir, relDir = '') {
   let entries;
   try { entries = readdirSync(dir); } catch { return; }
   for (const name of entries) {
     const full = join(dir, name);
+    const rel = relDir ? `${relDir}/${name}` : name;
     const st = statSync(full);
     if (st.isDirectory()) {
-      walk(full);
+      walk(full, rel);
     } else {
       // Keep .json catalogs; replace other files (mostly PNG, also JPG)
       // with a tiny placeholder so the cache invalidates.
       const lower = name.toLowerCase();
       if (lower.endsWith('.json')) {
         kept++;
+      } else if (isWhitelisted(rel)) {
+        whitelistKept++;
       } else if (lower.endsWith('.png') || lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
         writeFileSync(full, TINY_PNG);
         replaced++;
@@ -60,4 +80,4 @@ function walk(dir) {
 }
 
 walk(ASSETS_DIR);
-console.log(`[strip-images] kept ${kept} JSON files, replaced ${replaced} image/other files with placeholders in dist/dev-assets/`);
+console.log(`[strip-images] kept ${kept} JSON files, ${whitelistKept} whitelisted (author-original) art files, replaced ${replaced} image/other files with placeholders in dist/dev-assets/`);
