@@ -3625,18 +3625,24 @@ function EnlargedSector({ G, system }: { G: GameState; system: System }) {
               {grouped.map((g) => {
                 const file = UNIT_IMAGE[g.typeId];
                 if (!file) return null;
+                const name = G.catalog.unitTypes[g.typeId]?.name ?? g.typeId;
                 return (
-                  <div key={g.typeId} style={{ position: 'relative', width: 72, height: 72 }}>
-                    <img src={unitImageUrl(g.typeId, UNIT_IMAGE_BASE, unitStyle)!} width={72} height={72} alt={g.typeId} />
-                    {g.count > 1 && (
-                      <span style={{
-                        position: 'absolute', bottom: -3, right: -3,
-                        background: '#000', color: '#fff', borderRadius: '50%',
-                        fontSize: 11, fontWeight: 700, width: 18, height: 18,
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        border: '1.5px solid #fff',
-                      }}>{g.count}</span>
-                    )}
+                  <div key={g.typeId} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 76 }}>
+                    <div style={{ position: 'relative', width: 72, height: 72 }}>
+                      <img src={unitImageUrl(g.typeId, UNIT_IMAGE_BASE, unitStyle)!} width={72} height={72} alt={name} />
+                      {g.count > 1 && (
+                        <span style={{
+                          position: 'absolute', bottom: -3, right: -3,
+                          background: '#000', color: '#fff', borderRadius: '50%',
+                          fontSize: 11, fontWeight: 700, width: 18, height: 18,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          border: '1.5px solid #fff',
+                        }}>{g.count}</span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 9, color: '#e8e8ea', textAlign: 'center', lineHeight: 1.1, marginTop: 2, textShadow: '0 0 3px rgba(0,0,0,0.9)' }}>
+                      {name}
+                    </div>
                   </div>
                 );
               })}
@@ -3722,18 +3728,24 @@ function EnlargedRebelBase({ G, rect }: { G: GameState; rect: MaskRect }) {
             {grouped.map((g) => {
               const file = UNIT_IMAGE[g.typeId];
               if (!file) return null;
+              const name = G.catalog.unitTypes[g.typeId]?.name ?? g.typeId;
               return (
-                <div key={g.typeId} style={{ position: 'relative', width: 64, height: 64 }}>
-                  <img src={unitImageUrl(g.typeId, UNIT_IMAGE_BASE, unitStyle)!} width={64} height={64} alt={g.typeId} />
-                  {g.count > 1 && (
-                    <span style={{
-                      position: 'absolute', bottom: -2, right: -2,
-                      background: '#000', color: '#fff', borderRadius: '50%',
-                      fontSize: 10, fontWeight: 700, width: 16, height: 16,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      border: '1px solid #fff',
-                    }}>{g.count}</span>
-                  )}
+                <div key={g.typeId} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 68 }}>
+                  <div style={{ position: 'relative', width: 64, height: 64 }}>
+                    <img src={unitImageUrl(g.typeId, UNIT_IMAGE_BASE, unitStyle)!} width={64} height={64} alt={name} />
+                    {g.count > 1 && (
+                      <span style={{
+                        position: 'absolute', bottom: -2, right: -2,
+                        background: '#000', color: '#fff', borderRadius: '50%',
+                        fontSize: 10, fontWeight: 700, width: 16, height: 16,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        border: '1px solid #fff',
+                      }}>{g.count}</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 9, color: '#e8e8ea', textAlign: 'center', lineHeight: 1.1, marginTop: 2 }}>
+                    {name}
+                  </div>
                 </div>
               );
             })}
@@ -5493,10 +5505,46 @@ type MissionRollPayload = {
 function DieFaceImg({ face, color = 'black' }: { face: string; color?: 'red' | 'black' | 'green' }) {
   const f = face as 'hit' | 'direct-hit' | 'special' | 'blank';
   const url = diceImageUrl(color, f);
-  if (!url) return <span style={{ marginRight: 1 }}>{color[0]}:{face}</span>;
+  // Short text glyph that's always visible. Useful (a) when no image
+  // exists for the color/face combo, and (b) when the strict-image deploy
+  // strips the die PNG — without text the dice row is invisible.
+  const glyph =
+    f === 'direct-hit' ? '✕' :
+    f === 'hit'        ? '●' :
+    f === 'special'    ? '★' :
+                         '·';
+  const tint =
+    color === 'red'   ? '#ff8866' :
+    color === 'black' ? '#cccccc' :
+                        '#80dc78';
+  const textBadge = (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+      width: 18, height: 18, fontSize: 14, fontWeight: 700, color: tint,
+      background: '#0c0d10', border: `1px solid ${tint}`, borderRadius: 3,
+      marginRight: 1, verticalAlign: 'middle',
+    }} title={`${color} ${face}`}>
+      {glyph}
+    </span>
+  );
+  if (!url) return textBadge;
+  // Layered: badge (always visible) underneath, real image on top. With
+  // real art the image fully covers the badge; with the strict-deploy 1×1
+  // transparent placeholder the badge shows through. The image loads OK
+  // (no onerror) either way so we can't use a fallback handler.
   return (
-    <img src={url} width={18} height={18} alt={`${color} ${face}`} title={`${color} ${face}`}
-      style={{ verticalAlign: 'middle', marginRight: 1, imageRendering: 'pixelated' }} />
+    <span style={{ position: 'relative', display: 'inline-block', width: 18, height: 18, marginRight: 1, verticalAlign: 'middle' }}>
+      <span style={{
+        position: 'absolute', inset: 0, display: 'inline-flex',
+        alignItems: 'center', justifyContent: 'center',
+        fontSize: 12, fontWeight: 700, color: tint,
+        background: '#0c0d10', border: `1px solid ${tint}`, borderRadius: 3,
+      }} title={`${color} ${face}`}>
+        {glyph}
+      </span>
+      <img src={url} width={18} height={18} alt={`${color} ${face}`} title={`${color} ${face}`}
+        style={{ position: 'absolute', inset: 0, imageRendering: 'pixelated' }} />
+    </span>
   );
 }
 
