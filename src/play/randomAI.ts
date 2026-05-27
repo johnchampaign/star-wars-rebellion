@@ -35,7 +35,14 @@ function pick<T>(arr: T[]): T | undefined {
 
 /** How many leaders the Empire AI tries to keep in the pool for opposition.
  *  At least one when revealable missions exist. */
-const EMPIRE_RESERVE_LEADERS = 1;
+// Empire reserves leaders for the Command phase. The path to Empire
+// victory requires ACTIVATING systems (moving units, triggering combat).
+// With reserve=1, Empire was assigning every available leader to a
+// mission and never activating; tournament data showed 0 activations
+// in 13-round games. Reserve=3 keeps 3 leaders free for the Command
+// phase to do exploration + invasion (was 2; 3 lets Empire run multiple
+// activations per turn even after recruiting picks up additional leaders).
+const EMPIRE_RESERVE_LEADERS = 3;
 
 /** Static-ish strategic value of attempting a mission, before situational
  *  modifiers. Higher = AI cares more about this mission. */
@@ -429,7 +436,10 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
       }),
     );
   }
-  const narrowingMode = baseCandidateSet ? baseCandidateSet.size <= 6 : false;
+  // narrowingMode triggers heavier candidate-system bonuses. Raised from
+  // 6 to 10 so Empire pivots to base-stumble searches earlier in the
+  // game (by T5 probes typically narrow to 8-12 systems).
+  const narrowingMode = baseCandidateSet ? baseCandidateSet.size <= 10 : false;
   const systemScore = new Map<string, number>();
   for (const sysId of allSystemIds) {
     let ts = 0;
@@ -453,11 +463,26 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
       }
       // Base-narrowing pivot: when probe info has narrowed candidates,
       // strongly reward visiting remaining candidate systems (looking
-      // to bump into the base).
+      // to bump into the base). Bonuses bumped because in tournament,
+      // Empire was visiting non-candidates (combat hot spots) instead
+      // of the actual base candidates even at T5+ when probes already
+      // narrowed to ~10 systems. Now candidates ALWAYS get a strong
+      // bonus, and narrowing-mode (≤10) makes it a near-mandate.
       if (baseCandidateSet?.has(sysId)) {
-        if (narrowingMode) ts += 6;
-        else ts += 2;
+        if (narrowingMode) ts += 14;
+        else ts += 8;
       }
+      // URGENCY: Empire's path to victory requires finding and invading
+      // the base before reputation-time runs out. Tournament data showed
+      // the AI picking endless mission reveals (score ~20+) over
+      // activations (score ~10-15), resulting in 0 activations and 0
+      // unit moves across an entire 13-round game. Scale every Empire
+      // activation by time pressure so late-game forcefully prefers
+      // moving units / triggering combat over passive mission ticking.
+      // Magnitude tuned against the mission-reveal score baseline
+      // (gather-intel = 15 + targetScore + 6 ≈ 25). With timeMarker = 5
+      // this adds +10, pushing activations to parity. T8 adds +16.
+      ts += G.timeMarker * 2;
       // Spread within the current Command turn: if an Empire leader is
       // already on this system, another leader going there is wasted
       // (they'd subjugate the same place). Penalize unless the base is
