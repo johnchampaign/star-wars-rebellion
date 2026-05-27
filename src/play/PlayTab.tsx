@@ -6233,12 +6233,38 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
     for (const m of missing) {
       (missingByKind[m.kind] ??= []).push({ filename: m.filename, source: m.source });
     }
+    // SMART HINTS: for each missing-kind, look for cached filenames whose
+    // base contains a token from any missing entry (or the kind name itself).
+    // This surfaces e.g. all `*objective*` filenames when objectives are
+    // missing, instead of the first-12-alphabetical block which usually
+    // just shows action cards.
+    const hintsByKind: Record<string, string[]> = {};
+    for (const kind of Object.keys(missingByKind)) {
+      const tokens = new Set<string>([kind.toLowerCase()]);
+      for (const m of missingByKind[kind]) {
+        // Use the source id and the bare filename (minus extension) as
+        // token seeds; split on dashes/underscores.
+        const seeds = [m.source ?? '', m.filename.replace(/\.[^.]+$/, '')];
+        for (const s of seeds) {
+          for (const t of s.toLowerCase().split(/[-_\s]+/)) {
+            if (t.length >= 4) tokens.add(t);
+          }
+        }
+      }
+      const hits = [...found].filter((f) => {
+        for (const t of tokens) if (f.includes(t)) return true;
+        return false;
+      }).sort();
+      hintsByKind[kind] = hits.slice(0, 40);
+    }
     return {
       foundCount: found.size,
       expectedCount: expected.length,
       missing,
       missingByKind,
       sampleFound: [...found].slice(0, 12).sort(),
+      hintsByKind,
+      allFilenames: [...found].sort(),
     };
   })();
 
@@ -6382,12 +6408,30 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
                         ))}
                       </div>
                     ))}
-                    <div style={{ color: '#888', marginTop: 8 }}>
-                      Sample of what IS in your .vmod (filename mismatch hints):
-                    </div>
-                    {diagnostic.sampleFound.map((f, i) => (
-                      <div key={i} style={{ marginLeft: 8, color: '#aae0ff' }}>{f}</div>
+                    {diagnostic.hintsByKind && Object.entries(diagnostic.hintsByKind).map(([kind, hits]) => (
+                      <div key={kind} style={{ marginTop: 8 }}>
+                        <div style={{ color: '#888' }}>
+                          Possible {kind} matches in your .vmod ({hits.length}):
+                        </div>
+                        {hits.length === 0 ? (
+                          <div style={{ marginLeft: 8, color: '#888', fontStyle: 'italic' }}>
+                            (no filenames in cache contain related tokens — art may be missing from this .vmod version)
+                          </div>
+                        ) : hits.map((f, i) => (
+                          <div key={i} style={{ marginLeft: 8, color: '#aae0ff' }}>{f}</div>
+                        ))}
+                      </div>
                     ))}
+                    <details style={{ marginTop: 10 }}>
+                      <summary style={{ color: '#888', cursor: 'pointer' }}>
+                        Show all {diagnostic.allFilenames?.length ?? 0} cached filenames
+                      </summary>
+                      <div style={{ marginTop: 6, maxHeight: 240, overflowY: 'auto', background: '#000', padding: 6, borderRadius: 4 }}>
+                        {diagnostic.allFilenames?.map((f, i) => (
+                          <div key={i} style={{ color: '#aae0ff' }}>{f}</div>
+                        ))}
+                      </div>
+                    </details>
                     <div style={{ color: '#888', marginTop: 6 }}>
                       If you recognize any of the missing files under a different name
                       here, paste this whole block into a GitHub issue and we'll add
