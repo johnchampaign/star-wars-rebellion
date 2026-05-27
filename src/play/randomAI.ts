@@ -729,8 +729,54 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   // DeployUnitPick is also a bilateral refresh-phase pause.
   if (G.pendingChoice && G.pendingChoice.kind === 'DeployUnitPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
-    const sysId = c.candidates[0]; // first legal target — dumb but deterministic
-    return phases.resolveDeployUnitPick(G, sysId).ok;
+    // Smart deploy: think of units as forming "armies" — capital ships
+    // (transport-providers) want to spawn where ground/fighters are
+    // stranded; ground/fighters want to spawn where capital-ship
+    // capacity is available. Per-system stranded score = max(0,
+    // ground+fighters - capital-capacity).
+    const t = G.catalog.unitTypes[c.typeId];
+    const provides = (t?.transport.capacity ?? 0) > 0;
+    const needsTransport = t && (
+      t.theater === 'ground' && t.class !== 'structure' ||
+      t.transport.restriction
+    );
+    const scoreSystem = (sysId: string): number => {
+      const ss = sysId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[sysId];
+      if (!ss) return -Infinity;
+      let capacity = 0;
+      let needs = 0;
+      for (const u of ss.units) {
+        if (u.side !== side) continue;
+        const ut = G.catalog.unitTypes[u.typeId];
+        if (!ut) continue;
+        if (ut.transport.capacity > 0) capacity += ut.transport.capacity;
+        else if (ut.theater === 'ground' && ut.class !== 'structure') needs++;
+        else if (ut.transport.restriction) needs++;
+      }
+      const stranded = Math.max(0, needs - capacity);
+      const spareCapacity = Math.max(0, capacity - needs);
+      if (provides) {
+        // Transport ship: place where most stranded units await pickup.
+        // Tiebreak: prefer systems with own units already (build the army).
+        return stranded * 4 + (ss.units.some((u) => u.side === side) ? 1 : 0);
+      }
+      if (needsTransport) {
+        // Ground or restriction-fighter: place where there's spare
+        // capacity (the new unit will fit on existing transports).
+        // If nowhere has spare capacity, prefer the system with the
+        // FEWEST stranded so we don't pile up more orphans.
+        return spareCapacity * 4 - (stranded > 0 ? stranded : 0);
+      }
+      // Other (shouldn't really hit) — prefer own-unit systems.
+      return ss.units.some((u) => u.side === side) ? 1 : 0;
+    };
+    let bestSys = c.candidates[0];
+    let bestScore = -Infinity;
+    for (const sysId of c.candidates) {
+      const s = scoreSystem(sysId);
+      if (s > bestScore) { bestScore = s; bestSys = sysId; }
+    }
+    return phases.resolveDeployUnitPick(G, bestSys).ok;
   }
   // Detained: Empire picks any Rebel leader at the target.
   if (G.pendingChoice && G.pendingChoice.kind === 'DetainedTargetPick' && G.pendingChoice.side === side) {
