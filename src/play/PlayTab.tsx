@@ -462,31 +462,30 @@ export default function PlayTab() {
     if (!G) return;
     const r = phases.activateSystem(G, G.currentPlayer, leaderId, targetSystemId, moveOrders);
     if (!r.ok) {
-      // Diagnostic dump: when activation rejects, dump the exact orders +
-      // per-unit typeId resolution to the console. Issue #29 reported
-      // "no-transport-capacity" with an AC visibly picked — without this
-      // dump we can't see which unit instances actually reached the engine.
-      console.group(`[activate-reject] ${r.reason}`);
-      console.log('leader:', leaderId, 'target:', targetSystemId);
+      // Diagnostic dump: build a human-readable per-unit dump inline in the
+      // alert so the user doesn't have to dig into DevTools. Console.group
+      // gets printed too for those who want to grep it.
+      const lines = [`Cannot activate: ${r.reason}`, '', `leader=${leaderId} target=${targetSystemId}`];
       for (const o of moveOrders) {
         const src = o.fromSystemId === 'rebel-base-space'
           ? G.map.rebelBaseSpace
           : G.map.systems[o.fromSystemId];
-        const detail = o.unitInstanceIds.map((uid) => {
+        lines.push('', `from ${o.fromSystemId} (${o.unitInstanceIds.length} units):`);
+        for (const uid of o.unitInstanceIds) {
           const u = src?.units.find((x) => x.instanceId === uid);
           const t = u && G.catalog.unitTypes[u.typeId];
-          return {
-            uid,
-            typeId: u?.typeId ?? '(not at source!)',
-            cap: t?.transport.capacity ?? 0,
-            theater: t?.theater,
-            restriction: t?.transport.restriction,
-          };
-        });
-        console.log(`from ${o.fromSystemId} (${o.unitInstanceIds.length} units):`, detail);
+          lines.push(
+            `  ${uid}: typeId=${u?.typeId ?? '(NOT AT SOURCE!)'} ` +
+            `cap=${t?.transport.capacity ?? 0} ` +
+            `theater=${t?.theater ?? '?'} ` +
+            `restriction=${t?.transport.restriction ?? false}`
+          );
+        }
       }
-      console.groupEnd();
-      alert(`Cannot activate: ${r.reason}\n\n(open DevTools console for the per-unit dump — paste it in the bug report if this looks wrong)`);
+      if (moveOrders.length === 0) lines.push('', '(no move orders sent — leader-only activation)');
+      const msg = lines.join('\n');
+      console.error('[activate-reject]', msg);
+      alert(msg);
       return false;
     }
     persist();
