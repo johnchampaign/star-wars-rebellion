@@ -58,6 +58,9 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'SpecialDieSpend':          return pc.side === side;
     case 'CombatStartActionCards':   return pc.side === side;
     case 'MoreDangerousTheaterPick': return pc.side === side;
+    case 'FullyOperationalTargetPick': return pc.side === side;
+    case 'TargetTheGeneratorPick':   return pc.side === side;
+    case 'ReadyForActionLeaderPick': return pc.side === side;
     case 'DeathStarPlansAttempt':    return pc.side === side;
     case 'RetreatDecision':          return pc.side === side;
     // Infiltration / Stolen Plans / Plan The Assault are always Rebel choices.

@@ -598,6 +598,47 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const theater: 'space' | 'ground' = G.groundTacticDeck.length >= G.spaceTacticDeck.length ? 'ground' : 'space';
     return combat.resolveMoreDangerousTheaterPick(G, theater).ok;
   }
+  // Fully Operational: prefer highest-value Rebel ship (capital > fighter).
+  if (G.pendingChoice && G.pendingChoice.kind === 'FullyOperationalTargetPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const ss = G.map.systems[c.systemId];
+    const rank = (typeId: string) => {
+      const cls = G.catalog.unitTypes[typeId]?.class ?? '';
+      return cls === 'capital' ? 3 : cls === 'fighter' ? 1 : 2;
+    };
+    const target = [...c.candidates].sort((a, b) => {
+      const ua = ss?.units.find((u) => u.instanceId === a);
+      const ub = ss?.units.find((u) => u.instanceId === b);
+      return rank(ub?.typeId ?? '') - rank(ua?.typeId ?? '');
+    })[0];
+    return combat.resolveFullyOperationalTargetPick(G, target).ok;
+  }
+  // Target the Generator: prefer ion-cannon over shield-generator (denies
+  // the Rebel base's "ion-cannon-special" defensive bonus first).
+  if (G.pendingChoice && G.pendingChoice.kind === 'TargetTheGeneratorPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const ss = G.map.systems[c.systemId];
+    const score = (typeId: string) => typeId === 'ion-cannon' ? 2 : 1;
+    const target = [...c.candidates].sort((a, b) => {
+      const ua = ss?.units.find((u) => u.instanceId === a);
+      const ub = ss?.units.find((u) => u.instanceId === b);
+      return score(ub?.typeId ?? '') - score(ua?.typeId ?? '');
+    })[0];
+    return combat.resolveTargetTheGeneratorPick(G, target).ok;
+  }
+  // Ready For Action: pick the highest combined-tactic-value leader still in pool.
+  if (G.pendingChoice && G.pendingChoice.kind === 'ReadyForActionLeaderPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    let best = c.candidates[0];
+    let bestV = -1;
+    for (const lid of c.candidates) {
+      const ldr = G.catalog.leaders[lid];
+      if (!ldr) continue;
+      const v = ldr.tacticValues.space + ldr.tacticValues.ground;
+      if (v > bestV) { best = lid; bestV = v; }
+    }
+    return combat.resolveReadyForActionLeaderPick(G, best).ok;
+  }
   // Assignment-timed action card play: the AI never proactively opens this
   // modal (random Assignment branch just assigns or skips). But if for some
   // reason the choice is posted, cancel out / pick a random candidate-system

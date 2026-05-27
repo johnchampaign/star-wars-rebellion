@@ -107,6 +107,9 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
     pc?.kind === 'SpecialDieSpend'       ? pc.side :
     pc?.kind === 'CombatStartActionCards' ? pc.side :
     pc?.kind === 'MoreDangerousTheaterPick' ? pc.side :
+    pc?.kind === 'FullyOperationalTargetPick' ? pc.side :
+    pc?.kind === 'TargetTheGeneratorPick' ? pc.side :
+    pc?.kind === 'ReadyForActionLeaderPick' ? pc.side :
     pc?.kind === 'RetreatDecision'       ? pc.side : null;
   const isHumanDecision = decisionSide === humanSide;
   const waitingForAI = decisionSide !== null && !isHumanDecision;
@@ -436,6 +439,15 @@ export function CombatBoardLive({ G, humanSide, onPersist }: {
         )}
         {pc?.kind === 'MoreDangerousTheaterPick' && isHumanDecision && (
           <MoreDangerousTheaterPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'FullyOperationalTargetPick' && isHumanDecision && (
+          <FullyOperationalPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'TargetTheGeneratorPick' && isHumanDecision && (
+          <TargetTheGeneratorPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'ReadyForActionLeaderPick' && isHumanDecision && (
+          <ReadyForActionPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'RetreatDecision' && isHumanDecision && (
           <RetreatPanel G={G} choice={pc} onPersist={onPersist} />
@@ -1380,6 +1392,104 @@ function MoreDangerousTheaterPanel({ G, choice, onPersist }: {
         >
           ■ Ground ({groundLeft} left)
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- "Fully Operational" target pick (Moff Jerjerrod) ----------
+
+function FullyOperationalPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'FullyOperationalTargetPick' }>;
+  onPersist: () => void;
+}) {
+  const ss = G.map.systems[choice.systemId];
+  const submit = (instanceId: string) => {
+    const r = combat.resolveFullyOperationalTargetPick(G, instanceId);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>Fully Operational:</b> destroy 1 Rebel ship of your choice.
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {choice.candidates.map((iid) => {
+          const u = ss?.units.find((x) => x.instanceId === iid);
+          const t = u ? G.catalog.unitTypes[u.typeId] : null;
+          return (
+            <button key={iid} onClick={() => submit(iid)} style={btn('#ff8866')}>
+              {t?.name ?? u?.typeId ?? iid}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------- "Target the Generator" structure pick (General Veers) ----------
+
+function TargetTheGeneratorPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'TargetTheGeneratorPick' }>;
+  onPersist: () => void;
+}) {
+  const ss = G.map.systems[choice.systemId];
+  const submit = (instanceId: string) => {
+    const r = combat.resolveTargetTheGeneratorPick(G, instanceId);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>Target the Generator:</b> destroy 1 structure in this system.
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {choice.candidates.map((iid) => {
+          const u = ss?.units.find((x) => x.instanceId === iid);
+          const t = u ? G.catalog.unitTypes[u.typeId] : null;
+          return (
+            <button key={iid} onClick={() => submit(iid)} style={btn('#ff8866')}>
+              {t?.name ?? u?.typeId ?? iid}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------- "Ready For Action" leader pick (Piett / Veers) ----------
+
+function ReadyForActionPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'ReadyForActionLeaderPick' }>;
+  onPersist: () => void;
+}) {
+  const submit = (leaderId: string) => {
+    const r = combat.resolveReadyForActionLeaderPick(G, leaderId as never);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>Ready For Action:</b> place a leader from the pool into this combat (returns at end).
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {choice.candidates.map((lid) => {
+          const ldr = G.catalog.leaders[lid];
+          const tv = (ldr?.tacticValues.space ?? 0) + (ldr?.tacticValues.ground ?? 0);
+          return (
+            <button key={lid} onClick={() => submit(lid)} style={btn('#80dc78')}>
+              {ldr?.name ?? lid} <span style={{ fontSize: 10, opacity: 0.7 }}>(tactic {tv})</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

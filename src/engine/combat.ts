@@ -850,6 +850,31 @@ function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): vo
     rawHits.push({ color: null, face: 'direct-hit' });
   }
 
+  // "Target the Star Destroyers" (Wedge) — Rebel space attack, convert up
+  // to 2 black hits to red so they can damage Star Destroyers / other
+  // red-health Imperial ships. RAW says "up to 2"; we auto-apply max since
+  // the player elected to play the card, and only edge-case red-health
+  // unit lists make conversion ever undesirable.
+  if (c.flags?.targetTheStarDestroyersActive && pa.side === 'Rebel' && pa.theater === 'space') {
+    let converted = 0;
+    for (const h of rawHits) {
+      if (converted >= 2) break;
+      if (h.color === 'black' && h.face === 'hit') {
+        h.color = 'red';
+        converted++;
+      }
+    }
+    if (converted > 0) {
+      pa.tacticsPlayed.push({
+        card: 'target-the-star-destroyers',
+        detail: `Rebel: converted ${converted} black hit${converted === 1 ? '' : 's'} to red.`,
+      });
+      log(G, { kind: 'combat-action-card-applied', side: 'Rebel', payload: {
+        card: 'target-the-star-destroyers', convertedBlackToRed: converted, theater: pa.theater, round: c.round,
+      }});
+    }
+  }
+
   // Defender's blocks knock off the first N hits.
   const applicableHits = rawHits.slice(blocksApplied);
 
@@ -1180,6 +1205,83 @@ function applyStartOfCombatActionCardEffect(G: GameState, c: CombatState, side: 
       log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'all-units-minus-1-hp-min-1' } });
       return;
     }
+    case 'target-the-star-destroyers': {
+      // RAW (Wedge): "During the space battle of each combat round, treat
+      // up to 2 of your black hits as red hits." Whole-combat flag read by
+      // finalizeAttack; auto-applies max (player chose to play the card, so
+      // they want the conversion maximized).
+      c.flags = c.flags ?? {};
+      c.flags.targetTheStarDestroyersActive = true;
+      log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'rebel-converts-up-to-2-black-hits-to-red-per-space-round' } });
+      return;
+    }
+    case 'fully-operational': {
+      // RAW (Moff Jerjerrod): "If either a Death Star or Death Star Under
+      // Construction is in this system, destroy 1 Rebel ship of your
+      // choice in the system."
+      const ss = G.map.systems[c.systemId];
+      const hasDeathStar = !!ss?.units.some((u) => u.typeId === 'death-star' || u.typeId === 'death-star-under-construction');
+      if (!hasDeathStar) {
+        log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'no-effect (no Death Star in system)' } });
+        return;
+      }
+      // Find eligible Rebel ships (space units, not structures).
+      const candidates = (ss?.units ?? [])
+        .filter((u) => {
+          const t = G.catalog.unitTypes[u.typeId];
+          return t && t.side === 'Rebel' && t.theater === 'space' && t.class !== 'structure';
+        })
+        .map((u) => u.instanceId);
+      if (candidates.length === 0) {
+        log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'no-effect (no Rebel ships)' } });
+        return;
+      }
+      G.pendingChoice = {
+        kind: 'FullyOperationalTargetPick',
+        side, systemId: c.systemId, candidates,
+      };
+      log(G, { kind: 'choice-request', side, payload: {
+        kind: 'FullyOperationalTargetPick', cardId, candidates: candidates.length,
+      }});
+      return;
+    }
+    case 'target-the-generator': {
+      // RAW (Veers): "Destroy 1 structure in the system."
+      const ss = G.map.systems[c.systemId];
+      const candidates = (ss?.units ?? [])
+        .filter((u) => G.catalog.unitTypes[u.typeId]?.class === 'structure')
+        .map((u) => u.instanceId);
+      if (candidates.length === 0) {
+        log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'no-effect (no structures)' } });
+        return;
+      }
+      G.pendingChoice = {
+        kind: 'TargetTheGeneratorPick',
+        side, systemId: c.systemId, candidates,
+      };
+      log(G, { kind: 'choice-request', side, payload: {
+        kind: 'TargetTheGeneratorPick', cardId, candidates: candidates.length,
+      }});
+      return;
+    }
+    case 'ready-for-action': {
+      // RAW (Piett / Veers): "Take a leader from the leader pool, place in
+      // combat, and get him back at end of fight."
+      const f = side === 'Rebel' ? G.rebel : G.empire;
+      const candidates = [...f.leaderPool];
+      if (candidates.length === 0) {
+        log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'no-effect (empty leader pool)' } });
+        return;
+      }
+      G.pendingChoice = {
+        kind: 'ReadyForActionLeaderPick',
+        side, systemId: c.systemId, candidates,
+      };
+      log(G, { kind: 'choice-request', side, payload: {
+        kind: 'ReadyForActionLeaderPick', cardId, candidates: candidates.length,
+      }});
+      return;
+    }
     default: {
       log(G, { kind: 'combat-action-card-not-implemented', side, payload: { card: cardId } });
       return;
@@ -1300,6 +1402,77 @@ export function resolveMoreDangerousTheaterPick(
   G.pendingChoice = undefined;
   // Capture the batch's acting side BEFORE processing (process may clear it).
   const batchSide = c.startOfCombatBatch?.side ?? side;
+  const finished = processStartOfCombatBatch(G, c);
+  if (!finished) return { ok: true };
+  advanceStartOfCombatAfterSideDone(G, c, batchSide);
+  return { ok: true };
+}
+
+/** "Fully Operational" target pick. `instanceId` = the Rebel ship to
+ *  destroy. Continues the start-of-combat batch. */
+export function resolveFullyOperationalTargetPick(
+  G: GameState, instanceId: string
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'FullyOperationalTargetPick') return { ok: false, reason: 'no-pending' };
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  if (!pc.candidates.includes(instanceId)) return { ok: false, reason: 'bad-target' };
+  M.destroyUnit(G, instanceId, 'fully-operational');
+  log(G, { kind: 'combat-action-card-effect', side: pc.side, payload: {
+    card: 'fully-operational', destroyed: instanceId,
+  }});
+  G.pendingChoice = undefined;
+  const batchSide = c.startOfCombatBatch?.side ?? pc.side;
+  const finished = processStartOfCombatBatch(G, c);
+  if (!finished) return { ok: true };
+  advanceStartOfCombatAfterSideDone(G, c, batchSide);
+  return { ok: true };
+}
+
+/** "Target the Generator" structure pick. `instanceId` = the structure
+ *  to destroy. Continues the start-of-combat batch. */
+export function resolveTargetTheGeneratorPick(
+  G: GameState, instanceId: string
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'TargetTheGeneratorPick') return { ok: false, reason: 'no-pending' };
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  if (!pc.candidates.includes(instanceId)) return { ok: false, reason: 'bad-target' };
+  M.destroyUnit(G, instanceId, 'target-the-generator');
+  log(G, { kind: 'combat-action-card-effect', side: pc.side, payload: {
+    card: 'target-the-generator', destroyed: instanceId,
+  }});
+  G.pendingChoice = undefined;
+  const batchSide = c.startOfCombatBatch?.side ?? pc.side;
+  const finished = processStartOfCombatBatch(G, c);
+  if (!finished) return { ok: true };
+  advanceStartOfCombatAfterSideDone(G, c, batchSide);
+  return { ok: true };
+}
+
+/** "Ready For Action" leader pick. `leaderId` = the leader to take from
+ *  pool and place in combat; tracked in c.flags.readyForActionReturn so
+ *  endCombat returns it to the pool. */
+export function resolveReadyForActionLeaderPick(
+  G: GameState, leaderId: LeaderId
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'ReadyForActionLeaderPick') return { ok: false, reason: 'no-pending' };
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'bad-leader' };
+  M.placeLeader(G, pc.side, leaderId, c.systemId);
+  c.flags = c.flags ?? {};
+  (c.flags.readyForActionReturn ??= []).push(leaderId);
+  const ldr = G.catalog.leaders[leaderId];
+  c.report.addedLeaders.push({ side: pc.side, leaderId, tacticValue: (ldr?.tacticValues.space ?? 0) + (ldr?.tacticValues.ground ?? 0) });
+  log(G, { kind: 'combat-action-card-effect', side: pc.side, payload: {
+    card: 'ready-for-action', placedLeader: leaderId,
+  }});
+  G.pendingChoice = undefined;
+  const batchSide = c.startOfCombatBatch?.side ?? pc.side;
   const finished = processStartOfCombatBatch(G, c);
   if (!finished) return { ok: true };
   advanceStartOfCombatAfterSideDone(G, c, batchSide);
@@ -1469,6 +1642,22 @@ export function resolveRetreatDecision(
 function endCombat(G: GameState): void {
   if (!G.pendingCombat) return;
   const c = G.pendingCombat;
+
+  // "Ready For Action" — leaders placed in combat via the card return to
+  // the Empire leader pool at end of fight. Done early so they're back in
+  // pool before any subsequent same-turn checks. (If the leader was
+  // somehow captured/eliminated mid-combat, returnLeader is a no-op since
+  // they're no longer on the board — safe.)
+  if (c.flags?.readyForActionReturn?.length) {
+    for (const lid of c.flags.readyForActionReturn) {
+      try {
+        M.returnLeader(G, 'Empire', lid);
+        log(G, { kind: 'combat-action-card-effect', side: 'Empire', payload: {
+          card: 'ready-for-action', returnedLeader: lid,
+        }});
+      } catch { /* leader already gone — ignore */ }
+    }
+  }
 
   // Structure rule (rr p.4 IV): if a side's only remaining ground units are
   // structures and the opponent still has any ground units, those structures

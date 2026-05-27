@@ -708,6 +708,33 @@ export type ChoiceRequest =
       cardId: string;
     }
   | {
+      // "Fully Operational" (Moff Jerjerrod): if a Death Star or Death Star
+      // Under Construction is in the system, Empire picks one Rebel ship to
+      // destroy. `candidates` are eligible Rebel ship instance ids.
+      kind: 'FullyOperationalTargetPick';
+      side: Side;
+      systemId: SystemId;
+      candidates: string[]; // unit instanceIds
+    }
+  | {
+      // "Target the Generator" (General Veers): Empire picks one structure
+      // (ion-cannon / shield-generator) in the system to destroy.
+      // `candidates` are eligible structure instance ids.
+      kind: 'TargetTheGeneratorPick';
+      side: Side;
+      systemId: SystemId;
+      candidates: string[]; // unit instanceIds
+    }
+  | {
+      // "Ready For Action" (Piett / Veers): Empire picks a leader from pool
+      // to place in combat; returns to pool at end of combat. `candidates`
+      // are leader ids currently in Empire pool.
+      kind: 'ReadyForActionLeaderPick';
+      side: Side;
+      systemId: SystemId;
+      candidates: LeaderId[];
+    }
+  | {
       // End-of-round retreat choice (RR pp.5-6). The attacker may retreat
       // to the system they moved from; the defender may retreat to any
       // adjacent system (and not the attacker's source). Each side may
@@ -868,6 +895,14 @@ export type CombatState = {
     // - allUnitsMinusOneHealthApplied: marker that Point Blank Assault has
     //   already been applied (so a second play in the same combat is a no-op).
     allUnitsMinusOneHealthApplied?: boolean;
+    // - targetTheStarDestroyersActive: Wedge's "Target the Star Destroyers"
+    //   — Rebel converts up to 2 black hits to red during EACH space-battle
+    //   round (whole-combat flag, applied per attack).
+    targetTheStarDestroyersActive?: boolean;
+    // - readyForActionReturn: leader id placed in combat via "Ready For
+    //   Action"; needs to be returned to the Empire leader pool at end of
+    //   combat. Stored per leader so the end-of-combat hook can return them.
+    readyForActionReturn?: LeaderId[];
   };
 };
 
