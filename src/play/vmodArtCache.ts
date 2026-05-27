@@ -104,6 +104,15 @@ const pendingFetches = new Map<string, Promise<string | null>>();
 // Building this index after preload lets the URL helpers ignore case.
 const caseIndex = new Map<string, string>();
 
+// Filename aliases for .vmod versions that renamed/replaced files. Keyed
+// by what our URL helpers ask for; values are alternative filenames to
+// try if the primary lookup misses. Each entry should be specific to a
+// known version mismatch — don't add speculative aliases.
+const FILENAME_ALIASES: Record<string, string[]> = {
+  // v1.2e renamed the board to Map-Redux.png. Older modules ship Map.png.
+  'Map.png': ['Map-Redux.png'],
+};
+
 /** Get the blob: URL for a logical filename (e.g. "UnitTIE.png"). Returns
  *  null if the file isn't in the cache (either no .vmod loaded, or that
  *  particular file wasn't present in the .vmod). Synchronous fast path
@@ -116,6 +125,15 @@ export function getCachedArtUrlSync(filename: string): string | null | undefined
   // same file under different cases (e.g. Map.png vs map.png vs MAP.png).
   const ciKey = caseIndex.get(filename.toLowerCase());
   if (ciKey && blobUrlCache.has(ciKey)) return blobUrlCache.get(ciKey) ?? null;
+  // Try explicit aliases for known cross-version renames.
+  const aliases = FILENAME_ALIASES[filename];
+  if (aliases) {
+    for (const alt of aliases) {
+      if (blobUrlCache.has(alt)) return blobUrlCache.get(alt) ?? null;
+      const ciAlt = caseIndex.get(alt.toLowerCase());
+      if (ciAlt && blobUrlCache.has(ciAlt)) return blobUrlCache.get(ciAlt) ?? null;
+    }
+  }
   return undefined;
 }
 
@@ -171,17 +189,45 @@ export async function loadVmodFromFile(
   const buf = await file.arrayBuffer();
 
   onProgress?.({ phase: 'unzipping' });
-  const zip = await JSZip.loadAsync(buf);
+  let zip = await JSZip.loadAsync(buf);
 
   // Find every PNG in the zip — VASSAL puts art under images/ but some
   // modules nest deeper. Match anything ending in .png and we'll key by
   // basename so the downstream lookup is consistent regardless of folder.
-  const pngEntries: JSZip.JSZipObject[] = [];
+  let pngEntries: JSZip.JSZipObject[] = [];
   zip.forEach((_path, entry) => {
     if (entry.dir) return;
     if (!/\.png$/i.test(entry.name)) return;
     pngEntries.push(entry);
   });
+
+  // Some redistributions of the SWR module (e.g. the Google Drive copy
+  // we link in the load prompt) wrap the real .vmod inside another ZIP
+  // along with a readme. If the upload has zero PNGs but contains
+  // exactly one nested .vmod / .zip, recurse into it. Two-level deep
+  // is enough for every case we've seen.
+  if (pngEntries.length === 0) {
+    const nestedEntries: JSZip.JSZipObject[] = [];
+    zip.forEach((_path, entry) => {
+      if (entry.dir) return;
+      if (/\.(vmod|zip)$/i.test(entry.name)) nestedEntries.push(entry);
+    });
+    if (nestedEntries.length === 1) {
+      const inner = nestedEntries[0];
+      onProgress?.({ phase: 'unzipping', filename: `(nested: ${inner.name})` });
+      const innerBuf = await inner.async('arraybuffer');
+      zip = await JSZip.loadAsync(innerBuf);
+      zip.forEach((_path, entry) => {
+        if (entry.dir) return;
+        if (!/\.png$/i.test(entry.name)) return;
+        pngEntries.push(entry);
+      });
+    }
+  }
+
+  if (pngEntries.length === 0) {
+    throw new Error('No PNG images found in the uploaded file. Make sure you picked the .vmod (not the surrounding download wrapper).');
+  }
 
   let totalBytes = 0;
   // Clear any prior cache so the new .vmod fully replaces the old one
