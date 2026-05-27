@@ -217,6 +217,27 @@ function mkSetupInstance(typeId: string, side: Side) {
   return { instanceId: `s${(++setupInstanceCounter).toString().padStart(6, '0')}`, typeId, side, damage: 0 };
 }
 
+/** Reseed setupInstanceCounter to max existing s-prefixed ID + 1.
+ *  Mirror of mechanics.reseedInstanceCounters but for the s-prefix.
+ *  Required after decoding a saved game — module-level counter otherwise
+ *  starts at 100_000 every page reload, causing collisions with persisted
+ *  setup-placed units. */
+export function reseedSetupInstanceCounter(G: GameState): void {
+  let maxS = 100_000;
+  const visit = (units: { instanceId: string }[]): void => {
+    for (const u of units) {
+      const m = /^s(\d+)$/.exec(u.instanceId);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > maxS) maxS = n;
+      }
+    }
+  };
+  for (const ss of Object.values(G.map.systems)) visit(ss.units);
+  visit(G.map.rebelBaseSpace.units);
+  setupInstanceCounter = maxS;
+}
+
 /** Place the next unit of `typeId` from the side's pending deployment list into
  *  `systemId`. Returns ok=false with a reason if the placement is illegal. */
 export function setupDeployUnit(G: GameState, side: Side, typeId: string, systemId: SystemId): { ok: boolean; reason?: string } {

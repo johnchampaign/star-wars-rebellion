@@ -264,6 +264,51 @@ function mkInstance(typeId: UnitTypeId, side: Side): UnitInstance {
   return { instanceId: `u${(++instanceCounter).toString().padStart(7, '0')}`, typeId, side, damage: 0 };
 }
 
+/** Reseed the module-level instance counter so the next mkInstance() call
+ *  produces an ID strictly greater than any ID already in G. Required after
+ *  loading a saved game — without this, the counter resets to 1_000_000 on
+ *  every page reload while saved units retain their old IDs, leading to
+ *  collisions where two unit instances share the same instanceId. (Issue #29
+ *  symptom: order-builder pushed instanceId u1000003 for two distinct units
+ *  at the same system; validateMoveOrderTransport's find() returned only the
+ *  first match, so the AC's capacity went uncounted.) */
+export function reseedInstanceCounters(G: GameState): void {
+  let maxU = 1_000_000;
+  const visit = (units: UnitInstance[]): void => {
+    for (const u of units) {
+      const m = /^u(\d+)$/.exec(u.instanceId);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        if (n > maxU) maxU = n;
+      }
+    }
+  };
+  for (const ss of Object.values(G.map.systems)) visit(ss.units);
+  visit(G.map.rebelBaseSpace.units);
+  instanceCounter = maxU;
+  // Second pass: detect any duplicate instanceIds that may already be in the
+  // saved state (the bug existed before this fix shipped), and renumber the
+  // duplicates to fresh IDs. Without this heal, a player whose state was
+  // poisoned by the pre-fix counter collision would stay stuck — their next
+  // activation involving a duplicated unit would still rejection-loop.
+  const seen = new Set<string>();
+  const renumber = (units: UnitInstance[]): void => {
+    for (const u of units) {
+      if (seen.has(u.instanceId)) {
+        const oldId = u.instanceId;
+        u.instanceId = `u${(++instanceCounter).toString().padStart(7, '0')}`;
+        log(G, { kind: 'instance-id-heal', side: u.side, payload: {
+          oldId, newId: u.instanceId, typeId: u.typeId,
+          reason: 'duplicate-instanceid-from-counter-collision',
+        }});
+      }
+      seen.add(u.instanceId);
+    }
+  };
+  for (const ss of Object.values(G.map.systems)) renumber(ss.units);
+  renumber(G.map.rebelBaseSpace.units);
+}
+
 /** Move a specific unit instance from one system to another. No legality
  *  checks beyond existence — the caller is responsible (e.g. ActivateSystem
  *  validates transport capacity, immobile, etc.). */

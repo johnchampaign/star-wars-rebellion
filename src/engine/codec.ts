@@ -5,6 +5,8 @@
 // `pendingChoice`, `refreshPaused`).
 
 import type { GameState, GameCatalog } from './types';
+import { reseedInstanceCounters } from './mechanics';
+import { reseedSetupInstanceCounter } from './phases';
 
 const SCHEMA = 'rebellion-state-v1';
 
@@ -30,11 +32,22 @@ export function decode(s: string, catalog: GameCatalog): GameState {
   if (payload.schema !== SCHEMA) {
     throw new Error(`codec schema mismatch: ${payload.schema} (expected ${SCHEMA})`);
   }
-  return {
+  const G = {
     ...payload.state,
     catalog,
     isGameOver: payload.state.isGameOver,
   } as GameState;
+  // Critical: rehydrate the unit-instance counters from the loaded state.
+  // Module-level counters in mechanics/phases reset to their initial values
+  // on every page reload, but persisted units retain their original IDs.
+  // Without reseeding, the next deployUnit/setup-place produces a colliding
+  // instanceId — two units share the same ID, and unit-find lookups return
+  // the wrong one. This is what issue #29 surfaced (AC and a stormtrooper
+  // at Sullust both had instanceId u1000003; the transport check found the
+  // stormtrooper first and never saw the AC's capacity).
+  reseedInstanceCounters(G);
+  reseedSetupInstanceCounter(G);
+  return G;
 }
 
 /** Validate that G is at a turn boundary (safe to encode). */
