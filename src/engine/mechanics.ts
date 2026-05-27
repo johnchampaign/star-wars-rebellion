@@ -311,7 +311,8 @@ export function destroyUnit(G: GameState, unitInstanceId: UnitInstanceId, cause:
     const i = ss.units.findIndex((u) => u.instanceId === unitInstanceId);
     if (i >= 0) {
       const [u] = ss.units.splice(i, 1);
-      log(G, { kind: 'destroy-unit', side: u.side, payload: { unit: u.instanceId, systemId: sysId, cause } });
+      // typeId included so post-hoc grep "what happened to my Death Star" works.
+      log(G, { kind: 'destroy-unit', side: u.side, payload: { unit: u.instanceId, typeId: u.typeId, systemId: sysId, cause } });
       applyInvariants(G, [sysId]);
       return;
     }
@@ -320,7 +321,7 @@ export function destroyUnit(G: GameState, unitInstanceId: UnitInstanceId, cause:
   const i = G.map.rebelBaseSpace.units.findIndex((u) => u.instanceId === unitInstanceId);
   if (i >= 0) {
     const [u] = G.map.rebelBaseSpace.units.splice(i, 1);
-    log(G, { kind: 'destroy-unit', side: u.side, payload: { unit: u.instanceId, systemId: 'rebel-base-space', cause } });
+    log(G, { kind: 'destroy-unit', side: u.side, payload: { unit: u.instanceId, typeId: u.typeId, systemId: 'rebel-base-space', cause } });
     applyInvariants(G);
   }
 }
