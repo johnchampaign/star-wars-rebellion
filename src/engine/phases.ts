@@ -746,6 +746,30 @@ export function revealMission(
   return continueRevealAfterSpecialOffer(G, pending);
 }
 
+/** Append a human-readable intervention note to either (a) pm.interventions
+ *  if the report hasn't been pushed yet (pre/during opposition), or
+ *  (b) the most-recent missionReport if the report is already queued
+ *  (post-roll ring triggers like C-3PO / Falcon / Son of Skywalker, or
+ *  post-capture It Is Your Destiny). Lets the modal surface "this card
+ *  fired and here's what it did" regardless of when in the mission lifecycle
+ *  the trigger landed. */
+function noteIntervention(G: GameState, pm: MissionResolution | undefined, note: string): void {
+  if (pm && pm.stage !== 'effect' && pm.stage !== 'done' && pm.stage !== 'failed') {
+    (pm.interventions ??= []).push(note);
+    return;
+  }
+  // Post-report: tack onto the most recent report (which is the one being
+  // resolved right now).
+  const reports = G.missionReports;
+  if (reports && reports.length > 0) {
+    const last = reports[reports.length - 1];
+    (last.interventions ??= []).push(note);
+    return;
+  }
+  // Fallback — stash on pm so the next report-push picks it up.
+  if (pm) (pm.interventions ??= []).push(note);
+}
+
 /** Post-blindside / post-wookie-guardian continuation of revealMission.
  *  Extracted so the offer resolvers can re-enter the standard reveal flow. */
 function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolution): { ok: boolean } {
@@ -1886,6 +1910,9 @@ export function resolveOneInAMillionMission(
       context: 'mission', rebelRole: pc.rebelRoleInRoll, picks,
       explanation: `One In A Million — set ${picks.length} dice to chosen faces.`,
     }});
+    noteIntervention(G, pm,
+      `Rebel played One In A Million: reset ${picks.length} of the ${pc.rebelRoleInRoll === 'attacker' ? 'attacker' : 'opposer'}'s dice to chosen faces.`,
+    );
   } else {
     log(G, { kind: 'one-in-a-million-skipped', side: 'Rebel', payload: { context: 'mission' } });
   }
@@ -1941,6 +1968,9 @@ export function resolveNobleSacrificeOffer(G: GameState, accept: boolean): { ok:
     log(G, { kind: 'noble-sacrifice-applied', side: 'Rebel', payload: {
       explanation: 'Noble Sacrifice — Obi-Wan eliminated for +1 reputation.',
     }});
+    noteIntervention(G, G.pendingMission,
+      'Rebel played Noble Sacrifice: Obi-Wan eliminated rather than captured (+1 Rebel reputation).',
+    );
   } else {
     log(G, { kind: 'noble-sacrifice-skipped', side: 'Rebel', payload: {} });
   }
@@ -1968,6 +1998,9 @@ export function resolveItIsYourDestinyOffer(G: GameState, leaderId: LeaderId | n
       capturedLeader: leaderId,
       explanation: 'Vader captures a rescuer.',
     }});
+    noteIntervention(G, G.pendingMission,
+      `Empire played It Is Your Destiny: Vader captured ${G.catalog.leaders[leaderId]?.name ?? leaderId} during the rescue attempt.`,
+    );
   } else {
     log(G, { kind: 'it-is-your-destiny-skipped', side: 'Empire', payload: {} });
     G.pendingChoice = undefined;
@@ -1998,7 +2031,7 @@ export function resolveUndercoverOffer(G: GameState, leaderId: LeaderId | null):
     log(G, { kind: 'undercover-applied', side: 'Rebel', payload: {
       leaderId, targetSystemId: pc.targetSystemId,
     }});
-    (pm.interventions ??= []).push(
+    noteIntervention(G, pm,
       `Rebel played Undercover: ${G.catalog.leaders[leaderId]?.name ?? leaderId} relocated to ${G.map.systems[pc.targetSystemId]?.name ?? pc.targetSystemId} to oppose.`,
     );
   } else {
@@ -2028,6 +2061,9 @@ export function resolveSonOfSkywalkerOffer(G: GameState, missionIdOrNull: string
     log(G, { kind: 'son-of-skywalker-applied', side: 'Rebel', payload: {
       pulledMissionId: missionIdOrNull,
     }});
+    noteIntervention(G, pm,
+      `Rebel played Son of Skywalker: pulled "${G.catalog.missions[missionIdOrNull]?.name ?? missionIdOrNull}" from the mission deck into hand.`,
+    );
   } else {
     log(G, { kind: 'son-of-skywalker-skipped', side: 'Rebel', payload: {} });
   }
@@ -2050,7 +2086,7 @@ export function resolveBlindsideOffer(G: GameState, accept: boolean): { ok: bool
     G.empire.actionDiscard.push('blindside');
     pm.blindsideActive = true;
     log(G, { kind: 'blindside-applied', side: 'Empire', payload: { missionId: pm.missionId } });
-    (pm.interventions ??= []).push(
+    noteIntervention(G, pm,
       'Empire played Blindside: Rebel cannot send leaders from pool to oppose.',
     );
   } else {
@@ -2077,7 +2113,7 @@ export function resolveWookieGuardianOffer(G: GameState, accept: boolean): { ok:
     log(G, { kind: 'wookie-guardian-applied', side: 'Rebel', payload: {
       missionId: pm.missionId, explanation: 'Chewbacca auto-stops the Empire special-ops mission.',
     }});
-    (pm.interventions ??= []).push(
+    noteIntervention(G, pm,
       'Rebel played Wookie Guardian: Chewbacca auto-stops this Empire special-ops mission.',
     );
     // Push a fail-report so the player sees a modal explaining why the
@@ -2123,6 +2159,9 @@ export function resolveC3POOffer(G: GameState, accept: boolean): { ok: boolean; 
       missionId: pm.missionId, targetSystemId: pm.targetSystemId,
       explanation: 'C-3PO ring discarded — diplomacy failure converted to success.',
     }});
+    noteIntervention(G, pm,
+      'Rebel played C-3PO (Human-Cyborg Relations): diplomacy failure converted to success.',
+    );
   } else {
     log(G, { kind: 'c3po-skipped', side: 'Rebel', payload: { missionId: pm.missionId } });
   }
@@ -2149,6 +2188,9 @@ export function resolveFalconOffer(G: GameState, leaderId: LeaderId | null): { o
       missionId: pm.missionId, targetSystemId: pm.targetSystemId, leaderId,
       explanation: `Millennium Falcon ring discarded — rescued ${leaderId} from ${pm.targetSystemId}.`,
     }});
+    noteIntervention(G, pm,
+      `Rebel played Millennium Falcon: rescued ${G.catalog.leaders[leaderId]?.name ?? leaderId} from ${G.map.systems[pm.targetSystemId]?.name ?? pm.targetSystemId}.`,
+    );
   } else {
     log(G, { kind: 'falcon-skipped', side: 'Rebel', payload: { missionId: pm.missionId } });
   }
