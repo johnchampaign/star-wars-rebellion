@@ -4006,6 +4006,7 @@ function EnlargedBuildQueue({ G, kind }: { G: GameState; kind: string }) {
 function LeaderPips({ G, systemId, centerX, centerY }: {
   G: GameState; systemId: string; centerX: number; centerY: number;
 }) {
+  const [hovered, setHovered] = useState<string | null>(null);
   type Pip = {
     kind: 'active' | 'captured' | 'carbonite';
     side: Side; // owning side (captives are still Rebel/Empire leaders)
@@ -4067,8 +4068,14 @@ function LeaderPips({ G, systemId, centerX, centerY }: {
           x.kind === 'captured'  ? `CAPTURED ${x.side}` :
           x.kind === 'carbonite' ? `CARBONITE ${x.side}` :
           x.side;
+        const pipKey = `${x.kind}-${x.leader.id}`;
         return (
-          <g key={`${x.kind}-${x.leader.id}`}>
+          <g key={pipKey}
+            pointerEvents="auto"
+            onMouseEnter={() => setHovered(pipKey)}
+            onMouseLeave={() => setHovered((h) => h === pipKey ? null : h)}
+            style={{ cursor: 'help' }}
+          >
             <defs>
               <clipPath id={clipId}>
                 <circle cx={cx} cy={centerY} r={SIZE / 2 - 1} />
@@ -4106,6 +4113,56 @@ function LeaderPips({ G, systemId, centerX, centerY }: {
           </g>
         );
       })}
+      {/* Hover popup: shows the leader's actual card art + skill summary.
+       *  Renders inside the SVG via foreignObject so positioning stays
+       *  attached to the map coordinate system. */}
+      {(() => {
+        if (!hovered) return null;
+        const x = all.find((p) => `${p.kind}-${p.leader.id}` === hovered);
+        if (!x) return null;
+        const l = x.leader;
+        const CARD_W = 220;
+        const CARD_H = 340;
+        // Anchor above the pip strip; clamp to map width via SVG viewBox.
+        const popX = centerX - CARD_W / 2;
+        const popY = centerY - SIZE / 2 - CARD_H - 10;
+        const cardUrl = getCachedArtUrlSync(l.image);
+        return (
+          <foreignObject x={popX} y={popY} width={CARD_W} height={CARD_H}
+            style={{ overflow: 'visible', pointerEvents: 'none' }}>
+            <div style={{
+              background: 'rgba(0,0,0,0.96)', border: '1px solid #555',
+              borderRadius: 4, padding: 6, boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+              color: '#fff', fontFamily: 'sans-serif',
+            }}>
+              {cardUrl ? (
+                <img src={cardUrl} alt={l.name}
+                  style={{ width: CARD_W - 12, height: 'auto', borderRadius: 3, display: 'block' }} />
+              ) : (
+                <div style={{
+                  width: CARD_W - 12, height: 200, background: '#222',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: '#888', fontSize: 12, borderRadius: 3,
+                }}>{l.name}</div>
+              )}
+              <div style={{ fontSize: 12, fontWeight: 700, marginTop: 4, textAlign: 'center' }}>
+                {x.kind !== 'active' && (
+                  <span style={{ color: x.kind === 'carbonite' ? '#4fc3f7' : '#ff3a3a' }}>
+                    [{x.kind.toUpperCase()}]{' '}
+                  </span>
+                )}
+                {l.name}
+              </div>
+              <div style={{ fontSize: 11, color: '#cbc4b0', marginTop: 4, textAlign: 'center' }}>
+                Dip {l.skills.diplomacy} · Int {l.skills.intel}{' '}
+                · Ops {l.skills.specOps} · Log {l.skills.logistics}
+                {' · '}
+                Space {l.tacticValues.space} / Ground {l.tacticValues.ground}
+              </div>
+            </div>
+          </foreignObject>
+        );
+      })()}
     </g>
   );
 }
