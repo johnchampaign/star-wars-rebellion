@@ -4730,7 +4730,28 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
             />
           </>
         )}
-        <Row label="Build queue 3 / 2 / 1" value={`${f.buildQueue[3].length} / ${f.buildQueue[2].length} / ${f.buildQueue[1].length}`} />
+        <Row label="Build queue 3 / 2 / 1" value={(() => {
+          const fmt = (slot: 1 | 2 | 3) => {
+            const list = f.buildQueue[slot];
+            if (list.length === 0) return '—';
+            // Collapse duplicates: TIE×3, AT-ST×1
+            const counts = new Map<string, number>();
+            for (const t of list) counts.set(t, (counts.get(t) ?? 0) + 1);
+            return [...counts.entries()].map(([t, n]) => {
+              const name = G.catalog.unitTypes[t]?.name ?? t;
+              return n > 1 ? `${name}×${n}` : name;
+            }).join(', ');
+          };
+          return (
+            <span>
+              <span style={{ color: '#888' }}>slot 3: </span>{fmt(3)}
+              {' · '}
+              <span style={{ color: '#888' }}>slot 2: </span>{fmt(2)}
+              {' · '}
+              <span style={{ color: '#fff' }}>slot 1 (deploys next refresh): </span>{fmt(1)}
+            </span>
+          );
+        })()} />
       </div>
     </div>
   );

@@ -3,6 +3,34 @@
 Project-local conventions for the Star Wars: Rebellion port. Skim before
 each session.
 
+## ALWAYS check open bug reports at session start
+
+The "Report a problem" button in-game files GitHub issues against
+johnchampaign/star-wars-rebellion with the `from-game` label. The user
+has filed many of these and gets (justifiably) angry when I "forget"
+because nothing surfaces them to me automatically.
+
+**At the start of every working session on this project, run:**
+
+```bash
+gh issue list --label from-game --state open
+```
+
+If issues exist, read each (`gh issue view N`), then either:
+- **Fix it** in this session if it's small and the user is around to
+  verify, OR
+- **Acknowledge** it in your response so the user knows I've seen it
+  ("I see issues #X, #Y, #Z — I'll tackle X this session and you can
+  prioritize the others").
+
+When you fix an issue, close it with `gh issue close N --comment
+"Fixed in commit HASH — <one-line summary>"` so the user has the
+audit trail and so future-me doesn't re-investigate it.
+
+**Never** treat a "this is reported" complaint from the user as
+unverified. They almost certainly have receipts in the issue tracker.
+Check the tracker before pushing back.
+
 ## Deploys
 
 The user does NOT want to run deploy commands themselves. When they ask
