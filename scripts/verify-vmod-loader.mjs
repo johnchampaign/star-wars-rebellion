@@ -1,59 +1,107 @@
-// Verifier: exercise the exact loader logic from src/play/vmodArtCache.ts
-// against a real .vmod file on disk. Catches bugs that `vite build` can't,
-// like "the nested-zip recursion doesn't fire" or "the case-insensitive
-// alias resolution doesn't find Map-Redux.png".
+// Verifier: exercise the loader logic from src/play/vmodArtCache.ts
+// against both real and synthetic .vmod files. Catches bugs that
+// `vite build` can't, like "the nested-zip recursion doesn't fire",
+// "the Map-Redux.png alias doesn't resolve", or "the LoadFailure for
+// the not-a-zip case doesn't surface the right reason."
 //
-// Run: node scripts/verify-vmod-loader.mjs <path-to-vmod>
-//   e.g. node scripts/verify-vmod-loader.mjs /tmp/swr.vmod
+// Run: node scripts/verify-vmod-loader.mjs [<path-to-real-vmod>]
+//   With no argument: runs synthetic-input tests only.
+//   With a real .vmod path: also runs the happy-path assertion suite
+//   against it.
 //
 // Exit codes:
 //   0 = all assertions passed
 //   1 = at least one assertion failed (loader bug)
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import JSZip from 'jszip';
 
 // ---------- The loader logic, mirrored from vmodArtCache.ts ----------
-// Keep this in lockstep with src/play/vmodArtCache.ts loadVmodFromFile.
-// If the production loader changes, update this and re-run.
+// Keep in lockstep with src/play/vmodArtCache.ts loadVmodFromFile.
 
-async function loadVmod(buf) {
-  let zip = await JSZip.loadAsync(buf);
+class LoadFailure extends Error {
+  constructor(reason, report, message) {
+    super(message);
+    this.reason = reason;
+    this.report = report;
+  }
+}
+
+async function loadVmod(buf, inputName = 'test.vmod') {
+  const report = {
+    inputFilename: inputName,
+    inputSizeBytes: buf.length,
+    parsedAsZip: false,
+    topLevelEntryCount: 0,
+    topLevelSample: [],
+    topLevelPngCount: 0,
+    nestedArchiveNames: [],
+    recursedInto: null,
+    finalPngCount: 0,
+    totalStoredBytes: 0,
+  };
+
+  let zip;
+  try {
+    zip = await JSZip.loadAsync(buf);
+  } catch (e) {
+    throw new LoadFailure('not-a-zip', report, `Not a ZIP: ${e.message}`);
+  }
+  report.parsedAsZip = true;
+
+  const topLevelEntries = [];
+  zip.forEach((_p, e) => {
+    if (e.dir) return;
+    topLevelEntries.push({
+      name: e.name,
+      isPng: /\.png$/i.test(e.name),
+      isArchive: /\.(vmod|zip)$/i.test(e.name),
+    });
+  });
+  report.topLevelEntryCount = topLevelEntries.length;
+  report.topLevelSample = topLevelEntries.map((e) => e.name).sort().slice(0, 8);
+  report.topLevelPngCount = topLevelEntries.filter((e) => e.isPng).length;
+  report.nestedArchiveNames = topLevelEntries.filter((e) => e.isArchive).map((e) => e.name);
+
   let pngEntries = [];
   zip.forEach((_p, e) => {
     if (e.dir) return;
     if (!/\.png$/i.test(e.name)) return;
     pngEntries.push(e);
   });
-  let recursedInto = null;
+
   if (pngEntries.length === 0) {
-    const nested = [];
+    if (report.nestedArchiveNames.length === 0) {
+      throw new LoadFailure('no-pngs-no-nested', report, 'No PNGs and no nested archives.');
+    }
+    if (report.nestedArchiveNames.length > 1) {
+      throw new LoadFailure('no-pngs-multiple-nested', report, `${report.nestedArchiveNames.length} nested archives, ambiguous.`);
+    }
+    const inner = zip.file(report.nestedArchiveNames[0]);
+    if (!inner) throw new LoadFailure('no-pngs-no-nested', report, 'Internal: nested entry not readable.');
+    report.recursedInto = inner.name;
+    const innerBuf = await inner.async('arraybuffer');
+    zip = await JSZip.loadAsync(innerBuf);
     zip.forEach((_p, e) => {
       if (e.dir) return;
-      if (/\.(vmod|zip)$/i.test(e.name)) nested.push(e);
+      if (!/\.png$/i.test(e.name)) return;
+      pngEntries.push(e);
     });
-    if (nested.length === 1) {
-      const inner = nested[0];
-      recursedInto = inner.name;
-      const innerBuf = await inner.async('arraybuffer');
-      zip = await JSZip.loadAsync(innerBuf);
-      zip.forEach((_p, e) => {
-        if (e.dir) return;
-        if (!/\.png$/i.test(e.name)) return;
-        pngEntries.push(e);
-      });
+    if (pngEntries.length === 0) {
+      throw new LoadFailure('nested-also-empty', report, 'Recursed into nested archive but it also has no PNGs.');
     }
   }
-  if (pngEntries.length === 0) {
-    throw new Error('No PNG images found.');
-  }
+
   const stored = new Map();
   for (const entry of pngEntries) {
     const basename = entry.name.split('/').pop() || entry.name;
     const blob = await entry.async('uint8array');
     stored.set(basename, blob);
   }
-  return { stored, recursedInto };
+  report.finalPngCount = pngEntries.length;
+  return { stored, report };
 }
 
 // ---------- Alias resolver, mirrored from getCachedArtUrlSync ----------
@@ -77,114 +125,174 @@ function resolve(stored, caseIndex, filename) {
   return null;
 }
 
-// ---------- Run + assertions ----------
+// ---------- Test harness ----------
 
-const file = process.argv[2];
-if (!file) {
-  console.error('Usage: node scripts/verify-vmod-loader.mjs <path-to-vmod>');
-  process.exit(2);
-}
+let totalPass = 0;
+let totalFail = 0;
+const fails = [];
 
-const buf = readFileSync(file);
-console.log(`Loaded ${file} (${(buf.length / 1024 / 1024).toFixed(1)} MB)`);
-
-const { stored, recursedInto } = await loadVmod(buf);
-console.log(`Loader extracted ${stored.size} PNG files.`);
-if (recursedInto) {
-  console.log(`Loader recursed into nested: ${recursedInto}`);
-}
-
-// Build the case index the same way preloadAllBlobUrls does.
-const caseIndex = new Map();
-for (const key of stored.keys()) caseIndex.set(key.toLowerCase(), key);
-
-// Assertions. Each expected name comes from a real consumer in the
-// production code (catalog files + URL helpers).
-const expectations = [
-  // Map (uses alias)
-  { name: 'Map.png',                         consumer: 'mapImageUrl()' },
-  // Markers (referenced by inline strings in PlayTab.tsx)
-  { name: 'MarkerLoyaltyRebel.png',          consumer: 'PlayTab legend' },
-  { name: 'MarkerLoyaltyEmpire.png',         consumer: 'PlayTab legend' },
-  { name: 'MarkerLoyaltySubjugated.png',     consumer: 'PlayTab subjugated badge' },
-  { name: 'MarkerLoyaltyNeutral.png',        consumer: 'system hover panel' },
-  // Units (full UNIT_IMAGE table from src/play/unitImages.ts)
-  { name: 'UnitTIE.png',                     consumer: 'unit cluster' },
-  { name: 'UnitAssaultCarrier.png',          consumer: 'unit cluster' },
-  { name: 'UnitStarDestroyer.png',           consumer: 'unit cluster' },
-  { name: 'UnitSuperStarDestroyer.png',      consumer: 'unit cluster' },
-  { name: 'UnitDeathStar.png',               consumer: 'unit cluster' },
-  { name: 'UnitDeathStarUC.png',             consumer: 'unit cluster' },
-  { name: 'UnitStormtrooper.png',            consumer: 'unit cluster' },
-  { name: 'UnitATST.png',                    consumer: 'unit cluster' },
-  { name: 'UnitATAT.png',                    consumer: 'unit cluster' },
-  { name: 'UnitXWing.png',                   consumer: 'unit cluster' },
-  { name: 'UnitYWing.png',                   consumer: 'unit cluster' },
-  { name: 'UnitCorellianCorvette.png',       consumer: 'unit cluster' },
-  { name: 'UnitRebelTransport.png',          consumer: 'unit cluster' },
-  { name: 'UnitMonCalamari.png',             consumer: 'unit cluster' },
-  { name: 'UnitRebelTrooper.png',            consumer: 'unit cluster' },
-  { name: 'UnitAirspeeder.png',              consumer: 'unit cluster' },
-  { name: 'UnitShieldGenerator.png',         consumer: 'unit cluster' },
-  { name: 'UnitIonCannon.png',               consumer: 'unit cluster' },
-  // Sample leaders (full set comes from assets/leaders.json)
-  { name: 'LeaderEmpireDarthVader.png',      consumer: 'leader portrait' },
-  { name: 'LeaderRebelLukeSkywalker.png',    consumer: 'leader portrait' },
-  // Sample cards
-  { name: 'ActionCardEmpireBlindside.png',   consumer: 'action card image' },
-  { name: 'MissionEmpireRuleByFear.png',     consumer: 'mission card image' },
-];
-
-let pass = 0;
-let fail = 0;
-const failures = [];
-for (const { name, consumer } of expectations) {
-  const resolved = resolve(stored, caseIndex, name);
-  if (resolved) {
-    pass++;
-    const noted = resolved === name ? '' : ` (via alias → ${resolved})`;
-    console.log(`  ✓ ${name}${noted} [${consumer}]`);
+function record(name, ok, detail = '') {
+  if (ok) {
+    totalPass++;
+    console.log(`  ✓ ${name}`);
   } else {
-    fail++;
-    failures.push({ name, consumer });
-    console.log(`  ✗ ${name} NOT FOUND [${consumer}]`);
+    totalFail++;
+    fails.push({ name, detail });
+    console.log(`  ✗ ${name}${detail ? ` — ${detail}` : ''}`);
   }
 }
 
-// Now do the broader catalog check from the actual JSON files.
-console.log('\n--- Catalog-driven check (every leader/mission/action/objective/tactic image) ---');
-const catalogs = [
-  ['assets/leaders.json',    'leaders'],
-  ['assets/missions.json',   'missions'],
-  ['assets/actions.json',    'actions'],
-  ['assets/objectives.json', 'objectives'],
-  ['assets/tactics.json',    'tactics'],
-];
-let catalogPass = 0;
-const catalogMissing = [];
-for (const [path, key] of catalogs) {
-  let data;
-  try { data = JSON.parse(readFileSync(path, 'utf8')); } catch { continue; }
-  const items = data[key] || data;
-  for (const item of items) {
-    if (!item.image) continue;
-    const r = resolve(stored, caseIndex, item.image);
-    if (r) catalogPass++;
-    else catalogMissing.push({ id: item.id, file: item.image, kind: key });
-  }
-}
-console.log(`Catalog: ${catalogPass} resolved, ${catalogMissing.length} missing.`);
-if (catalogMissing.length > 0) {
-  console.log('First 10 missing:');
-  for (const m of catalogMissing.slice(0, 10)) {
-    console.log(`  [${m.kind}] ${m.id} → ${m.file}`);
+async function expectFailure(label, buf, expectedReason) {
+  try {
+    await loadVmod(buf, label);
+    record(`${label} → expected LoadFailure(${expectedReason})`, false, 'load succeeded unexpectedly');
+  } catch (e) {
+    if (e instanceof LoadFailure) {
+      record(`${label} → LoadFailure(${e.reason})`, e.reason === expectedReason,
+        e.reason === expectedReason ? '' : `got '${e.reason}', want '${expectedReason}'`);
+    } else {
+      record(`${label} → LoadFailure(${expectedReason})`, false, `threw non-LoadFailure: ${e.message}`);
+    }
   }
 }
 
-console.log(`\n=== ${pass}/${pass + fail} core assertions passed, ${catalogMissing.length} catalog gaps ===`);
-if (fail > 0) {
-  console.log('FAIL — loader does not satisfy core expectations.');
+// ---------- Synthetic-input tests ----------
+
+console.log('--- Synthetic input tests (failure paths) ---');
+
+// 1. Not a ZIP at all.
+await expectFailure('Not a ZIP (plain text)',
+  Buffer.from('this is just text, not a zip file'),
+  'not-a-zip',
+);
+
+// 2. ZIP with no PNGs and no nested archives.
+{
+  const z = new JSZip();
+  z.file('readme.txt', 'hi');
+  z.file('notes.md', '# notes');
+  const buf = await z.generateAsync({ type: 'nodebuffer' });
+  await expectFailure('ZIP with no PNGs, no nested archives', buf, 'no-pngs-no-nested');
+}
+
+// 3. ZIP with multiple nested archives (ambiguous).
+{
+  const inner1 = await new JSZip().file('readme.txt', 'a').generateAsync({ type: 'nodebuffer' });
+  const inner2 = await new JSZip().file('readme.txt', 'b').generateAsync({ type: 'nodebuffer' });
+  const z = new JSZip();
+  z.file('module-a.vmod', inner1);
+  z.file('module-b.vmod', inner2);
+  const buf = await z.generateAsync({ type: 'nodebuffer' });
+  await expectFailure('ZIP with multiple nested archives', buf, 'no-pngs-multiple-nested');
+}
+
+// 4. ZIP with exactly one nested archive that is ALSO empty.
+{
+  const inner = await new JSZip().file('readme.txt', 'no images here').generateAsync({ type: 'nodebuffer' });
+  const z = new JSZip();
+  z.file('inner.vmod', inner);
+  const buf = await z.generateAsync({ type: 'nodebuffer' });
+  await expectFailure('ZIP with one empty nested archive', buf, 'nested-also-empty');
+}
+
+// 5. ZIP with PNGs directly — happy path, no recursion.
+{
+  const z = new JSZip();
+  z.file('images/Map.png', Buffer.alloc(100));
+  z.file('images/UnitTIE.png', Buffer.alloc(50));
+  const buf = await z.generateAsync({ type: 'nodebuffer' });
+  try {
+    const { stored, report } = await loadVmod(buf, 'happy-direct.vmod');
+    record('ZIP with PNGs directly → loads', stored.size === 2);
+    record('  → no recursion', report.recursedInto === null);
+    record('  → finalPngCount = 2', report.finalPngCount === 2);
+  } catch (e) {
+    record('ZIP with PNGs directly → loads', false, e.message);
+  }
+}
+
+// 6. ZIP wrapping a nested .vmod with PNGs inside.
+{
+  const inner = new JSZip();
+  inner.file('images/Map.png', Buffer.alloc(100));
+  inner.file('images/UnitTIE.png', Buffer.alloc(50));
+  const innerBuf = await inner.generateAsync({ type: 'nodebuffer' });
+  const outer = new JSZip();
+  outer.file('Star Wars Rebellion_v1.2e.vmod', innerBuf);
+  outer.file('readme.txt', 'unzip this');
+  const buf = await outer.generateAsync({ type: 'nodebuffer' });
+  try {
+    const { stored, report } = await loadVmod(buf, 'happy-nested.vmod');
+    record('ZIP wrapping a vmod with PNGs → recurses + loads', stored.size === 2);
+    record('  → recursedInto = inner name', report.recursedInto === 'Star Wars Rebellion_v1.2e.vmod');
+    record('  → topLevelPngCount = 0', report.topLevelPngCount === 0);
+    record('  → finalPngCount = 2', report.finalPngCount === 2);
+  } catch (e) {
+    record('ZIP wrapping a vmod with PNGs → recurses + loads', false, e.message);
+  }
+}
+
+// ---------- Alias resolution tests ----------
+
+console.log('\n--- Alias resolution tests ---');
+
+{
+  // Stored as Map-Redux.png (v1.2e). Resolver should hit via alias.
+  const stored = new Map();
+  stored.set('Map-Redux.png', new Uint8Array([1]));
+  stored.set('UnitTIE.png', new Uint8Array([2]));
+  const caseIndex = new Map();
+  for (const k of stored.keys()) caseIndex.set(k.toLowerCase(), k);
+  record('Map.png resolves via Map-Redux.png alias',
+    resolve(stored, caseIndex, 'Map.png') === 'Map-Redux.png');
+  record('UnitTIE.png resolves directly',
+    resolve(stored, caseIndex, 'UnitTIE.png') === 'UnitTIE.png');
+  record('case-insensitive lookup: unittie.png',
+    resolve(stored, caseIndex, 'unittie.png') === 'UnitTIE.png');
+  record('missing file returns null',
+    resolve(stored, caseIndex, 'DoesNotExist.png') === null);
+}
+
+// ---------- Real-file test (optional) ----------
+
+const realPath = process.argv[2];
+if (realPath) {
+  console.log(`\n--- Real-file test: ${realPath} ---`);
+  const buf = readFileSync(realPath);
+  console.log(`(${(buf.length / 1024 / 1024).toFixed(1)} MB)`);
+  const { stored, report } = await loadVmod(buf, realPath);
+  console.log(`Extracted ${stored.size} PNGs.${report.recursedInto ? ` (recursed into ${report.recursedInto})` : ''}`);
+
+  const caseIndex = new Map();
+  for (const k of stored.keys()) caseIndex.set(k.toLowerCase(), k);
+
+  const core = [
+    'Map.png',
+    'MarkerLoyaltyRebel.png', 'MarkerLoyaltyEmpire.png',
+    'MarkerLoyaltySubjugated.png', 'MarkerLoyaltyNeutral.png',
+    'UnitTIE.png', 'UnitAssaultCarrier.png', 'UnitStarDestroyer.png',
+    'UnitSuperStarDestroyer.png', 'UnitDeathStar.png',
+    'UnitDeathStarUC.png', 'UnitStormtrooper.png', 'UnitATST.png',
+    'UnitATAT.png', 'UnitXWing.png', 'UnitYWing.png',
+    'UnitCorellianCorvette.png', 'UnitRebelTransport.png',
+    'UnitMonCalamari.png', 'UnitRebelTrooper.png', 'UnitAirspeeder.png',
+    'UnitShieldGenerator.png', 'UnitIonCannon.png',
+    'LeaderEmpireDarthVader.png', 'LeaderRebelLukeSkywalker.png',
+    'ActionCardEmpireBlindside.png', 'MissionEmpireRuleByFear.png',
+  ];
+  for (const name of core) {
+    const r = resolve(stored, caseIndex, name);
+    record(`real-file: ${name}`, r !== null, r === null ? 'missing' : (r === name ? '' : `via alias → ${r}`));
+  }
+}
+
+// ---------- Final report ----------
+
+console.log(`\n=== ${totalPass}/${totalPass + totalFail} assertions passed ===`);
+if (totalFail > 0) {
+  console.log('\nFAILURES:');
+  for (const f of fails) console.log(`  ${f.name}${f.detail ? ` — ${f.detail}` : ''}`);
   process.exit(1);
 }
-console.log('PASS — loader extracts everything we render from.');
+console.log('PASS');
 process.exit(0);

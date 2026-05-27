@@ -10,7 +10,8 @@ import { stepOnce as aiStepOnce } from './randomAI';
 import {
   loadVmodFromFile, getVmodMeta, clearVmodCache, preloadAllBlobUrls,
   notifyArtChanged, useArtLoaded, getCachedFilenames,
-  type LoadProgress,
+  LoadFailure,
+  type LoadProgress, type LoadReport,
 } from './vmodArtCache';
 
 const LS_HUMAN_SIDE = 'rebellion-human-side';
@@ -6138,6 +6139,8 @@ function LoadArtModal({ currentMeta, onClose, onLoaded }: {
 }) {
   const [progress, setProgress] = useState<LoadProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [failureReport, setFailureReport] = useState<{ reason: LoadFailure['reason']; report: LoadReport } | null>(null);
+  const [successReport, setSuccessReport] = useState<LoadReport | null>(null);
   const [dragOver, setDragOver] = useState(false);
   // Auto-open the diagnostic if there are mismatches — surfaces silent
   // .vmod-version skew without making the player click a button to find
@@ -6181,16 +6184,24 @@ function LoadArtModal({ currentMeta, onClose, onLoaded }: {
 
   const handleFile = async (file: File) => {
     setError(null);
+    setFailureReport(null);
+    setSuccessReport(null);
     setProgress({ phase: 'reading' });
     try {
-      await loadVmodFromFile(file, setProgress);
+      const { report } = await loadVmodFromFile(file, setProgress);
       await preloadAllBlobUrls();
       notifyArtChanged();
+      setSuccessReport(report);
       onLoaded();
-      // Close shortly after success so the user sees the "done" state.
-      setTimeout(() => onClose(), 600);
+      // Don't auto-close on success — let the player see the load report
+      // (especially if any catalog gaps came back via the diagnostic).
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (e instanceof LoadFailure) {
+        setError(e.message);
+        setFailureReport({ reason: e.reason, report: e.report });
+      } else {
+        setError(e instanceof Error ? e.message : String(e));
+      }
       setProgress(null);
     }
   };
@@ -6372,12 +6383,84 @@ function LoadArtModal({ currentMeta, onClose, onLoaded }: {
           </div>
         )}
 
-        {error && (
+        {error && !failureReport && (
           <div style={{
             padding: 10, background: '#2a1414', borderRadius: 4,
             border: '1px solid #5a2a2a', color: '#ff8866', fontSize: 12, marginBottom: 12,
           }}>
             ✗ {error}
+          </div>
+        )}
+
+        {failureReport && (
+          <div style={{
+            padding: 12, background: '#2a1414', borderRadius: 4,
+            border: '1px solid #5a2a2a', color: '#ffccbb', fontSize: 12, marginBottom: 12,
+            lineHeight: 1.5,
+          }}>
+            <div style={{ color: '#ff8866', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>
+              ✗ Load failed — {failureReport.reason.replace(/-/g, ' ')}
+            </div>
+            <div style={{ marginBottom: 8 }}>{error}</div>
+            <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#ccc', background: '#0c0d10', padding: 8, borderRadius: 3, border: '1px solid #3a2222' }}>
+              <div><strong>file:</strong> {failureReport.report.inputFilename} ({(failureReport.report.inputSizeBytes / 1024 / 1024).toFixed(2)} MB)</div>
+              <div><strong>parsed as ZIP:</strong> {failureReport.report.parsedAsZip ? 'yes' : 'no'}</div>
+              <div><strong>top-level entries:</strong> {failureReport.report.topLevelEntryCount} ({failureReport.report.topLevelPngCount} PNG, {failureReport.report.nestedArchiveNames.length} archive)</div>
+              {failureReport.report.topLevelSample.length > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  <strong>sample of what's in the file:</strong>
+                  <ul style={{ margin: '2px 0 2px 18px', padding: 0 }}>
+                    {failureReport.report.topLevelSample.map((n, i) => (
+                      <li key={i}>{n}</li>
+                    ))}
+                    {failureReport.report.topLevelEntryCount > failureReport.report.topLevelSample.length && (
+                      <li style={{ color: '#888' }}>… and {failureReport.report.topLevelEntryCount - failureReport.report.topLevelSample.length} more</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+              {failureReport.report.nestedArchiveNames.length > 0 && (
+                <div style={{ marginTop: 4 }}>
+                  <strong>nested archives found:</strong>
+                  <ul style={{ margin: '2px 0 2px 18px', padding: 0 }}>
+                    {failureReport.report.nestedArchiveNames.map((n, i) => (
+                      <li key={i}>{n}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {failureReport.report.recursedInto && (
+                <div><strong>recursed into:</strong> {failureReport.report.recursedInto}</div>
+              )}
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, color: '#aaa' }}>
+              If this looks unexpected, copy this block into a GitHub issue and I'll add support.
+            </div>
+          </div>
+        )}
+
+        {successReport && !error && (
+          <div style={{
+            padding: 12, background: '#0d2014', borderRadius: 4,
+            border: '1px solid #2a5028', color: '#cce0cc', fontSize: 12, marginBottom: 12,
+            lineHeight: 1.5,
+          }}>
+            <div style={{ color: '#80dc78', fontWeight: 700, marginBottom: 6, fontSize: 13 }}>
+              ✓ Load complete
+            </div>
+            <div style={{ fontFamily: 'monospace', fontSize: 11, color: '#ccc', background: '#0c0d10', padding: 8, borderRadius: 3, border: '1px solid #224422' }}>
+              <div><strong>file:</strong> {successReport.inputFilename} ({(successReport.inputSizeBytes / 1024 / 1024).toFixed(2)} MB)</div>
+              <div><strong>top-level entries:</strong> {successReport.topLevelEntryCount} ({successReport.topLevelPngCount} PNG, {successReport.nestedArchiveNames.length} archive)</div>
+              {successReport.recursedInto && (
+                <div><strong>recursed into:</strong> {successReport.recursedInto}</div>
+              )}
+              <div><strong>final PNG count:</strong> {successReport.finalPngCount}</div>
+              <div><strong>total stored:</strong> {(successReport.totalStoredBytes / 1024 / 1024).toFixed(1)} MB</div>
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, color: '#aaa' }}>
+              Check the catalog-coverage diagnostic above to see if any expected filenames are missing.
+              Close this modal to see the art on the play board.
+            </div>
           </div>
         )}
 

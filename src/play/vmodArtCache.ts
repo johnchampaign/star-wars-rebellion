@@ -178,22 +178,102 @@ export type LoadProgress = {
   filename?: string;
 };
 
+/** Structured report describing exactly what the loader saw + did. Built
+ *  by loadVmodFromFile and returned alongside the meta (or thrown via
+ *  LoadFailure when nothing usable was found). The UI uses this to give
+ *  the player concrete, actionable failure messages instead of "no PNGs
+ *  found, try again" — same level of detail as the Node verifier. */
+export type LoadReport = {
+  inputFilename: string;
+  inputSizeBytes: number;
+  /** True if JSZip successfully parsed the input as a ZIP. False means
+   *  the file isn't a ZIP at all (.exe, .pdf, etc.). */
+  parsedAsZip: boolean;
+  /** Total entries (files + dirs) at the top level of the upload. */
+  topLevelEntryCount: number;
+  /** Up to 8 sample top-level filenames, sorted, for the failure display. */
+  topLevelSample: string[];
+  /** Did we find PNGs directly in the upload? */
+  topLevelPngCount: number;
+  /** Any .vmod/.zip files at the top level (the nested-wrapper case). */
+  nestedArchiveNames: string[];
+  /** If we recursed, which nested archive we entered. */
+  recursedInto: string | null;
+  /** PNG count we ended up with (after recursion if applicable). */
+  finalPngCount: number;
+  /** Total bytes of all stored PNGs. */
+  totalStoredBytes: number;
+};
+
+/** Thrown by loadVmodFromFile when the input can't yield any PNGs. The
+ *  report field captures everything we observed so the UI can render a
+ *  specific explanation + suggested next step. */
+export class LoadFailure extends Error {
+  report: LoadReport;
+  reason: 'not-a-zip' | 'no-pngs-no-nested' | 'no-pngs-multiple-nested' | 'nested-also-empty';
+  constructor(reason: LoadFailure['reason'], report: LoadReport, message: string) {
+    super(message);
+    this.reason = reason;
+    this.report = report;
+  }
+}
+
 /** Read a .vmod (ZIP) file, extract every PNG under images/, and persist
  *  each as a Blob in IndexedDB keyed by basename (e.g. "UnitTIE.png").
- *  Calls onProgress periodically so the UI can show a progress bar. */
+ *  Calls onProgress periodically so the UI can show a progress bar.
+ *  Returns both the persisted ArtMeta and a structured LoadReport for
+ *  diagnostic display. Throws LoadFailure (which carries the same
+ *  report) when the input can't yield usable PNGs. */
 export async function loadVmodFromFile(
   file: File,
   onProgress?: (p: LoadProgress) => void,
-): Promise<ArtMeta> {
+): Promise<{ meta: ArtMeta; report: LoadReport }> {
+  const report: LoadReport = {
+    inputFilename: file.name,
+    inputSizeBytes: file.size,
+    parsedAsZip: false,
+    topLevelEntryCount: 0,
+    topLevelSample: [],
+    topLevelPngCount: 0,
+    nestedArchiveNames: [],
+    recursedInto: null,
+    finalPngCount: 0,
+    totalStoredBytes: 0,
+  };
+
   onProgress?.({ phase: 'reading' });
   const buf = await file.arrayBuffer();
 
   onProgress?.({ phase: 'unzipping' });
-  let zip = await JSZip.loadAsync(buf);
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(buf);
+  } catch (e) {
+    throw new LoadFailure(
+      'not-a-zip',
+      report,
+      `This file doesn't look like a ZIP archive. .vmod files ARE ZIPs internally; if you renamed something or picked the wrong file, that would explain this. JSZip says: ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+  report.parsedAsZip = true;
 
-  // Find every PNG in the zip — VASSAL puts art under images/ but some
-  // modules nest deeper. Match anything ending in .png and we'll key by
-  // basename so the downstream lookup is consistent regardless of folder.
+  // Catalog the top-level structure for the report. We collect ALL entries
+  // (not just PNGs) so the failure path can show the player what's actually
+  // in the file they uploaded — usually that tells the story immediately.
+  const topLevelEntries: { name: string; isPng: boolean; isArchive: boolean }[] = [];
+  zip.forEach((_path, entry) => {
+    if (entry.dir) return;
+    topLevelEntries.push({
+      name: entry.name,
+      isPng: /\.png$/i.test(entry.name),
+      isArchive: /\.(vmod|zip)$/i.test(entry.name),
+    });
+  });
+  report.topLevelEntryCount = topLevelEntries.length;
+  report.topLevelSample = topLevelEntries.map((e) => e.name).sort().slice(0, 8);
+  report.topLevelPngCount = topLevelEntries.filter((e) => e.isPng).length;
+  report.nestedArchiveNames = topLevelEntries.filter((e) => e.isArchive).map((e) => e.name);
+
   let pngEntries: JSZip.JSZipObject[] = [];
   zip.forEach((_path, entry) => {
     if (entry.dir) return;
@@ -201,40 +281,58 @@ export async function loadVmodFromFile(
     pngEntries.push(entry);
   });
 
-  // Some redistributions of the SWR module (e.g. the Google Drive copy
-  // we link in the load prompt) wrap the real .vmod inside another ZIP
-  // along with a readme. If the upload has zero PNGs but contains
-  // exactly one nested .vmod / .zip, recurse into it. Two-level deep
-  // is enough for every case we've seen.
+  // Some redistributions of the SWR module (the Google Drive copy we
+  // link in the load prompt is one) wrap the real .vmod inside another
+  // ZIP along with a readme. If the upload has zero PNGs but contains
+  // exactly one nested .vmod/.zip, recurse into it.
   if (pngEntries.length === 0) {
-    const nestedEntries: JSZip.JSZipObject[] = [];
+    if (report.nestedArchiveNames.length === 0) {
+      throw new LoadFailure(
+        'no-pngs-no-nested',
+        report,
+        `The uploaded ZIP contains ${report.topLevelEntryCount} file${report.topLevelEntryCount === 1 ? '' : 's'} but no PNG images and no nested .vmod/.zip to look inside. This usually means the wrong file was picked — make sure you grabbed swr.vmod (not the rules PDF or a save file).`,
+      );
+    }
+    if (report.nestedArchiveNames.length > 1) {
+      throw new LoadFailure(
+        'no-pngs-multiple-nested',
+        report,
+        `Found ${report.nestedArchiveNames.length} nested .vmod/.zip files but no PNGs directly. Can't tell which nested archive is the real module. Unzip locally first and upload the swr.vmod inside.`,
+      );
+    }
+    // Exactly one nested archive → recurse.
+    const inner = zip.file(report.nestedArchiveNames[0]);
+    if (!inner) {
+      throw new LoadFailure(
+        'no-pngs-no-nested',
+        report,
+        `Internal error: couldn't read nested archive '${report.nestedArchiveNames[0]}'.`,
+      );
+    }
+    onProgress?.({ phase: 'unzipping', filename: `(nested: ${inner.name})` });
+    report.recursedInto = inner.name;
+    const innerBuf = await inner.async('arraybuffer');
+    zip = await JSZip.loadAsync(innerBuf);
     zip.forEach((_path, entry) => {
       if (entry.dir) return;
-      if (/\.(vmod|zip)$/i.test(entry.name)) nestedEntries.push(entry);
+      if (!/\.png$/i.test(entry.name)) return;
+      pngEntries.push(entry);
     });
-    if (nestedEntries.length === 1) {
-      const inner = nestedEntries[0];
-      onProgress?.({ phase: 'unzipping', filename: `(nested: ${inner.name})` });
-      const innerBuf = await inner.async('arraybuffer');
-      zip = await JSZip.loadAsync(innerBuf);
-      zip.forEach((_path, entry) => {
-        if (entry.dir) return;
-        if (!/\.png$/i.test(entry.name)) return;
-        pngEntries.push(entry);
-      });
+    if (pngEntries.length === 0) {
+      throw new LoadFailure(
+        'nested-also-empty',
+        report,
+        `Recursed into nested archive '${inner.name}' but it has no PNGs either. The .vmod may be corrupted, or this is a non-SWR module.`,
+      );
     }
   }
 
-  if (pngEntries.length === 0) {
-    throw new Error('No PNG images found in the uploaded file. Make sure you picked the .vmod (not the surrounding download wrapper).');
-  }
-
-  let totalBytes = 0;
   // Clear any prior cache so the new .vmod fully replaces the old one
   // (avoids stale stuff lingering if the player swaps modules).
   await dbClear();
   blobUrlCache.clear();
 
+  let totalBytes = 0;
   for (let i = 0; i < pngEntries.length; i++) {
     const entry = pngEntries[i];
     const basename = entry.name.split('/').pop() || entry.name;
@@ -248,6 +346,8 @@ export async function loadVmodFromFile(
     totalBytes += blob.size;
     await dbPut(basename, blob);
   }
+  report.finalPngCount = pngEntries.length;
+  report.totalStoredBytes = totalBytes;
 
   const meta: ArtMeta = {
     loadedAt: new Date().toISOString(),
@@ -257,7 +357,7 @@ export async function loadVmodFromFile(
   };
   await dbPut(META_KEY, meta);
   onProgress?.({ phase: 'done', current: pngEntries.length, total: pngEntries.length });
-  return meta;
+  return { meta, report };
 }
 
 /** Look up the metadata for the currently-loaded .vmod, or null if none.
