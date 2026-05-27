@@ -9,7 +9,7 @@ import { missionTargets, missionLeaderTargets } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce } from './randomAI';
 import {
   loadVmodFromFile, getVmodMeta, clearVmodCache, preloadAllBlobUrls,
-  notifyArtChanged, useArtLoaded, getCachedFilenames,
+  notifyArtChanged, useArtLoaded, getCachedFilenames, getCachedArtUrlSync,
   LoadFailure,
   type LoadProgress, type LoadReport,
 } from './vmodArtCache';
@@ -1886,22 +1886,28 @@ function HandTip({ count, cards }: {
               display: 'flex', flexDirection: 'column', alignItems: 'center',
               width: TILE_W, flexShrink: 0,
             }}>
-              {c.image ? (
-                <img
-                  src={`/dev-assets/cards/${c.image}`}
-                  alt={c.name}
-                  style={{ width: TILE_W, height: 'auto', borderRadius: 4, border: '1px solid #333' }}
-                />
-              ) : (
-                <div style={{
-                  width: TILE_W, height: TILE_W * 1.4, background: '#222',
-                  color: '#888', fontSize: 12,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: 8, textAlign: 'center',
-                }}>
-                  {c.name}
-                </div>
-              )}
+              {(() => {
+                // Resolve through the .vmod art cache (blob URL from
+                // IndexedDB). The old hardcoded /dev-assets/cards/ path
+                // only worked in dev — production strips that directory.
+                const resolved = c.image ? getCachedArtUrlSync(c.image) : null;
+                return resolved ? (
+                  <img
+                    src={resolved}
+                    alt={c.name}
+                    style={{ width: TILE_W, height: 'auto', borderRadius: 4, border: '1px solid #333' }}
+                  />
+                ) : (
+                  <div style={{
+                    width: TILE_W, height: TILE_W * 1.4, background: '#222',
+                    color: '#888', fontSize: 12,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: 8, textAlign: 'center',
+                  }}>
+                    {c.name}
+                  </div>
+                );
+              })()}
               <div style={{
                 color: '#fff', fontSize: 12, fontWeight: 600, marginTop: 4,
                 textAlign: 'center', lineHeight: 1.2,
