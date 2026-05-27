@@ -9,7 +9,7 @@ import { missionTargets, missionLeaderTargets } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce } from './randomAI';
 import {
   loadVmodFromFile, getVmodMeta, clearVmodCache, preloadAllBlobUrls,
-  notifyArtChanged, useArtLoaded,
+  notifyArtChanged, useArtLoaded, getCachedFilenames,
   type LoadProgress,
 } from './vmodArtCache';
 
@@ -6139,6 +6139,42 @@ function LoadArtModal({ currentMeta, onClose, onLoaded }: {
   const [progress, setProgress] = useState<LoadProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [showDiagnostic, setShowDiagnostic] = useState(false);
+
+  // Compute expected-filename vs. found diagnostic. The "expected" list
+  // is harvested from the engine catalogs + the static unit/marker/dice
+  // tables. The "found" list comes from the in-memory cache (populated
+  // by preloadAllBlobUrls). Mismatches surface .vmod-version skew as
+  // concrete file diffs the player can share back to us.
+  const diagnostic = (() => {
+    if (!currentMeta) return null;
+    const found = new Set(getCachedFilenames().map((f) => f.toLowerCase()));
+    const expected: { kind: string; filename: string }[] = [];
+    expected.push({ kind: 'map', filename: 'Map.png' });
+    for (const name of ['MarkerLoyaltyRebel.png', 'MarkerLoyaltyEmpire.png', 'MarkerLoyaltySubjugated.png', 'MarkerLoyaltyNeutral.png']) {
+      expected.push({ kind: 'marker', filename: name });
+    }
+    for (const color of ['Red', 'Black', 'Green']) {
+      for (const face of ['Blank', 'Hit', 'Direct', 'Special']) {
+        expected.push({ kind: 'dice', filename: `Dice${color}${face}.png` });
+      }
+    }
+    for (const name of Object.values(UNIT_IMAGE)) {
+      expected.push({ kind: 'unit', filename: name });
+    }
+    // The catalog-driven sets are only available via the engine state — we
+    // don't have G in scope here. The fixed lists above cover the most
+    // visible failure modes (map, dice, markers, units). Leaders and
+    // cards are catalog-driven and surface via the missing-on-render
+    // path; we omit them from the static diagnostic for now.
+    const missing = expected.filter((e) => !found.has(e.filename.toLowerCase()));
+    return {
+      foundCount: found.size,
+      expectedCount: expected.length,
+      missing,
+      sampleFound: [...found].slice(0, 12).sort(),
+    };
+  })();
 
   const handleFile = async (file: File) => {
     setError(null);
@@ -6235,6 +6271,48 @@ function LoadArtModal({ currentMeta, onClose, onLoaded }: {
             }}>
               Clear cached art
             </button>
+            <button onClick={() => setShowDiagnostic((s) => !s)} style={{
+              marginTop: 8, marginLeft: 6, background: '#0c0d10', color: '#aaa',
+              border: '1px solid #3a3d44', padding: '4px 10px', borderRadius: 3,
+              cursor: 'pointer', fontSize: 11,
+            }}>
+              {showDiagnostic ? 'Hide diagnostic' : 'Diagnostic'}
+            </button>
+            {showDiagnostic && diagnostic && (
+              <div style={{
+                marginTop: 8, padding: 8, background: '#0c0d10',
+                border: '1px solid #2a2d34', borderRadius: 3,
+                fontSize: 11, color: '#aaa', fontFamily: 'monospace', lineHeight: 1.4,
+              }}>
+                <div style={{ color: '#ffd54a', marginBottom: 4 }}>
+                  {diagnostic.foundCount} files in cache · {diagnostic.expectedCount} expected (map+markers+dice+units)
+                </div>
+                {diagnostic.missing.length === 0 ? (
+                  <div style={{ color: '#80dc78' }}>✓ All core filenames matched (case-insensitive)</div>
+                ) : (
+                  <div>
+                    <div style={{ color: '#ff8866', marginBottom: 4 }}>
+                      ✗ {diagnostic.missing.length} expected filename{diagnostic.missing.length === 1 ? '' : 's'} not found:
+                    </div>
+                    {diagnostic.missing.map((m, i) => (
+                      <div key={i} style={{ marginLeft: 8 }}>
+                        [{m.kind}] {m.filename}
+                      </div>
+                    ))}
+                    <div style={{ color: '#888', marginTop: 6 }}>
+                      Sample of what IS in your .vmod (filename mismatch hints):
+                    </div>
+                    {diagnostic.sampleFound.map((f, i) => (
+                      <div key={i} style={{ marginLeft: 8, color: '#aae0ff' }}>{f}</div>
+                    ))}
+                    <div style={{ color: '#888', marginTop: 6 }}>
+                      If you see your map / dice / etc. under different names here,
+                      paste the full list to the GitHub issue and we'll add the alias.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

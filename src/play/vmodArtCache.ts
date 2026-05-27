@@ -98,6 +98,11 @@ async function dbKeys(): Promise<string[]> {
 
 const blobUrlCache = new Map<string, string | null>(); // null = known missing
 const pendingFetches = new Map<string, Promise<string | null>>();
+// Case-insensitive lookup index: lowercased-filename → actual stored key.
+// Different .vmod versions and even the same version on different
+// filesystems can serve files with case-varied names (Map.png vs map.png).
+// Building this index after preload lets the URL helpers ignore case.
+const caseIndex = new Map<string, string>();
 
 /** Get the blob: URL for a logical filename (e.g. "UnitTIE.png"). Returns
  *  null if the file isn't in the cache (either no .vmod loaded, or that
@@ -107,6 +112,10 @@ const pendingFetches = new Map<string, Promise<string | null>>();
 export function getCachedArtUrlSync(filename: string): string | null | undefined {
   // undefined = haven't looked yet, null = looked + missing, string = found
   if (blobUrlCache.has(filename)) return blobUrlCache.get(filename) ?? null;
+  // Fall back to case-insensitive match — many .vmod versions ship the
+  // same file under different cases (e.g. Map.png vs map.png vs MAP.png).
+  const ciKey = caseIndex.get(filename.toLowerCase());
+  if (ciKey && blobUrlCache.has(ciKey)) return blobUrlCache.get(ciKey) ?? null;
   return undefined;
 }
 
@@ -226,6 +235,7 @@ export async function preloadAllBlobUrls(): Promise<number> {
     if (url) URL.revokeObjectURL(url);
   }
   blobUrlCache.clear();
+  caseIndex.clear();
 
   const keys = await dbKeys();
   let loaded = 0;
@@ -235,12 +245,26 @@ export async function preloadAllBlobUrls(): Promise<number> {
       const blob = await dbGet<Blob>(key);
       if (!blob) { blobUrlCache.set(key, null); continue; }
       blobUrlCache.set(key, URL.createObjectURL(blob));
+      caseIndex.set(key.toLowerCase(), key);
       loaded++;
     } catch {
       blobUrlCache.set(key, null);
     }
   }
+  // Stash the full file list on the global handle so the diagnostic
+  // panel + the dev console can introspect what's actually cached
+  // without each caller paying an IndexedDB round-trip.
+  (globalThis as { __rebellionArtCacheFiles?: string[] }).__rebellionArtCacheFiles =
+    [...blobUrlCache.keys()].sort();
+  console.log(`[vmod] Preloaded ${loaded} images. Sample filenames:`,
+    [...blobUrlCache.keys()].slice(0, 10).sort());
   return loaded;
+}
+
+/** List of all filenames currently cached. Used by the diagnostic panel
+ *  to surface .vmod-version mismatches (expected name → not found). */
+export function getCachedFilenames(): string[] {
+  return [...blobUrlCache.keys()].sort();
 }
 
 /** Drop the entire art cache (player can re-upload fresh). */
