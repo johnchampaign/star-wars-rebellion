@@ -698,6 +698,7 @@ export default function PlayTab() {
       )}
       {showLoadArt && (
         <LoadArtModal
+          G={G}
           currentMeta={artLoaded.meta}
           onClose={() => setShowLoadArt(false)}
           onLoaded={() => { refresh(); }}
@@ -6143,7 +6144,8 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
 
 const VASSAL_DRIVE_URL = 'https://drive.google.com/file/d/1l0Tdrl_B5ceY_hAbjbqBClFg1ZToO0O0/view?usp=sharing';
 
-function LoadArtModal({ currentMeta, onClose, onLoaded }: {
+function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
+  G: GameState;
   currentMeta: { loadedAt: string; fileCount: number; totalBytes: number; vmodFilename?: string } | null;
   onClose: () => void;
   onLoaded: () => void;
@@ -6159,36 +6161,73 @@ function LoadArtModal({ currentMeta, onClose, onLoaded }: {
   const [showDiagnosticManual, setShowDiagnosticManual] = useState<boolean | null>(null);
 
   // Compute expected-filename vs. found diagnostic. The "expected" list
-  // is harvested from the engine catalogs + the static unit/marker/dice
-  // tables. The "found" list comes from the in-memory cache (populated
-  // by preloadAllBlobUrls). Mismatches surface .vmod-version skew as
-  // concrete file diffs the player can share back to us.
+  // covers every image the runtime might ask for:
+  //   - Static: map, loyalty markers, dice (10 base-game face combos)
+  //   - From UNIT_IMAGE: the 18 base-game unit Unit*.png filenames
+  //   - From the engine catalogs (G.catalog): every leader/mission/action/
+  //     objective/tactic that has an .image field
+  // We resolve each via getCachedArtUrlSync so the same alias + case-
+  // insensitive logic the URL helpers use also drives the diagnostic —
+  // a name shows up as "missing" only if no alias / case variant fired.
   const diagnostic = (() => {
     if (!currentMeta) return null;
-    const found = new Set(getCachedFilenames().map((f) => f.toLowerCase()));
-    const expected: { kind: string; filename: string }[] = [];
+    const allCached = getCachedFilenames();
+    const found = new Set(allCached.map((f) => f.toLowerCase()));
+    const expected: { kind: string; filename: string; source?: string }[] = [];
     expected.push({ kind: 'map', filename: 'Map.png' });
     for (const name of ['MarkerLoyaltyRebel.png', 'MarkerLoyaltyEmpire.png', 'MarkerLoyaltySubjugated.png', 'MarkerLoyaltyNeutral.png']) {
       expected.push({ kind: 'marker', filename: name });
     }
-    for (const color of ['Red', 'Black', 'Green']) {
+    // Dice — only the 10 base-game combos. Green hit/special are RoE-only
+    // and the engine never asks for them.
+    for (const color of ['Red', 'Black']) {
       for (const face of ['Blank', 'Hit', 'Direct', 'Special']) {
         expected.push({ kind: 'dice', filename: `Dice${color}${face}.png` });
       }
     }
+    expected.push({ kind: 'dice', filename: 'DiceGreenBlank.png' });
+    expected.push({ kind: 'dice', filename: 'DiceGreenDirect.png' });
     for (const name of Object.values(UNIT_IMAGE)) {
       expected.push({ kind: 'unit', filename: name });
     }
-    // The catalog-driven sets are only available via the engine state — we
-    // don't have G in scope here. The fixed lists above cover the most
-    // visible failure modes (map, dice, markers, units). Leaders and
-    // cards are catalog-driven and surface via the missing-on-render
-    // path; we omit them from the static diagnostic for now.
-    const missing = expected.filter((e) => !found.has(e.filename.toLowerCase()));
+    // Catalog-driven: every entry in leaders / missions / actions /
+    // objectives / tactics with a non-empty image field.
+    const catalogs: { kind: string; items: Record<string, { image?: string; name?: string }> }[] = [
+      { kind: 'leader',    items: G.catalog.leaders as never },
+      { kind: 'mission',   items: G.catalog.missions as never },
+      { kind: 'action',    items: G.catalog.actions as never },
+      { kind: 'objective', items: G.catalog.objectives as never },
+      { kind: 'tactic',    items: G.catalog.tactics as never },
+    ];
+    for (const cat of catalogs) {
+      for (const [id, item] of Object.entries(cat.items)) {
+        if (item && typeof item.image === 'string' && item.image.length > 0) {
+          expected.push({ kind: cat.kind, filename: item.image, source: id });
+        }
+      }
+    }
+    // Resolve each via the same lookup the runtime uses (case-insensitive
+    // + FILENAME_ALIASES). If the function returns a string the file is
+    // present (directly or via alias); if undefined/null it's missing.
+    const missing = expected.filter((e) => {
+      // Direct + case-insensitive shortcut for speed (and to avoid a JS
+      // function call per entry); aliases are checked via the runtime path.
+      if (found.has(e.filename.toLowerCase())) return false;
+      // Slower path: invoke the runtime resolver so aliases fire.
+      const cache = (globalThis as { __rebellionArtCache?: { getSync: (f: string) => string | null | undefined } }).__rebellionArtCache;
+      const resolved = cache?.getSync(e.filename);
+      return typeof resolved !== 'string';
+    });
+    // Group missing by kind for compact display.
+    const missingByKind: Record<string, { filename: string; source?: string }[]> = {};
+    for (const m of missing) {
+      (missingByKind[m.kind] ??= []).push({ filename: m.filename, source: m.source });
+    }
     return {
       foundCount: found.size,
       expectedCount: expected.length,
       missing,
+      missingByKind,
       sampleFound: [...found].slice(0, 12).sort(),
     };
   })();
@@ -6313,26 +6352,36 @@ function LoadArtModal({ currentMeta, onClose, onLoaded }: {
                   {diagnostic.foundCount} files in cache · {diagnostic.expectedCount} expected (map+markers+dice+units)
                 </div>
                 {diagnostic.missing.length === 0 ? (
-                  <div style={{ color: '#80dc78' }}>✓ All core filenames matched (case-insensitive)</div>
+                  <div style={{ color: '#80dc78' }}>
+                    ✓ All {diagnostic.expectedCount} expected filenames matched (direct, case-insensitive, or via alias).
+                  </div>
                 ) : (
                   <div>
-                    <div style={{ color: '#ff8866', marginBottom: 4 }}>
-                      ✗ {diagnostic.missing.length} expected filename{diagnostic.missing.length === 1 ? '' : 's'} not found:
+                    <div style={{ color: '#ff8866', marginBottom: 6 }}>
+                      ✗ {diagnostic.missing.length} of {diagnostic.expectedCount} expected filename{diagnostic.missing.length === 1 ? '' : 's'} not found:
                     </div>
-                    {diagnostic.missing.map((m, i) => (
-                      <div key={i} style={{ marginLeft: 8 }}>
-                        [{m.kind}] {m.filename}
+                    {Object.entries(diagnostic.missingByKind).sort().map(([kind, items]) => (
+                      <div key={kind} style={{ marginBottom: 6 }}>
+                        <div style={{ color: '#ffd54a', fontWeight: 700, marginLeft: 4 }}>
+                          {kind} ({items.length})
+                        </div>
+                        {items.map((m, i) => (
+                          <div key={i} style={{ marginLeft: 16, color: '#ccc' }}>
+                            {m.filename}{m.source ? <span style={{ color: '#666' }}> — {m.source}</span> : null}
+                          </div>
+                        ))}
                       </div>
                     ))}
-                    <div style={{ color: '#888', marginTop: 6 }}>
+                    <div style={{ color: '#888', marginTop: 8 }}>
                       Sample of what IS in your .vmod (filename mismatch hints):
                     </div>
                     {diagnostic.sampleFound.map((f, i) => (
                       <div key={i} style={{ marginLeft: 8, color: '#aae0ff' }}>{f}</div>
                     ))}
                     <div style={{ color: '#888', marginTop: 6 }}>
-                      If you see your map / dice / etc. under different names here,
-                      paste the full list to the GitHub issue and we'll add the alias.
+                      If you recognize any of the missing files under a different name
+                      here, paste this whole block into a GitHub issue and we'll add
+                      the alias.
                     </div>
                   </div>
                 )}
