@@ -3955,6 +3955,33 @@ function LeaderPips({ G, systemId, centerX, centerY }: {
   );
 }
 
+/** Short tile-readable abbreviation for each unit type. Used as the always-
+ *  visible text glyph rendered inside the on-map unit icon so that even with
+ *  the strict-image deploy (where the PNG is a 1×1 transparent placeholder)
+ *  the player can tell unit types apart. With the printed art back via
+ *  copy-assets the icon image sits over the glyph and the abbreviation
+ *  becomes invisible. */
+const UNIT_ABBREV: Record<string, string> = {
+  'tie-fighter': 'TIE',
+  'assault-carrier': 'AC',
+  'star-destroyer': 'SD',
+  'super-star-destroyer': 'SSD',
+  'death-star': 'DS',
+  'death-star-under-construction': 'DSc',
+  'stormtrooper': 'ST',
+  'at-st': 'ATst',
+  'at-at': 'ATat',
+  'x-wing': 'XW',
+  'y-wing': 'YW',
+  'corellian-corvette': 'CC',
+  'rebel-transport': 'RTp',
+  'mon-cala-cruiser': 'MC',
+  'rebel-trooper': 'RT',
+  'airspeeder': 'AS',
+  'shield-generator': 'SG',
+  'ion-cannon': 'IC',
+};
+
 function UnitCluster({ centerX, centerY, groups, iconSize, maxWidth }: {
   centerX: number; centerY: number;
   groups: { typeId: string; count: number }[];
@@ -3981,28 +4008,45 @@ function UnitCluster({ centerX, centerY, groups, iconSize, maxWidth }: {
         const col = i % perRow;
         const ix = startX + col * (iconSize + gap);
         const iy = startY + row * (iconSize + gap);
+        const abbrev = UNIT_ABBREV[g.typeId] ?? g.typeId.slice(0, 3).toUpperCase();
         return (
           <g key={g.typeId}>
+            {/* Always-visible text behind the icon — pops to readable when
+             *  the icon image is the strict-deploy 1×1 placeholder. */}
+            <rect
+              x={ix} y={iy} width={iconSize} height={iconSize}
+              style={{ fill: '#1a1d22', stroke: 'rgba(120,140,160,0.4)', strokeWidth: 0.5 }}
+            />
+            <text
+              x={ix + iconSize / 2} y={iy + iconSize / 2 + 3}
+              textAnchor="middle"
+              style={{ fill: '#e8e8ea', fontSize: Math.max(8, iconSize * 0.45), fontWeight: 700 }}
+            >
+              {abbrev}
+            </text>
             <image
               href={unitImageUrl(g.typeId, UNIT_IMAGE_BASE, unitStyle)!}
               x={ix} y={iy}
               width={iconSize} height={iconSize}
             />
-            {g.count > 1 && (
-              <g>
-                <circle
-                  cx={ix + iconSize - 3} cy={iy + iconSize - 3} r={6}
-                  style={{ fill: '#000', stroke: '#fff', strokeWidth: 0.5 }}
-                />
-                <text
-                  x={ix + iconSize - 3} y={iy + iconSize - 1}
-                  textAnchor="middle"
-                  style={{ fill: '#fff', fontSize: 8, fontWeight: 700 }}
-                >
-                  {g.count}
-                </text>
-              </g>
-            )}
+            {/* Count badge — always show, even for count=1, so single units
+             *  on the strict-deploy map don't appear as just an empty
+             *  square (#18). Count is the only way to distinguish "1
+             *  of this type here" from "background tile noise" when the
+             *  icon image is invisible. */}
+            <g>
+              <circle
+                cx={ix + iconSize - 3} cy={iy + iconSize - 3} r={6}
+                style={{ fill: '#000', stroke: '#fff', strokeWidth: 0.5 }}
+              />
+              <text
+                x={ix + iconSize - 3} y={iy + iconSize - 1}
+                textAnchor="middle"
+                style={{ fill: '#fff', fontSize: 8, fontWeight: 700 }}
+              >
+                {g.count}
+              </text>
+            </g>
           </g>
         );
       })}
