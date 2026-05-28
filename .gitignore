@@ -73,3 +73,6 @@ tournament-logs/
 tmp/
 # Ad-hoc analysis dir (downloaded play logs for offline inspection).
 logs-tmp/
+# Scratch issue-body dumps from `gh issue view N --json body --jq .body`
+# during ad-hoc investigation. Local-only.
+issue*-body.txt

@@ -197,6 +197,16 @@ export default function PlayTab() {
     { objectiveId: string; reputation: number; turn: number }[]
   >([]);
   const seenObjectiveLogIdxRef = useRef<number>(0);
+  // Queue of objective cards just drawn (one modal per draw, with the
+  // objective's name, art, and rules text). User #39 needed to know which
+  // objectives entered their hand at which Refresh — and there was no
+  // surface for that info other than reading the log. Now drawn objectives
+  // pop a small modal so the player can read the card before it gets
+  // buried in the hand. Detected from the same turnLog scan as scored
+  // objectives.
+  const [drawnObjectiveQueue, setDrawnObjectiveQueue] = useState<
+    { objectiveId: string; turn: number }[]
+  >([]);
   // Queue of resolved-problem-report responses the user hasn't seen yet.
   // Fetched once at app load from /api/my-responses; each unseen response
   // becomes a modal that thanks the user + explains the fix in plain
@@ -381,6 +391,7 @@ export default function PlayTab() {
         try { return localStorage.getItem(LS_HUMAN_SIDE) || 'Rebel'; } catch { return 'Rebel'; }
       })();
       const additions: { objectiveId: string; reputation: number; turn: number }[] = [];
+      const draws: { objectiveId: string; turn: number }[] = [];
       for (let i = seenObjectiveLogIdxRef.current; i < G.turnLog.length; i++) {
         const e = G.turnLog[i];
         if (e.kind === 'play-objective' && e.side === humanSidePref) {
@@ -393,8 +404,21 @@ export default function PlayTab() {
             });
           }
         }
+        // draw-objective is only logged for the Rebel side (objectives are
+        // a Rebel-only mechanic). Show the modal for whichever side the
+        // human is playing — if Empire, they probably don't want spoilers
+        // about what the AI just drew, so gate on humanSidePref === 'Rebel'.
+        if (e.kind === 'draw-objective' && e.side === humanSidePref && humanSidePref === 'Rebel') {
+          const p = e.payload as { objectiveIds?: string[] } | undefined;
+          for (const oid of (p?.objectiveIds ?? [])) {
+            draws.push({ objectiveId: oid, turn: e.turn ?? 0 });
+          }
+        }
       }
       seenObjectiveLogIdxRef.current = G.turnLog.length;
+      if (draws.length > 0) {
+        setDrawnObjectiveQueue((q) => [...q, ...draws]);
+      }
       if (additions.length > 0) {
         setObjectiveNoticeQueue((q) => [...q, ...additions]);
       }
@@ -457,6 +481,7 @@ export default function PlayTab() {
     // New game: nothing scored yet, but reset the seen-cursor to be safe.
     seenObjectiveLogIdxRef.current = 0;
     setObjectiveNoticeQueue([]);
+    setDrawnObjectiveQueue([]);
     // Honor the player's side preference. "Random" rolls 50/50.
     const newHuman: Side =
       sidePref === 'Rebel' ? 'Rebel' :
@@ -482,6 +507,7 @@ export default function PlayTab() {
       // happens AFTER this point will pop the notice modal as expected.
       seenObjectiveLogIdxRef.current = restored.turnLog?.length ?? 0;
       setObjectiveNoticeQueue([]);
+      setDrawnObjectiveQueue([]);
       refresh();
     } catch (e) {
       setError(`Failed to restore saved game: ${String(e)}. Starting fresh might help.`);
@@ -869,6 +895,17 @@ export default function PlayTab() {
           G={G}
           notice={objectiveNoticeQueue[0]}
           onDismiss={() => setObjectiveNoticeQueue((q) => q.slice(1))}
+        />
+      )}
+
+      {/* Show scored objectives first; drawn objectives queue behind so
+       *  the celebratory "you got rep" modal isn't buried under the
+       *  informational "here's what's in your hand now" modal. */}
+      {objectiveNoticeQueue.length === 0 && drawnObjectiveQueue.length > 0 && (
+        <ObjectiveDrawnModal
+          G={G}
+          notice={drawnObjectiveQueue[0]}
+          onDismiss={() => setDrawnObjectiveQueue((q) => q.slice(1))}
         />
       )}
 
@@ -1910,6 +1947,82 @@ function ObjectiveScoredModal({ G, notice, onDismiss }: {
           style={{
             padding: '8px 18px', fontSize: 14, fontWeight: 700,
             background: '#80dc78', color: '#000', border: 'none',
+            borderRadius: 4, cursor: 'pointer',
+          }}
+        >OK</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Objective Drawn notice — shown each time a new objective card enters the
+// Rebel's hand (typically during the draw step of Refresh). Lets the player
+// see the card art / name / rules text before it disappears into the hand,
+// and surfaces what was drawn so they can plan around it. User-suggested
+// after issue #39 ("when did regional-support-1 enter my hand?") couldn't be
+// answered from the log alone.
+// ============================================================================
+
+function ObjectiveDrawnModal({ G, notice, onDismiss }: {
+  G: GameState;
+  notice: { objectiveId: string; turn: number };
+  onDismiss: () => void;
+}) {
+  const o = G.catalog.objectives[notice.objectiveId];
+  const cardUrl = o?.image ? getCachedArtUrlSync(o.image) : null;
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5400,
+      }}
+      onClick={onDismiss}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+          padding: 20, maxWidth: 460, width: '92%',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.8)', textAlign: 'center',
+        }}
+      >
+        <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
+          Objective drawn — turn {notice.turn}
+        </div>
+        <div style={{ fontSize: 18, color: '#fff', fontWeight: 700, marginBottom: 4 }}>
+          {o?.name ?? notice.objectiveId}
+        </div>
+        {o && (
+          <div style={{ fontSize: 12, color: '#ffd54a', marginBottom: 10 }}>
+            Stage {o.stage} · {o.timing} · +{o.reputation} reputation when scored
+          </div>
+        )}
+        {cardUrl ? (
+          <img
+            src={cardUrl}
+            alt={o?.name ?? notice.objectiveId}
+            style={{ maxWidth: '100%', maxHeight: 320, borderRadius: 4, border: '1px solid #333', display: 'block', margin: '0 auto 10px' }}
+          />
+        ) : (
+          <div style={{
+            width: '100%', height: 180, background: '#222', color: '#888',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            borderRadius: 4, marginBottom: 10, fontSize: 12,
+          }}>
+            (objective art not in cached .vmod)
+          </div>
+        )}
+        {o?.rulesText && (
+          <div style={{ fontSize: 12, color: '#cbc4b0', marginBottom: 12, lineHeight: 1.4, textAlign: 'left' }}>
+            {o.rulesText}
+          </div>
+        )}
+        <button
+          onClick={onDismiss}
+          style={{
+            padding: '8px 18px', fontSize: 14, fontWeight: 700,
+            background: '#aae0ff', color: '#000', border: 'none',
             borderRadius: 4, cursor: 'pointer',
           }}
         >OK</button>
