@@ -22,6 +22,7 @@ interface ReportBody {
   description?: string;
   userAgent?: string;
   timestamp?: string;
+  reporterId?: string;
   canEncodeState?: boolean;
   state?: unknown;
   pending?: unknown;
@@ -75,8 +76,14 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     }
   }
 
-  // Build the issue markdown body.
-  const sections: string[] = [`**What happened**\n\n${description}`];
+  // Build the issue markdown body. Hidden HTML comment carries the reporter
+  // ID so /api/my-responses can find this reporter's issues later. Don't
+  // strip / sanitize — GitHub preserves HTML comments in issue bodies and
+  // they're invisible in the rendered view.
+  const reporterTag = body.reporterId
+    ? `<!-- reporter:${body.reporterId.replace(/[^a-zA-Z0-9-]/g, '')} -->`
+    : '';
+  const sections: string[] = [`${reporterTag}\n**What happened**\n\n${description}`];
   sections.push(
     `**Build / context**\n\n` +
     `- userAgent: \`${body.userAgent || ''}\`\n` +

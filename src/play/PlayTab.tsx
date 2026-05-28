@@ -41,6 +41,30 @@ const MARKER_R = 16;
 
 const LS_CURRENT = 'rebellion-game-current';
 const LS_HISTORY = 'rebellion-games-history';
+// Stable per-device reporter ID. Generated once on first problem-report
+// submission, persisted forever. Lets us tie GitHub issues back to the
+// reporter so we can surface our resolution comment to them on next visit
+// (the "your problem report has been responded to" modal).
+const LS_REPORTER_ID = 'rebellion-reporter-id';
+// Set of issue numbers whose resolution comment the user has acknowledged
+// (clicked OK on the response modal). Stored as JSON array of numbers.
+const LS_SEEN_RESPONSES = 'rebellion-seen-responses';
+
+/** Get or generate the stable reporter ID for this device. */
+function getReporterId(): string {
+  try {
+    let id = localStorage.getItem(LS_REPORTER_ID);
+    if (!id) {
+      // Random 16-char base36 string. Not cryptographically secure, just
+      // needs to be unique enough that two reporters don't collide.
+      id = Math.random().toString(36).slice(2, 10) + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem(LS_REPORTER_ID, id);
+    }
+    return id;
+  } catch {
+    return 'anon-' + Math.random().toString(36).slice(2, 10);
+  }
+}
 const HISTORY_CAP = 20;
 
 function sideColor(s: Side): string {
@@ -173,6 +197,14 @@ export default function PlayTab() {
     { objectiveId: string; reputation: number; turn: number }[]
   >([]);
   const seenObjectiveLogIdxRef = useRef<number>(0);
+  // Queue of resolved-problem-report responses the user hasn't seen yet.
+  // Fetched once at app load from /api/my-responses; each unseen response
+  // becomes a modal that thanks the user + explains the fix in plain
+  // language. Dismissing adds the issue number to the LS_SEEN_RESPONSES set
+  // so it doesn't pop again.
+  const [responseNoticeQueue, setResponseNoticeQueue] = useState<
+    { number: number; title: string; htmlUrl: string; response: string }[]
+  >([]);
   const [unitStyle, setUnitStyleState] = useState<UnitImageStyle>(getUnitStyle());
   // Player-toggleable "images on / images off" switch. When OFF, every
   // <img> and SVG <image> in the play tree is hidden via CSS, letting
@@ -196,6 +228,41 @@ export default function PlayTab() {
       if (!meta || cancelled) return;
       await preloadAllBlobUrls();
       if (!cancelled) setTick((t) => t + 1);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  // Fetch unseen responses to this user's previously-filed problem reports.
+  // Fires once at app load. Silently no-ops if the user has never filed a
+  // report (no reporter ID in localStorage). The /api/my-responses endpoint
+  // ties issues to this device via the reporter HTML comment embedded in
+  // each issue body by /api/report.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const reporterId = localStorage.getItem(LS_REPORTER_ID);
+        if (!reporterId) return;
+        const seen = new Set<number>(
+          JSON.parse(localStorage.getItem(LS_SEEN_RESPONSES) || '[]'),
+        );
+        const res = await fetch(`/api/my-responses?reporterId=${encodeURIComponent(reporterId)}`);
+        if (!res.ok || cancelled) return;
+        const body: {
+          ok?: boolean;
+          responses?: { number: number; title: string; htmlUrl: string; response: string | null }[];
+        } = await res.json();
+        if (!body.ok || !Array.isArray(body.responses)) return;
+        const unseen = body.responses
+          .filter((r) => r.response && !seen.has(r.number))
+          .map((r) => ({
+            number: r.number, title: r.title, htmlUrl: r.htmlUrl, response: r.response!,
+          }));
+        if (unseen.length > 0 && !cancelled) {
+          setResponseNoticeQueue(unseen);
+        }
+      } catch (e) {
+        console.warn('[my-responses] fetch failed:', e);
+      }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -795,6 +862,24 @@ export default function PlayTab() {
           G={G}
           notice={objectiveNoticeQueue[0]}
           onDismiss={() => setObjectiveNoticeQueue((q) => q.slice(1))}
+        />
+      )}
+
+      {responseNoticeQueue.length > 0 && (
+        <ReportResponseModal
+          notice={responseNoticeQueue[0]}
+          onDismiss={() => {
+            const dismissed = responseNoticeQueue[0];
+            // Persist as seen so it doesn't pop again on next load.
+            try {
+              const seen = new Set<number>(
+                JSON.parse(localStorage.getItem(LS_SEEN_RESPONSES) || '[]'),
+              );
+              seen.add(dismissed.number);
+              localStorage.setItem(LS_SEEN_RESPONSES, JSON.stringify([...seen]));
+            } catch { /* localStorage full or disabled — modal just won't dismiss persistently */ }
+            setResponseNoticeQueue((q) => q.slice(1));
+          }}
         />
       )}
 
@@ -1821,6 +1906,70 @@ function ObjectiveScoredModal({ G, notice, onDismiss }: {
             borderRadius: 4, cursor: 'pointer',
           }}
         >OK</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Report-Response notice — surfaces the resolution comment from a previously-
+// filed problem report. The comment is written in user-facing language by
+// the maintainer when closing the GitHub issue (see CLAUDE.md "Report-
+// response writing style" for the convention). Modal renders the response
+// as markdown-ish plain text + a link to the underlying GitHub issue.
+// ============================================================================
+
+function ReportResponseModal({ notice, onDismiss }: {
+  notice: { number: number; title: string; htmlUrl: string; response: string };
+  onDismiss: () => void;
+}) {
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 6500,
+      }}
+      onClick={onDismiss}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+          padding: 22, maxWidth: 560, width: '94%',
+          maxHeight: '88vh', overflowY: 'auto',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+        }}
+      >
+        <div style={{ fontSize: 12, color: '#aae0ff', fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          Reply to your problem report
+        </div>
+        <div style={{ fontSize: 13, color: '#888', marginBottom: 14, fontStyle: 'italic' }}>
+          "{notice.title}"
+        </div>
+        <div style={{
+          fontSize: 14, color: '#e8e8ea', lineHeight: 1.55,
+          whiteSpace: 'pre-wrap', marginBottom: 16,
+        }}>
+          {notice.response}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <a
+            href={notice.htmlUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 11, color: '#888' }}
+          >
+            (issue #{notice.number} on GitHub)
+          </a>
+          <button
+            onClick={onDismiss}
+            style={{
+              padding: '8px 18px', fontSize: 14, fontWeight: 700,
+              background: '#aae0ff', color: '#000', border: 'none',
+              borderRadius: 4, cursor: 'pointer',
+            }}
+          >Thanks</button>
+        </div>
       </div>
     </div>
   );
@@ -6252,6 +6401,7 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
     schema: 'rebellion-report-v1',
     timestamp: new Date().toISOString(),
     userAgent: navigator.userAgent,
+    reporterId: getReporterId(),
     description,
     canEncodeState: canEncode(G),
     state: canEncode(G) ? JSON.parse(encode(G)) : null,

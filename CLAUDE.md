@@ -31,6 +31,50 @@ audit trail and so future-me doesn't re-investigate it.
 unverified. They almost certainly have receipts in the issue tracker.
 Check the tracker before pushing back.
 
+## Report-response writing style
+
+When closing a `from-game` issue, the closing comment is **shown back
+to the reporter as a modal the next time they open the app** (via
+`/api/my-responses` + `ReportResponseModal`). It's not a release
+note — it's a personal reply to the player who took the time to
+submit. Write it accordingly.
+
+**Rules (adapted from the tutor project's "Dispute-response writing
+style"):**
+
+- **Acknowledge they were right** when they were ("Good catch — you
+  spotted a real bug"). When they reported something that turned out
+  to be RAW-correct or expected behavior, validate the report anyway
+  ("Good question — the engine IS doing this on purpose, but you were
+  right to flag it as suspicious").
+- **Own bugs briefly.** "Our bad." / "Sorry you ran into that."
+  Don't deflect, don't blame "the AI" or "the engine."
+- **Plain language.** Not "the `destroyUnit` invariant fired because
+  `health.color === null`" — "your Death Star got accidentally
+  destroyed by a Rebel mission that wasn't supposed to be able to
+  touch it." Imagine a board-game friend explaining the fix.
+- **Don't include**: commit hashes, file paths, function names,
+  internal terminology, GitHub-isms, library names. The reporter
+  doesn't need any of that.
+- **Thank them effusively.** Not "thanks for the report." Try:
+  "Thank you so much — playtesters who file reports are where every
+  improvement comes from. Please keep flagging stuff."
+- **Vary the wording** per report. Don't form-letter it; the
+  specific thing they noticed deserves specific acknowledgment.
+
+**Template (shape, not text):**
+
+> Good catch — you flagged \[plain description of what they noticed\]
+> and you were right. \[What was happening in everyday terms.\]
+> \[What's fixed / why it's the way it is.\] Thank you for taking the
+> time to file this — reports like yours are how we keep finding
+> real bugs. Please keep them coming.
+
+For closures, post the user-facing comment via `gh issue close N
+--comment "..."`. The comment shows in the app modal verbatim, so
+keep it readable and don't use GitHub-flavored markdown that would
+look weird stripped of styling.
+
 ## Deploys
 
 The user does NOT want to run deploy commands themselves. When they ask
