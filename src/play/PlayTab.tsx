@@ -166,6 +166,13 @@ export default function PlayTab() {
   const [showReport, setShowReport] = useState(false);
   const [reportScreenshot, setReportScreenshot] = useState<string | null>(null);
   const [showUploadLogs, setShowUploadLogs] = useState(false);
+  // Queue of unseen "objective scored" notices for the human side. Populated
+  // by an effect that watches turnLog for new play-objective entries; each
+  // one becomes a modal that the user acknowledges before the next shows.
+  const [objectiveNoticeQueue, setObjectiveNoticeQueue] = useState<
+    { objectiveId: string; reputation: number; turn: number }[]
+  >([]);
+  const seenObjectiveLogIdxRef = useRef<number>(0);
   const [unitStyle, setUnitStyleState] = useState<UnitImageStyle>(getUnitStyle());
   // Player-toggleable "images on / images off" switch. When OFF, every
   // <img> and SVG <image> in the play tree is hidden via CSS, letting
@@ -290,6 +297,34 @@ export default function PlayTab() {
   const refresh = useCallback(() => {
     setTick((t) => t + 1);
     runAILoop();
+    // Detect newly-scored objectives since the last refresh. We scan the
+    // turnLog from the last-seen index forward; play-objective events get
+    // queued as user-visible notices. Only enqueue for the human's side —
+    // the AI's objectives are private to the AI player conceptually.
+    const G = gameRef.current;
+    if (G && G.turnLog) {
+      const humanSidePref = (() => {
+        try { return localStorage.getItem(LS_HUMAN_SIDE) || 'Rebel'; } catch { return 'Rebel'; }
+      })();
+      const additions: { objectiveId: string; reputation: number; turn: number }[] = [];
+      for (let i = seenObjectiveLogIdxRef.current; i < G.turnLog.length; i++) {
+        const e = G.turnLog[i];
+        if (e.kind === 'play-objective' && e.side === humanSidePref) {
+          const p = e.payload as { objectiveId?: string; reputation?: number } | undefined;
+          if (p?.objectiveId) {
+            additions.push({
+              objectiveId: p.objectiveId,
+              reputation: p.reputation ?? 0,
+              turn: e.turn ?? 0,
+            });
+          }
+        }
+      }
+      seenObjectiveLogIdxRef.current = G.turnLog.length;
+      if (additions.length > 0) {
+        setObjectiveNoticeQueue((q) => [...q, ...additions]);
+      }
+    }
   }, [runAILoop]);
 
   // Persist current game state after every action.
@@ -345,6 +380,9 @@ export default function PlayTab() {
     const s = trimmed === '' ? Math.floor(Math.random() * 1e9) : Number(trimmed);
     if (Number.isNaN(s)) return;
     gameRef.current = createGame(dataRef.current, { seed: s, autoSetupUnits: false });
+    // New game: nothing scored yet, but reset the seen-cursor to be safe.
+    seenObjectiveLogIdxRef.current = 0;
+    setObjectiveNoticeQueue([]);
     // Honor the player's side preference. "Random" rolls 50/50.
     const newHuman: Side =
       sidePref === 'Rebel' ? 'Rebel' :
@@ -365,6 +403,11 @@ export default function PlayTab() {
       const fresh = createGame(dataRef.current, { seed: 1 });
       const restored = decode(raw, fresh.catalog);
       gameRef.current = restored;
+      // Resumed game: don't re-announce historical objective scores — fast-
+      // forward the seen-cursor to the current end of log. Anything that
+      // happens AFTER this point will pop the notice modal as expected.
+      seenObjectiveLogIdxRef.current = restored.turnLog?.length ?? 0;
+      setObjectiveNoticeQueue([]);
       refresh();
     } catch (e) {
       setError(`Failed to restore saved game: ${String(e)}. Starting fresh might help.`);
@@ -744,6 +787,14 @@ export default function PlayTab() {
         <NotImplementedModal
           notices={G.pendingNotices}
           onDismiss={() => { if (G) G.pendingNotices = []; persist(); refresh(); }}
+        />
+      )}
+
+      {objectiveNoticeQueue.length > 0 && (
+        <ObjectiveScoredModal
+          G={G}
+          notice={objectiveNoticeQueue[0]}
+          onDismiss={() => setObjectiveNoticeQueue((q) => q.slice(1))}
         />
       )}
 
@@ -1700,6 +1751,76 @@ function StolenPlansReorderModal({ G, choice, onPick }: {
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Objective Scored notice — pops up the moment the human's side completes
+// an objective, showing the card art + rules text + rep gained.
+// ============================================================================
+
+function ObjectiveScoredModal({ G, notice, onDismiss }: {
+  G: GameState;
+  notice: { objectiveId: string; reputation: number; turn: number };
+  onDismiss: () => void;
+}) {
+  const o = G.catalog.objectives[notice.objectiveId];
+  const cardUrl = o?.image ? getCachedArtUrlSync(o.image) : null;
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5500,
+      }}
+      onClick={onDismiss}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#15171c', border: '2px solid #80dc78', borderRadius: 6,
+          padding: 20, maxWidth: 460, width: '92%',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.8)', textAlign: 'center',
+        }}
+      >
+        <div style={{ fontSize: 14, color: '#80dc78', fontWeight: 700, marginBottom: 6 }}>
+          Rebel objective scored — turn {notice.turn}
+        </div>
+        <div style={{ fontSize: 18, color: '#fff', fontWeight: 700, marginBottom: 4 }}>
+          {o?.name ?? notice.objectiveId}
+        </div>
+        <div style={{ fontSize: 14, color: '#ffd54a', fontWeight: 700, marginBottom: 10 }}>
+          +{notice.reputation} reputation
+        </div>
+        {cardUrl ? (
+          <img
+            src={cardUrl}
+            alt={o?.name ?? notice.objectiveId}
+            style={{ maxWidth: '100%', maxHeight: 320, borderRadius: 4, border: '1px solid #333', display: 'block', margin: '0 auto 10px' }}
+          />
+        ) : (
+          <div style={{
+            width: '100%', height: 180, background: '#222', color: '#888',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            borderRadius: 4, marginBottom: 10, fontSize: 12,
+          }}>
+            (objective art not in cached .vmod)
+          </div>
+        )}
+        {o?.rulesText && (
+          <div style={{ fontSize: 12, color: '#cbc4b0', marginBottom: 12, lineHeight: 1.4, textAlign: 'left' }}>
+            {o.rulesText}
+          </div>
+        )}
+        <button
+          onClick={onDismiss}
+          style={{
+            padding: '8px 18px', fontSize: 14, fontWeight: 700,
+            background: '#80dc78', color: '#000', border: 'none',
+            borderRadius: 4, cursor: 'pointer',
+          }}
+        >OK</button>
       </div>
     </div>
   );
