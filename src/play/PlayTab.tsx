@@ -1658,7 +1658,10 @@ function StolenPlansReorderModal({ G, choice, onPick }: {
                 const o = G.catalog.objectives[cid];
                 return (
                   <li key={cid} style={{ fontSize: 12 }}>
-                    {o?.name ?? cid}{' '}
+                    <CardNameHover name={o?.name ?? cid} image={o?.image} rulesText={o?.rulesText}>
+                      <span style={{ borderBottom: '1px dotted #888' }}>{o?.name ?? cid}</span>
+                    </CardNameHover>
+                    {' '}
                     <span style={{ color: '#ffd54a' }}>+{o?.reputation ?? 0}</span>
                   </li>
                 );
@@ -1685,7 +1688,9 @@ function StolenPlansReorderModal({ G, choice, onPick }: {
                 }}
               >
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 4 }}>
-                  <strong style={{ fontSize: 13 }}>{o?.name ?? cid}</strong>
+                  <CardNameHover name={o?.name ?? cid} image={o?.image} rulesText={o?.rulesText}>
+                    <strong style={{ fontSize: 13, borderBottom: '1px dotted #888' }}>{o?.name ?? cid}</strong>
+                  </CardNameHover>
                   <span style={{ marginLeft: 'auto', fontSize: 11, color: '#ffd54a', fontWeight: 700 }}>
                     +{o?.reputation ?? 0} reputation
                   </span>
