@@ -225,7 +225,14 @@ export default function PlayTab() {
     let cancelled = false;
     (async () => {
       const meta = await getVmodMeta();
-      if (!meta || cancelled) return;
+      if (cancelled) return;
+      if (!meta) {
+        // No .vmod ever loaded on this device → auto-open the loader modal
+        // so first-time visitors are directed to the VASSAL download
+        // instead of silently playing without art.
+        setShowLoadArt(true);
+        return;
+      }
       await preloadAllBlobUrls();
       if (!cancelled) setTick((t) => t + 1);
     })();
