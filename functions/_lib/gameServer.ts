@@ -19,12 +19,17 @@
 // without code changes here.
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import {
-  GameServer,
-  SupabaseStore,
-  NoopNotifier,
-  jsonCodec,
-} from 'digital-boardgame-framework/server';
+// NOTE: we import SupabaseStore / NoopNotifier / GameServer via the
+// framework's per-module subpath exports rather than its '/server' barrel.
+// The barrel re-exports FsStore which imports node:fs, and even with
+// "sideEffects":false esbuild can't always prove the re-export is safe
+// to drop — going through subpaths sidesteps it. node:fs isn't available
+// on Cloudflare Workers, so the barrel import causes a deploy-time
+// "No such module" error.
+import { GameServer } from 'digital-boardgame-framework/server/game-server';
+import { SupabaseStore } from 'digital-boardgame-framework/server/stores/supabase';
+import { NoopNotifier } from 'digital-boardgame-framework/server/notifiers/noop';
+import { jsonCodec } from 'digital-boardgame-framework';
 import type { GameState } from '../../src/engine/types';
 import type { Side } from '../../src/types';
 import type { RebellionAction } from '../../src/adapter/rebellionAction';
