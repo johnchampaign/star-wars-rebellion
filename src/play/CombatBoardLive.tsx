@@ -1576,12 +1576,78 @@ function RetreatPanel({ G, choice, onPersist }: {
     onPersist();
   };
   const sysName = (sid: string) => G.catalog.systems[sid]?.name ?? sid;
+
+  // Compute who will survive vs die. Mirror the engine's retreat-transport
+  // accounting: capital ships move free, restriction-icon fighters and ground
+  // need transport capacity; immobile units always die; any unit not in the
+  // selected move group is destroyed (RAW p.5-6).
+  const ss = G.map.systems[choice.systemId];
+  const ours = (ss?.units ?? []).filter((u) => u.side === choice.side);
+  let capacity = 0;
+  const willRetreat: typeof ours = [];
+  const willDie: typeof ours = [];
+  // First pass: capital ships go (they provide capacity).
+  for (const u of ours) {
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t || t.transport.immobile) { willDie.push(u); continue; }
+    if (t.transport.capacity > 0) {
+      willRetreat.push(u);
+      capacity += t.transport.capacity;
+    }
+  }
+  // Second pass: pack restriction/ground into available capacity.
+  for (const u of ours) {
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t || t.transport.immobile) continue;
+    if (t.transport.capacity > 0) continue;
+    const needsTransport = t.transport.restriction
+      || (t.theater === 'ground' && t.class !== 'structure');
+    if (!needsTransport) {
+      willRetreat.push(u);
+    } else if (capacity > 0) {
+      willRetreat.push(u);
+      capacity--;
+    } else {
+      willDie.push(u);
+    }
+  }
+  const fmt = (units: typeof ours) => {
+    const counts = new Map<string, number>();
+    for (const u of units) counts.set(u.typeId, (counts.get(u.typeId) ?? 0) + 1);
+    return [...counts.entries()].map(([t, n]) => {
+      const name = G.catalog.unitTypes[t]?.name ?? t;
+      return n > 1 ? `${name}×${n}` : name;
+    }).join(', ');
+  };
+
   return (
     <div>
       <div style={{ fontSize: 13, marginBottom: 6 }}>
         <b>Retreat?</b> {choice.availableUnits.length} unit{choice.availableUnits.length === 1 ? '' : 's'} can withdraw
         to a friendly adjacent system. (Once per combat.)
       </div>
+
+      {(willRetreat.length > 0 || willDie.length > 0) && (
+        <div style={{ marginBottom: 8, padding: 8, background: '#0c0d10', border: '1px solid #2a2d34', borderRadius: 4, fontSize: 11 }}>
+          {willRetreat.length > 0 && (
+            <div style={{ color: '#80dc78', marginBottom: willDie.length > 0 ? 4 : 0 }}>
+              <b>Will retreat ({willRetreat.length}):</b> {fmt(willRetreat)}
+            </div>
+          )}
+          {willDie.length > 0 && (
+            <div style={{ color: '#ff6b6b', fontWeight: 600 }}>
+              <b>Will be DESTROYED ({willDie.length})</b> — no transport / immobile: {fmt(willDie)}
+            </div>
+          )}
+          {willDie.length > 0 && (
+            <div style={{ color: '#888', marginTop: 4, fontStyle: 'italic' }}>
+              Per RAW: declaring retreat doesn't grant free movement — units that can't be transported are destroyed.
+              Reconsider \"Stay and fight\" if these losses are unacceptable.
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
         {choice.legalDestinations.length === 0 ? (
           <span style={{ color: '#666', fontStyle: 'italic', fontSize: 12 }}>(no legal destinations)</span>
@@ -1600,7 +1666,7 @@ function RetreatPanel({ G, choice, onPersist }: {
               </select>
             </label>
             <button onClick={() => submit(dest)} disabled={!dest} style={btn(SIDE_COLOR[choice.side])}>
-              Retreat all
+              Retreat ({willRetreat.length} survive{willDie.length > 0 ? `, ${willDie.length} die` : ''})
             </button>
           </>
         )}
