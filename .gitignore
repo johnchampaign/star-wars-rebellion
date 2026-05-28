@@ -71,3 +71,5 @@ tournament-logs/
 # Scratch directory for ad-hoc extracts (.vmod inspection, screenshot
 # downloads, etc.) — anything dropped here is local-only.
 tmp/
+# Ad-hoc analysis dir (downloaded play logs for offline inspection).
+logs-tmp/
