@@ -11,8 +11,35 @@ import LeadersTab from './devtabs/LeadersTab';
 import CardsTab from './devtabs/CardsTab';
 import ProbeTab from './devtabs/ProbeTab';
 import PlayTab from './play/PlayTab';
+import Lobby from './online/Lobby';
+import OnlinePlay from './online/OnlinePlay';
 
 type TabId = 'play' | 'systems' | 'adjacency' | 'regions' | 'resources' | 'positions' | 'mask' | 'silhouette' | 'tokens' | 'leaders' | 'cards' | 'probe';
+
+/** URL-path router for the online-multiplayer routes added in the
+ *  Digital Boardgame Framework port. Returns the JSX element to render
+ *  if the path matches /lobby or /play/:gameId, or null to fall through
+ *  to the regular tab-based UI (hotseat path, unchanged). */
+function onlineRoute(): JSX.Element | null {
+  const path = window.location.pathname;
+  if (path === '/lobby' || path === '/lobby/') return <Lobby />;
+  const m = /^\/play\/([^/?#]+)\/?$/.exec(path);
+  if (m) {
+    const gameId = decodeURIComponent(m[1]);
+    const token = new URLSearchParams(window.location.search).get('as') ?? '';
+    if (!token) {
+      return (
+        <div style={{ padding: 24, fontFamily: 'sans-serif' }}>
+          <h3>Missing invite token</h3>
+          <p>This URL needs an <code>?as=TOKEN</code> query parameter.
+            Use the invite link from the lobby.</p>
+        </div>
+      );
+    }
+    return <OnlinePlay gameId={gameId} token={token} />;
+  }
+  return null;
+}
 
 const DEV_TABS: { id: TabId; label: string }[] = [
   { id: 'systems', label: 'systems' },
@@ -48,6 +75,12 @@ export default function App() {
   useEffect(() => {
     document.title = dev ? 'Star Wars: Rebellion — Dev' : 'Star Wars: Rebellion';
   }, [dev]);
+
+  // Online routes bypass the tab UI entirely so the hotseat path stays
+  // completely untouched. Checked before tabs because /play/:id and /lobby
+  // are full-screen takeovers, not tabs.
+  const online = onlineRoute();
+  if (online) return online;
 
   return (
     <div className="app">

@@ -16,6 +16,7 @@
     "verify:vmod": "node scripts/verify-vmod-loader.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.106.2",
     "digital-boardgame-framework": "file:../Digital Boardgame Framework",
     "html2canvas": "^1.4.1",
     "jszip": "^3.10.1",

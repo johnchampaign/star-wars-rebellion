@@ -33,8 +33,10 @@ game-logs/
 
 # Local copies of problem reports. The canonical copies live as GitHub
 # Issues (created by the /api/report Function or vite dev middleware).
-# Disk backups stay out of the repo.
-reports/
+# Disk backups stay out of the repo. Anchored to the repo root so it
+# doesn't accidentally swallow the /functions/api/reports admin endpoint
+# we ship in the framework-port branch.
+/reports/
 
 # Local-only play-log mirrors. Real uploads live in logs/<hash>.json
 # committed to the deploy repo by /api/upload-logs.

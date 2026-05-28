@@ -1,0 +1,7 @@
+# SPA fallback for the framework-port online routes. Without this, Cloudflare
+# Pages 404s when a player loads /play/<id>?as=<token> directly from an invite
+# URL. Functions under /api/* take precedence over this fallback (Pages
+# serves Functions before static fallbacks), so this only catches client-side
+# routes.
+/lobby      /index.html   200
+/play/*     /index.html   200
