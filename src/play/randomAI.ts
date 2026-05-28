@@ -550,6 +550,38 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
       if (sys.loyalty?.side === 'Empire') ts += 3;
     }
     if (hasOwnUnits && side === 'Rebel') ts += 1;
+    // UNIVERSAL RULE (per user playtesting): never activate without troops.
+    // A leader-only activation accomplishes nothing — no combat (needs units
+    // on both sides), no subjugation (needs a unit present, not just a
+    // leader), no spread (the leader can't drop a unit). The right play
+    // when you want force somewhere is to activate the intermediate
+    // system ONE HOP CLOSER and pull units inward — not to place the
+    // leader at the eventual target with nothing.
+    //
+    // Exception: activating a system that already has your units is fine
+    // (consolidation, joining a prior wave, leader+units defensive set).
+    if (side === 'Empire') {
+      const adj = G.catalog.adjacency[sysId] ?? [];
+      let pullable = 0;
+      for (const a of adj) {
+        if ((G.empire.leadersOnBoard[a] ?? []).length > 0) continue;
+        const ss2 = G.map.systems[a];
+        if (!ss2) continue;
+        for (const u of ss2.units) {
+          if (u.side !== 'Empire') continue;
+          const t = G.catalog.unitTypes[u.typeId];
+          if (!t || t.transport.immobile) continue;
+          pullable++;
+        }
+      }
+      const ownHere = sys.units.filter((u) => u.side === 'Empire').length;
+      if (pullable === 0 && ownHere === 0) {
+        // No way to bring force, no force already there → leader sits alone.
+        // Override any prior bonus this turn with a strong negative so the
+        // AI picks a different target / mission / pass.
+        ts = -50;
+      }
+    }
     systemScore.set(sysId, ts);
   }
   // For each pool leader, pick their best target.
