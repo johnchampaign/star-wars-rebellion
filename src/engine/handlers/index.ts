@@ -190,16 +190,39 @@ const rapidMobilization: EffectHandler = (G, ctx) => {
 
 const captureRebelOperative: EffectHandler = (G, ctx) => {
   // RAW: "Capture a Rebel leader in a system that contains an Imperial
-  // unit." When multiple Rebel leaders are at the target, Empire chooses.
+  // unit." Empire chose a specific leader at reveal time (ctx.targetLeaderId
+  // — the reveal-mission target picker enforces a valid Rebel leader).
+  // Honor that choice ABOVE all else: the mission-target validation
+  // already confirmed the leader is at a system with an Imperial unit,
+  // and captureLeader() finds them whether they're in leaderPool,
+  // leadersOnBoard, or leadersOnMissions.
+  //
+  // The previous version required the target to be in leadersOnBoard
+  // [targetSystemId], which silently failed when the leader was on a
+  // mission (in leadersOnMissions instead of leadersOnBoard). In that
+  // case it fell through and captured whichever leader WAS on the board
+  // at the target system — which could be the opposing leader the Rebel
+  // had just sent to defend, NOT the target the Empire chose. (User
+  // report #41: Vader targeted Mon Mothma, Rebel opposed with Han Solo,
+  // Han got captured instead of Mon Mothma.)
   const sysId = ctx.targetSystemId;
+  if (ctx.targetLeaderId) {
+    // Defensive: ensure the leader is still a Rebel leader (not already
+    // captured / eliminated). If they vanished mid-resolution somehow,
+    // fall through to the system-based logic below.
+    const stillTargetable = !(G.empire.capturedLeaders ?? [])
+      .some((c) => c.leaderId === ctx.targetLeaderId)
+      && !G.rebel.eliminatedLeaders.includes(ctx.targetLeaderId);
+    if (stillTargetable) {
+      M.captureLeader(G, ctx.targetLeaderId, 'captured');
+      return true;
+    }
+  }
+  // No specific target provided (legacy code paths) — fall back to the
+  // "who's on the board here" picker.
   if (!sysId) return true;
   const here = G.rebel.leadersOnBoard[sysId] ?? [];
   if (here.length === 0) return true;
-  // Honor explicit leader pick from reveal-step UI; else fall through.
-  if (ctx.targetLeaderId && here.includes(ctx.targetLeaderId)) {
-    M.captureLeader(G, ctx.targetLeaderId, 'captured');
-    return true;
-  }
   if (here.length === 1) {
     M.captureLeader(G, here[0], 'captured');
     return true;
@@ -541,13 +564,18 @@ const collectBounty: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
   const rebelHere = G.rebel.leadersOnBoard[sysId] ?? [];
-  if (rebelHere.length === 0) return true;
   // Pick the specific leader the Empire targeted at mission reveal time.
-  // Fall back to highest-value if no explicit pick (legacy / AI without
-  // leader-aware picker).
+  // Honor it whether they're on the board or on a mission — same bug class
+  // as capture-rebel-operative (issue #41): target leaders assigned to a
+  // mission aren't in leadersOnBoard but ARE legal capture targets.
   let capturedId: string;
-  if (ctx.targetLeaderId && rebelHere.includes(ctx.targetLeaderId)) {
-    capturedId = ctx.targetLeaderId;
+  const targetStillValid = ctx.targetLeaderId
+    && !(G.empire.capturedLeaders ?? []).some((c) => c.leaderId === ctx.targetLeaderId)
+    && !G.rebel.eliminatedLeaders.includes(ctx.targetLeaderId);
+  if (targetStillValid) {
+    capturedId = ctx.targetLeaderId!;
+  } else if (rebelHere.length === 0) {
+    return true;
   } else {
     let best: { lid: string; v: number } | null = null;
     for (const lid of rebelHere) {
@@ -1000,17 +1028,20 @@ const detained: EffectHandler = (G, ctx) => {
   // RAW: "Attempt against a Rebel leader that is in any system. If successful,
   // that leader does not return to the leader pool during the next refresh."
   // The mission target is a system; we look for Rebel leaders there.
+  // Honor an explicit ctx.targetLeaderId whether they're on the board or on
+  // a mission (same bug class as capture-rebel-operative #41).
   const sysId = ctx.targetSystemId;
+  const targetStillValid = ctx.targetLeaderId
+    && !(G.empire.capturedLeaders ?? []).some((c) => c.leaderId === ctx.targetLeaderId)
+    && !G.rebel.eliminatedLeaders.includes(ctx.targetLeaderId);
+  if (targetStillValid) {
+    markDetained(G, ctx.targetLeaderId!);
+    return true;
+  }
   if (!sysId) return true;
   const here = G.rebel.leadersOnBoard[sysId] ?? [];
   if (here.length === 0) {
     log(G, { kind: 'detained-noop', side: 'Empire', payload: { systemId: sysId, reason: 'no-rebel-leaders-at-target' } });
-    return true;
-  }
-  // Honor explicit leader pick from reveal-step UI; else fall through to
-  // single-or-modal path.
-  if (ctx.targetLeaderId && here.includes(ctx.targetLeaderId)) {
-    markDetained(G, ctx.targetLeaderId);
     return true;
   }
   if (here.length === 1) {
