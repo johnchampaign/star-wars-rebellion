@@ -975,6 +975,13 @@ export type CombatReport = {
   drawnTactics: { side: Side; spaceCount: number; groundCount: number };
   rounds: CombatRoundReport[];
   structureDestructions: { side: Side; typeIds: string[] }[];
+  // Units destroyed during retreat (no-transport drops + units explicitly
+  // left behind). Per RR p.5-6 these count as "destroyed in this combat"
+  // for objective-trigger purposes (e.g. Crippling Blow counts retreat
+  // losses toward the 3+ ground HP threshold). Tracked here so the
+  // combat-end objective check sees them. Same shape as
+  // structureDestructions — one entry per retreat decision.
+  retreatDestructions: { side: Side; typeIds: string[] }[];
   winner: Side | 'draw' | null;
   totalRounds: number;
 };

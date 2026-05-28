@@ -73,6 +73,7 @@ export function beginCombat(
     addedLeaders: [],
     drawnTactics: { side: attackerSide, spaceCount: 0, groundCount: 0 },
     rounds: [], structureDestructions: [],
+    retreatDestructions: [],
     winner: null, totalRounds: 0,
   };
   const state: CombatState = {
@@ -1652,6 +1653,15 @@ export function resolveRetreatDecision(
   }
   // Destroy units left behind by capacity (RR p.5-6: "units not moved are
   // destroyed"). Same rule applies to immobile units in the system.
+  // Capture typeIds BEFORE destroying for the combat report — destroyUnit
+  // splices the instances out, so post-destroy we can't recover the type.
+  const retreatLostTypeIds: string[] = [];
+  if (ss) {
+    for (const uid of capacityDropped) {
+      const u = ss.units.find((x) => x.instanceId === uid);
+      if (u) retreatLostTypeIds.push(u.typeId);
+    }
+  }
   for (const uid of capacityDropped) {
     M.destroyUnit(G, uid, 'retreat-no-transport');
   }
@@ -1664,13 +1674,20 @@ export function resolveRetreatDecision(
     const droppedSet = new Set(capacityDropped);
     const leftBehind = ss.units
       .filter((u) => u.side === side && !movingSet.has(u.instanceId) && !droppedSet.has(u.instanceId))
-      .map((u) => u.instanceId);
-    for (const uid of leftBehind) M.destroyUnit(G, uid, 'retreat-left-behind');
+      .map((u) => ({ instanceId: u.instanceId, typeId: u.typeId }));
+    for (const u of leftBehind) retreatLostTypeIds.push(u.typeId);
+    for (const u of leftBehind) M.destroyUnit(G, u.instanceId, 'retreat-left-behind');
     if (leftBehind.length > 0) {
       log(G, { kind: 'combat-retreat-leftbehind', side, payload: {
-        systemId: c.systemId, units: leftBehind.length, instances: leftBehind,
+        systemId: c.systemId, units: leftBehind.length, instances: leftBehind.map((u) => u.instanceId),
       }});
     }
+  }
+  // Record in the report so combat-end objective checks (e.g. Crippling Blow,
+  // which counts 3+ ground HP destroyed in the combat) include retreat
+  // losses. Per RAW: retreat is part of the combat, not separate from it.
+  if (retreatLostTypeIds.length > 0) {
+    c.report.retreatDestructions.push({ side, typeIds: retreatLostTypeIds });
   }
   // Now move the units that fit.
   for (const uid of toMove) {

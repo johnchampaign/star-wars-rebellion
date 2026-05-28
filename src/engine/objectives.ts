@@ -182,6 +182,20 @@ function sumDestroyedHp(
       }
     }
   }
+  // Retreat losses ALSO count as "destroyed in this combat" per RAW
+  // (RR p.5-6: retreat is part of the combat). Without this, Crippling
+  // Blow (≥3 ground HP destroyed in a Rebel-initiated combat) didn't
+  // fire when the Empire retreated and lost an AT-AT to no-transport —
+  // user issue #37.
+  for (const entry of (report.retreatDestructions ?? [])) {
+    if (entry.side !== destroyedSide) continue;
+    for (const typeId of entry.typeIds) {
+      const t = G.catalog.unitTypes[typeId];
+      if (!t) continue;
+      if (t.theater !== theater) continue;
+      hp += t.health.value ?? 1;
+    }
+  }
   return hp;
 }
 
@@ -192,6 +206,12 @@ function countDestroyed(report: import('./types').CombatReport, typeIds: string[
       for (const d of atk.destroyed) {
         if (typeIds.includes(d.typeId)) n++;
       }
+    }
+  }
+  // Same retreat-counts-as-destroyed rule as sumDestroyedHp.
+  for (const entry of (report.retreatDestructions ?? [])) {
+    for (const typeId of entry.typeIds) {
+      if (typeIds.includes(typeId)) n++;
     }
   }
   return n;
