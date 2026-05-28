@@ -6864,13 +6864,14 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
             <li>
               Download from{' '}
               <a href={VASSAL_DRIVE_URL} target="_blank" rel="noopener noreferrer"
-                style={{ color: '#4fc3f7' }}>this Google Drive link</a>
-              {' '}(or from{' '}
-              <a href="https://vassalengine.org/wiki/Module:Star_Wars:_Rebellion"
-                target="_blank" rel="noopener noreferrer"
-                style={{ color: '#4fc3f7' }}>vassalengine.org</a>)
+                style={{ color: '#4fc3f7', fontWeight: 700 }}>this Google Drive link</a>.
+              {' '}
+              <span style={{ color: '#888', fontSize: 11 }}>
+                (The module isn't currently listed on the official Vassal library, so the Drive link is the most reliable source.
+                There's also a copy linked from the BGG Play-by-Forum thread.)
+              </span>
             </li>
-            <li>Drag the .vmod file into the box below, or click to pick it</li>
+            <li>Drag the .vmod file into the box below, or click to pick it.</li>
           </ol>
         </div>
 

@@ -14,30 +14,580 @@
     ]
   },
   "leaders": [
-    { "id": "admiral-ozzel",       "name": "Admiral Ozzel",        "side": "Empire", "isStarting": false, "skills": { "diplomacy": 0, "intel": 1, "specOps": 0, "logistics": 1 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 2, "ground": 1 }, "image": "LeaderEmpireAdmiralOzzel.png" },
-    { "id": "admiral-piett",       "name": "Admiral Piett",        "side": "Empire", "isStarting": false, "skills": { "diplomacy": 0, "intel": 2, "specOps": 1, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 3, "ground": 1 }, "image": "LeaderEmpireAdmiralPiett.png" },
-    { "id": "boba-fett",           "name": "Boba Fett",            "side": "Empire", "isStarting": false, "skills": { "diplomacy": 0, "intel": 2, "specOps": 3, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 0, "ground": 0 }, "image": "LeaderEmpireBobaFett.png" },
-    { "id": "colonel-yularen",     "name": "Colonel Yularen",      "side": "Empire", "isStarting": false, "skills": { "diplomacy": 0, "intel": 3, "specOps": 0, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 2, "ground": 2 }, "image": "LeaderEmpireColonelYularen.png" },
-    { "id": "darth-vader",         "name": "Darth Vader",          "side": "Empire", "isStarting": true,  "skills": { "diplomacy": 2, "intel": 0, "specOps": 3, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 2, "ground": 3 }, "image": "LeaderEmpireDarthVader.png" },
-    { "id": "emperor-palpatine",   "name": "Emperor Palpatine",    "side": "Empire", "isStarting": true,  "skills": { "diplomacy": 3, "intel": 2, "specOps": 0, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 3, "ground": 2 }, "image": "LeaderEmpireEmperorPalpatine.png" },
-    { "id": "general-tagge",       "name": "General Tagge",        "side": "Empire", "isStarting": true,  "skills": { "diplomacy": 0, "intel": 0, "specOps": 1, "logistics": 1 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 1, "ground": 2 }, "image": "LeaderEmpireGeneralTagge.png" },
-    { "id": "general-veers",       "name": "General Veers",        "side": "Empire", "isStarting": false, "skills": { "diplomacy": 0, "intel": 0, "specOps": 2, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 1, "ground": 3 }, "image": "LeaderEmpireGeneralVeers.png" },
-    { "id": "grand-moff-tarkin",   "name": "Grand Moff Tarkin",    "side": "Empire", "isStarting": true,  "skills": { "diplomacy": 1, "intel": 1, "specOps": 0, "logistics": 1 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 2, "ground": 1 }, "image": "LeaderEmpireGrandMoffTarkin.png" },
-    { "id": "janus-greejatus",     "name": "Janus Greejatus",      "side": "Empire", "isStarting": false, "skills": { "diplomacy": 2, "intel": 1, "specOps": 0, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 0, "ground": 0 }, "image": "LeaderEmpireJanusGreejatus.png" },
-    { "id": "moff-jerjerrod",      "name": "Moff Jerjerrod",       "side": "Empire", "isStarting": false, "skills": { "diplomacy": 1, "intel": 0, "specOps": 0, "logistics": 1 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 1, "ground": 1 }, "image": "LeaderEmpireMoffJerjerrod.png" },
-    { "id": "soontir-fel",         "name": "Soontir Fel",          "side": "Empire", "isStarting": false, "skills": { "diplomacy": 0, "intel": 1, "specOps": 2, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 2, "ground": 1 }, "image": "LeaderEmpireSoontirFel.png" },
-    { "id": "admiral-ackbar",      "name": "Admiral Ackbar",       "side": "Rebel",  "isStarting": false, "skills": { "diplomacy": 2, "intel": 0, "specOps": 0, "logistics": 1 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 3, "ground": 1 }, "image": "LeaderRebelAdmiralAckbar.png" },
-    { "id": "chewbacca",           "name": "Chewbacca",            "side": "Rebel",  "isStarting": false, "skills": { "diplomacy": 0, "intel": 0, "specOps": 3, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 1, "ground": 2 }, "image": "LeaderRebelChewbacca.png" },
-    { "id": "general-madine",      "name": "General Madine",       "side": "Rebel",  "isStarting": false, "skills": { "diplomacy": 0, "intel": 2, "specOps": 2, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 1, "ground": 3 }, "image": "LeaderRebelGeneralMadine.png" },
-    { "id": "general-rieekan",     "name": "General Rieekan",      "side": "Rebel",  "isStarting": false, "skills": { "diplomacy": 1, "intel": 0, "specOps": 1, "logistics": 1 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 1, "ground": 2 }, "image": "LeaderRebelGeneralRieekan.png" },
-    { "id": "han-solo",            "name": "Han Solo",             "side": "Rebel",  "isStarting": false, "skills": { "diplomacy": 1, "intel": 1, "specOps": 2, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 2, "ground": 2 }, "image": "LeaderRebelHanSolo.png" },
-    { "id": "jan-dodonna",         "name": "Jan Dodonna",          "side": "Rebel",  "isStarting": true,  "skills": { "diplomacy": 1, "intel": 2, "specOps": 0, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 2, "ground": 1 }, "image": "LeaderRebelJanDodonna.png" },
-    { "id": "lando-calrissian",    "name": "Lando Calrissian",     "side": "Rebel",  "isStarting": false, "skills": { "diplomacy": 1, "intel": 1, "specOps": 1, "logistics": 1 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 2, "ground": 2 }, "image": "LeaderRebelLandoCalrissian.png" },
-    { "id": "luke-skywalker",      "name": "Luke Skywalker",       "side": "Rebel",  "isStarting": true,  "skills": { "diplomacy": 0, "intel": 2, "specOps": 1, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 2, "ground": 2 }, "image": "LeaderRebelLukeSkywalker.png" },
-    { "id": "luke-skywalker-jedi", "name": "Luke Skywalker (Jedi)","side": "Rebel",  "isStarting": false, "skills": { "diplomacy": 0, "intel": 3, "specOps": 2, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 3, "ground": 3 }, "image": "LeaderRebelLukeSkywalkerJedi.png" },
-    { "id": "mon-mothma",          "name": "Mon Mothma",           "side": "Rebel",  "isStarting": true,  "skills": { "diplomacy": 3, "intel": 0, "specOps": 0, "logistics": 1 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 0, "ground": 0 }, "image": "LeaderRebelMonMothma.png" },
-    { "id": "obi-wan-kenobi",      "name": "Obi Wan Kenobi",       "side": "Rebel",  "isStarting": false, "skills": { "diplomacy": 1, "intel": 3, "specOps": 0, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 1, "ground": 3 }, "image": "LeaderRebelObiWanKenobi.png" },
-    { "id": "princess-leia",       "name": "Princess Leia",        "side": "Rebel",  "isStarting": true,  "skills": { "diplomacy": 2, "intel": 2, "specOps": 1, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 1, "ground": 1 }, "image": "LeaderRebelPrincessLeia.png" },
-    { "id": "wedge-antilles",      "name": "Wedge Antilles",       "side": "Rebel",  "isStarting": false, "skills": { "diplomacy": 0, "intel": 0, "specOps": 2, "logistics": 0 }, "minorSkills": { "diplomacy": 0, "intel": 0, "specOps": 0, "logistics": 0 }, "tacticValues": { "space": 3, "ground": 1 }, "image": "LeaderRebelWedgeAntilles.png" }
+    {
+      "id": "admiral-ozzel",
+      "name": "Admiral Ozzel",
+      "side": "Empire",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 1,
+        "specOps": 0,
+        "logistics": 1
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 2,
+        "ground": 1
+      },
+      "image": "LeaderEmpireAdmiralOzzel.png"
+    },
+    {
+      "id": "admiral-piett",
+      "name": "Admiral Piett",
+      "side": "Empire",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 2,
+        "specOps": 1,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 3,
+        "ground": 1
+      },
+      "image": "LeaderEmpireAdmiralPiett.png"
+    },
+    {
+      "id": "boba-fett",
+      "name": "Boba Fett",
+      "side": "Empire",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 2,
+        "specOps": 3,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 0,
+        "ground": 0
+      },
+      "image": "LeaderEmpireBobaFett.png"
+    },
+    {
+      "id": "colonel-yularen",
+      "name": "Colonel Yularen",
+      "side": "Empire",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 3,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 2,
+        "ground": 2
+      },
+      "image": "LeaderEmpireColonelYularen.png"
+    },
+    {
+      "id": "darth-vader",
+      "name": "Darth Vader",
+      "side": "Empire",
+      "isStarting": true,
+      "skills": {
+        "diplomacy": 2,
+        "intel": 0,
+        "specOps": 3,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 2,
+        "ground": 3
+      },
+      "image": "LeaderEmpireDarthVader.png"
+    },
+    {
+      "id": "emperor-palpatine",
+      "name": "Emperor Palpatine",
+      "side": "Empire",
+      "isStarting": true,
+      "skills": {
+        "diplomacy": 3,
+        "intel": 2,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 3,
+        "ground": 2
+      },
+      "image": "LeaderEmpireEmperorPalpatine.png"
+    },
+    {
+      "id": "general-tagge",
+      "name": "General Tagge",
+      "side": "Empire",
+      "isStarting": true,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 1,
+        "logistics": 1
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 1,
+        "ground": 2
+      },
+      "image": "LeaderEmpireGeneralTagge.png"
+    },
+    {
+      "id": "general-veers",
+      "name": "General Veers",
+      "side": "Empire",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 2,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 1,
+        "ground": 3
+      },
+      "image": "LeaderEmpireGeneralVeers.png"
+    },
+    {
+      "id": "grand-moff-tarkin",
+      "name": "Grand Moff Tarkin",
+      "side": "Empire",
+      "isStarting": true,
+      "skills": {
+        "diplomacy": 1,
+        "intel": 1,
+        "specOps": 0,
+        "logistics": 1
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 2,
+        "ground": 1
+      },
+      "image": "LeaderEmpireGrandMoffTarkin.png"
+    },
+    {
+      "id": "janus-greejatus",
+      "name": "Janus Greejatus",
+      "side": "Empire",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 2,
+        "intel": 1,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 0,
+        "ground": 0
+      },
+      "image": "LeaderEmpireJanusGreejatus.png"
+    },
+    {
+      "id": "moff-jerjerrod",
+      "name": "Moff Jerjerrod",
+      "side": "Empire",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 1,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 1
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 1,
+        "ground": 1
+      },
+      "image": "LeaderEmpireMoffJerjerrod.png"
+    },
+    {
+      "id": "soontir-fel",
+      "name": "Soontir Fel",
+      "side": "Empire",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 1,
+        "specOps": 2,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 2,
+        "ground": 1
+      },
+      "image": "LeaderEmpireSoontirFel.png"
+    },
+    {
+      "id": "admiral-ackbar",
+      "name": "Admiral Ackbar",
+      "side": "Rebel",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 2,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 1
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 3,
+        "ground": 1
+      },
+      "image": "LeaderRebelAdmiralAckbar.png"
+    },
+    {
+      "id": "chewbacca",
+      "name": "Chewbacca",
+      "side": "Rebel",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 3,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 1,
+        "ground": 2
+      },
+      "image": "LeaderRebelChewbacca.png"
+    },
+    {
+      "id": "general-madine",
+      "name": "General Madine",
+      "side": "Rebel",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 2,
+        "specOps": 2,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 1,
+        "ground": 3
+      },
+      "image": "LeaderRebelGeneralMadine.png"
+    },
+    {
+      "id": "general-rieekan",
+      "name": "General Rieekan",
+      "side": "Rebel",
+      "isStarting": true,
+      "skills": {
+        "diplomacy": 1,
+        "intel": 0,
+        "specOps": 1,
+        "logistics": 1
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 1,
+        "ground": 2
+      },
+      "image": "LeaderRebelGeneralRieekan.png"
+    },
+    {
+      "id": "han-solo",
+      "name": "Han Solo",
+      "side": "Rebel",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 1,
+        "intel": 1,
+        "specOps": 2,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 2,
+        "ground": 2
+      },
+      "image": "LeaderRebelHanSolo.png"
+    },
+    {
+      "id": "jan-dodonna",
+      "name": "Jan Dodonna",
+      "side": "Rebel",
+      "isStarting": true,
+      "skills": {
+        "diplomacy": 1,
+        "intel": 2,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 2,
+        "ground": 1
+      },
+      "image": "LeaderRebelJanDodonna.png"
+    },
+    {
+      "id": "lando-calrissian",
+      "name": "Lando Calrissian",
+      "side": "Rebel",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 1,
+        "intel": 1,
+        "specOps": 1,
+        "logistics": 1
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 2,
+        "ground": 2
+      },
+      "image": "LeaderRebelLandoCalrissian.png"
+    },
+    {
+      "id": "luke-skywalker",
+      "name": "Luke Skywalker",
+      "side": "Rebel",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 2,
+        "specOps": 1,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 2,
+        "ground": 2
+      },
+      "image": "LeaderRebelLukeSkywalker.png"
+    },
+    {
+      "id": "luke-skywalker-jedi",
+      "name": "Luke Skywalker (Jedi)",
+      "side": "Rebel",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 3,
+        "specOps": 2,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 3,
+        "ground": 3
+      },
+      "image": "LeaderRebelLukeSkywalkerJedi.png"
+    },
+    {
+      "id": "mon-mothma",
+      "name": "Mon Mothma",
+      "side": "Rebel",
+      "isStarting": true,
+      "skills": {
+        "diplomacy": 3,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 1
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 0,
+        "ground": 0
+      },
+      "image": "LeaderRebelMonMothma.png"
+    },
+    {
+      "id": "obi-wan-kenobi",
+      "name": "Obi Wan Kenobi",
+      "side": "Rebel",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 1,
+        "intel": 3,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 1,
+        "ground": 3
+      },
+      "image": "LeaderRebelObiWanKenobi.png"
+    },
+    {
+      "id": "princess-leia",
+      "name": "Princess Leia",
+      "side": "Rebel",
+      "isStarting": true,
+      "skills": {
+        "diplomacy": 2,
+        "intel": 2,
+        "specOps": 1,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 1,
+        "ground": 1
+      },
+      "image": "LeaderRebelPrincessLeia.png"
+    },
+    {
+      "id": "wedge-antilles",
+      "name": "Wedge Antilles",
+      "side": "Rebel",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 2,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 3,
+        "ground": 1
+      },
+      "image": "LeaderRebelWedgeAntilles.png"
+    }
   ]
 }
