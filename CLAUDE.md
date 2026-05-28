@@ -75,6 +75,19 @@ For closures, post the user-facing comment via `gh issue close N
 keep it readable and don't use GitHub-flavored markdown that would
 look weird stripped of styling.
 
+## Branch discipline
+
+**At session start, run `git branch --show-current` and verify it says
+`master` before any commits.** This repo has parallel work in progress
+on other branches (e.g. `framework-port`); committing there accidentally
+strands work outside the deploy stream and means cherry-picking later.
+
+If you find yourself on a non-master branch unexpectedly:
+1. `git checkout master` before staging changes
+2. If a commit already landed on the wrong branch, cherry-pick it onto
+   master rather than merging the whole branch — other branches may
+   have unrelated work-in-progress that shouldn't go to master.
+
 ## Deploys
 
 The user does NOT want to run deploy commands themselves. When they ask
