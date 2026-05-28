@@ -439,6 +439,8 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
   // narrowingMode triggers heavier candidate-system bonuses. Raised from
   // 6 to 10 so Empire pivots to base-stumble searches earlier in the
   // game (by T5 probes typically narrow to 8-12 systems).
+  // (Tried bumping to 14 with bonuses 20/10 — net loss. Reveal rate was
+  // unchanged, leader-only ratio rose. Reverted.)
   const narrowingMode = baseCandidateSet ? baseCandidateSet.size <= 10 : false;
   const systemScore = new Map<string, number>();
   for (const sysId of allSystemIds) {
@@ -494,10 +496,37 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
       // revealed there — in that case we WANT all leaders converging.
       const empireLeadersHere = (G.empire.leadersOnBoard[sysId] ?? []).length;
       if (G.rebelBaseRevealed && sysId === G.rebelBaseSystemId) {
-        // CONVERGE on the revealed base: massively reward sending leaders
-        // here, especially if a first attack already happened (Pattern 4:
-        // two-wave attack same turn).
-        ts += 25;
+        // CONVERGE on the revealed base — but ONLY if we have force to bring.
+        // Tournament data (100 games): 68% of Empire base-invasions in lost
+        // games were leader-only (no units, just sending Vader to die). In
+        // won games it was 13%. The +25 bonus was overriding force-availability
+        // checks. Now we gate it: count Empire combat units at adjacent
+        // unblocked systems. If 0 → leader-only invasion → free leader
+        // capture for the Rebels. Drop the bonus and let the AI do something
+        // useful (recruit, run a mission, stage).
+        const adj = G.catalog.adjacency[sysId] ?? [];
+        let pullableForce = 0;
+        for (const a of adj) {
+          // Leader-blocked sources can't move units out (RAW p.2).
+          if ((G.empire.leadersOnBoard[a] ?? []).length > 0) continue;
+          const ss2 = G.map.systems[a];
+          if (!ss2) continue;
+          for (const u of ss2.units) {
+            if (u.side !== 'Empire') continue;
+            const t = G.catalog.unitTypes[u.typeId];
+            if (!t || t.transport.immobile) continue;
+            // Count any mobile combat unit (ships, fighters, ground).
+            pullableForce++;
+          }
+        }
+        // Already-attacking units AT the base count too (force already in
+        // place from a prior wave).
+        for (const u of sys.units) {
+          if (u.side === 'Empire') pullableForce++;
+        }
+        if (pullableForce >= 3) ts += 25;            // strong force → go
+        else if (pullableForce >= 1) ts += 10;       // weak force → maybe, with caveats
+        else ts -= 10;                               // ZERO force → actively penalize (don't gift the leader)
       } else if (G.rebelBaseRevealed && G.rebelBaseSystemId
                  && (G.catalog.adjacency[G.rebelBaseSystemId] ?? []).includes(sysId)
                  && empireLeadersHere === 0) {
