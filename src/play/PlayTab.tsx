@@ -180,6 +180,15 @@ function hasAnyCommandAction(G: GameState, side: Side): boolean {
 
 export default function PlayTab() {
   const gameRef = useRef<GameState | null>(null);
+  // Undo stack for the interactive Setup phase. Each entry is an encoded
+  // snapshot (codec string) of G taken just BEFORE a human placement /
+  // auto-fill. Undo pops the latest; Reset restores entry[0] (the state
+  // before the human's first placement). Codec round-trip is used instead
+  // of structuredClone so instance-id counters get reseeded on restore
+  // (same path as save/load — avoids the dup-instanceId bug, issue #29).
+  // Player request: Eskil Swahn (BGG) misclicked during Rebel setup with
+  // no way to take it back.
+  const setupUndoStackRef = useRef<string[]>([]);
   const dataRef = useRef<Awaited<ReturnType<typeof loadAllForEngine>> | null>(null);
   const systemsRef = useRef<System[]>([]);
   const masksRef = useRef<MaskRect[]>([]);
@@ -689,6 +698,7 @@ export default function PlayTab() {
 
   const onSetupAutoFill = (side: Side) => {
     if (!G) return;
+    if (canEncode(G)) setupUndoStackRef.current.push(encode(G));
     phases.setupAutoFill(G, side);
     persist();
     refresh();
@@ -696,8 +706,40 @@ export default function PlayTab() {
 
   const onSetupDeploy = (side: Side, typeId: string, systemId: string) => {
     if (!G) return;
+    // Snapshot BEFORE the placement so it can be undone. If the placement
+    // turns out to be illegal (no state change), drop the redundant snapshot.
+    const snapshot = canEncode(G) ? encode(G) : null;
+    if (snapshot) setupUndoStackRef.current.push(snapshot);
     const r = phases.setupDeployUnit(G, side, typeId, systemId);
-    if (!r.ok) alert(`Cannot deploy: ${r.reason}`);
+    if (!r.ok) {
+      if (snapshot) setupUndoStackRef.current.pop();
+      alert(`Cannot deploy: ${r.reason}`);
+    }
+    persist();
+    refresh();
+  };
+
+  // Undo the most recent human setup placement (or auto-fill).
+  const onSetupUndo = () => {
+    const Gc = gameRef.current;
+    if (!Gc) return;
+    const snap = setupUndoStackRef.current.pop();
+    if (!snap) return;
+    gameRef.current = decode(snap, Gc.catalog);
+    persist();
+    refresh();
+  };
+
+  // Reset all of the human's setup placements back to before the first one.
+  const onSetupReset = () => {
+    const Gc = gameRef.current;
+    if (!Gc) return;
+    const stack = setupUndoStackRef.current;
+    if (stack.length === 0) return;
+    if (!confirm('Reset your setup? This clears all the units you\'ve placed so far and starts your deployment over.')) return;
+    const baseline = stack[0];
+    setupUndoStackRef.current = [];
+    gameRef.current = decode(baseline, Gc.catalog);
     persist();
     refresh();
   };
@@ -869,6 +911,9 @@ export default function PlayTab() {
           side={G.currentPlayer}
           onDeploy={onSetupDeploy}
           onAutoFill={onSetupAutoFill}
+          onUndo={onSetupUndo}
+          onReset={onSetupReset}
+          undoCount={setupUndoStackRef.current.length}
         />
       )}
 
@@ -5437,11 +5482,14 @@ function RebelBasePickPanel({ G, onPick }: { G: GameState; onPick: (sysId: strin
 // Setup Panel — choose where to deploy starting units
 // ============================================================================
 
-function SetupPanel({ G, side, onDeploy, onAutoFill }: {
+function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onReset, undoCount }: {
   G: GameState;
   side: Side;
   onDeploy: (side: Side, typeId: string, systemId: string) => void;
   onAutoFill: (side: Side) => void;
+  onUndo: () => void;
+  onReset: () => void;
+  undoCount: number;
 }) {
   const pending = G.pendingDeployment?.[side] ?? [];
   const color = sideColor(side);
@@ -5500,14 +5548,31 @@ function SetupPanel({ G, side, onDeploy, onAutoFill }: {
           {side === 'Empire' && '(Place in Imperial-loyalty or subjugated systems; every Imperial system needs ≥1 ground unit.)'}
           {side === 'Rebel' && '(Rebel Base space and/or one Rebel/neutral system of your choice.)'}
         </span>
-        <button
-          className="tab-button"
-          style={{ marginLeft: 'auto' }}
-          onClick={() => onAutoFill(side)}
-          disabled={pending.length === 0}
-        >
-          Auto-fill (computer chooses)
-        </button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <button
+            className="tab-button"
+            onClick={onUndo}
+            disabled={undoCount === 0}
+            title={undoCount === 0 ? 'Nothing to undo yet' : 'Undo your last placement'}
+          >
+            ↶ Undo
+          </button>
+          <button
+            className="tab-button"
+            onClick={onReset}
+            disabled={undoCount === 0}
+            title={undoCount === 0 ? 'Nothing to reset yet' : 'Clear all your placements and start over'}
+          >
+            Reset setup
+          </button>
+          <button
+            className="tab-button"
+            onClick={() => onAutoFill(side)}
+            disabled={pending.length === 0}
+          >
+            Auto-fill (computer chooses)
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
