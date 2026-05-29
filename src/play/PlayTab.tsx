@@ -7294,7 +7294,25 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
-        setStatus({ kind: 'error', message: `Relay returned HTTP ${res.status}` });
+        // Surface the server's actual reason instead of a bare status code.
+        // The upload function returns a JSON body like
+        // { error: 'server-not-configured', note: '...' } on its 500 path —
+        // showing it tells the player (and us) the real cause. The most
+        // common one: this is a Cloudflare PREVIEW deploy and the GitHub
+        // secrets are only set on the production environment.
+        let detail = '';
+        try {
+          const errBody = await res.json() as { error?: string; note?: string };
+          if (errBody?.error === 'server-not-configured') {
+            detail = ' — the log-upload service isn\'t configured for this deployment '
+              + '(missing upload credentials on this Cloudflare environment).';
+          } else if (errBody?.note) {
+            detail = ` — ${errBody.note}`;
+          } else if (errBody?.error) {
+            detail = ` — ${errBody.error}`;
+          }
+        } catch { /* non-JSON body; fall back to the status code alone */ }
+        setStatus({ kind: 'error', message: `Upload failed (HTTP ${res.status})${detail}` });
         return;
       }
       const body = await res.json() as { uploaded: number; deduped: number; failed: number };
