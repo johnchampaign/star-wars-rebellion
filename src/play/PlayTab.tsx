@@ -207,6 +207,16 @@ export default function PlayTab() {
   const [drawnObjectiveQueue, setDrawnObjectiveQueue] = useState<
     { objectiveId: string; turn: number }[]
   >([]);
+  // Queue of "your leader was rescued" notices for the human Rebel player.
+  // Triggered by rescue-leader events (both mission-rescue and auto-rescue
+  // — the latter happens when a captured leader's system loses all Imperial
+  // units). Michael Knauss (BGG report) didn't realize Han Solo had been
+  // auto-rescued after his Plan The Assault attack on Bothawui, then tried
+  // to reveal Daring Rescue and saw "no targets" — leading to a confusing
+  // problem report. Modal makes the rescue visible.
+  const [leaderRescuedQueue, setLeaderRescuedQueue] = useState<
+    { leaderId: string; reason: string; turn: number }[]
+  >([]);
   // Queue of resolved-problem-report responses the user hasn't seen yet.
   // Fetched once at app load from /api/my-responses; each unseen response
   // becomes a modal that thanks the user + explains the fix in plain
@@ -392,6 +402,7 @@ export default function PlayTab() {
       })();
       const additions: { objectiveId: string; reputation: number; turn: number }[] = [];
       const draws: { objectiveId: string; turn: number }[] = [];
+      const rescues: { leaderId: string; reason: string; turn: number }[] = [];
       for (let i = seenObjectiveLogIdxRef.current; i < G.turnLog.length; i++) {
         const e = G.turnLog[i];
         if (e.kind === 'play-objective' && e.side === humanSidePref) {
@@ -414,10 +425,28 @@ export default function PlayTab() {
             draws.push({ objectiveId: oid, turn: e.turn ?? 0 });
           }
         }
+        // rescue-leader fires for both mission-rescue (the player ran a
+        // rescue mission successfully) and auto-rescue (engine path: a
+        // captured leader's system lost its Imperial units). Both are
+        // surfaced — the mission-rescue case is celebratory, the auto-
+        // rescue case can be a real surprise (issue #45).
+        if (e.kind === 'rescue-leader' && humanSidePref === 'Rebel') {
+          const p = e.payload as { leaderId?: string; reason?: string } | undefined;
+          if (p?.leaderId) {
+            rescues.push({
+              leaderId: p.leaderId,
+              reason: p.reason ?? 'auto',
+              turn: e.turn ?? 0,
+            });
+          }
+        }
       }
       seenObjectiveLogIdxRef.current = G.turnLog.length;
       if (draws.length > 0) {
         setDrawnObjectiveQueue((q) => [...q, ...draws]);
+      }
+      if (rescues.length > 0) {
+        setLeaderRescuedQueue((q) => [...q, ...rescues]);
       }
       if (additions.length > 0) {
         setObjectiveNoticeQueue((q) => [...q, ...additions]);
@@ -482,6 +511,7 @@ export default function PlayTab() {
     seenObjectiveLogIdxRef.current = 0;
     setObjectiveNoticeQueue([]);
     setDrawnObjectiveQueue([]);
+    setLeaderRescuedQueue([]);
     // Honor the player's side preference. "Random" rolls 50/50.
     const newHuman: Side =
       sidePref === 'Rebel' ? 'Rebel' :
@@ -508,6 +538,7 @@ export default function PlayTab() {
       seenObjectiveLogIdxRef.current = restored.turnLog?.length ?? 0;
       setObjectiveNoticeQueue([]);
       setDrawnObjectiveQueue([]);
+      setLeaderRescuedQueue([]);
       refresh();
     } catch (e) {
       setError(`Failed to restore saved game: ${String(e)}. Starting fresh might help.`);
@@ -906,6 +937,19 @@ export default function PlayTab() {
           G={G}
           notice={drawnObjectiveQueue[0]}
           onDismiss={() => setDrawnObjectiveQueue((q) => q.slice(1))}
+        />
+      )}
+
+      {/* Leader-rescued notices stack behind objective modals because
+       *  rescue often happens at combat-end, just before refresh/objective
+       *  scoring — surfacing rep gains first feels more responsive. */}
+      {objectiveNoticeQueue.length === 0
+        && drawnObjectiveQueue.length === 0
+        && leaderRescuedQueue.length > 0 && (
+        <LeaderRescuedModal
+          G={G}
+          notice={leaderRescuedQueue[0]}
+          onDismiss={() => setLeaderRescuedQueue((q) => q.slice(1))}
         />
       )}
 
@@ -2023,6 +2067,83 @@ function ObjectiveDrawnModal({ G, notice, onDismiss }: {
           style={{
             padding: '8px 18px', fontSize: 14, fontWeight: 700,
             background: '#aae0ff', color: '#000', border: 'none',
+            borderRadius: 4, cursor: 'pointer',
+          }}
+        >OK</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Leader Rescued notice — pops when a captured Rebel leader is freed,
+// whether via a successful rescue mission or via auto-rescue (engine
+// path: a captured leader at a system with no opposing units is freed).
+// User report #45 surfaced the need: Han Solo auto-rescued at the end
+// of combat after the Empire retreated; the player didn't realize, then
+// tried to reveal Daring Rescue and got a confusing "no targets" error.
+// ============================================================================
+
+function LeaderRescuedModal({ G, notice, onDismiss }: {
+  G: GameState;
+  notice: { leaderId: string; reason: string; turn: number };
+  onDismiss: () => void;
+}) {
+  const ldr = G.catalog.leaders[notice.leaderId];
+  const portraitUrl = ldr?.image ? getCachedArtUrlSync(ldr.image) : null;
+  const wasMissionRescue = notice.reason !== 'no-imperial-units'
+    && notice.reason !== 'auto'
+    && notice.reason !== 'replaced-by-new-capture';
+  const headline = wasMissionRescue ? 'Leader rescued!' : 'Leader freed';
+  const explainReason = (() => {
+    if (notice.reason === 'no-imperial-units') {
+      return 'No Imperial units remained at the system where they were held — per the rules, captured leaders are freed when their captors leave.';
+    }
+    if (notice.reason === 'replaced-by-new-capture') {
+      return 'The Empire captured another leader, releasing this one (the Empire only has one "captured" ring at a time).';
+    }
+    if (wasMissionRescue) {
+      return 'A successful rescue mission freed them.';
+    }
+    return `Reason: ${notice.reason}`;
+  })();
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5400,
+      }}
+      onClick={onDismiss}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: '#15171c', border: '2px solid #80dc78', borderRadius: 6,
+          padding: 22, maxWidth: 440, width: '92%',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.8)', textAlign: 'center',
+        }}
+      >
+        <div style={{ fontSize: 13, color: '#80dc78', fontWeight: 700, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          {headline} — turn {notice.turn}
+        </div>
+        <div style={{ fontSize: 18, color: '#fff', fontWeight: 700, marginBottom: 10 }}>
+          {ldr?.name ?? notice.leaderId}
+        </div>
+        {portraitUrl && (
+          <img
+            src={portraitUrl}
+            alt={ldr?.name ?? notice.leaderId}
+            style={{ width: 180, height: 'auto', borderRadius: 4, border: '1px solid #333', margin: '0 auto 12px', display: 'block' }}
+          />
+        )}
+        <div style={{ fontSize: 12, color: '#cbc4b0', lineHeight: 1.4, textAlign: 'left', marginBottom: 14 }}>
+          {explainReason}
+        </div>
+        <button
+          onClick={onDismiss}
+          style={{
+            padding: '8px 18px', fontSize: 14, fontWeight: 700,
+            background: '#80dc78', color: '#000', border: 'none',
             borderRadius: 4, cursor: 'pointer',
           }}
         >OK</button>
