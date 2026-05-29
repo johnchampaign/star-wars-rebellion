@@ -1,7 +1,11 @@
-# SPA fallback for the framework-port online routes. Without this, Cloudflare
-# Pages 404s when a player loads /play/<id>?as=<token> directly from an invite
-# URL. Functions under /api/* take precedence over this fallback (Pages
-# serves Functions before static fallbacks), so this only catches client-side
-# routes.
-/lobby      /index.html   200
-/play/*     /index.html   200
+# SPA fallback for the framework-port online routes (/lobby, /play/:id).
+#
+# Cloudflare Pages serves existing static assets and /api/* Functions FIRST,
+# so this only catches client-side routes that have no file on disk.
+#
+# NOTE: a targeted rule like `/lobby /index.html 200` gets 308-redirected to
+# `/` by Pages' "pretty URL" normalization (rewriting *to* /index.html is
+# normalized to /), so /lobby fell through to the hotseat root. The catch-all
+# splat below is the documented SPA pattern and is NOT normalized, so /lobby
+# and /play/<id>?as=<tok> resolve to the app correctly.
+/*    /index.html    200
