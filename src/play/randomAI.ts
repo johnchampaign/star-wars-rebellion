@@ -182,6 +182,44 @@ function missionSituationalAdjust(G: GameState, missionId: string, side: Side): 
     if (captureKinds.has(missionId) && empireHoldingCapture(G)) adj -= 10;
     const probeKinds = new Set(['gather-intel', 'research-and-development']);
     if (probeKinds.has(missionId) && G.rebelBaseRevealed) adj -= 8;
+    // WEAKNESS 1 (log analysis, 13-game corpus): in 3/3 losses, Empire spent
+    // ~85% of revealed missions on probe-pull. Once probe info has already
+    // narrowed the candidate set, more probes have sharply diminishing value
+    // — the AI should pivot to invasion-support (rule-by-fear, builds, captures).
+    // Halve probe value once probe deck is ≥60% depleted OR candidate set ≤8.
+    if (probeKinds.has(missionId) && !G.rebelBaseRevealed) {
+      const probeHand = G.empire.probeHand ?? [];
+      const probeDeck = G.probeDeck ?? [];
+      const totalProbes = probeHand.length + probeDeck.length;
+      const flippedRatio = totalProbes > 0 ? probeHand.length / totalProbes : 0;
+      // Candidate set = non-coruscant, non-remote, non-probe-eliminated systems.
+      const eliminated = new Set(probeHand
+        .map((pid) => G.catalog.probes[pid]?.systemId)
+        .filter((s): s is string => !!s));
+      let candidates = 0;
+      for (const def of Object.values(G.catalog.systems)) {
+        if (def.isRemote || def.isCoruscant) continue;
+        if (eliminated.has(def.id)) continue;
+        candidates++;
+      }
+      if (flippedRatio >= 0.6 || candidates <= 8) adj -= 8;
+    }
+    // WEAKNESS 4: construct-death-star revealed in losses but never used.
+    // Damp the score when (a) no factory exists yet (can't build anyway)
+    // or (b) the project is already on the project pile / built. Forces
+    // the slot toward rule-by-fear / capture missions that move the
+    // invasion forward.
+    if (missionId === 'construct-death-star') {
+      const empireFactories = Object.values(G.map.systems).some(
+        (ss) => ss.units.some((u) => u.side === 'Empire' && u.typeId === 'construction-yard')
+      );
+      if (!empireFactories) adj -= 8;
+      // Already revealed once → don't re-reveal.
+      const alreadyRevealed = G.turnLog.some((e) =>
+        e.kind === 'reveal-mission' && e.payload?.missionId === 'construct-death-star'
+      );
+      if (alreadyRevealed) adj -= 10;
+    }
   }
   if (side === 'Rebel') {
     // Daring Rescue worthless unless there's a captured leader.
@@ -456,6 +494,29 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
   // (Tried bumping to 14 with bonuses 20/10 — net loss. Reveal rate was
   // unchanged, leader-only ratio rose. Reverted.)
   const narrowingMode = baseCandidateSet ? baseCandidateSet.size <= 10 : false;
+  // WEAKNESS 3 (log analysis): one loss had 11 subjugations but only 6
+  // combats — Empire kept sending single leaders to fresh Rebel-loyal
+  // neutrals instead of consolidating force on a candidate. Count current
+  // subjugated systems for a global "stop spreading" gate; also find the
+  // single system with the largest Empire ground stack (the marching column).
+  let subjugatedCount = 0;
+  for (const ss of Object.values(G.map.systems)) if (ss.subjugated) subjugatedCount++;
+  const subjugationCap = side === 'Empire' && subjugatedCount >= 6;
+  let largestEmpireStackSys: string | null = null;
+  let largestEmpireStackSize = 0;
+  if (side === 'Empire') {
+    for (const sysId of allSystemIds) {
+      const ss = G.map.systems[sysId];
+      if (!ss) continue;
+      let n = 0;
+      for (const u of ss.units) {
+        if (u.side !== 'Empire') continue;
+        const t = G.catalog.unitTypes[u.typeId];
+        if (t && (t.theater === 'ground' || t.class === 'capital')) n++;
+      }
+      if (n > largestEmpireStackSize) { largestEmpireStackSize = n; largestEmpireStackSys = sysId; }
+    }
+  }
   const systemScore = new Map<string, number>();
   for (const sysId of allSystemIds) {
     let ts = 0;
@@ -481,6 +542,23 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
         // (Rebels favor their loyalty for placement). Heavier early when
         // we should be spreading; tapers as timeMarker grows.
         if (sys.loyalty === 'rebel') ts += 8 + Math.max(0, 4 - G.timeMarker);
+        // WEAKNESS 3: cap the subjugation-tourism behavior. Once Empire
+        // already holds 6+ subjugated systems AND no invasion is pending
+        // (base not revealed), spreading further is dilution — actively
+        // penalize new subjugation pickups so leaders go consolidate
+        // instead.
+        if (subjugationCap && !G.rebelBaseRevealed) ts -= 10;
+      }
+      // WEAKNESS 3 cont.: reward consolidating onto or adjacent to the
+      // largest existing Empire stack. The "marching column" pattern
+      // wants new activations to flow toward the column, not scatter to
+      // unrelated Rebel-loyal pockets. Only kicks in when we have a
+      // real stack (≥4 units) and the base isn't revealed yet (when it
+      // IS revealed, the converge bonus above takes over).
+      if (largestEmpireStackSize >= 4 && !G.rebelBaseRevealed
+          && largestEmpireStackSys && sysId !== largestEmpireStackSys) {
+        const adj = G.catalog.adjacency[largestEmpireStackSys] ?? [];
+        if (adj.includes(sysId)) ts += 6;
       }
       // Base-narrowing pivot: when probe info has narrowed candidates,
       // strongly reward visiting remaining candidate systems (looking
@@ -1625,12 +1703,41 @@ function handleCombatDefenderTactics(G: GameState): boolean {
 }
 
 // ---------- Build-pick heuristic --------------------------------
-// Picks the first legal unit type for each entry (matches the prior
-// auto-behavior). Real game would diversify, but this keeps AI-vs-AI
-// games running without a UI prompt.
+// WEAKNESS 2 (log analysis): in 3/3 Empire losses, Empire finished with
+// 0-1 Star Destroyers and 0-1 AT-ATs; in wins it had 4-10 SDs and 5-8
+// AT-ATs. Capital units are the difference between "found the base and
+// bounced" vs "found the base and crushed it." Apply a hard floor by
+// time T3+: for Empire square slots, prefer star-destroyer (space)
+// and at-at (ground) until at least 2 of each exist on board + in
+// queue, then fall through to whatever legalUnitTypes[0] would have
+// been. Rebel uses the prior first-legal behaviour.
 function handleBuildPick(G: GameState): boolean {
   const c = G.pendingChoice as Extract<NonNullable<GameState['pendingChoice']>, { kind: 'BuildPick' }>;
-  const choices = c.picks.map((p) => p.legalUnitTypes[0]);
+  const side = c.side;
+  const countOnBoardAndQueue = (typeId: string): number => {
+    let n = 0;
+    for (const ss of Object.values(G.map.systems)) {
+      for (const u of ss.units) if (u.side === side && u.typeId === typeId) n++;
+    }
+    for (const u of G.map.rebelBaseSpace.units) {
+      if (u.side === side && u.typeId === typeId) n++;
+    }
+    const bq = side === 'Empire' ? G.buildQueue : G.buildQueue;
+    for (const slot of [1, 2, 3] as const) {
+      for (const t of bq[slot]) if (t === typeId) n++;
+    }
+    return n;
+  };
+  const enforceFloor = side === 'Empire' && G.timeMarker >= 3;
+  const sdFloor = enforceFloor && countOnBoardAndQueue('star-destroyer') < 2;
+  const atatFloor = enforceFloor && countOnBoardAndQueue('at-at') < 2;
+  const choices = c.picks.map((p) => {
+    if (sdFloor && p.iconShape === 'square' && p.iconType === 'space'
+        && p.legalUnitTypes.includes('star-destroyer')) return 'star-destroyer';
+    if (atatFloor && p.iconShape === 'square' && p.iconType === 'ground'
+        && p.legalUnitTypes.includes('at-at')) return 'at-at';
+    return p.legalUnitTypes[0];
+  });
   const r = phases.resolveBuildPicks(G, choices);
   return r.ok;
 }
