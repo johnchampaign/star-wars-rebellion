@@ -62,7 +62,13 @@ function getSupabase(env: Env): SupabaseClient {
 }
 
 /** Load the engine catalog by fetching the JSON files from the same origin
- *  the function is serving. Cached across requests in the isolate. */
+ *  the function is serving. Cached across requests in the isolate.
+ *
+ *  NOTE: the catalog JSON is served under /dev-assets/ (not /assets/) — the
+ *  hotseat client (src/data/loadAssets.ts) loads from the same path, and
+ *  vite copies the repo's assets/ into dist/dev-assets/. Fetching /assets/
+ *  returns the SPA index.html (200 text/html), which then fails JSON.parse
+ *  with "Unexpected token '<'". */
 async function getDataBundle(request: Request): Promise<DataBundle> {
   if (_dataBundle) return _dataBundle;
   const origin = new URL(request.url).origin;
@@ -71,11 +77,11 @@ async function getDataBundle(request: Request): Promise<DataBundle> {
     'missions', 'objectives', 'tactics', 'probes',
   ] as const;
   const responses = await Promise.all(
-    files.map(f => fetch(`${origin}/assets/${f}.json`)),
+    files.map(f => fetch(`${origin}/dev-assets/${f}.json`)),
   );
   for (let i = 0; i < responses.length; i++) {
     if (!responses[i].ok) {
-      throw new Error(`Failed to load /assets/${files[i]}.json (${responses[i].status})`);
+      throw new Error(`Failed to load /dev-assets/${files[i]}.json (${responses[i].status})`);
     }
   }
   const [systems, adjacency, leaders, actions, missions, objectives, tactics, probes] =
