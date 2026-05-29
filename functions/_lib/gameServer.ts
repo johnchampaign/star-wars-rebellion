@@ -128,8 +128,21 @@ export async function safe<T>(handler: () => Promise<T>): Promise<Response> {
     const result = await handler();
     return json(result);
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    // Common GameServer errors → 4xx.
+    // Supabase (and other libs) throw plain objects, not Error instances —
+    // String(obj) yields the useless "[object Object]". Extract a real
+    // message, and include structured detail for diagnosis.
+    let msg: string;
+    let detail: unknown;
+    if (e instanceof Error) {
+      msg = e.message;
+    } else if (e && typeof e === 'object') {
+      const o = e as Record<string, unknown>;
+      msg = (o.message as string) ?? (o.error as string) ?? (o.msg as string) ?? JSON.stringify(o);
+      // Supabase PostgrestError shape: { message, code, details, hint }
+      detail = { code: o.code, details: o.details, hint: o.hint };
+    } else {
+      msg = String(e);
+    }
     const status =
       msg === 'Game not found'   ? 404
     : msg === 'Invalid token'    ? 401
@@ -137,7 +150,7 @@ export async function safe<T>(handler: () => Promise<T>): Promise<Response> {
     : msg === 'Illegal action'   ? 422
     : msg === 'No snapshot'      ? 404
     : 500;
-    return json({ ok: false, error: msg }, status);
+    return json({ ok: false, error: msg, detail }, status);
   }
 }
 
