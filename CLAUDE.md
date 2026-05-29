@@ -3,6 +3,39 @@
 Project-local conventions for the Star Wars: Rebellion port. Skim before
 each session.
 
+## CRITICAL: which working directory / branch you are in
+
+This repo has TWO active branches developed in parallel, each in its own
+git worktree:
+
+- **`master`** = single-player production (deploys to
+  https://star-wars-rebellion.pages.dev). **My gameplay / RAW / bug-fix
+  work and all production deploys happen here.**
+  Worktree: `C:/Users/johnc/Claude Games/Star Wars Rebellion-master`
+- **`framework-port`** = the user's online/multiplayer (lobby + game
+  server) rebuild, developed in the ORIGINAL directory
+  `C:/Users/johnc/Claude Games/Star Wars Rebellion`.
+
+The user actively commits on `framework-port` between sessions, which
+flips the original directory's checkout. Earlier this caused me to (a)
+edit framework-port files by accident and ferry them to master, and (b)
+deploy framework-port code to production by mistake. The worktree split
+exists to PREVENT that.
+
+**Rules:**
+1. For any master/production task, `cd` into the
+   `…/Star Wars Rebellion-master` worktree and work there. Do NOT edit
+   files in the original directory unless the task is explicitly about
+   `framework-port`.
+2. Run `git branch --show-current` immediately before EVERY commit and
+   EVERY deploy. It must say `master` for production work.
+3. The worktree has its own `node_modules` and a copied
+   `public/dev-assets/` (both gitignored). If a fresh worktree is ever
+   recreated, run `npm install` and copy `public/dev-assets/` from the
+   original directory before building/deploying.
+4. Never deploy without confirming the build ran from the master
+   worktree.
+
 ## ALWAYS check open bug reports at session start
 
 The "Report a problem" button in-game files GitHub issues against
