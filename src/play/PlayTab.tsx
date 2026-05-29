@@ -7063,9 +7063,24 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
     zIndex: 5000,
   };
   const panel: React.CSSProperties = {
-    width: 560, maxWidth: '92vw', background: '#15171c',
-    border: '2px solid #4a5060', borderRadius: 6, padding: 20,
+    width: 600, maxWidth: '92vw', background: '#15171c',
+    border: '2px solid #4a5060', borderRadius: 6, padding: 0,
     color: '#e8e8ea', boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+    // Cap height to the viewport and let the body scroll internally, so the
+    // modal never runs off-screen (the header + footer stay pinned). Was a
+    // fixed-padding box with no height cap → tall content overflowed and the
+    // player had to zoom out to reach the close button (user report).
+    maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+    overflow: 'hidden',
+  };
+  // Header stays pinned at the top; body scrolls.
+  const headerRow: React.CSSProperties = {
+    display: 'flex', alignItems: 'baseline',
+    padding: '16px 20px 12px', flexShrink: 0,
+    borderBottom: '1px solid #2a2d34',
+  };
+  const bodyScroll: React.CSSProperties = {
+    padding: '16px 20px 20px', overflowY: 'auto', flex: 1,
   };
 
   const percent = progress?.total && progress.current
@@ -7075,14 +7090,15 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
   return (
     <div style={overlay} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div style={panel}>
-        <div style={{ display: 'flex', alignItems: 'baseline', marginBottom: 12 }}>
+        <div style={headerRow}>
           <h2 style={{ margin: 0, color: '#ffd54a', fontSize: 18 }}>Load VASSAL Art</h2>
           <button onClick={onClose} style={{
             marginLeft: 'auto', background: 'transparent', color: '#888',
-            border: 'none', cursor: 'pointer', fontSize: 18,
+            border: 'none', cursor: 'pointer', fontSize: 22, lineHeight: 1,
           }}>×</button>
         </div>
 
+        <div style={bodyScroll}>
         <div style={{ fontSize: 13, color: '#ccc', lineHeight: 1.5, marginBottom: 14 }}>
           This game uses art from the official VASSAL <strong>Star Wars: Rebellion</strong> module.
           We don't host the art — you bring your own copy. It's stored in your browser
@@ -7340,6 +7356,7 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
           Don't want to upload? You can play text-only — flip the <strong>images: off</strong> toggle
           in the play header. Unit abbreviations, dice glyphs, and system summary lines carry
           the UI without art.
+        </div>
         </div>
       </div>
     </div>
