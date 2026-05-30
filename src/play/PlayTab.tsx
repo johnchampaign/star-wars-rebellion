@@ -1131,22 +1131,23 @@ export default function PlayTab() {
           G={G}
           cardIds={G.pendingChoice.drawnIds}
           color={sideColor(G.pendingChoice.side)}
-          title="Recruit — keep one action card"
-          blurb="You drew the top 2 action cards. Drag (or click) to place one in your hand (which recruits the matching leader if you haven't already), and the other on the bottom of the action deck."
+          title="Recruit — choose which leader to keep"
+          blurb="You drew 2 action cards, each recruiting a different leader. Whichever card is in the KEEP slot is the leader you recruit; the other goes to the bottom of the deck. Click the other card (or drag it) to swap which one you keep, then Confirm."
           topLabel="Keep & recruit"
-          topHint={(() => {
-            // Show which leader would be recruited if known.
-            const a = G.catalog.actions[G.pendingChoice.drawnIds[0]];
-            const b = G.catalog.actions[G.pendingChoice.drawnIds[1]];
-            const la = a?.leaderRequirement?.[0];
-            const lb = b?.leaderRequirement?.[0];
-            return `Leader on the card recruits to your pool if eligible.`;
-          })()}
+          topHint="This leader joins your pool."
           bottomLabel="Bottom of deck"
-          bottomHint="Returned to the bottom; you'll see it again next time the deck is drawn."
+          bottomHint="Not recruited — returned to the bottom of the deck."
           lookupCard={(cid) => {
+            // Show the LEADER each card recruits, not just the card name —
+            // otherwise the player can't tell which leader they're keeping
+            // and just confirms the default (left) card. (Issue #49.)
             const a = G.catalog.actions[cid];
-            return { name: a?.name ?? cid, image: a?.image };
+            const lid = a?.leaderRequirement?.[0];
+            const leaderName = lid ? (G.catalog.leaders[lid]?.name ?? lid) : null;
+            return {
+              name: leaderName ? `${leaderName}  ·  ${a?.name ?? cid}` : (a?.name ?? cid),
+              image: a?.image,
+            };
           }}
           onConfirm={(topCardId) => {
             const r = phases.resolveRecruitActionCardPick(G, topCardId);
