@@ -313,11 +313,24 @@ function rebelMissionTargetScore(
     if (d <= 1) s -= 6;
     else if (d === 2) s -= 2;
   }
-  if (missionId === 'establish-trade-relations' || missionId === 'wookie-uprising'
-    || missionId === 'support-of-mon-calamari') {
+  // Loyalty-GAIN missions: all of these "gain N loyalty in the target
+  // system" on success. Running one on a system that already has Rebel
+  // loyalty (and isn't subjugated) is wasted — the player reported the AI
+  // sending Leia/Ackbar to already-Rebel Alderaan over and over (issues
+  // #57, #58, #60). build-alliance was missing from this set, so it had
+  // NO already-loyal penalty and Alderaan's high resource count made it
+  // the top pick. Penalty is now decisive (-30), not a nudge.
+  const loyaltyGainMissions = new Set([
+    'establish-trade-relations', 'build-alliance',
+    'wookie-uprising', 'support-of-mon-calamari',
+  ]);
+  if (loyaltyGainMissions.has(missionId)) {
     s += (sysDef.resources?.length ?? 0) * 2;
-    // Don't target a system that's already Rebel-loyal — wasted loyalty gain.
-    if (sysState?.loyalty === 'rebel' && !sysState.subjugated) s -= 6;
+    // Already Rebel-loyal & not subjugated → no loyalty to gain. Make this
+    // strongly negative so the AI picks an unaligned/Imperial target (or,
+    // if none qualifies, the assignment planner's situational damping skips
+    // the mission entirely) rather than burning a leader on a no-op.
+    if (sysState?.loyalty === 'rebel' && !sysState.subjugated) s -= 30;
   }
   // Sabotage (Rebel mission) should target ENEMY systems, never own.
   // Issues #10, #13: the AI was sabotaging Bespin / Alderaan when those

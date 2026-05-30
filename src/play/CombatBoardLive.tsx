@@ -25,6 +25,13 @@ function CardHover({ G, cardId, children }: {
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  // Anchor the popover to the LEFT of the trigger when it would otherwise
+  // run off the right edge of the viewport. Player report: the Escape Plan
+  // tooltip rendered off-screen to the right because the popover was hard-
+  // coded to left:'100%' (always to the right of the card name), and the
+  // combat tactic cards sit near the right edge (issue #55).
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const [flipLeft, setFlipLeft] = useState(false);
   const card =
     G.catalog.tactics[cardId] ??
     G.catalog.actions[cardId] ??
@@ -32,19 +39,34 @@ function CardHover({ G, cardId, children }: {
     null;
   if (!card) return <>{children}</>;
   const TILE_W = 220;
+  const POPOVER_W = TILE_W + 16;
+  const onEnter = () => {
+    const el = anchorRef.current;
+    if (el && typeof window !== 'undefined') {
+      const r = el.getBoundingClientRect();
+      // If the right-anchored popover would overflow the viewport, flip it
+      // to the left of the trigger instead.
+      setFlipLeft(r.right + 8 + POPOVER_W > window.innerWidth);
+    }
+    setOpen(true);
+  };
+  const horiz: import('react').CSSProperties = flipLeft
+    ? { right: '100%', marginRight: 8 }
+    : { left: '100%', marginLeft: 8 };
   return (
     <span
+      ref={anchorRef}
       style={{ borderBottom: '1px dotted #888', cursor: 'help', position: 'relative' }}
-      onMouseEnter={() => setOpen(true)}
+      onMouseEnter={onEnter}
       onMouseLeave={() => setOpen(false)}
     >
       {children}
       {open && (
         <div style={{
-          position: 'absolute', left: '100%', bottom: '100%',
-          marginLeft: 8, marginBottom: 4, zIndex: 3000,
+          position: 'absolute', bottom: '100%', ...horiz,
+          marginBottom: 4, zIndex: 3000,
           background: 'rgba(0,0,0,0.95)', border: '1px solid #555',
-          padding: 8, borderRadius: 4, width: TILE_W + 16,
+          padding: 8, borderRadius: 4, width: POPOVER_W,
           pointerEvents: 'none',
           boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
