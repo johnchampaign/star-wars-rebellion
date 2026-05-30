@@ -102,7 +102,10 @@ export const UNIT_TYPES: UnitType[] = [
     buildResource: 2, supplyCount: 4,
   }),
   R({
-    id: 'rebel-transport', name: 'Rebel Transport', theater: 'space', class: 'capital', tier: 'circle',
+    // Build icon on the reference mat is a BLUE (space) TRIANGLE, not a
+    // circle — so it builds from a space-triangle resource, alongside the
+    // X-Wing and Y-Wing. (Issue #50.)
+    id: 'rebel-transport', name: 'Rebel Transport', theater: 'space', class: 'capital', tier: 'triangle',
     health: { color: 'red', value: 2 },
     attack: { red: 0, black: 0 }, // does not attack
     transport: { capacity: 4, restriction: false, immobile: false },

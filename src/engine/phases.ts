@@ -3055,8 +3055,11 @@ export function legalUnitsForIcon(
 ): string[] {
   if (side === 'Rebel') {
     if (type === 'space') {
-      if (shape === 'triangle') return ['x-wing', 'y-wing'];
-      if (shape === 'circle')   return ['corellian-corvette', 'rebel-transport'];
+      // Rebel Transport's build icon is a space TRIANGLE (not circle) per
+      // the reference mat — so the space-triangle build offers 3 options
+      // (issue #50), and the space-circle build is just the Corvette.
+      if (shape === 'triangle') return ['x-wing', 'y-wing', 'rebel-transport'];
+      if (shape === 'circle')   return ['corellian-corvette'];
       if (shape === 'square')   return ['mon-cala-cruiser'];
     } else {
       if (shape === 'triangle') return ['rebel-trooper'];
@@ -3151,11 +3154,14 @@ function refreshBuildIfApplicable(G: GameState, logStart: number): boolean {
         // Ground triangle has only one legal type — auto-apply.
         M.buildToQueue(G, 'Rebel', 'rebel-trooper', 1, 'rebel-base');
         sideAutoApplied.push({ sourceSystemId: 'rebel-base', slot: 1, unitTypeId: 'rebel-trooper' });
-        // Space triangle is the X-Wing / Y-Wing choice.
+        // Space triangle — use the shared icon→units map so the Rebel Base
+        // offers the same space-triangle options as any other system
+        // (X-Wing / Y-Wing / Rebel Transport), instead of a hardcoded list
+        // that drifted out of sync (issue #50).
         sidePicks.push({
           sourceSystemId: 'rebel-base', slot: 1,
           iconType: 'space', iconShape: 'triangle',
-          legalUnitTypes: ['x-wing', 'y-wing'],
+          legalUnitTypes: legalUnitsForIcon('Rebel', 'space', 'triangle'),
         });
       }
     }
