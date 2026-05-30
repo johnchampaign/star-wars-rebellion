@@ -78,14 +78,20 @@ export const UNIT_TYPES: UnitType[] = [
     id: 'x-wing', name: 'X-Wing', theater: 'space', class: 'fighter', tier: 'triangle',
     health: { color: 'black', value: 1 },
     attack: { red: 0, black: 1 },
-    transport: { capacity: 0, restriction: true, immobile: false },
+    // Rebel fighters do NOT carry the transport-restriction icon (only the
+    // TIE Fighter does, per the printed reference mats — TIEs have no
+    // hyperdrive and must be carried; X/Y-wings move on their own). So no
+    // transport capacity is required to move them. (Issue #47.)
+    transport: { capacity: 0, restriction: false, immobile: false },
     buildResource: 1, supplyCount: 8,
   }),
   R({
     id: 'y-wing', name: 'Y-Wing', theater: 'space', class: 'fighter', tier: 'triangle',
     health: { color: 'black', value: 1 },
     attack: { red: 1, black: 0 }, // bombers
-    transport: { capacity: 0, restriction: true, immobile: false },
+    // No transport-restriction icon on the Rebel fighters (see X-Wing note;
+    // only the TIE Fighter requires transport). Issue #47.
+    transport: { capacity: 0, restriction: false, immobile: false },
     buildResource: 1, supplyCount: 12,
   }),
   R({
