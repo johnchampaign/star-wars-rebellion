@@ -612,7 +612,13 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
       allSystemIds.filter((sid) => {
         if (sid === 'coruscant') return false;
         const def = G.catalog.systems[sid];
-        if (!def || def.isRemote) return false;
+        if (!def) return false;
+        // INCLUDE remote systems: the Rebel base CAN be hidden on a remote
+        // world (setup allows any non-Coruscant, non-Imperial system), and
+        // smart Rebels pick remote precisely because the Empire neglects it.
+        // Previously remote was excluded here, so a remote base was
+        // effectively un-findable by the AI's sweep. They're swept LAST via
+        // the value ordering below, but they ARE swept.
         if (eliminatedByProbe.has(sid)) return false;
         return true;
       }),
@@ -698,8 +704,28 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
       // narrowed to ~10 systems. Now candidates ALWAYS get a strong
       // bonus, and narrowing-mode (≤10) makes it a near-mandate.
       if (baseCandidateSet?.has(sysId)) {
-        if (narrowingMode) ts += 14;
-        else ts += 8;
+        // Value-order the sweep so every base-search move also does board
+        // work (user's Empire heuristic). A candidate the Empire has already
+        // been to (own units / Imperial-loyal / subjugated) is "cleared" —
+        // the base would have auto-revealed on arrival — so it's nearly
+        // worthless to revisit.
+        const cleared = sys.units.some((u) => u.side === 'Empire')
+          || sys.loyalty === 'imperial' || sys.subjugated;
+        if (cleared) {
+          ts += 1;
+        } else {
+          // Priority: hit Rebel units (combat impact) > Rebel-loyal (deny
+          // their production) > populous double-resource > single > remote
+          // LAST (lowest, but still > 0 so they DO get visited once the
+          // better targets are exhausted — the base often hides there).
+          let cand = 6;
+          if (sys.units.some((u) => u.side === 'Rebel')) cand += 12;
+          else if (sys.loyalty === 'rebel') cand += 8;
+          else if (!def?.isRemote) cand += 2 + (def?.resources?.length ?? 0) * 3;
+          // remote: +0 extra (visited last)
+          if (narrowingMode) cand += 6; // push harder once the set is small
+          ts += cand;
+        }
       }
       // URGENCY: Empire's path to victory requires finding and invading
       // the base before reputation-time runs out. Tournament data showed
