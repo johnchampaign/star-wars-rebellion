@@ -23,6 +23,8 @@ interface ReportBody {
   userAgent?: string;
   timestamp?: string;
   reporterId?: string;
+  humanSide?: string;
+  aiSide?: string;
   canEncodeState?: boolean;
   state?: unknown;
   pending?: unknown;
@@ -83,9 +85,13 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   const reporterTag = body.reporterId
     ? `<!-- reporter:${body.reporterId.replace(/[^a-zA-Z0-9-]/g, '')} -->`
     : '';
-  const sections: string[] = [`${reporterTag}\n**What happened**\n\n${description}`];
+  const sideLine = body.humanSide
+    ? `\n\n**Reporter played: ${body.humanSide}** (AI: ${body.aiSide || (body.humanSide === 'Rebel' ? 'Empire' : 'Rebel')})`
+    : '';
+  const sections: string[] = [`${reporterTag}\n**What happened**\n\n${description}${sideLine}`];
   sections.push(
     `**Build / context**\n\n` +
+    `- humanSide: \`${body.humanSide || 'unknown'}\`  (AI: \`${body.aiSide || 'unknown'}\`)\n` +
     `- userAgent: \`${body.userAgent || ''}\`\n` +
     `- canEncodeState: \`${body.canEncodeState}\`\n` +
     `- timestamp: \`${body.timestamp || ''}\`\n` +

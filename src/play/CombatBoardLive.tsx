@@ -32,6 +32,7 @@ function CardHover({ G, cardId, children }: {
   // combat tactic cards sit near the right edge (issue #55).
   const anchorRef = useRef<HTMLSpanElement | null>(null);
   const [flipLeft, setFlipLeft] = useState(false);
+  const [openDown, setOpenDown] = useState(false);
   const card =
     G.catalog.tactics[cardId] ??
     G.catalog.actions[cardId] ??
@@ -47,12 +48,19 @@ function CardHover({ G, cardId, children }: {
       // If the right-anchored popover would overflow the viewport, flip it
       // to the left of the trigger instead.
       setFlipLeft(r.right + 8 + POPOVER_W > window.innerWidth);
+      // The tactic cards sit at the TOP of the combat board, so a popover that
+      // opens upward (bottom:100%) is clipped off the top of the page (player
+      // report). Open it downward when there isn't ~360px of room above.
+      setOpenDown(r.top < 360);
     }
     setOpen(true);
   };
   const horiz: import('react').CSSProperties = flipLeft
     ? { right: '100%', marginRight: 8 }
     : { left: '100%', marginLeft: 8 };
+  const vert: import('react').CSSProperties = openDown
+    ? { top: '100%', marginTop: 4 }
+    : { bottom: '100%', marginBottom: 4 };
   return (
     <span
       ref={anchorRef}
@@ -63,10 +71,11 @@ function CardHover({ G, cardId, children }: {
       {children}
       {open && (
         <div style={{
-          position: 'absolute', bottom: '100%', ...horiz,
-          marginBottom: 4, zIndex: 3000,
+          position: 'absolute', ...vert, ...horiz,
+          zIndex: 3000,
           background: 'rgba(0,0,0,0.95)', border: '1px solid #555',
           padding: 8, borderRadius: 4, width: POPOVER_W,
+          maxHeight: '92vh', overflowY: 'auto',
           pointerEvents: 'none',
           boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
           display: 'flex', flexDirection: 'column', alignItems: 'center',

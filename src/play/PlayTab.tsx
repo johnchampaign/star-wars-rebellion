@@ -2584,12 +2584,18 @@ function HandTip({ count, cards }: {
           // Pointer events disabled so leaving the source still closes
           // the popup cleanly.
           style={{
-            position: 'absolute', left: '100%', top: '50%',
-            transform: 'translateY(-50%)',
+            // Anchor the popup's BOTTOM to the row and grow UPWARD — the
+            // hand links live in the faction panel low on the page, so a
+            // centered/downward popup ran off the bottom and clipped the
+            // rules text under tall card images (player report: objective
+            // hover showed the image but not the text). maxHeight + scroll
+            // guarantees the text is always reachable.
+            position: 'absolute', left: '100%', bottom: 0,
             marginLeft: 12, zIndex: 2000,
             display: 'flex', flexDirection: 'row', gap: 6, flexWrap: 'nowrap',
             background: 'rgba(0,0,0,0.94)', border: '1px solid #555',
             padding: 8, borderRadius: 4,
+            maxHeight: '92vh', overflowY: 'auto',
             // Explicit width = N * tile + (N-1) * gap + 16 padding. Stops
             // a narrow ancestor's containing block from forcing column.
             width: cards.length > 0
@@ -7247,6 +7253,10 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
     userAgent: navigator.userAgent,
     reporterId: getReporterId(),
     description,
+    // Which side the reporter controlled (and which the AI did). Recorded so a
+    // bug triager never has to infer it from the outcome.
+    humanSide,
+    aiSide,
     canEncodeState: canEncode(G),
     state: canEncode(G) ? JSON.parse(encode(G)) : null,
     turnLog: G.turnLog,
