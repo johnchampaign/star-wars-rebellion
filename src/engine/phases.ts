@@ -3023,16 +3023,36 @@ function refreshRecruitIfApplicable(G: GameState, logStart: number): boolean {
   return true;
 }
 
+/** A leader can be recruited only if they aren't already in play anywhere.
+ *  A leader is "in play" (already recruited, can't be recruited again) if
+ *  they're in the pool, on the board, out on a mission, captured (Rebel
+ *  leaders held by the Empire are still recruited — just captured), or
+ *  eliminated. Each recruitable leader appears on TWO recruit cards, so the
+ *  duplicate card lingers in the deck after recruitment and must be treated
+ *  as recruiting no one. */
+export function leaderRecruitable(G: GameState, side: Side, lid: string): boolean {
+  if (!G.catalog.leaders[lid]) return false;
+  const f = faction(G, side);
+  if (f.leaderPool.includes(lid as LeaderId)) return false;
+  if (f.eliminatedLeaders.includes(lid as LeaderId)) return false;
+  for (const arr of Object.values(f.leadersOnBoard)) {
+    if (arr.includes(lid as LeaderId)) return false;
+  }
+  if (f.leadersOnMissions.some((m) => m.leaderIds.includes(lid as LeaderId))) return false;
+  // Captured Rebel leaders are held by the Empire but are still "recruited".
+  if (side === 'Rebel' && (G.empire.capturedLeaders ?? []).some((c) => c.leaderId === lid)) return false;
+  return true;
+}
+
 /** Auto-recruit path (used only when a side has a single card to draw, so
- *  there's no card choice). Recruits the first ELIGIBLE leader on the card
- *  (eligible = exists, not already in pool, not eliminated). The rare 1-card
- *  edge does not surface a leader chooser even if the card lists two eligible
- *  leaders; the common 2-card path does, via recruitLeaderFromCard. */
+ *  there's no card choice). Recruits the first still-recruitable leader on
+ *  the card. The rare 1-card edge does not surface a leader chooser even if
+ *  the card lists two recruitable leaders; the common 2-card path does, via
+ *  recruitLeaderFromCard. */
 function applyRecruitedActionCard(G: GameState, side: Side, cardId: string): void {
   const f = faction(G, side);
   const card = G.catalog.actions[cardId];
-  const eligible = (card?.leaderRequirement ?? []).filter(
-    (lid) => G.catalog.leaders[lid] && !f.leaderPool.includes(lid) && !f.eliminatedLeaders.includes(lid));
+  const eligible = (card?.leaderRequirement ?? []).filter((lid) => leaderRecruitable(G, side, lid));
   if (eligible.length > 0) {
     f.leaderPool.push(eligible[0]);
     log(G, { kind: 'recruit-leader', side, payload: { leaderId: eligible[0], cardId } });
@@ -3052,8 +3072,7 @@ function recruitLeaderFromCard(G: GameState, side: Side, cardId: string): boolea
   const f = faction(G, side);
   f.actionHand.push(cardId);
   const card = G.catalog.actions[cardId];
-  const eligible = (card?.leaderRequirement ?? []).filter(
-    (lid) => G.catalog.leaders[lid] && !f.leaderPool.includes(lid) && !f.eliminatedLeaders.includes(lid));
+  const eligible = (card?.leaderRequirement ?? []).filter((lid) => leaderRecruitable(G, side, lid));
   if (eligible.length === 0) {
     log(G, { kind: 'recruit-action-only', side, payload: { cardId } });
     return false;

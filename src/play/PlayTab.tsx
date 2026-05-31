@@ -1188,6 +1188,20 @@ export default function PlayTab() {
             };
           }}
           onConfirm={(topCardId) => {
+            // Warn if the kept card recruits NO new leader — its leader(s) are
+            // already in play (each leader is on two recruit cards, so the
+            // duplicate can be drawn after recruitment). The player may still
+            // keep it for the action card, but shouldn't do so by accident.
+            const card = G.catalog.actions[topCardId];
+            const listsLeaders = (card?.leaderRequirement?.length ?? 0) > 0;
+            const recruitsSomeone = (card?.leaderRequirement ?? [])
+              .some((lid) => phases.leaderRecruitable(G, humanSide, lid));
+            if (listsLeaders && !recruitsSomeone) {
+              const ok = window.confirm(
+                'This card recruits no new leader — its leader(s) are already in play. '
+                + 'Keep it anyway (you\'ll get the action card, but no leader)?');
+              if (!ok) return;
+            }
             const r = phases.resolveRecruitActionCardPick(G, topCardId);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();

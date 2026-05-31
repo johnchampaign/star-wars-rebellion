@@ -1073,9 +1073,8 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const canRecruit = (cid: string) => {
       const card = G.catalog.actions[cid];
       // A card is worth keeping if ANY leader it lists is still recruitable
-      // (multi-leader cards like the Falcon list two).
-      return (card?.leaderRequirement ?? []).some(
-        (lid) => !!G.catalog.leaders[lid] && !f.leaderPool.includes(lid) && !f.eliminatedLeaders.includes(lid));
+      // (not already in play anywhere). Multi-leader cards list two.
+      return (card?.leaderRequirement ?? []).some((lid) => phases.leaderRecruitable(G, side, lid));
     };
     const [a, b] = c.drawnIds;
     const keep = canRecruit(a) ? a : canRecruit(b) ? b : a;
