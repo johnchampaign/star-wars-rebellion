@@ -137,9 +137,19 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'C3POOffer':                return pc.side === side;
     case 'FalconOffer':              return pc.side === side;
     case 'SonOfSkywalkerOffer':      return pc.side === side;
-    // Other ChoiceRequest kinds (system / leader picks, etc.) are
-    // human-initiated and shouldn't auto-fire the AI loop.
-    default:                         return false;
+    // Robust default: ANY side-tagged choice belongs to the side it names, so
+    // if that side is the AI, the AI owes it. This catches choice kinds the AI
+    // can resolve but that aren't explicitly listed above — without it, such a
+    // choice freezes the game when the human is the opponent (the AI loop bails
+    // and no modal shows). Issue #74: the AI Rebel had to pick a leader from a
+    // two-leader recruit card (RecruitLeaderPick) and the game locked up,
+    // because that kind was missing from the list. A choice the AI can't
+    // actually resolve just stops the loop once (no worse than before); a
+    // choice it CAN resolve now fires correctly.
+    default: {
+      const sided = pc as { side?: Side };
+      return typeof sided.side === 'string' && sided.side === side;
+    }
   }
 }
 
