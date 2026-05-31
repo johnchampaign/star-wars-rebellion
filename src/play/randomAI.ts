@@ -399,9 +399,19 @@ function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: 
   if (!sys) return -Infinity;
   // Generally prefer high-resource systems for build/diplomacy missions.
   const resourceWeight = (sys.resources?.length ?? 0);
+  const sysState = G.map.systems[targetSysId];
   if (missionId.startsWith('rule-by-fear') || missionId.startsWith('trade-negotiations')
     || missionId === 'fear-will-keep-them-in-line') {
     s += resourceWeight * 2;
+    // Loyalty-GAIN missions ("gain 1 loyalty in this system") are WASTED on a
+    // system the Empire already controls — you can't push loyalty past
+    // imperial. Mirror of the Rebel-side -30 penalty (issues #57/#58/#60); the
+    // Empire side was missing it, so the AI ran diplomacy on already-Imperial
+    // sectors (player report #72). Imperial loyalty can't coexist with
+    // subjugation (#48), so these are distinct states: imperial-loyal = no gain
+    // possible (-30); subjugated = already controlled, low value (-12).
+    if (sysState?.loyalty === 'imperial') s -= 30;
+    else if (sysState?.subjugated) s -= 12;
   }
   // Captures / probes don't care about target system per se.
   if (missionId === 'gather-intel') s += 3;
@@ -562,13 +572,39 @@ function planAssignment(G: GameState, side: Side): Array<{ missionId: string; le
 // ============================================================================
 
 type CommandAction =
-  | { kind: 'reveal'; missionId: string; targetSystemId: SystemId; score: number }
+  | { kind: 'reveal'; missionId: string; targetSystemId: SystemId; targetLeaderId?: LeaderId; score: number }
   | { kind: 'activate'; leaderId: LeaderId; targetSystemId: SystemId; score: number }
   | { kind: 'pass'; score: number };
 
 /** Enumerate command-phase actions and score them. Returns highest-scoring
  *  action. Precomputes one BFS distance map from the Rebel base (when
  *  hidden) for use across all per-system scoring. */
+/** Rough "how much do we want this leader" score — combined skills + tactic
+ *  values. Used to pick which enemy leader a capture mission should target. */
+function leaderValue(G: GameState, lid: string): number {
+  const l = G.catalog.leaders[lid];
+  if (!l) return -1;
+  const sk = l.skills;
+  return (sk.diplomacy ?? 0) + (sk.intel ?? 0) + (sk.specOps ?? 0) + (sk.logistics ?? 0)
+    + l.tacticValues.space + l.tacticValues.ground;
+}
+
+/** Leader-targeting missions must LOCK their target at reveal time (RAW: the
+ *  target is chosen when the mission is performed, not after it succeeds).
+ *  Without this the engine falls back to "capture whoever is on the board at
+ *  the target system", which after the opponent opposes is the wrong leader —
+ *  the defender they just sent in, not the leader the mission was aimed at
+ *  (recurring report; cf. issue #41). Returns the highest-value enemy leader
+ *  standing at the target system, or undefined for non-targeting missions. */
+const LEADER_TARGETING_MISSIONS = new Set(['capture-rebel-operative', 'collect-bounty', 'detained']);
+function captureTargetLeaderId(G: GameState, side: Side, missionId: string, sysId: SystemId): LeaderId | undefined {
+  if (!LEADER_TARGETING_MISSIONS.has(missionId)) return undefined;
+  const oppF = side === 'Empire' ? G.rebel : G.empire;
+  const here = oppF.leadersOnBoard[sysId] ?? [];
+  if (here.length === 0) return undefined;
+  return [...here].sort((a, b) => leaderValue(G, b) - leaderValue(G, a))[0] as LeaderId;
+}
+
 function bestCommandAction(G: GameState, side: Side): CommandAction {
   const f = side === 'Rebel' ? G.rebel : G.empire;
   const actions: CommandAction[] = [];
@@ -614,6 +650,9 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
       kind: 'reveal',
       missionId: am.missionId,
       targetSystemId: bestTarget,
+      // Lock the specific leader NOW for capture-style missions, so the target
+      // can't drift to whoever opposes (RAW: target chosen at perform time).
+      targetLeaderId: captureTargetLeaderId(G, side, am.missionId, bestTarget),
       score: baseValue + bestTargetScore + 6,
     });
   }
@@ -1707,13 +1746,15 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     case 'Command': {
       const action = bestCommandAction(G, side);
       if (action.kind === 'reveal') {
-        const r = phases.revealMission(G, side, action.missionId, action.targetSystemId);
+        const r = phases.revealMission(G, side, action.missionId, action.targetSystemId, action.targetLeaderId);
         if (r.ok) return true;
         // If reveal failed (illegal target etc.) try a few fallback systems.
+        // Recompute the locked target leader per fallback system.
         const sysIds = Object.keys(G.map.systems);
         for (let attempt = 0; attempt < 5; attempt++) {
           const fallback = pick(sysIds)!;
-          const r2 = phases.revealMission(G, side, action.missionId, fallback);
+          const tgt = captureTargetLeaderId(G, side, action.missionId, fallback);
+          const r2 = phases.revealMission(G, side, action.missionId, fallback, tgt);
           if (r2.ok) return true;
         }
         return phases.pass(G, side).ok;

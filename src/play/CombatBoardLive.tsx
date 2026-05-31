@@ -1705,7 +1705,17 @@ function RetreatPanel({ G, choice, onPersist }: {
             </button>
           </>
         )}
-        <button onClick={() => submit(null)} style={btn('#2a2c33')}>Stay and fight</button>
+        {/* Clearly-enabled style: dark-grey-on-black read as disabled, making
+            it look like you couldn't stay (player report #66). Light fill +
+            border + bold = an obviously clickable, equal-weight choice. */}
+        <button
+          onClick={() => submit(null)}
+          style={{ padding: '6px 14px', background: '#d7dae0', color: '#000',
+            border: '2px solid #9aa0ad', borderRadius: 3, cursor: 'pointer',
+            fontWeight: 700, fontSize: 12 }}
+        >
+          Stay and fight
+        </button>
       </div>
     </div>
   );
