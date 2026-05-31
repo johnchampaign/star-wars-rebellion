@@ -676,13 +676,32 @@ const hiddenFleet: EffectHandler = (G, ctx) => {
  *  ignoring transport restriction and adjacency. If there are Imperial ground
  *  units in this system, resolve a combat." */
 const leadTheStrikeTeam: EffectHandler = (G, ctx) => {
+  // RAW: "move UP TO 4 ground units of your choice from the Rebel Base space
+  // to this system, ignoring transport restriction and adjacency." The player
+  // chooses which (and how many, 0-4) — the old code auto-grabbed the first 4
+  // (player report #65). Queue a unit-selection choice; the resolver moves the
+  // picks and kicks off combat.
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
   const baseGround = G.map.rebelBaseSpace.units
     .filter((u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground')
-    .slice(0, 4);
-  for (const u of baseGround) M.moveUnit(G, u.instanceId, 'rebel-base-space', sysId);
-  triggerCombatAt(G, 'Rebel', sysId);
+    .map((u) => u.instanceId);
+  if (baseGround.length === 0) {
+    // No ground units to send — still resolve combat in case the Rebel
+    // already has units at the target (mirrors the original behavior).
+    triggerCombatAt(G, 'Rebel', sysId);
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'LeadStrikeTeamUnits',
+    side: 'Rebel',
+    targetSystemId: sysId,
+    availableUnitIds: baseGround,
+    max: 4,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'LeadStrikeTeamUnits', targetSystemId: sysId, available: baseGround.length, max: 4,
+  }});
   return true;
 };
 

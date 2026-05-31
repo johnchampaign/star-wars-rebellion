@@ -677,6 +677,16 @@ export type ChoiceRequest =
       availableShipIds: UnitInstanceId[];
     }
   | {
+      // Lead The Strike Team: Rebel picks up to 4 GROUND units in
+      // rebel-base-space to move to the target system (ignoring transport
+      // restriction and adjacency), which then triggers combat.
+      kind: 'LeadStrikeTeamUnits';
+      side: Side;            // always 'Rebel'
+      targetSystemId: SystemId;
+      availableUnitIds: UnitInstanceId[];
+      max: number;           // up to 4
+    }
+  | {
       // Rebel may reroll one blank die via Yoda's ring (once per round, only
       // if the Yoda holder is at this system). Posted after the dice roll
       // but before tactic-card windows.

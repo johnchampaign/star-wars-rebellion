@@ -1052,6 +1052,22 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     if (!r.ok) r = phases.resolvePlanTheAssaultShips(G, caps);
     return r.ok;
   }
+  // Lead The Strike Team: bring up to 4 of the strongest ground units from the
+  // base to the target (then combat resolves). Prefer high ground-combat value
+  // + health so the strike actually threatens the Imperial garrison.
+  if (G.pendingChoice && G.pendingChoice.kind === 'LeadStrikeTeamUnits' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const rebelBase = G.map.rebelBaseSpace;
+    const idToUnit = new Map(rebelBase.units.map((u) => [u.instanceId, u]));
+    const unitScore = (uid: string): number => {
+      const u = idToUnit.get(uid);
+      const t = u && G.catalog.unitTypes[u.typeId];
+      if (!t) return 0;
+      return ((t.attack?.red ?? 0) + (t.attack?.black ?? 0)) * 2 + (t.health?.value ?? 0);
+    };
+    const picked = [...c.availableUnitIds].sort((a, b) => unitScore(b) - unitScore(a)).slice(0, c.max);
+    return phases.resolveLeadStrikeTeamUnits(G, picked).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'RetreatDecision' && G.pendingChoice.side === side) {
     return handleRetreatDecision(G);
   }

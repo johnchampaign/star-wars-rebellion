@@ -1404,6 +1404,36 @@ export function resolvePlanTheAssaultShips(G: GameState, shipIds: string[]): { o
   return { ok: true };
 }
 
+/** Lead The Strike Team: Rebel picks up to 4 ground units in rebel-base-space
+ *  to move to the target system (ignoring transport restriction and
+ *  adjacency), then combat resolves there. */
+export function resolveLeadStrikeTeamUnits(G: GameState, unitIds: string[]): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'LeadStrikeTeamUnits') {
+    return { ok: false, reason: 'no-pending-lead-strike-team' };
+  }
+  if (unitIds.length > choice.max) return { ok: false, reason: `too-many:${unitIds.length}/${choice.max}` };
+  const seen = new Set<string>();
+  for (const uid of unitIds) {
+    if (!choice.availableUnitIds.includes(uid)) return { ok: false, reason: `illegal-unit:${uid}` };
+    if (seen.has(uid)) return { ok: false, reason: `duplicate:${uid}` };
+    seen.add(uid);
+  }
+  const targetSystemId = choice.targetSystemId;
+  // Ignoring transport restriction and adjacency — just move them.
+  for (const uid of unitIds) M.moveUnit(G, uid, 'rebel-base-space', targetSystemId);
+  log(G, { kind: 'lead-strike-team-move', side: 'Rebel', payload: {
+    targetSystemId, unitsSent: unitIds.length,
+  }});
+  G.pendingChoice = undefined;
+  // Resolve combat at the target (retreat source = rebel-base-space).
+  beginCombat(G, 'Rebel', 'rebel-base-space', targetSystemId);
+  runCombat(G);
+  if (G.pendingChoice || G.pendingCombat) return { ok: true };
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Oversee Project: Empire picks which queued unit to deploy. */
 export function resolveOverseeProjectPick(G: GameState, queueIndex: number, slot: 1 | 2): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;

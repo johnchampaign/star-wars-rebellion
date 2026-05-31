@@ -98,6 +98,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'InfiltrationPick':         return side === 'Rebel';
     case 'StolenPlansReorder':       return side === 'Rebel';
     case 'PlanTheAssaultShips':      return side === 'Rebel';
+    case 'LeadStrikeTeamUnits':      return side === 'Rebel';
     case 'CovertOperationPick':      return side === 'Rebel';
     case 'OverseeProjectPick':       return pc.side === side;
     case 'CaptureOperativePick':     return pc.side === side;
@@ -1060,6 +1061,20 @@ export default function PlayTab() {
           choice={G.pendingChoice}
           onSubmit={(shipIds) => {
             const r = phases.resolvePlanTheAssaultShips(G, shipIds);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'LeadStrikeTeamUnits'
+        && humanSide === 'Rebel' && (
+        <LeadStrikeTeamUnitsModal
+          G={G}
+          choice={G.pendingChoice}
+          onSubmit={(unitIds) => {
+            const r = phases.resolveLeadStrikeTeamUnits(G, unitIds);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }}
@@ -4053,6 +4068,92 @@ function PlanTheAssaultShipsModal({ G, choice, onSubmit }: {
               border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
           >
             Send {picked.size} ship{picked.size === 1 ? '' : 's'} & start combat
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeadStrikeTeamUnitsModal({ G, choice, onSubmit }: {
+  G: GameState;
+  choice: {
+    kind: 'LeadStrikeTeamUnits';
+    side: Side;
+    targetSystemId: string;
+    availableUnitIds: string[];
+    max: number;
+  };
+  onSubmit: (unitIds: string[]) => void;
+}) {
+  const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  const baseUnits = G.map.rebelBaseSpace.units;
+  const units = choice.availableUnitIds
+    .map((uid) => baseUnits.find((u) => u.instanceId === uid))
+    .filter((u): u is NonNullable<typeof u> => !!u);
+
+  // Default to the first `max` units (player can adjust).
+  const [picked, setPicked] = useState<Set<string>>(
+    () => new Set(choice.availableUnitIds.slice(0, choice.max)));
+  const atCap = picked.size >= choice.max;
+  const toggle = (uid: string) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else if (next.size < choice.max) next.add(uid); // enforce up-to-max
+      return next;
+    });
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 22, maxWidth: 560, width: '92%',
+      }}>
+        <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
+          Lead The Strike Team — send up to {choice.max} ground units to {targetName}
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>
+          Choose up to {choice.max} ground units from the Rebel Base to move to {targetName}
+          {' '}(ignoring transport and adjacency). If Imperial ground units are there,
+          combat starts immediately after.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {units.map((u) => {
+            const t = G.catalog.unitTypes[u.typeId];
+            const isOn = picked.has(u.instanceId);
+            const disabled = !isOn && atCap;
+            return (
+              <label key={u.instanceId} style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: 4,
+                background: '#1f2128', borderRadius: 3,
+                cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+              }}>
+                <input
+                  type="checkbox"
+                  checked={isOn}
+                  disabled={disabled}
+                  onChange={() => toggle(u.instanceId)}
+                />
+                <span style={{ color: '#fff', fontSize: 13 }}>{t?.name ?? u.typeId}</span>
+              </label>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+          <span style={{ color: '#888', fontSize: 11, marginRight: 'auto' }}>
+            {picked.size}/{choice.max} selected
+          </span>
+          <button
+            onClick={() => onSubmit(Array.from(picked))}
+            style={{ padding: '6px 18px', background: '#aae0ff', color: '#000',
+              border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
+          >
+            Send {picked.size} unit{picked.size === 1 ? '' : 's'} & start combat
           </button>
         </div>
       </div>
