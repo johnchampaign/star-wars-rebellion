@@ -6483,6 +6483,33 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
 // Assignment Panel
 // ============================================================================
 
+/** A mission name that floats the full card art on hover (issue #68 — during
+ *  Assignment you couldn't see the card, only the name + skill). Falls back to
+ *  just the name if the art isn't cached (the rulesText is shown inline too). */
+function MissionNameHover({ name, image, color }: { name: string; image?: string; color?: string }) {
+  const [open, setOpen] = useState(false);
+  const resolved = image ? getCachedArtUrlSync(image) : null;
+  return (
+    <strong
+      style={{ flex: 1, color: color ?? '#e8e8ea', position: 'relative', cursor: resolved ? 'help' : 'default' }}
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      {name}
+      {open && resolved && (
+        <div style={{
+          position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)',
+          marginLeft: 12, zIndex: 2000, pointerEvents: 'none',
+          background: 'rgba(0,0,0,0.94)', border: '1px solid #555', borderRadius: 4,
+          padding: 6, boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+        }}>
+          <img src={resolved} alt={name} style={{ width: 240, height: 'auto', borderRadius: 4, display: 'block' }} />
+        </div>
+      )}
+    </strong>
+  );
+}
+
 function AssignmentPanel({ G, side, onChange }: { G: GameState; side: Side; onChange: () => void }) {
   const f = side === 'Rebel' ? G.rebel : G.empire;
   const color = sideColor(side);
@@ -6548,7 +6575,7 @@ function AssignmentPanel({ G, side, onChange }: { G: GameState; side: Side; onCh
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <strong style={{ flex: 1, color: '#e8e8ea' }}>{card.name}</strong>
+                    <MissionNameHover name={card.name} image={card.image} />
                     <span style={{ color: '#888', fontSize: 11 }}>
                       {card.skill} × {card.skillCost}
                     </span>
@@ -6580,8 +6607,9 @@ function AssignmentPanel({ G, side, onChange }: { G: GameState; side: Side; onCh
               f.leadersOnMissions.map((a, i) => {
                 const card = G.catalog.missions[a.missionId];
                 return (
-                  <div key={i}>
-                    <strong>{card?.name ?? a.missionId}</strong> ← {a.leaderIds.map(lid => G.catalog.leaders[lid]?.name ?? lid).join(', ')}
+                  <div key={i} style={{ display: 'flex', gap: 4 }}>
+                    <MissionNameHover name={card?.name ?? a.missionId} image={card?.image} color="#80dc78" />
+                    <span>← {a.leaderIds.map(lid => G.catalog.leaders[lid]?.name ?? lid).join(', ')}</span>
                   </div>
                 );
               })
