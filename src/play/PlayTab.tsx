@@ -368,7 +368,8 @@ export default function PlayTab() {
         // (and before the combat board can preempt it). Reporter saw Plant
         // False Lead resolve and the Empire immediately start a combat
         // elsewhere without the mission result ever appearing. (#63)
-        if ((Gn.missionReports?.length ?? 0) > 0 || (Gn.combatReports?.length ?? 0) > 0) break;
+        if ((Gn.missionReports?.length ?? 0) > 0 || (Gn.combatReports?.length ?? 0) > 0
+          || (Gn.objectiveReports?.length ?? 0) > 0) break;
         const owes = aiOwesChoice(Gn, ai);
         if (Gn.currentPlayer !== ai && !owes) break;
         let did = false;
@@ -1040,8 +1041,19 @@ export default function PlayTab() {
         />
       )}
 
+      {G.objectiveReports && G.objectiveReports.length > 0
+        && (!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0) && (
+        <ObjectiveReportModal
+          G={G}
+          report={G.objectiveReports[0]}
+          onDismiss={() => { if (G && G.objectiveReports) G.objectiveReports.shift(); persist(); refresh(); }}
+        />
+      )}
+
       {G.refreshReports && G.refreshReports.length > 0
         && (!G.missionReports || G.missionReports.length === 0)
+        && (!G.objectiveReports || G.objectiveReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0) && (
         <RefreshReportModal
           G={G}
@@ -4169,6 +4181,53 @@ function LeadStrikeTeamUnitsModal({ G, choice, onSubmit }: {
             Send {picked.size} unit{picked.size === 1 ? '' : 's'} & start combat
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** Objective-completion notice (issue #71). Pops when a Rebel objective scores
+ *  — most notably combat-timed ones like Major Victory, which previously
+ *  granted reputation silently with no on-screen acknowledgement. */
+function ObjectiveReportModal({ G, report, onDismiss }: {
+  G: GameState;
+  report: { objectiveId: string; reputation: number; via: string };
+  onDismiss: () => void;
+}) {
+  const card = G.catalog.objectives[report.objectiveId];
+  const art = card?.image ? getCachedArtUrlSync(card.image) : null;
+  const viaText =
+    report.via === 'combat' ? 'completed in combat' :
+    report.via === 'death-star-plans' ? 'completed — the Death Star is destroyed!' :
+    'completed';
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5200 }}>
+      <div style={{ background: '#15171c', border: '2px solid #ffd54a', borderRadius: 8,
+        padding: 22, maxWidth: 420, width: '92%', textAlign: 'center',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.8)' }}>
+        <div style={{ color: '#ffd54a', fontSize: 16, fontWeight: 700, marginBottom: 4 }}>
+          Objective {viaText}
+        </div>
+        <div style={{ color: '#fff', fontSize: 15, fontWeight: 600, marginBottom: 10 }}>
+          {card?.name ?? report.objectiveId}
+        </div>
+        {art && (
+          <img src={art} alt={card?.name ?? report.objectiveId}
+            style={{ width: 200, height: 'auto', borderRadius: 6, margin: '0 auto 12px',
+              display: 'block', boxShadow: '0 0 14px rgba(0,0,0,0.6)' }} />
+        )}
+        <div style={{ color: '#ffd54a', fontSize: 14, fontWeight: 700, marginBottom: 4 }}>
+          +{report.reputation} Rebel reputation
+        </div>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 14 }}>
+          The reputation marker advances — the Rebellion is one step closer to winning.
+        </div>
+        <button onClick={onDismiss}
+          style={{ padding: '8px 24px', background: '#ffd54a', color: '#000',
+            border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700, fontSize: 14 }}>
+          Continue
+        </button>
       </div>
     </div>
   );

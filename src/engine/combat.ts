@@ -1892,6 +1892,7 @@ function endCombat(G: GameState): void {
     log(G, { kind: 'objective-played', side: 'Rebel', payload: {
       objectiveId: oid, reputation: rep, timing: 'Combat',
     }});
+    (G.objectiveReports ??= []).push({ objectiveId: oid, reputation: rep, via: 'combat' });
     if (G.isGameOver) break;
   }
 
@@ -2008,6 +2009,7 @@ export function resolveDeathStarPlansAttempt(
       objectiveId: pc.objectiveId, systemId: pc.systemId, destroyed: targetId,
       faces, reputation: rep,
     }});
+    (G.objectiveReports ??= []).push({ objectiveId: pc.objectiveId, reputation: rep, via: 'death-star-plans' });
   } else {
     // No direct hit — RAW: "Otherwise return this card to your hand." It's
     // already in hand (we don't remove it on reveal); just log.

@@ -1199,6 +1199,12 @@ export type GameState = {
   // combatReports: engine appends, player dismisses one at a time.
   missionReports?: MissionResolutionReport[];
 
+  // Objective-completion notices queued for the UI (issue #71: scoring an
+  // objective like Major Victory gained reputation silently). Same lifecycle:
+  // engine appends when a Rebel objective is scored, player dismisses one at a
+  // time. `via` describes how it scored (combat / refresh / death-star-plans).
+  objectiveReports?: { objectiveId: string; reputation: number; via: string }[];
+
   // Refresh-phase summary, generated each time the refresh phase runs.
   // The UI shows a single modal with everything that happened (objective
   // drawn, missions drawn, probes drawn, leaders retrieved, time advanced,

@@ -2998,6 +2998,7 @@ function refreshPlayStartOfRefreshObjectives(G: GameState): void {
   log(G, { kind: 'play-objective', side: 'Rebel', payload: {
     objectiveId: winner.id, reputation: winner.rep,
   }});
+  (G.objectiveReports ??= []).push({ objectiveId: winner.id, reputation: winner.rep, via: 'refresh' });
   M.gainReputation(G, winner.rep);
 }
 
