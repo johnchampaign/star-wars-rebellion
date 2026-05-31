@@ -70,6 +70,12 @@ export function beginCombat(
 
   const initialReport: CombatReport = {
     systemId, attackerSide,
+    // Snapshot whether the system was subjugated at combat START. Winning a
+    // ground battle here liberates the system (clears subjugated) BEFORE the
+    // combat-objective check runs, so reading the live flag afterward always
+    // reads false. Liberation (win a ground battle in a subjugated system)
+    // needs the at-start value. (Issue #53.)
+    systemSubjugatedAtStart: !!G.map.systems[systemId]?.subjugated,
     addedLeaders: [],
     drawnTactics: { side: attackerSide, spaceCount: 0, groundCount: 0 },
     rounds: [], structureDestructions: [],

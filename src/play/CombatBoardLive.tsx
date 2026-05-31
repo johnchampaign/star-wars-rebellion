@@ -342,10 +342,14 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem }: {
     onPersist();
   };
 
-  /** Per-side per-theater click-target bundle. Only the defender's units in
-   *  the active theater are clickable during AssignDamage. */
+  /** Per-side per-theater click-target bundle. The clickable units belong to
+   *  the side BEING HIT — i.e. the opponent of the side currently assigning
+   *  damage (the roller), NOT always the combat's defender. On a counter-
+   *  attack the combat-defender is the one rolling, so the units to click
+   *  belong to the combat-attacker; keying this to the static `defender`
+   *  left those units unclickable and damage unassignable. (Issue #54.) */
   const damageAssignBundle = damageChoice ? {
-    defenderSide: defender,
+    defenderSide: (damageChoice.side === 'Rebel' ? 'Empire' : 'Rebel') as Side,
     theater: damageChoice.theater,
     selectedHitIdx,
     legalUnitIds: (selectedHitIdx === null
@@ -654,6 +658,7 @@ function TheaterPanel({ G, c, theater, attacker, defender, dice, rolling, damage
           units={attUnits}
           leaderIds={attLeaders}
           align="right"
+          damageAssign={damageAssign && damageAssign.defenderSide === attacker ? damageAssign : null}
         />
         <DicePanel dice={dice} side={rolling} />
         <SidePanel
@@ -976,6 +981,14 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
               />
               <CardHover G={G} cardId={paid}>{label(paid)}</CardHover> (block 1, discard another)
             </label>
+            {sacrificeCandidates.length === 0 && (
+              // Explain WHY it's greyed out — this card blocks a hit only by
+              // discarding a second card, and there's no other card to spend.
+              // (Issue #51 read as "can't play it" when it was just unusable.)
+              <span style={{ fontSize: 11, color: '#888' }}>
+                — needs another card in hand to discard
+              </span>
+            )}
             {usePaid && sacrificeCandidates.length > 0 && (
               <select
                 value={sacrifice ?? ''}

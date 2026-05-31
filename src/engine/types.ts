@@ -971,6 +971,11 @@ export type MissionResolutionReport = {
 export type CombatReport = {
   systemId: SystemId;
   attackerSide: Side;
+  /** Whether the system was subjugated when combat began. Winning the
+   *  battle can liberate it (clearing the flag) before the objective check
+   *  runs, so the Liberation objective reads this snapshot, not the live
+   *  flag. (Issue #53.) Optional for backward-compat with old saved reports. */
+  systemSubjugatedAtStart?: boolean;
   addedLeaders: { side: Side; leaderId: LeaderId; tacticValue: number }[];
   drawnTactics: { side: Side; spaceCount: number; groundCount: number };
   rounds: CombatRoundReport[];

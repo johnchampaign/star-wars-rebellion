@@ -133,11 +133,15 @@ export function combatObjectivesTriggered(
   }
   // liberation-2 — Win a ground battle in a subjugated system.
   if (has('liberation-2') && rebelWonOverall) {
-    const sys = G.map.systems[report.systemId];
+    // Use the at-combat-start subjugation snapshot, NOT the live flag —
+    // winning the ground battle liberates the system (clears subjugated)
+    // before this check runs, so the live flag is always false here. (#53)
+    const wasSubjugated = report.systemSubjugatedAtStart
+      ?? G.map.systems[report.systemId]?.subjugated; // fallback for old reports
     const groundFought = report.rounds.some((r) =>
       r.attacks.some((a) => a.theater === 'ground' && a.damageApplied > 0)
     );
-    if (sys?.subjugated && groundFought) fired.push('liberation-2');
+    if (wasSubjugated && groundFought) fired.push('liberation-2');
   }
   // major-victory-3 — 3+ health of Imperial SHIPS destroyed in a combat
   // you initiated.
