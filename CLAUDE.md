@@ -161,10 +161,18 @@ If deploy fails, common causes:
 
 ## AI logs & analysis — which side was the human?
 
-When mining play logs, NEVER infer human-vs-AI from the outcome. The
-human plays BOTH sides and (per the user) basically never loses, so a
-"Rebel reputation-time win" is usually the **human playing Rebel beating
-the AI Empire**, not the AI Rebel winning.
+When mining play logs, prefer the RECORDED controlled side; only fall
+back to outcome-inference, and never confuse the two. The human plays
+BOTH sides and (per the user) basically never loses to the current AI —
+so a "Rebel reputation-time win" is usually the **human playing Rebel
+beating the AI Empire**, not the AI Rebel winning.
+
+- For logs that predate the `humanSide` field, inferring **human = the
+  winning side** is reliable *for this project* (the AI is weak enough
+  that the user wins ~every game) — but tag it as inferred, not recorded.
+- This shortcut is valid ONLY because the player ~always beats the AI.
+  Don't carry it to logs that might contain losses (e.g. future
+  human-vs-human games, or a much stronger AI).
 
 - The controlled side IS recorded: game start writes the resolved side to
   `localStorage['rebellion-human-side']`; `archiveCompletedGame` and the

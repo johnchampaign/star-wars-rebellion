@@ -48,29 +48,38 @@ for (const f of files) {
     && e.payload?.attackerSide === 'Empire').length;
   const activationsToBase = after.filter((e) => e.kind === 'activate-system' && e.side === 'Empire'
     && e.payload?.targetSystemId === baseSys).length;
-  // Who controlled which side. humanSide is the RECORDED field (or unknown);
-  // the Empire is human iff humanSide==='Empire', AI otherwise.
-  const empireController = humanSide === 'Empire' ? 'human' : humanSide === 'Rebel' ? 'AI' : 'unknown';
+  // Who controlled the Empire. Prefer the RECORDED humanSide. For pre-field
+  // uploads, infer from the outcome: the AI is weak enough that the human
+  // basically always wins (user-confirmed), so human == winning side. Mark
+  // recorded vs inferred so they're never conflated.
+  let empireController = 'unknown';
+  let controllerSource = 'none';
+  if (humanSide === 'Empire') { empireController = 'human'; controllerSource = 'recorded'; }
+  else if (humanSide === 'Rebel') { empireController = 'AI'; controllerSource = 'recorded'; }
+  else if (st.winner === 'Empire') { empireController = 'human'; controllerSource = 'inferred'; }
+  else if (st.winner === 'Rebel') { empireController = 'AI'; controllerSource = 'inferred'; }
   summary.push({
     file: f.slice(0, 12), winner: st.winner, reason: st.winReason, endTurn: st.timeMarker,
-    humanSide: humanSide ?? 'unknown', empireController,
+    humanSide: humanSide ?? 'unknown', empireController, controllerSource,
     revealTurn, baseSys, turnsToEnd: (st.timeMarker ?? 0) - revealTurn,
     baseInvasions: baseCombats, activationsToBase, postRevealEmpireActions: empAct.length,
   });
 }
 
 console.log(`\n=== ${summary.length} uploaded games with a base reveal (of ${files.length} files) ===\n`);
-const known = summary.filter((s) => s.empireController !== 'unknown');
-console.log(`Empire controller recorded: ${known.length}/${summary.length} games`
-  + (known.length < summary.length ? ` (${summary.length - known.length} predate the humanSide field — controller unknown, do NOT infer it)` : ''));
+const rec = summary.filter((s) => s.controllerSource === 'recorded').length;
+const inf = summary.filter((s) => s.controllerSource === 'inferred').length;
+console.log(`Empire controller: ${rec} recorded, ${inf} inferred-from-winner (pre-field; AI is weak so winner≈human), ${summary.length - rec - inf} undetermined`);
 console.log(`Empire base-capture wins: ${summary.filter((s) => s.winner === 'Empire' && s.reason === 'base-captured').length}`);
 for (const s of summary.sort((a, b) => (b.winner === 'Empire') - (a.winner === 'Empire'))) {
-  console.log(`  ${s.file}  Empire=${s.empireController.padEnd(7)} ${String(s.winner).padEnd(7)} ${String(s.reason).padEnd(16)} reveal@T${s.revealTurn} end@T${s.endTurn} (${s.turnsToEnd}t)  base=${s.baseSys}  invasions=${s.baseInvasions}`);
+  const tag = s.controllerSource === 'recorded' ? `${s.empireController}(rec)`
+    : s.controllerSource === 'inferred' ? `${s.empireController}(inf)` : 'unknown';
+  console.log(`  ${s.file}  Empire=${tag.padEnd(11)} ${String(s.winner).padEnd(7)} ${String(s.reason).padEnd(16)} reveal@T${s.revealTurn} end@T${s.endTurn} (${s.turnsToEnd}t)  base=${s.baseSys}`);
 }
 
 // Detailed choreography for the first 2 confirmed human-Empire base-capture wins.
 const wins = summary.filter((s) => s.winner === 'Empire' && s.reason === 'base-captured'
-  && s.empireController === 'human');
+  && s.empireController === 'human'); // recorded OR inferred-from-win both qualify
 for (const w of (wins.length ? wins : summary.filter((s) => s.winner === 'Empire' && s.reason === 'base-captured')).slice(0, 2)) {
   const st = loadTurnLog(files.find((f) => f.startsWith(w.file)));
   const log = st.turnLog;
