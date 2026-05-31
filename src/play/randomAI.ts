@@ -29,6 +29,89 @@ function pick<T>(arr: T[]): T | undefined {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
+/** Max Rebel units the AI keeps at the hidden base during setup. The rest go
+ *  to one Rebel/neutral "decoy" system. Empire's Gather Intel draws 1 probe
+ *  card per 4 Rebel units AT THE BASE (min 1), so a leaner base = slower base
+ *  discovery — at the cost of weaker base defense and exposed decoy units.
+ *  Tournament-tunable: set SWR_REBEL_BASE_KEEP in the harness to sweep it.
+ *  Default 99 = keep everything at base (original behavior) until a tuned
+ *  value is baked in. Guarded so the browser build (no `process`) is safe. */
+const REBEL_BASE_KEEP: number = (() => {
+  try {
+    const env = (typeof process !== 'undefined' ? process.env : undefined) as Record<string, string | undefined> | undefined;
+    const raw = env?.SWR_REBEL_BASE_KEEP;
+    if (raw != null && Number.isFinite(Number(raw))) return Number(raw);
+  } catch { /* browser: no process */ }
+  return 99;
+})();
+
+/** Pick a Rebel/neutral system (not Coruscant, not the actual hidden base) to
+ *  hold the Rebel's "decoy" overflow units at setup. Prefer Rebel-loyal
+ *  systems far from Empire units so the decoy survives. null if none. */
+function chooseRebelDecoySystem(G: GameState): SystemId | null {
+  const baseId = G.rebelBaseSystemId;
+  const empireSystems = Object.keys(G.map.systems).filter((sid) =>
+    G.map.systems[sid]?.units.some((u) => u.side === 'Empire'));
+  const candidates = Object.keys(G.map.systems).filter((sid) => {
+    if (sid === baseId) return false;
+    const def = G.catalog.systems[sid];
+    const ss = G.map.systems[sid];
+    if (!def || !ss || def.isCoruscant) return false;
+    return !(ss.subjugated || ss.loyalty === 'imperial'); // Rebel/neutral only
+  });
+  if (candidates.length === 0) return null;
+  const score = (sid: SystemId): number => {
+    const ss = G.map.systems[sid];
+    let s = ss?.loyalty === 'rebel' ? 5 : 0;
+    let minDist = Infinity;
+    for (const es of empireSystems) {
+      const d = bfsDistances(G, es, 6).get(sid);
+      if (d != null && d < minDist) minDist = d;
+    }
+    if (minDist !== Infinity) s += Math.min(minDist, 6);
+    return s;
+  };
+  return [...candidates].sort((a, b) => score(b) - score(a))[0];
+}
+
+/** Rebel AI setup deploy: keep up to REBEL_BASE_KEEP units at the hidden base
+ *  (better defenders first; the no-attack transport ships out first), and
+ *  send the overflow to one decoy system to cut the Empire's Gather-Intel
+ *  yield. Places ALL pending Rebel units in one call. Falls back to plain
+ *  auto-fill (all at base) when thinning is off or no decoy qualifies. */
+function aiRebelSetupDeploy(G: GameState): boolean {
+  const pending = G.pendingDeployment?.Rebel;
+  if (!pending || pending.length === 0) return false;
+  const decoy = REBEL_BASE_KEEP >= 99 ? null : chooseRebelDecoySystem(G);
+  if (!decoy) return phases.setupAutoFill(G, 'Rebel').ok;
+  const alreadyAtBase = G.map.rebelBaseSpace.units.filter((u) => u.side === 'Rebel').length;
+  const keepRank = (typeId: string): number => {
+    const t = G.catalog.unitTypes[typeId];
+    if (!t) return 0;
+    const atk = (t.attack?.red ?? 0) + (t.attack?.black ?? 0);
+    let r = (t.health?.value ?? 1) * 2 + atk;
+    if (t.class === 'capital') r += 3;
+    if (t.theater === 'ground') r += 2;
+    if (atk === 0) r -= 10; // transport (no attack): most expendable
+    return r;
+  };
+  const order = [...pending].sort((a, b) => keepRank(b) - keepRank(a));
+  let baseSlots = Math.max(0, REBEL_BASE_KEEP - alreadyAtBase);
+  let placedAny = false;
+  for (const typeId of order) {
+    const dest: SystemId = baseSlots > 0 ? 'rebel-base-space' : decoy;
+    const r = phases.setupDeployUnit(G, 'Rebel', typeId, dest);
+    if (r.ok) {
+      placedAny = true;
+      if (dest === 'rebel-base-space') baseSlots--;
+    } else if (dest !== 'rebel-base-space') {
+      // Decoy placement failed for some reason — keep this one at base.
+      if (phases.setupDeployUnit(G, 'Rebel', typeId, 'rebel-base-space').ok) placedAny = true;
+    }
+  }
+  return placedAny;
+}
+
 // ============================================================================
 // Strategy primitives
 // ============================================================================
@@ -227,6 +310,15 @@ function missionSituationalAdjust(G: GameState, missionId: string, side: Side): 
       && (G.empire.capturedLeaders?.length ?? 0) === 0) adj -= 8;
     if (missionId === 'for-the-greater-good'
       && (G.empire.capturedLeaders?.length ?? 0) === 0) adj -= 8;
+    // Rapid Mobilization is the Rebel's escape hatch — it can relocate the
+    // hidden base. Strongly prefer it when the base is in danger (revealed,
+    // or Empire units closing in), and avoid wasting it when the base is
+    // safe (relocating a safe hidden base mostly just disrupts your own
+    // position). User-reported gap: the AI never relocated under threat.
+    if (missionId === 'rapid-mobilization') {
+      const threatened = G.rebelBaseRevealed || empireProximityToBase(G) > 0;
+      adj += threatened ? 20 : -6;
+    }
   }
   // Diminishing returns: each prior successful reveal of THIS mission by
   // THIS side reduces score by 3. Tournament data showed Empire running
@@ -1218,11 +1310,16 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const c = G.pendingChoice;
     return phases.resolveContingencyPlanPick(G, c.candidates[0]).ok;
   }
-  // Rapid Mobilization: prefer establish-base (always-available) over
-  // move-units; AI doesn't have great unit-selection heuristics for the
-  // move branch.
+  // Rapid Mobilization branch: if the base is in danger (revealed, or Empire
+  // units closing in), RELOCATE it (establish-base) to escape. If it's still
+  // safe and hidden, just reinforce it (move-units). Previously always chose
+  // establish-base, which relocated even a safe base for no reason.
   if (G.pendingChoice && G.pendingChoice.kind === 'RapidMobilizationBranch' && G.pendingChoice.side === side) {
-    return phases.resolveRapidMobilizationBranch(G, 'establish-base').ok;
+    const threatened = G.rebelBaseRevealed || empireProximityToBase(G) > 0;
+    // move-units is only legal while the base is unrevealed; when revealed
+    // (always "threatened") we fall to establish-base anyway.
+    const branch = threatened ? 'establish-base' : 'move-units';
+    return phases.resolveRapidMobilizationBranch(G, branch).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'RapidMobilizationMovePick' && G.pendingChoice.side === side) {
     // Find any Rebel-occupied system and move up to 5 units to base.
@@ -1249,7 +1346,25 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       const fallback = Object.keys(G.map.systems)[0];
       return phases.resolveRapidMobilizationBasePick(G, fallback).ok;
     }
-    return phases.resolveRapidMobilizationBasePick(G, candidates[0]).ok;
+    // Relocate to the SAFEST candidate: farthest from Empire units, not the
+    // current base, Rebel/neutral preferred. Picking candidates[0] could
+    // drop the new base right next to the Empire.
+    const empireSystems = Object.keys(G.map.systems).filter((sid) =>
+      G.map.systems[sid]?.units.some((u) => u.side === 'Empire'));
+    const safety = (sid: string): number => {
+      if (sid === G.rebelBaseSystemId) return -100; // don't "relocate" in place
+      const ss = G.map.systems[sid];
+      let s = ss?.loyalty === 'rebel' ? 3 : 0;
+      let minDist = Infinity;
+      for (const es of empireSystems) {
+        const d = bfsDistances(G, es, 8).get(sid);
+        if (d != null && d < minDist) minDist = d;
+      }
+      s += minDist === Infinity ? 8 : Math.min(minDist, 8);
+      return s;
+    };
+    const best = [...candidates].sort((a, b) => safety(b) - safety(a))[0];
+    return phases.resolveRapidMobilizationBasePick(G, best).ok;
   }
   // Interrogation Droid: Rebel picks 2 decoy systems that AREN'T the base.
   if (G.pendingChoice && G.pendingChoice.kind === 'InterrogationDroidDecoyPick' && G.pendingChoice.side === side) {
@@ -1465,7 +1580,9 @@ function stepOnceInner(G: GameState, side: Side): boolean {
         const r = phases.pickRebelBase(G, picked);
         if (r.ok) return true;
       }
-      // Auto-fill all remaining units for this side.
+      // Rebel: thin the base to cut Gather-Intel yield (places overflow at a
+      // decoy system); Empire: plain auto-fill.
+      if (side === 'Rebel') return aiRebelSetupDeploy(G);
       const r = phases.setupAutoFill(G, side);
       return r.ok;
     }

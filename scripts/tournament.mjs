@@ -64,7 +64,11 @@ mkdirSync(args.out, { recursive: true });
 
 /** Run one game. Returns { result, rounds, steps, elapsed_ms, log }. */
 function playOne(seed) {
-  const G = createGame(data, { seed });
+  // Use interactive setup (the same mode the live game uses) so the AI's
+  // setup logic — including Rebel base-thinning — actually runs and can be
+  // measured. With the default autoSetupUnits:true the engine pre-places
+  // all units and the Setup phase is skipped entirely.
+  const G = createGame(data, { seed, autoSetupUnits: false });
   const t0 = performance.now();
 
   // Setup phase: both sides auto-fill until phase transitions away.
