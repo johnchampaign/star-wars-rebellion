@@ -3,38 +3,30 @@
 Project-local conventions for the Star Wars: Rebellion port. Skim before
 each session.
 
-## CRITICAL: which working directory / branch you are in
+## Single branch: master is the only active branch
 
-This repo has TWO active branches developed in parallel, each in its own
-git worktree:
+This project develops on **`master`** only, in the one working directory
+`C:/Users/johnc/Claude Games/Star Wars Rebellion`. master is production
+(deploys to https://star-wars-rebellion.pages.dev). Do all work here.
 
-- **`master`** = single-player production (deploys to
-  https://star-wars-rebellion.pages.dev). **My gameplay / RAW / bug-fix
-  work and all production deploys happen here.**
-  Worktree: `C:/Users/johnc/Claude Games/Star Wars Rebellion-master`
-- **`framework-port`** = the user's online/multiplayer (lobby + game
-  server) rebuild, developed in the ORIGINAL directory
-  `C:/Users/johnc/Claude Games/Star Wars Rebellion`.
-
-The user actively commits on `framework-port` between sessions, which
-flips the original directory's checkout. Earlier this caused me to (a)
-edit framework-port files by accident and ferry them to master, and (b)
-deploy framework-port code to production by mistake. The worktree split
-exists to PREVENT that.
+History: there was a `framework-port` branch (an online/lobby/game-server
+rebuild) developed in parallel. It was **abandoned** — the parallel
+branches caused accidental cross-branch edits and a wrong-branch
+production deploy. It's preserved as the tag **`framework-port-archive`**
+(local + origin) if its online-stack code is ever wanted again, but it is
+NOT an active branch. There is no second worktree anymore.
 
 **Rules:**
-1. For any master/production task, `cd` into the
-   `…/Star Wars Rebellion-master` worktree and work there. Do NOT edit
-   files in the original directory unless the task is explicitly about
-   `framework-port`.
-2. Run `git branch --show-current` immediately before EVERY commit and
-   EVERY deploy. It must say `master` for production work.
-3. The worktree has its own `node_modules` and a copied
-   `public/dev-assets/` (both gitignored). If a fresh worktree is ever
-   recreated, run `npm install` and copy `public/dev-assets/` from the
-   original directory before building/deploying.
-4. Never deploy without confirming the build ran from the master
-   worktree.
+1. Everything happens on `master` in the main directory. Still worth a
+   quick `git branch --show-current` before a commit/deploy, but there's
+   no longer another branch to drift to.
+2. Do NOT revive or merge `framework-port` into master without an explicit
+   request — it carries framework dependencies (game server, lobby) that
+   would complicate the single-player build.
+3. `public/dev-assets/*.json` is the RUNTIME catalog the game fetches; it's
+   gitignored and generated from the tracked `assets/*.json` by
+   `scripts/copy-dev-assets.mjs`. The `build` script runs that copy first,
+   so source edits always reach the runtime — never hand-edit dev-assets.
 
 ## ALWAYS check open bug reports at session start
 
