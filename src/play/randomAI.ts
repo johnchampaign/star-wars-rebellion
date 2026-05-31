@@ -56,8 +56,8 @@ function chooseRebelDecoySystem(G: GameState): SystemId | null {
     if (sid === baseId) return false;
     const def = G.catalog.systems[sid];
     const ss = G.map.systems[sid];
-    if (!def || !ss || def.isCoruscant) return false;
-    return !(ss.subjugated || ss.loyalty === 'imperial'); // Rebel/neutral only
+    if (!def || !ss || def.isCoruscant || def.isRemote) return false;
+    return !(ss.subjugated || ss.loyalty === 'imperial'); // populous Rebel/neutral only
   });
   if (candidates.length === 0) return null;
   const score = (sid: SystemId): number => {
@@ -428,12 +428,37 @@ function rebelMissionTargetScore(
   // Issues #10, #13: the AI was sabotaging Bespin / Alderaan when those
   // were Rebel-loyal, which is strategic self-harm.
   if (missionId === 'sabotage') {
-    if (sysState?.loyalty === 'rebel' && !sysState.subjugated) {
-      s -= 20; // huge penalty — never sabotage own system
-    } else if (sysState?.loyalty === 'imperial' || sysState?.subjugated) {
-      s += 6; // reward sabotaging Imperial-controlled systems
+    // Sabotage denies a system its production (the build step skips
+    // sabotaged systems). So value a target by how much Empire production
+    // it removes:
+    //   - Imperial-loyal: denies ALL its resource icons (a 2-resource
+    //     Imperial system is the best target — 2 fewer Empire units/build).
+    //   - Subjugated: only its leftmost icon produces (1 resource), so it's
+    //     worth denying 1 — same as a 1-resource Imperial system.
+    //   - Remote: produces nothing → pointless.
+    //   - Rebel-loyal (unsubjugated): your own production → never.
+    //   - Neutral (non-remote): no Empire production → not worth it.
+    //   - Already sabotaged → nothing to gain.
+    const resCount = sysDef.resources?.length ?? 0;
+    if (sysState?.sabotage) {
+      s -= 50;
+    } else if (sysDef.isRemote) {
+      s -= 50; // no production to deny
+    } else if (sysState?.loyalty === 'rebel' && !sysState.subjugated) {
+      s -= 50; // never sabotage our own system
+    } else if (sysState?.subjugated) {
+      s += 10; // subjugated produces only 1 resource → denies 1
+    } else if (sysState?.loyalty === 'imperial') {
+      s += 6 + Math.min(resCount, 3) * 4; // 1-res:10, 2-res:14, 3-res:18
+    } else {
+      s -= 10; // neutral, non-producing for the Empire — low value
     }
-    if (sysState?.sabotage) s -= 10; // already sabotaged
+    // Easier to land (and likelier to auto-succeed) if there's no Imperial
+    // spec-ops leader sitting at the target to make opposition cheap.
+    const empLeadersHere = G.empire.leadersOnBoard[targetSysId] ?? [];
+    const specOpsHere = empLeadersHere.some(
+      (lid) => (G.catalog.leaders[lid]?.skills?.specOps ?? 0) > 0);
+    s += specOpsHere ? -3 : 4;
   }
   return s;
 }

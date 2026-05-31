@@ -276,8 +276,13 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
       if (G.rebelDeployTarget && G.rebelDeployTarget !== systemId) {
         return { ok: false, reason: `rebel-already-chose-${G.rebelDeployTarget}` };
       }
-      if (ss.subjugated || ss.loyalty === 'imperial' || G.catalog.systems[systemId]?.isCoruscant) {
-        return { ok: false, reason: 'must-be-rebel-or-neutral' };
+      // Must be a populous Rebel/neutral system — not Imperial/subjugated,
+      // not Coruscant, and NOT a remote system. Remote systems can't hold
+      // loyalty and aren't valid deployment targets (was not enforced here,
+      // so setup units could be placed on a remote world — user report).
+      const def = G.catalog.systems[systemId];
+      if (ss.subjugated || ss.loyalty === 'imperial' || def?.isCoruscant || def?.isRemote) {
+        return { ok: false, reason: 'must-be-populous-rebel-or-neutral' };
       }
       G.rebelDeployTarget = systemId;
     }

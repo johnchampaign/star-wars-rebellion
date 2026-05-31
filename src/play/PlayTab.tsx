@@ -5530,7 +5530,7 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onReset, undoCount 
     } else {
       for (const [sysId, ss] of Object.entries(G.map.systems)) {
         const sysDef = G.catalog.systems[sysId];
-        if (sysDef?.isCoruscant) continue;
+        if (sysDef?.isCoruscant || sysDef?.isRemote) continue; // remote systems aren't valid setup targets
         if (ss.subjugated || ss.loyalty === 'imperial') continue;
         legalTargets.push({ id: sysId, name: sysDef?.name ?? sysId });
       }
