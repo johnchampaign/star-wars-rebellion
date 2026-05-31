@@ -565,6 +565,15 @@ export type ChoiceRequest =
       drawnIds: [string, string];
     }
   | {
+      // The kept recruit card lists more than one leader (e.g. One in a
+      // Million → Luke or Wedge) and more than one is still eligible — the
+      // player chooses which leader to recruit. (#62)
+      kind: 'RecruitLeaderPick';
+      side: Side;
+      cardId: string;
+      candidates: LeaderId[];
+    }
+  | {
       // Research & Development — Stage 1: Empire picks between
       //   A: draw 2 project cards, keep 1, bottom 1
       //   B: remove sabotage marker from target + draw 1 project card

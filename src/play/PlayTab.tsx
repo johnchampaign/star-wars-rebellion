@@ -1098,6 +1098,24 @@ export default function PlayTab() {
       )}
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'RecruitLeaderPick'
+        && G.pendingChoice.side === humanSide && (
+        <SimpleLeaderPickModal
+          G={G}
+          color={sideColor(humanSide)}
+          title={`Recruit — choose which leader to bring in${
+            G.catalog.actions[G.pendingChoice.cardId]?.name
+              ? ` (${G.catalog.actions[G.pendingChoice.cardId]?.name})` : ''}`}
+          candidates={G.pendingChoice.candidates}
+          onPick={(lid) => {
+            const r = phases.resolveRecruitLeaderPick(G, lid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'CarbonFreezingPick'
         && humanSide === 'Empire' && (
         <SimpleLeaderPickModal

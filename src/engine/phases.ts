@@ -2997,23 +2997,66 @@ function refreshRecruitIfApplicable(G: GameState, logStart: number): boolean {
   return true;
 }
 
-/** Helper: keep card in hand, recruit the matching leader if eligible. */
+/** Auto-recruit path (used only when a side has a single card to draw, so
+ *  there's no card choice). Recruits the first ELIGIBLE leader on the card
+ *  (eligible = exists, not already in pool, not eliminated). The rare 1-card
+ *  edge does not surface a leader chooser even if the card lists two eligible
+ *  leaders; the common 2-card path does, via recruitLeaderFromCard. */
 function applyRecruitedActionCard(G: GameState, side: Side, cardId: string): void {
   const f = faction(G, side);
   const card = G.catalog.actions[cardId];
-  let recruited = false;
-  if (card?.leaderRequirement && card.leaderRequirement.length > 0) {
-    const pick = card.leaderRequirement[0];
-    if (G.catalog.leaders[pick] && !f.leaderPool.includes(pick) && !f.eliminatedLeaders.includes(pick)) {
-      f.leaderPool.push(pick);
-      log(G, { kind: 'recruit-leader', side, payload: { leaderId: pick, cardId } });
-      recruited = true;
-    }
-  }
-  if (!recruited) {
+  const eligible = (card?.leaderRequirement ?? []).filter(
+    (lid) => G.catalog.leaders[lid] && !f.leaderPool.includes(lid) && !f.eliminatedLeaders.includes(lid));
+  if (eligible.length > 0) {
+    f.leaderPool.push(eligible[0]);
+    log(G, { kind: 'recruit-leader', side, payload: { leaderId: eligible[0], cardId } });
+  } else {
     log(G, { kind: 'recruit-action-only', side, payload: { cardId } });
   }
   f.actionHand.push(cardId);
+}
+
+/** Add the kept recruit card to hand and recruit a leader from it. A card may
+ *  list more than one leader (e.g. One in a Million → Luke OR Wedge). If 2+
+ *  of them are still eligible, POST a RecruitLeaderPick so the player chooses
+ *  (returns true = paused). With 0 or 1 eligible, recruit automatically and
+ *  return false. (Issue #62: the engine used to auto-take leaderRequirement[0]
+ *  and silently drop the other leader.) */
+function recruitLeaderFromCard(G: GameState, side: Side, cardId: string): boolean {
+  const f = faction(G, side);
+  f.actionHand.push(cardId);
+  const card = G.catalog.actions[cardId];
+  const eligible = (card?.leaderRequirement ?? []).filter(
+    (lid) => G.catalog.leaders[lid] && !f.leaderPool.includes(lid) && !f.eliminatedLeaders.includes(lid));
+  if (eligible.length === 0) {
+    log(G, { kind: 'recruit-action-only', side, payload: { cardId } });
+    return false;
+  }
+  if (eligible.length === 1) {
+    f.leaderPool.push(eligible[0]);
+    log(G, { kind: 'recruit-leader', side, payload: { leaderId: eligible[0], cardId } });
+    return false;
+  }
+  G.pendingChoice = { kind: 'RecruitLeaderPick', side, cardId, candidates: eligible };
+  log(G, { kind: 'choice-request', side, payload: { kind: 'RecruitLeaderPick', cardId, candidates: eligible } });
+  return true;
+}
+
+/** After a recruit pick is fully resolved (card kept + leader chosen),
+ *  advance to the next side's recruit pick, else proceed to the build step /
+ *  finish the refresh. Shared by the card-pick and leader-pick resolvers. */
+function continueRecruitFlow(G: GameState): { ok: boolean; reason?: string } {
+  const r = G.refreshPaused;
+  if (r?.pendingRecruitPicks && r.pendingRecruitPicks.length > 0) {
+    promoteNextRecruitPick(G);
+    return { ok: true };
+  }
+  const logStart = r?.logStart ?? 0;
+  if (r) r.pendingRecruitPicks = undefined;
+  if (refreshBuildIfApplicable(G, logStart)) return { ok: true };
+  G.refreshPaused = undefined;
+  finishRefreshAfterBuild(G, logStart);
+  return { ok: true };
 }
 
 function promoteNextRecruitPick(G: GameState): void {
@@ -3043,23 +3086,30 @@ export function resolveRecruitActionCardPick(G: GameState, keepCardId: string): 
   const [a, b] = cur.drawnIds;
   if (keepCardId !== a && keepCardId !== b) return { ok: false, reason: 'invalid-pick' };
   const bottomed = keepCardId === a ? b : a;
-  applyRecruitedActionCard(G, cur.side, keepCardId);
   const f = faction(G, cur.side);
   f.actionDeck.push(bottomed);
   log(G, { kind: 'recruit-pick-resolved', side: cur.side, payload: { kept: keepCardId, bottomed } });
   r.pendingRecruitPicks.shift();
   G.pendingChoice = undefined;
-  if (r.pendingRecruitPicks.length > 0) {
-    promoteNextRecruitPick(G);
-    return { ok: true };
-  }
-  // All recruit picks done — clear field and proceed to build step.
-  r.pendingRecruitPicks = undefined;
-  const logStart = r.logStart;
-  if (refreshBuildIfApplicable(G, logStart)) return { ok: true };
-  G.refreshPaused = undefined;
-  finishRefreshAfterBuild(G, logStart);
-  return { ok: true };
+  // Recruit the leader from the kept card. If the card lists 2+ eligible
+  // leaders, this posts a RecruitLeaderPick and pauses; the leader-pick
+  // resolver then continues the flow. (#62)
+  if (recruitLeaderFromCard(G, cur.side, keepCardId)) return { ok: true };
+  return continueRecruitFlow(G);
+}
+
+/** Resolve the RecruitLeaderPick: the player chose which leader from a
+ *  multi-leader recruit card to add to the pool, then the recruit flow
+ *  continues. (#62) */
+export function resolveRecruitLeaderPick(G: GameState, leaderId: LeaderId): { ok: boolean; reason?: string } {
+  const c = G.pendingChoice;
+  if (!c || c.kind !== 'RecruitLeaderPick') return { ok: false, reason: 'no-pending' };
+  if (!c.candidates.includes(leaderId)) return { ok: false, reason: 'invalid-leader' };
+  const f = faction(G, c.side);
+  f.leaderPool.push(leaderId);
+  log(G, { kind: 'recruit-leader', side: c.side, payload: { leaderId, cardId: c.cardId } });
+  G.pendingChoice = undefined;
+  return continueRecruitFlow(G);
 }
 
 /** Return the legal unit type IDs a side may build for one (type, shape)

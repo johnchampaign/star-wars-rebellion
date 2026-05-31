@@ -1072,13 +1072,30 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const f = side === 'Rebel' ? G.rebel : G.empire;
     const canRecruit = (cid: string) => {
       const card = G.catalog.actions[cid];
-      if (!card?.leaderRequirement?.length) return false;
-      const lid = card.leaderRequirement[0];
-      return !!G.catalog.leaders[lid] && !f.leaderPool.includes(lid) && !f.eliminatedLeaders.includes(lid);
+      // A card is worth keeping if ANY leader it lists is still recruitable
+      // (multi-leader cards like the Falcon list two).
+      return (card?.leaderRequirement ?? []).some(
+        (lid) => !!G.catalog.leaders[lid] && !f.leaderPool.includes(lid) && !f.eliminatedLeaders.includes(lid));
     };
     const [a, b] = c.drawnIds;
     const keep = canRecruit(a) ? a : canRecruit(b) ? b : a;
     return phases.resolveRecruitActionCardPick(G, keep).ok;
+  }
+  // RecruitLeaderPick: a kept multi-leader card (e.g. the Falcon → Han or
+  // Chewbacca) offers a choice of which leader to recruit. AI takes the
+  // higher-value one (combined skills + tactic value). Bilateral during
+  // refresh, so handle regardless of currentPlayer. (#62)
+  if (G.pendingChoice && G.pendingChoice.kind === 'RecruitLeaderPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const value = (lid: string): number => {
+      const l = G.catalog.leaders[lid];
+      if (!l) return -1;
+      const sk = l.skills;
+      return (sk.diplomacy ?? 0) + (sk.intel ?? 0) + (sk.specOps ?? 0) + (sk.logistics ?? 0)
+        + l.tacticValues.space + l.tacticValues.ground;
+    };
+    const best = [...c.candidates].sort((x, y) => value(y) - value(x))[0];
+    return phases.resolveRecruitLeaderPick(G, best).ok;
   }
   // BuildPick is also bilateral during refresh — same fix.
   if (G.pendingChoice && G.pendingChoice.kind === 'BuildPick' && G.pendingChoice.side === side) {
