@@ -159,6 +159,25 @@ If deploy fails, common causes:
   `/api/report` and `/api/upload-logs`. Mirror the dev-only vite
   middleware in `vite.config.ts` at the same paths.
 
+## AI logs & analysis — which side was the human?
+
+When mining play logs, NEVER infer human-vs-AI from the outcome. The
+human plays BOTH sides and (per the user) basically never loses, so a
+"Rebel reputation-time win" is usually the **human playing Rebel beating
+the AI Empire**, not the AI Rebel winning.
+
+- The controlled side IS recorded: game start writes the resolved side to
+  `localStorage['rebellion-human-side']`; `archiveCompletedGame` and the
+  `/api/upload-logs` payload both carry a `humanSide` field on the upload
+  **wrapper** (NOT inside the `codec` engine state — the engine is
+  symmetric and has no such field).
+- `scripts/analyze-invasions.mjs` reads that wrapper field and prints
+  `Empire=human|AI|unknown`. Logs uploaded before the field existed show
+  `unknown` — treat those as genuinely unknown; do not guess.
+- AI-vs-AI **tournament** logs (`scripts/tournament.mjs`) have no human at
+  all — both sides are the heuristic AI. The ~28–48% Empire win rates come
+  from there (self-play), which is a separate thing from the user's games.
+
 ## RAW compliance
 
 User wants RAW (rules-as-written) per the FFG 2016 base-game rules:

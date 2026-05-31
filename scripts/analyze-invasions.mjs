@@ -14,18 +14,22 @@ const ROOT = join(__dirname, '..');
 const dir = process.argv[2] ? process.argv[2] : join(ROOT, 'logs');
 const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
 
-function loadTurnLog(file) {
+function loadGame(file) {
   const raw = JSON.parse(readFileSync(join(dir, file), 'utf-8'));
   const wrap = raw.game ?? raw;
   let st = null;
   if (typeof wrap.codec === 'string') { try { st = JSON.parse(wrap.codec).state; } catch { /**/ } }
   if (!st && wrap.turnLog) st = wrap;
-  return st;
+  // humanSide is recorded on the upload WRAPPER (not inside the engine codec).
+  // Older uploads predate it → unknown. Never infer it from outcomes.
+  const humanSide = wrap.humanSide ?? raw.humanSide ?? null;
+  return { st, humanSide };
 }
+function loadTurnLog(file) { return loadGame(file).st; }
 
 const summary = [];
 for (const f of files) {
-  const st = loadTurnLog(f);
+  const { st, humanSide } = loadGame(f);
   if (!st) continue;
   const log = st.turnLog ?? [];
   if (log.length === 0) continue;
@@ -44,22 +48,30 @@ for (const f of files) {
     && e.payload?.attackerSide === 'Empire').length;
   const activationsToBase = after.filter((e) => e.kind === 'activate-system' && e.side === 'Empire'
     && e.payload?.targetSystemId === baseSys).length;
+  // Who controlled which side. humanSide is the RECORDED field (or unknown);
+  // the Empire is human iff humanSide==='Empire', AI otherwise.
+  const empireController = humanSide === 'Empire' ? 'human' : humanSide === 'Rebel' ? 'AI' : 'unknown';
   summary.push({
     file: f.slice(0, 12), winner: st.winner, reason: st.winReason, endTurn: st.timeMarker,
+    humanSide: humanSide ?? 'unknown', empireController,
     revealTurn, baseSys, turnsToEnd: (st.timeMarker ?? 0) - revealTurn,
     baseInvasions: baseCombats, activationsToBase, postRevealEmpireActions: empAct.length,
   });
 }
 
 console.log(`\n=== ${summary.length} uploaded games with a base reveal (of ${files.length} files) ===\n`);
-const wins = summary.filter((s) => s.winner === 'Empire' && s.reason === 'base-captured');
-console.log(`Empire base-capture wins: ${wins.length}`);
+const known = summary.filter((s) => s.empireController !== 'unknown');
+console.log(`Empire controller recorded: ${known.length}/${summary.length} games`
+  + (known.length < summary.length ? ` (${summary.length - known.length} predate the humanSide field — controller unknown, do NOT infer it)` : ''));
+console.log(`Empire base-capture wins: ${summary.filter((s) => s.winner === 'Empire' && s.reason === 'base-captured').length}`);
 for (const s of summary.sort((a, b) => (b.winner === 'Empire') - (a.winner === 'Empire'))) {
-  console.log(`  ${s.file}  ${String(s.winner).padEnd(7)} ${String(s.reason).padEnd(16)} reveal@T${s.revealTurn} end@T${s.endTurn} (${s.turnsToEnd}t)  base=${s.baseSys}  invasions=${s.baseInvasions} acts→base=${s.activationsToBase}`);
+  console.log(`  ${s.file}  Empire=${s.empireController.padEnd(7)} ${String(s.winner).padEnd(7)} ${String(s.reason).padEnd(16)} reveal@T${s.revealTurn} end@T${s.endTurn} (${s.turnsToEnd}t)  base=${s.baseSys}  invasions=${s.baseInvasions}`);
 }
 
-// Detailed choreography for the first 2 Empire wins.
-for (const w of wins.slice(0, 2)) {
+// Detailed choreography for the first 2 confirmed human-Empire base-capture wins.
+const wins = summary.filter((s) => s.winner === 'Empire' && s.reason === 'base-captured'
+  && s.empireController === 'human');
+for (const w of (wins.length ? wins : summary.filter((s) => s.winner === 'Empire' && s.reason === 'base-captured')).slice(0, 2)) {
   const st = loadTurnLog(files.find((f) => f.startsWith(w.file)));
   const log = st.turnLog;
   const idx = log.findIndex((e) => e.kind === 'reveal-base');
