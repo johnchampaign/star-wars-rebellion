@@ -6330,7 +6330,9 @@ function AssignmentPanel({ G, side, onChange }: { G: GameState; side: Side; onCh
 // Single source of truth shared with the engine's recruit step (issues
 // #48/#59) — the tracker badge and the actual recruit can't drift apart.
 const RECRUIT_TURNS = phases.RECRUIT_TIME_MARKERS;
-const BUILD_TURNS = new Set([2, 4, 6, 8, 10, 12, 14, 16]);
+// Shared with the engine's build step (was wrongly including turn 16, the
+// final space, which has no build icon). Single source of truth.
+const BUILD_TURNS = phases.BUILD_TIME_MARKERS;
 const TRACK_LENGTH = 16;
 const TRACK_WINDOW = 8;
 

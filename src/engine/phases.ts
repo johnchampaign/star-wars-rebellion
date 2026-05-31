@@ -22,6 +22,11 @@ import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck 
  *  actual recruit can never disagree (issues #48/#59). */
 export const RECRUIT_TIME_MARKERS: ReadonlySet<number> = new Set([2, 3, 4, 5]);
 
+/** Time-track turns carrying a BUILD icon, per the printed 16-space board:
+ *  the even turns 2 through 14 (turn 16, the final space, has none). Shared
+ *  by the engine's Refresh build step and the UI turn tracker. */
+export const BUILD_TIME_MARKERS: ReadonlySet<number> = new Set([2, 4, 6, 8, 10, 12, 14]);
+
 /** Roll N mission dice and count successes. Per Rules Reference "Reveal a
  *  Mission" panel: each player rolls dice of any color, hit = 1 success,
  *  direct-hit = 2 successes. Per RR p.6 "Component Limitations": each player
@@ -2952,16 +2957,12 @@ function refreshDrawMissions(G: GameState): void {
  *  other goes to the bottom of the deck. Returns true if a player
  *  choice is pending (refresh paused). */
 function refreshRecruitIfApplicable(G: GameState, logStart: number): boolean {
-  // For now: hard-code time-track icons. In a real game the time track has
-  // recruit/build icons on specific spaces. The user-published version lists:
-  //   Time 1: nothing (setup)
-  //   Time 2: Recruit + Build
-  //   Time 3: Build
-  //   Time 4: Recruit + Build
-  //   Time 5: Build
-  //   Time 6: Recruit + Build
-  //   Time 7: Build
-  //   Time 8: end (Rebel can win at any earlier point if reputation meets time)
+  // Time-track icons, confirmed against the printed 16-space board:
+  //   Recruit icons: turns 2, 3, 4, 5            (RECRUIT_TIME_MARKERS)
+  //   Build icons:   turns 2, 4, 6, 8, 10, 12, 14 (BUILD_TIME_MARKERS)
+  //   Turn 16 is the final space (no recruit/build icon). The game can end
+  //   earlier — Rebel wins when reputation meets the time marker; Empire
+  //   wins by capturing the base.
   // Recruit fires on time-track turns 2-5 (confirmed against the printed
   // 16-space board). Was wrongly {2,4,6}, so turn 3 never recruited even
   // though the turn tracker promised it (issues #48/#59). The UI imports
@@ -3101,8 +3102,10 @@ type BuildPickEntry = {
  *  for player choice. Returns true if a BuildPick is now pending (the
  *  refresh phase is paused). */
 function refreshBuildIfApplicable(G: GameState, logStart: number): boolean {
-  // Build happens on every EVEN turn (verified against the printed board).
-  if (G.timeMarker % 2 !== 0) return false;
+  // Build happens on time-track turns 2,4,6,8,10,12,14 (the even turns up
+  // to 14) per the printed 16-space board — turn 16 (the final space) has
+  // NO build icon. Was "every even turn", which wrongly built on 16 too.
+  if (!BUILD_TIME_MARKERS.has(G.timeMarker)) return false;
 
   type AutoApplied = {
     sourceSystemId: SystemId | 'rebel-base';
