@@ -206,7 +206,7 @@
       "side": "Empire",
       "isStarting": false,
       "timing": "Assignment",
-      "leaderRequirement": [],
+      "leaderRequirement": ["soontir-fel"],
       "effectKey": "",
       "rulesText": "Place this leader in any system. Then move up to 4 TIE Fighters from any system(s) to this system, ignoring transport restrictions and adjacency. If there are Rebel ships in this system, resolve a combat.",
       "image": "ActionCardEmpireScoutingMission.png"
