@@ -279,12 +279,35 @@ export function runCombat(G: GameState): void {
     if (!continues) {
       c.step = 'Ended';
     } else {
-      c.round++;
-      c.roundTheatersDone = undefined; // reset for next round
-      c.retreatStepDoneThisRound = false;
-      c.retreatDecidedThisRound = []; // each round each side gets a fresh retreat decision
-      // No Escape only lasts the round it was played.
-      if (c.flags?.cannotRetreatThisRound) c.flags.cannotRetreatThisRound = {};
+      // Stalemate guard. Total units at the system only ever decreases (kills
+      // / retreats); it never grows mid-combat. If it hasn't dropped for
+      // STALEMATE_ROUND_LIMIT rounds, neither side can make progress (0-attack
+      // standoff, perpetual blocking, an unkillable Death Star, etc.) — end the
+      // fight as inconclusive rather than loop forever (the local safetyCounter
+      // can't catch this because it resets on every choice-pause re-entry).
+      const STALEMATE_ROUND_LIMIT = 5;
+      const totalUnits =
+        unitsOf(G, 'Rebel', c.systemId).length + unitsOf(G, 'Empire', c.systemId).length;
+      if (c.stalemateBaselineCount === undefined || totalUnits < c.stalemateBaselineCount) {
+        c.stalemateBaselineCount = totalUnits;
+        c.stalemateRounds = 0;
+      } else {
+        c.stalemateRounds = (c.stalemateRounds ?? 0) + 1;
+      }
+      if ((c.stalemateRounds ?? 0) >= STALEMATE_ROUND_LIMIT) {
+        log(G, { kind: 'combat-stalemate-end', payload: {
+          systemId: c.systemId, round: c.round,
+          explanation: 'Neither side could make progress — combat ended inconclusively.',
+        }});
+        c.step = 'Ended';
+      } else {
+        c.round++;
+        c.roundTheatersDone = undefined; // reset for next round
+        c.retreatStepDoneThisRound = false;
+        c.retreatDecidedThisRound = []; // each round each side gets a fresh retreat decision
+        // No Escape only lasts the round it was played.
+        if (c.flags?.cannotRetreatThisRound) c.flags.cannotRetreatThisRound = {};
+      }
     }
   }
 

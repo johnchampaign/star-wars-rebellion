@@ -919,6 +919,17 @@ export type CombatState = {
   // Sides that have used their Yoda reroll during the current round
   // (resets each round, mirrors G.yodaRerollUsedThisRound semantics).
   yodaRerollUsedRound?: number;
+  // Stalemate guard. Combat ends only when one side is cleared from every
+  // shared theater — but if neither side can deal lethal damage (e.g. both
+  // sides hold only 0-attack units like transports/structures, or a defender
+  // perpetually blocks), the round loop never terminates (observed round 960).
+  // We track the total unit count at the system; if it doesn't drop for
+  // STALEMATE_ROUND_LIMIT consecutive rounds (no kill, no retreat), the combat
+  // is making no progress and is ended as inconclusive. The local
+  // safetyCounter can't catch this — it resets every time runCombat re-enters
+  // after a per-round tactic/retreat choice pause.
+  stalemateBaselineCount?: number;
+  stalemateRounds?: number;
   // Per-side flags from active tactic cards. Reset where appropriate.
   // - cannotBlockUntilStepEnd[side]: defender (side) cannot play any
   //   block cards for the remainder of the current theater step.
