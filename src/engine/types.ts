@@ -504,6 +504,20 @@ export type ChoiceRequest =
       icons: { theater: 'space' | 'ground'; shape: 'triangle' | 'circle' | 'square' }[];
     }
   | {
+      // Generic "build units from this system's resource icons" choice — the
+      // player picks a unit type per icon (or skips it). Used by effects that
+      // build from resource icons (Construct Factory, Address Delays, Establish
+      // Trade Relations). Those previously auto-picked a fixed default unit,
+      // which both removed the choice and (for Rebel ground) always built a
+      // trooper regardless of icon shape. `label` is the card/mission name for
+      // the modal title + log.
+      kind: 'BuildFromIconsPick';
+      side: Side;
+      systemId: SystemId;
+      icons: { theater: 'space' | 'ground'; shape: 'triangle' | 'circle' | 'square' }[];
+      label: string;
+    }
+  | {
       kind: 'ContingencyPlanPick';
       side: Side; // always 'Rebel'
       leaderId: LeaderId; // the leader being reassigned

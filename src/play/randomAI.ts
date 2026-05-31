@@ -1456,6 +1456,23 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const picks = c.icons.map(pickDefault);
     return phases.resolveTemporaryAllianceBuildPick(G, picks).ok;
   }
+  // Build-from-icons (Construct Factory / Address Delays / Establish Trade
+  // Relations): pick the strongest legal unit per icon (highest tier <= icon
+  // shape, matching side+theater, non-structure). Catalog-driven so it works
+  // for both sides.
+  if (G.pendingChoice && G.pendingChoice.kind === 'BuildFromIconsPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+    const picks = c.icons.map((icon) => {
+      const need = tierRank[icon.shape] ?? 2;
+      const opts = Object.values(G.catalog.unitTypes)
+        .filter((t) => t.side === side && t.theater === icon.theater
+          && t.class !== 'structure' && (tierRank[t.tier ?? 'square'] ?? 2) <= need)
+        .sort((a, b) => (tierRank[a.tier ?? 'square'] ?? 2) - (tierRank[b.tier ?? 'square'] ?? 2));
+      return opts.length > 0 ? opts[opts.length - 1].id : null; // highest tier <= icon
+    });
+    return phases.resolveBuildFromIconsPick(G, picks).ok;
+  }
   // Contingency Plan: pick a random starting mission from the candidates.
   if (G.pendingChoice && G.pendingChoice.kind === 'ContingencyPlanPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;

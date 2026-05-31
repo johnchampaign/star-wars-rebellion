@@ -2617,6 +2617,50 @@ export function resolveTemporaryAllianceBuildPick(
   return { ok: true };
 }
 
+/** Generic build-from-resource-icons resolver. The player picked a unit type
+ *  per icon (or null to skip). Validates type/theater/tier per icon, queues the
+ *  builds, then resumes the mission/project flow. Replaces the old auto-pick
+ *  (defaultUnitForIcon) used by Construct Factory / Address Delays / Establish
+ *  Trade Relations. */
+export function resolveBuildFromIconsPick(
+  G: GameState, typeIds: (string | null)[]
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'BuildFromIconsPick') return { ok: false, reason: 'no-pending' };
+  if (typeIds.length !== choice.icons.length) return { ok: false, reason: 'length-mismatch' };
+  const sysDef = G.catalog.systems[choice.systemId];
+  if (!sysDef || !sysDef.buildSlot) return { ok: false, reason: 'no-build-slot' };
+  const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+  for (let i = 0; i < typeIds.length; i++) {
+    const tid = typeIds[i];
+    if (tid === null) continue;
+    const icon = choice.icons[i];
+    const t = G.catalog.unitTypes[tid];
+    if (!t || t.side !== choice.side) return { ok: false, reason: `bad-type:${tid}` };
+    if (t.theater !== icon.theater) return { ok: false, reason: `theater-mismatch:${tid}` };
+    if (t.class === 'structure') return { ok: false, reason: `structure:${tid}` };
+    const need = tierRank[icon.shape] ?? 2;
+    const have = tierRank[t.tier ?? 'square'] ?? 2;
+    if (have > need) return { ok: false, reason: `tier-too-high:${tid}` };
+  }
+  let added = 0;
+  for (let i = 0; i < typeIds.length; i++) {
+    const tid = typeIds[i];
+    if (!tid) continue;
+    M.buildToQueue(G, choice.side, tid, sysDef.buildSlot, choice.systemId);
+    added++;
+  }
+  log(G, { kind: 'build-from-icons', side: choice.side, payload: {
+    systemId: choice.systemId, label: choice.label, added, picks: typeIds,
+  }});
+  G.pendingChoice = undefined;
+  // These effects resolve inside a mission/project (runMissionEffect), so
+  // resume the mission flow (discard + advance command turn). Action-card
+  // build effects use the separate Temporary Alliance flow.
+  if (G.pendingMission) resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Contingency Plan: Rebel picks a starting mission from their hand to
  *  re-assign the resolver leader to. The leader goes onto leadersOnMissions,
  *  available to be revealed later this Command phase (or a future one). */

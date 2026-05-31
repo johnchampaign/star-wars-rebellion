@@ -286,19 +286,34 @@ const constructDeathStar: EffectHandler = (G, ctx) => {
   return true;
 };
 
+/** Post a BuildFromIconsPick so the player chooses a unit type per resource
+ *  icon (RAW: you choose what to build, just like the normal Build step). Used
+ *  by effects that "place units on the build queue using this system's resource
+ *  icons" — Construct Factory, Address Delays, Establish Trade Relations.
+ *  Returns false (no choice posted) if the system can't build right now. */
+function queueBuildFromIcons(G: GameState, side: 'Rebel' | 'Empire', sysId: string, label: string): boolean {
+  const sysDef = G.catalog.systems[sysId];
+  if (!sysDef || !sysDef.buildSlot || sysDef.resources.length === 0) return false;
+  G.pendingChoice = {
+    kind: 'BuildFromIconsPick',
+    side, systemId: sysId, label,
+    icons: sysDef.resources.map((r) => ({ theater: r.type, shape: r.shape })),
+  };
+  log(G, { kind: 'choice-request', side, payload: {
+    kind: 'BuildFromIconsPick', systemId: sysId, label, iconCount: sysDef.resources.length,
+  }});
+  return true;
+}
+
 const constructFactory: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  // "Place units on the build queue using this system's resource icons and number."
-  const sysDef = G.catalog.systems[sysId];
+  // "Place units on the build queue using this system's resource icons and
+  // number." Player chooses the unit type per icon (BuildFromIconsPick).
   const ss = G.map.systems[sysId];
-  if (!sysDef || !ss) return true;
+  if (!ss) return true;
   if (ss.sabotage) ss.sabotage = false; // sabotage removed before resolving
-  const slot = (sysDef.buildSlot ?? 1) as 1 | 2 | 3;
-  for (const icon of sysDef.resources) {
-    const choice = defaultUnitForIcon('Empire', icon.type, icon.shape);
-    if (choice) M.buildToQueue(G, 'Empire', choice, slot);
-  }
+  queueBuildFromIcons(G, 'Empire', sysId, 'Construct Factory');
   return true;
 };
 
@@ -398,14 +413,7 @@ const displayOfPower: EffectHandler = (G, ctx) => {
 const addressDelays: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  const sysDef = G.catalog.systems[sysId];
-  const ss = G.map.systems[sysId];
-  if (!sysDef || !ss) return true;
-  const slot = (sysDef.buildSlot ?? 1) as 1 | 2 | 3;
-  for (const icon of sysDef.resources) {
-    const choice = defaultUnitForIcon('Empire', icon.type, icon.shape);
-    if (choice) M.buildToQueue(G, 'Empire', choice, slot);
-  }
+  queueBuildFromIcons(G, 'Empire', sysId, 'Address Delays');
   return true;
 };
 
@@ -733,26 +741,10 @@ const establishTradeRelations: EffectHandler = (G, ctx) => {
     }});
     return true;
   }
-  const slot = (sysDef.buildSlot ?? 1) as 1 | 2 | 3;
-  const added: string[] = [];
-  for (const icon of sysDef.resources) {
-    const choice = defaultUnitForIcon('Rebel', icon.type, icon.shape);
-    if (choice) {
-      // Pass sourceSystemId so the build-queue log entry is searchable
-      // back to this mission (and the refresh-report can show "built X
-      // from Y" attribution).
-      M.buildToQueue(G, 'Rebel', choice, slot, sysId);
-      added.push(choice);
-    }
-  }
-  // Loud summary event the UI/log can surface — RAW outcome: "place units
-  // on the build queue using this system's resource icons and number."
-  log(G, { kind: 'establish-trade-relations-built', side: 'Rebel', payload: {
-    systemId: sysId, slot, added,
-    note: added.length === 0
-      ? 'System has no resource icons; no units added to the queue.'
-      : `Added ${added.length} unit(s) to build queue slot ${slot} (from ${sysDef.name}'s resource icons).`,
-  }});
+  // Player chooses the unit type per resource icon (BuildFromIconsPick) —
+  // matching the normal Build step and Temporary Alliance, instead of forcing
+  // a fixed default (which also never built airspeeders for the Rebel).
+  queueBuildFromIcons(G, 'Rebel', sysId, 'Establish Trade Relations');
   return true;
 };
 
@@ -1268,24 +1260,6 @@ const covertOperation: EffectHandler = (G, ctx) => {
 // ============================================================================
 // Defaults / helpers
 // ============================================================================
-
-function defaultUnitForIcon(side: 'Rebel' | 'Empire', type: 'space' | 'ground', shape: 'triangle' | 'circle' | 'square'): string | null {
-  if (side === 'Rebel') {
-    if (type === 'ground') return 'rebel-trooper';
-    if (shape === 'square') return 'mon-cala-cruiser';
-    if (shape === 'circle') return 'corellian-corvette';
-    return 'x-wing';
-  } else {
-    if (type === 'ground') {
-      if (shape === 'square') return 'at-at';
-      if (shape === 'circle') return 'at-st';
-      return 'stormtrooper';
-    }
-    if (shape === 'square') return 'star-destroyer';
-    if (shape === 'circle') return 'assault-carrier';
-    return 'tie-fighter';
-  }
-}
 
 // ============================================================================
 // Tactic card handlers — REMOVED (all effects live in src/engine/combat.ts).

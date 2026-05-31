@@ -99,6 +99,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'StolenPlansReorder':       return side === 'Rebel';
     case 'PlanTheAssaultShips':      return side === 'Rebel';
     case 'LeadStrikeTeamUnits':      return side === 'Rebel';
+    case 'BuildFromIconsPick':       return pc.side === side;
     case 'CovertOperationPick':      return side === 'Rebel';
     case 'OverseeProjectPick':       return pc.side === side;
     case 'CaptureOperativePick':     return pc.side === side;
@@ -1569,6 +1570,18 @@ export default function PlayTab() {
         <TemporaryAllianceBuildPickModal G={G} choice={G.pendingChoice}
           onPick={(picks) => {
             const r = phases.resolveTemporaryAllianceBuildPick(G, picks);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'BuildFromIconsPick'
+        && G.pendingChoice.side === humanSide && (
+        <BuildFromIconsPickModal G={G} choice={G.pendingChoice}
+          onPick={(picks) => {
+            const r = phases.resolveBuildFromIconsPick(G, picks);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -9194,6 +9207,75 @@ function TemporaryAllianceBuildPickModal({
                 <span style={{ color: '#aaa', minWidth: 110 }}>
                   {icon.theater} · {icon.shape}
                 </span>
+                <select
+                  value={picks[i] ?? ''}
+                  onChange={(e) => {
+                    const v = e.target.value || null;
+                    setPicks((prev) => { const next = [...prev]; next[i] = v; return next; });
+                  }}
+                  style={{ background: '#0c0d10', color: '#e8e8ea', border: '1px solid #3a3d44', padding: '4px 8px', minWidth: 200 }}
+                >
+                  <option value="">— skip this icon —</option>
+                  {opts.map((tid) => (
+                    <option key={tid} value={tid}>{G.catalog.unitTypes[tid]?.name ?? tid}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+        </div>
+        <button className="tab-button active" onClick={() => onPick(picks)}>
+          Add to build queue
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function BuildFromIconsPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'BuildFromIconsPick'; side: Side; systemId: string; label: string; icons: { theater: 'space' | 'ground'; shape: 'triangle' | 'circle' | 'square' }[] };
+  onPick: (picks: (string | null)[]) => void;
+}) {
+  const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+  const legalForIcon = (icon: { theater: string; shape: string }): string[] => {
+    const need = tierRank[icon.shape] ?? 2;
+    return Object.values(G.catalog.unitTypes)
+      .filter((t) => t.side === choice.side
+        && t.theater === icon.theater
+        && (tierRank[t.tier ?? 'square'] ?? 2) <= need
+        && t.class !== 'structure')
+      .map((t) => t.id);
+  };
+  const defaults = choice.icons.map((icon) => {
+    const opts = legalForIcon(icon);
+    return opts[opts.length - 1] ?? null; // highest tier <= icon
+  });
+  const [picks, setPicks] = useState<(string | null)[]>(defaults);
+  const accent = choice.side === 'Rebel' ? '#aae0ff' : '#ffaaaa';
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${accent}`, borderRadius: 6,
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: accent, marginTop: 0 }}>{choice.label} — build units at {sysName}</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          One unit per resource icon (you may build a lower tier than the icon). Skip an icon to leave that slot empty.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+          {choice.icons.map((icon, i) => {
+            const opts = legalForIcon(icon);
+            return (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                <span style={{ color: '#aaa', minWidth: 110 }}>{icon.theater} · {icon.shape}</span>
                 <select
                   value={picks[i] ?? ''}
                   onChange={(e) => {
