@@ -804,13 +804,22 @@ const homingBeacon: EffectHandler = (G, ctx) => {
 /** "Take 4 random probe cards. Place on top and/or bottom of the deck." Auto:
  *  take 4 random, all to the bottom (worst for Empire). */
 const plantFalseLead: EffectHandler = (G, _ctx) => {
-  if (G.probeDeck.length === 0) return true;
-  const n = Math.min(4, G.probeDeck.length);
+  // RAW: "Randomly take 4 of the Imperial player's probe cards [from their
+  // HAND] and place them on the top and/or bottom of the deck." The point is
+  // to return the Empire's drawn probes (its ruled-out-system intel) to the
+  // deck, undoing that narrowing. The old code operated on the DECK instead
+  // of the hand, so the Empire's hand cards were never returned (issue #64).
+  const hand = G.empire.probeHand ?? [];
+  if (hand.length === 0) return true;
+  const n = Math.min(4, hand.length);
   const taken: string[] = [];
   for (let k = 0; k < n; k++) {
-    const i = nextInt(G.rng, G.probeDeck.length);
-    taken.push(G.probeDeck.splice(i, 1)[0]);
+    const i = nextInt(G.rng, hand.length);
+    taken.push(hand.splice(i, 1)[0]);
   }
+  // Best for the Rebel: bury them at the BOTTOM so the Empire can't quickly
+  // re-learn those ruled-out systems. (RAW allows top and/or bottom; bottom
+  // is the strong play and matches the "false lead" intent.)
   G.probeDeck.push(...taken);
   log(G, { kind: 'plant-false-lead', side: 'Rebel', payload: { moved: n, placed: 'bottom' } });
   return true;

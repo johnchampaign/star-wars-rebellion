@@ -361,6 +361,12 @@ export default function PlayTab() {
         if (stepsThisBatch >= 200) break;  // per-batch safety
         const Gn = gameRef.current;
         if (!Gn || Gn.isGameOver) break;
+        // Pause the AI while a mission/combat report is waiting to be shown,
+        // so the human sees the result before the AI takes its next action
+        // (and before the combat board can preempt it). Reporter saw Plant
+        // False Lead resolve and the Empire immediately start a combat
+        // elsewhere without the mission result ever appearing. (#63)
+        if ((Gn.missionReports?.length ?? 0) > 0 || (Gn.combatReports?.length ?? 0) > 0) break;
         const owes = aiOwesChoice(Gn, ai);
         if (Gn.currentPlayer !== ai && !owes) break;
         let did = false;
@@ -1721,7 +1727,7 @@ export default function PlayTab() {
           tactics, defender tactics, damage assignment. Renders whenever
           combat is active (G.pendingCombat set) so the player can see
           units / leaders / dice / hands continuously. */}
-      {G.pendingCombat && (
+      {G.pendingCombat && (!G.missionReports || G.missionReports.length === 0) && (
         <CombatBoardLive
           G={G}
           humanSide={humanSide}
