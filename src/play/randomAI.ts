@@ -1076,9 +1076,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       // (not already in play anywhere). Multi-leader cards list two.
       return (card?.leaderRequirement ?? []).some((lid) => phases.leaderRecruitable(G, side, lid));
     };
-    const [a, b] = c.drawnIds;
-    const keep = canRecruit(a) ? a : canRecruit(b) ? b : a;
-    return phases.resolveRecruitActionCardPick(G, keep).ok;
+    const recruitable = c.drawnIds.find(canRecruit);
+    if (recruitable) return phases.resolveRecruitActionCardPick(G, recruitable).ok;
+    // No drawn card recruits anyone. RAW: dig deeper while allowed, so the AI
+    // keeps drawing until it can recruit (or the deck runs dry). Only when it
+    // genuinely can't recruit does it keep the first card for its action.
+    if (c.canDrawMore) return phases.recruitDrawAnother(G).ok;
+    return phases.resolveRecruitActionCardPick(G, c.drawnIds[0]).ok;
   }
   // RecruitLeaderPick: a kept multi-leader card (e.g. the Falcon → Han or
   // Chewbacca) offers a choice of which leader to recruit. AI takes the

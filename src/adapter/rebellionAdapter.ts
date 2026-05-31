@@ -143,6 +143,7 @@ function applyAction(state: GameState, action: RebellionAction, actor: Side): Ga
     case 'resolveRetrieveThePlansPick': Phases.resolveRetrieveThePlansPick(G, a.objectiveId); break;
     case 'resolveInterrogationDroidDecoyPick': Phases.resolveInterrogationDroidDecoyPick(G, a.systemIds); break;
     case 'resolveRecruitActionCardPick': Phases.resolveRecruitActionCardPick(G, a.keepCardId); break;
+    case 'recruitDrawAnother': Phases.recruitDrawAnother(G); break;
     case 'resolveBuildPicks': Phases.resolveBuildPicks(G, a.choices); break;
     case 'resolveDeployUnitPick': Phases.resolveDeployUnitPick(G, a.systemId); break;
     case 'resolveActionCardSystemPick': Phases.resolveActionCardSystemPick(G, a.systemId); break;
@@ -462,8 +463,10 @@ function choiceActions(G: GameState, c: ChoiceRequest): RebellionAction[] {
       return c.candidates.map(cid => ({ kind: 'playAssignmentActionCard', cardId: cid }));
     case 'ActionCardSystemPick':
       return c.candidates.map(sid => ({ kind: 'resolveActionCardSystemPick', systemId: sid }));
-    case 'RecruitActionCardPick':
-      return c.drawnIds.map(id => ({ kind: 'resolveRecruitActionCardPick', keepCardId: id }));
+    case 'RecruitActionCardPick': {
+      const keeps = c.drawnIds.map(id => ({ kind: 'resolveRecruitActionCardPick' as const, keepCardId: id }));
+      return c.canDrawMore ? [...keeps, { kind: 'recruitDrawAnother' as const }] : keeps;
+    }
     case 'MisdirectionPick':
       return c.candidates.map(lid => ({ kind: 'resolveMisdirectionPick', leaderId: lid }));
     case 'BuildPick': {

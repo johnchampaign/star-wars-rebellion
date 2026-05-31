@@ -3002,7 +3002,7 @@ function refreshRecruitIfApplicable(G: GameState, logStart: number): boolean {
 
   // Draw 2 per side and collect pending picks. Edge cases (deck < 2):
   // 0 cards → skip side. 1 card → no choice, auto-keep that card.
-  const pending: { side: Side; drawnIds: [string, string] }[] = [];
+  const pending: { side: Side; drawnIds: string[] }[] = [];
   for (const side of ['Rebel', 'Empire'] as const) {
     const f = faction(G, side);
     if (f.actionDeck.length === 0) continue;
@@ -3104,18 +3104,59 @@ function continueRecruitFlow(G: GameState): { ok: boolean; reason?: string } {
   return { ok: true };
 }
 
+/** True if NONE of the drawn cards shows a still-recruitable leader. Per RAW,
+ *  only then may the player keep drawing deeper. */
+function noRecruitableAmongDrawn(G: GameState, side: Side, drawnIds: string[]): boolean {
+  for (const cid of drawnIds) {
+    const card = G.catalog.actions[cid];
+    if ((card?.leaderRequirement ?? []).some((lid) => leaderRecruitable(G, side, lid))) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function promoteNextRecruitPick(G: GameState): void {
   const r = G.refreshPaused;
   if (!r?.pendingRecruitPicks || r.pendingRecruitPicks.length === 0) return;
   const next = r.pendingRecruitPicks[0];
+  const f = faction(G, next.side);
+  // RAW: the player may continue drawing one card at a time ONLY while none of
+  // the drawn cards shows a recruitable leader (and the deck still has cards).
+  const canDrawMore =
+    f.actionDeck.length > 0 && noRecruitableAmongDrawn(G, next.side, next.drawnIds);
   G.pendingChoice = {
     kind: 'RecruitActionCardPick',
     side: next.side,
     drawnIds: next.drawnIds,
+    canDrawMore,
   };
   log(G, { kind: 'choice-request', side: next.side, payload: {
     kind: 'RecruitActionCardPick', cards: next.drawnIds,
   }});
+}
+
+/** RAW draw-deeper: when none of the currently-drawn recruit cards shows a
+ *  still-recruitable leader, the player may draw one more card from the top of
+ *  the action deck. It joins the drawn set; the player then keeps one of all
+ *  drawn cards (the rest go to the bottom). Re-posts the pick. */
+export function recruitDrawAnother(G: GameState): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'RecruitActionCardPick') return { ok: false, reason: 'no-pending' };
+  const r = G.refreshPaused;
+  if (!r?.pendingRecruitPicks || r.pendingRecruitPicks.length === 0) return { ok: false, reason: 'no-refresh-pause' };
+  const cur = r.pendingRecruitPicks[0];
+  if (cur.side !== choice.side) return { ok: false, reason: 'side-mismatch' };
+  const f = faction(G, cur.side);
+  // Guard: only legal while no drawn card is recruitable and the deck has cards.
+  if (f.actionDeck.length === 0) return { ok: false, reason: 'deck-empty' };
+  if (!noRecruitableAmongDrawn(G, cur.side, cur.drawnIds)) return { ok: false, reason: 'recruitable-available' };
+  const drawn = f.actionDeck.shift()!;
+  cur.drawnIds.push(drawn);
+  log(G, { kind: 'recruit-draw-another', side: cur.side, payload: { drawn } });
+  G.pendingChoice = undefined;
+  promoteNextRecruitPick(G);
+  return { ok: true };
 }
 
 /** Resolve a single side's recruit pick. The kept card goes to hand
@@ -3128,11 +3169,11 @@ export function resolveRecruitActionCardPick(G: GameState, keepCardId: string): 
   if (!r?.pendingRecruitPicks || r.pendingRecruitPicks.length === 0) return { ok: false, reason: 'no-refresh-pause' };
   const cur = r.pendingRecruitPicks[0];
   if (cur.side !== choice.side) return { ok: false, reason: 'side-mismatch' };
-  const [a, b] = cur.drawnIds;
-  if (keepCardId !== a && keepCardId !== b) return { ok: false, reason: 'invalid-pick' };
-  const bottomed = keepCardId === a ? b : a;
+  if (!cur.drawnIds.includes(keepCardId)) return { ok: false, reason: 'invalid-pick' };
+  // The unchosen drawn cards all go to the bottom of the deck, in draw order.
+  const bottomed = cur.drawnIds.filter((id) => id !== keepCardId);
   const f = faction(G, cur.side);
-  f.actionDeck.push(bottomed);
+  for (const id of bottomed) f.actionDeck.push(id);
   log(G, { kind: 'recruit-pick-resolved', side: cur.side, payload: { kept: keepCardId, bottomed } });
   r.pendingRecruitPicks.shift();
   G.pendingChoice = undefined;

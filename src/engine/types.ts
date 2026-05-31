@@ -557,12 +557,16 @@ export type ChoiceRequest =
       candidates: SystemId[];
     }
   | {
-      // Refresh recruit step: drew 2 action cards, keep 1 (into hand)
-      // which determines a leader to recruit if eligible; bottom the
-      // other. Per-side; processed Rebel first, then Empire.
+      // Refresh recruit step: drew (at least) 2 action cards, keep 1 (into
+      // hand) which determines a leader to recruit if eligible; the rest go
+      // to the bottom. Per-side; processed Rebel first, then Empire.
+      // RAW: if none of the drawn cards shows a still-recruitable leader, the
+      // player MAY draw more cards one at a time until one does (canDrawMore).
+      // drawnIds grows as the player draws deeper.
       kind: 'RecruitActionCardPick';
       side: Side;
-      drawnIds: [string, string];
+      drawnIds: string[];
+      canDrawMore: boolean;
     }
   | {
       // The kept recruit card lists more than one leader (e.g. One in a
@@ -1178,7 +1182,7 @@ export type GameState = {
     // Recruit-step picks queued before the build-step picks. Processed
     // Rebel first, then Empire. Each side picks 1 of 2 drawn action
     // cards to keep (and recruits the matching leader if able).
-    pendingRecruitPicks?: { side: Side; drawnIds: [string, string] }[];
+    pendingRecruitPicks?: { side: Side; drawnIds: string[] }[];
     pendingBuildPicks: {
       side: Side;
       picks: {

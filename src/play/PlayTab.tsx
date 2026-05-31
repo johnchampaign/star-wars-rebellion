@@ -1165,44 +1165,19 @@ export default function PlayTab() {
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'RecruitActionCardPick'
         && G.pendingChoice.side === humanSide && (
-        <TopBottomCardPickModal
+        <RecruitCardPickModal
           G={G}
-          cardIds={G.pendingChoice.drawnIds}
+          side={G.pendingChoice.side}
+          drawnIds={G.pendingChoice.drawnIds}
+          canDrawMore={G.pendingChoice.canDrawMore}
           color={sideColor(G.pendingChoice.side)}
-          title="Recruit — choose which leader to keep"
-          blurb="You drew 2 action cards, each recruiting a different leader. Whichever card is in the KEEP slot is the leader you recruit; the other goes to the bottom of the deck. Click the other card (or drag it) to swap which one you keep, then Confirm."
-          topLabel="Keep & recruit"
-          topHint="This leader joins your pool."
-          bottomLabel="Bottom of deck"
-          bottomHint="Not recruited — returned to the bottom of the deck."
-          lookupCard={(cid) => {
-            // Show the LEADER each card recruits, not just the card name —
-            // otherwise the player can't tell which leader they're keeping
-            // and just confirms the default (left) card. (Issue #49.)
-            const a = G.catalog.actions[cid];
-            const lid = a?.leaderRequirement?.[0];
-            const leaderName = lid ? (G.catalog.leaders[lid]?.name ?? lid) : null;
-            return {
-              name: leaderName ? `${leaderName}  ·  ${a?.name ?? cid}` : (a?.name ?? cid),
-              image: a?.image,
-            };
+          onDrawAnother={() => {
+            const r = phases.recruitDrawAnother(G);
+            if (!r.ok) alert(`Cannot draw another: ${r.reason}`);
+            persist(); refresh();
           }}
-          onConfirm={(topCardId) => {
-            // Warn if the kept card recruits NO new leader — its leader(s) are
-            // already in play (each leader is on two recruit cards, so the
-            // duplicate can be drawn after recruitment). The player may still
-            // keep it for the action card, but shouldn't do so by accident.
-            const card = G.catalog.actions[topCardId];
-            const listsLeaders = (card?.leaderRequirement?.length ?? 0) > 0;
-            const recruitsSomeone = (card?.leaderRequirement ?? [])
-              .some((lid) => phases.leaderRecruitable(G, humanSide, lid));
-            if (listsLeaders && !recruitsSomeone) {
-              const ok = window.confirm(
-                'This card recruits no new leader — its leader(s) are already in play. '
-                + 'Keep it anyway (you\'ll get the action card, but no leader)?');
-              if (!ok) return;
-            }
-            const r = phases.resolveRecruitActionCardPick(G, topCardId);
+          onConfirm={(keepCardId) => {
+            const r = phases.resolveRecruitActionCardPick(G, keepCardId);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }}
@@ -3230,6 +3205,151 @@ function TopBottomCardPickModal({ G, cardIds, color, title, blurb, topLabel, bot
             style={{ padding: '8px 22px', background: color, color: '#000',
               border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 700, fontSize: 14 }}>
             Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Recruit step (RAW-faithful). The player has drawn 2+ action cards and keeps
+ *  ONE — recruiting a leader shown on it if able; the rest go to the bottom.
+ *  Per RAW, if NONE of the drawn cards shows a still-recruitable leader, the
+ *  player may keep drawing one card at a time (canDrawMore) until one does, or
+ *  forgo recruiting and keep a card just for its action effect. */
+function RecruitCardPickModal({ G, side, drawnIds, canDrawMore, color, onConfirm, onDrawAnother }: {
+  G: GameState;
+  side: Side;
+  drawnIds: string[];
+  canDrawMore: boolean;
+  color: string;
+  onConfirm: (keepCardId: string) => void;
+  onDrawAnother: () => void;
+}) {
+  const [selected, setSelected] = useState<string | null>(drawnIds[0] ?? null);
+  // Keep the selection valid as the drawn set grows (after Draw another).
+  useEffect(() => {
+    if (selected && !drawnIds.includes(selected)) setSelected(drawnIds[0] ?? null);
+  }, [drawnIds, selected]);
+
+  const cardLeaderInfo = (cid: string) => {
+    const card = G.catalog.actions[cid];
+    const lids = card?.leaderRequirement ?? [];
+    const leaders = lids.map((lid) => ({
+      lid,
+      name: G.catalog.leaders[lid]?.name ?? lid,
+      recruitable: phases.leaderRecruitable(G, side, lid),
+    }));
+    return { card, leaders };
+  };
+
+  const renderCard = (cid: string) => {
+    const { card, leaders } = cardLeaderInfo(cid);
+    const isSel = selected === cid;
+    const anyRecruitable = leaders.some((l) => l.recruitable);
+    return (
+      <div
+        key={cid}
+        onClick={() => setSelected(cid)}
+        style={{
+          background: '#0c0d10',
+          border: `2px solid ${isSel ? color : '#2a2d34'}`,
+          borderRadius: 5, padding: 8, cursor: 'pointer', userSelect: 'none',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
+          width: 168, boxShadow: isSel ? `0 0 10px ${color}88` : 'none',
+        }}
+      >
+        {card?.image && (
+          <img src={vmodAssetUrl(card.image, CARD_IMAGE_BASE)} alt={card?.name ?? cid}
+            draggable={false}
+            style={{ width: 150, height: 'auto', borderRadius: 3 }} />
+        )}
+        <div style={{ fontSize: 12, color: '#fff', fontWeight: 600, textAlign: 'center' }}>
+          {card?.name ?? cid}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'center' }}>
+          {leaders.length === 0 && (
+            <div style={{ fontSize: 10, color: '#888' }}>No leader</div>
+          )}
+          {leaders.map((l) => (
+            <div key={l.lid} style={{ fontSize: 11, fontWeight: 700,
+              color: l.recruitable ? '#7fd17f' : '#c06060' }}>
+              {l.recruitable ? '✓ ' : '✗ '}{l.name}
+              {!l.recruitable && <span style={{ color: '#888', fontWeight: 400 }}> (already in play)</span>}
+            </div>
+          ))}
+        </div>
+        {leaders.length > 0 && !anyRecruitable && (
+          <div style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>recruits no one</div>
+        )}
+      </div>
+    );
+  };
+
+  const selInfo = selected ? cardLeaderInfo(selected) : null;
+  const selRecruitsSomeone = !!selInfo && selInfo.leaders.some((l) => l.recruitable);
+  // Would keeping the selected card throw away a recruit you could still make?
+  // (Another drawn card recruits someone, or you're allowed to draw deeper.)
+  const otherCardRecruits = !!selected && drawnIds.some(
+    (id) => id !== selected && cardLeaderInfo(id).leaders.some((l) => l.recruitable));
+  const forgoingAvailableRecruit = !selRecruitsSomeone && (otherCardRecruits || canDrawMore);
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 720, width: '94%', maxHeight: '92vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <div style={{ fontSize: 14, color, fontWeight: 700, marginBottom: 6 }}>
+          Recruit — keep one card
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>
+          You drew action cards. Keep ONE — if it shows a leader you haven't recruited yet (✓),
+          that leader joins your pool. The cards you don't keep go to the bottom of your deck.
+          {canDrawMore && ' None of these cards shows a recruitable leader — you may draw another card, or keep one anyway just for its action effect.'}
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+          {drawnIds.map(renderCard)}
+        </div>
+        <div style={{ marginTop: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <button
+            onClick={onDrawAnother}
+            disabled={!canDrawMore}
+            title={canDrawMore
+              ? 'Draw one more card from the top of your deck.'
+              : 'You can only draw deeper when none of the drawn cards shows a recruitable leader.'}
+            style={{ padding: '8px 16px',
+              background: canDrawMore ? '#2a2d34' : '#1a1c22',
+              color: canDrawMore ? '#fff' : '#555',
+              border: `1px solid ${canDrawMore ? color : '#2a2d34'}`, borderRadius: 3,
+              cursor: canDrawMore ? 'pointer' : 'not-allowed', fontWeight: 600, fontSize: 13 }}>
+            Draw another card
+          </button>
+          <button
+            onClick={() => {
+              if (!selected) return;
+              // Warn before THROWING AWAY a recruit you could still make this
+              // turn — either another drawn card recruits someone, or you're
+              // allowed to keep drawing for one. Forgoing is legal (you keep
+              // the card for its action effect) but should never be accidental.
+              if (forgoingAvailableRecruit) {
+                const reason = otherCardRecruits
+                  ? 'Another card you drew would let you recruit a leader.'
+                  : 'You could keep drawing until you find a recruitable leader.';
+                const ok = window.confirm(
+                  reason + ' Keep this card instead and recruit NO leader this turn? '
+                  + '(You\'ll still get the action card.)');
+                if (!ok) return;
+              }
+              onConfirm(selected);
+            }}
+            disabled={!selected}
+            style={{ padding: '8px 22px', background: color, color: '#000',
+              border: 'none', borderRadius: 3, cursor: selected ? 'pointer' : 'not-allowed',
+              fontWeight: 700, fontSize: 14, opacity: selected ? 1 : 0.5 }}>
+            {selRecruitsSomeone ? 'Keep & recruit' : 'Keep card'}
           </button>
         </div>
       </div>

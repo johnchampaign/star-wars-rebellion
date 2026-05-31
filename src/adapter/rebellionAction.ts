@@ -126,6 +126,7 @@ export type RebellionAction =
   | { kind: 'resolveRetrieveThePlansPick'; objectiveId: string }
   | { kind: 'resolveInterrogationDroidDecoyPick'; systemIds: SystemId[] }
   | { kind: 'resolveRecruitActionCardPick'; keepCardId: string }
+  | { kind: 'recruitDrawAnother' }
   | { kind: 'resolveBuildPicks'; choices: string[] }
   | { kind: 'resolveDeployUnitPick'; systemId: SystemId }
   | { kind: 'resolveActionCardSystemPick'; systemId: SystemId }
