@@ -6,7 +6,7 @@
   "description": "Unofficial fan-made digital port of Star Wars: Rebellion (FFG 2016). Base game only.",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && node scripts/strip-images-from-dist.mjs",
+    "build": "node scripts/copy-dev-assets.mjs && vite build && node scripts/strip-images-from-dist.mjs",
     "build:with-art": "vite build",
     "preview": "vite preview",
     "deploy": "npm run build && npx wrangler pages deploy dist --project-name star-wars-rebellion --branch master --commit-dirty=true",
