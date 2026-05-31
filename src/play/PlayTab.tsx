@@ -2517,9 +2517,38 @@ function Quiet({ children }: { children: React.ReactNode }) {
  *  and rules text fall back when no image is available, and are surfaced
  *  alongside the image regardless so the small embedded text on the card
  *  art has a legible copy. */
+/** A short "when/how do I play this?" line for an action-hand card (issue #67
+ *  — players couldn't tell how to play An Old Friend / Ambush / C-3PO). */
+function actionCardPlayHint(G: GameState, side: Side, cardId: string): string | undefined {
+  const card = G.catalog.actions[cardId];
+  if (!card) return undefined;
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  const reqs = card.leaderRequirement ?? [];
+  const reqNames = reqs.map((lid) => G.catalog.leaders[lid]?.name ?? lid).join(' or ');
+  const leaderReady = reqs.length === 0 || reqs.some((lid) => f.leaderPool.includes(lid as never));
+  switch (card.timing) {
+    case 'Assignment':
+      return '▶ Play during your Assignment phase'
+        + (reqs.length
+            ? ` — needs ${reqNames} in your leader pool`
+              + (leaderReady
+                  ? '. Available now: use the "Play action card" button.'
+                  : ' (not in your pool right now).')
+            : '. Use the "Play action card" button.');
+    case 'Immediate':
+      return '⚡ Triggers automatically at the right moment — you\'ll be prompted (you don\'t play it from hand).';
+    case 'StartOfCombat':
+      return '⚔ Offered at the start of a combat you\'re in — you\'ll be prompted then.';
+    case 'Special':
+      return '✦ Triggers at its specific moment (e.g. during a mission or combat) — you\'ll be prompted.';
+    default:
+      return card.timing ? `Timing: ${card.timing}` : undefined;
+  }
+}
+
 function HandTip({ count, cards }: {
   count: number;
-  cards: { name: string; image?: string; rulesText?: string }[];
+  cards: { name: string; image?: string; rulesText?: string; hint?: string }[];
 }) {
   const [open, setOpen] = useState(false);
   if (count === 0) return <>0 cards</>;
@@ -2602,6 +2631,15 @@ function HandTip({ count, cards }: {
                   whiteSpace: 'normal',
                 }}>
                   {c.rulesText}
+                </div>
+              )}
+              {c.hint && (
+                <div style={{
+                  color: '#ffd54a', fontSize: 10, marginTop: 4,
+                  lineHeight: 1.3, textAlign: 'left', fontStyle: 'italic',
+                  whiteSpace: 'normal',
+                }}>
+                  {c.hint}
                 </div>
               )}
             </div>
@@ -5738,7 +5776,8 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
           side === humanSide
             ? <HandTip count={f.actionHand.length} cards={f.actionHand.map((cid) => {
                 const c = G.catalog.actions[cid];
-                return { name: c?.name ?? cid, image: c?.image, rulesText: c?.rulesText };
+                return { name: c?.name ?? cid, image: c?.image, rulesText: c?.rulesText,
+                  hint: actionCardPlayHint(G, side, cid) };
               })} />
             : `${f.actionHand.length} cards`
         } />
