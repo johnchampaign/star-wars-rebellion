@@ -725,11 +725,18 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
       // Spread heuristic — reward visiting untouched neutral/Rebel-loyalty
       // systems to extend Imperial control + drop a unit for subjugation.
       // Worth more when the system has build resources.
-      if (!hasOwnUnits && !sys.subjugated) {
+      if (!hasOwnUnits && !sys.subjugated && sys.loyalty === 'imperial') {
+        // Already Imperial-controlled and no enemy here: moving units in gains
+        // nothing — there's no loyalty to flip, nothing to subjugate, and no
+        // combat. Don't reward shuffling a fleet onto a system we already own
+        // (player report #69: Empire moved units to an owned 2-resource system
+        // for no benefit). Mild penalty so consolidation toward the marching
+        // column (a separate +6 adjacency bonus) can still override when the
+        // move actually serves a purpose.
+        ts -= 3;
+      } else if (!hasOwnUnits && !sys.subjugated) {
         const resourceWeight = def?.resources?.length ?? 0;
         ts += 2 + resourceWeight;
-        // Already Empire-loyal (string compare — sys.loyalty is just a string).
-        if (sys.loyalty === 'imperial') ts -= 2;
         // GERRY STRATEGY: prioritize subjugating Rebel-loyal systems —
         // strips Rebel production AND likely sits on the hidden base
         // (Rebels favor their loyalty for placement). Heavier early when
