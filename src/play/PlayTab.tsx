@@ -6715,9 +6715,22 @@ function AssignmentPanel({ G, side, onChange }: { G: GameState; side: Side; onCh
               f.leadersOnMissions.map((a, i) => {
                 const card = G.catalog.missions[a.missionId];
                 return (
-                  <div key={i} style={{ display: 'flex', gap: 4 }}>
+                  <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
                     <MissionNameHover name={card?.name ?? a.missionId} image={card?.image} color="#80dc78" />
                     <span>← {a.leaderIds.map(lid => G.catalog.leaders[lid]?.name ?? lid).join(', ')}</span>
+                    <button
+                      onClick={() => {
+                        const r = phases.unassignLeader(G, side, a.missionId);
+                        if (!r.ok) { alert(`Cannot undo: ${r.reason}`); return; }
+                        if (pickerMissionId === a.missionId) { setPickerMissionId(null); setSelectedLeaders([]); }
+                        onChange();
+                      }}
+                      title="Take this assignment back — returns the leader(s) to your pool and the mission to your hand."
+                      style={{ marginLeft: 'auto', padding: '1px 6px', fontSize: 10, cursor: 'pointer',
+                        background: '#2a2c33', color: '#ddd', border: '1px solid #555', borderRadius: 3 }}
+                    >
+                      ↩ undo
+                    </button>
                   </div>
                 );
               })

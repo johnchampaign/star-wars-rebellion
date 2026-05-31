@@ -188,6 +188,18 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem }: {
     onPersist();
   };
 
+  // Belt-and-suspenders auto-recovery (issue #75): if the AI still owes a
+  // combat decision a beat after render — e.g. the fp-keyed effect above
+  // missed a transient, or the AI choice arrived before the parent's runAILoop
+  // read the latest state — auto-kick once so the player never lands on a
+  // silent "Waiting for AI…" with no progress. Cleared the moment the choice
+  // resolves (fp changes → component re-renders → timeout cancelled).
+  useEffect(() => {
+    if (!waitingForAI || decisionSide !== aiSide) return;
+    const t = setTimeout(() => { lastStepRef.current = ''; onPersist(); }, 700);
+    return () => clearTimeout(t);
+  }, [fp]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** Emergency: assign damage on the AI's behalf by picking weakest-first. Used
    *  when the AI returns false and we'd otherwise be soft-locked. */
   const forceAssignDamage = () => {
@@ -414,14 +426,15 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem }: {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <div style={{ color: '#888', fontStyle: 'italic' }}>
-                Waiting for {decisionSide} (AI) to choose…
+                Waiting for {decisionSide} (AI) to choose… (continues automatically)
               </div>
               <button
-                className="tab-button"
+                className="tab-button active"
                 onClick={kickAI}
-                title="Manually kick the AI driver. Use if the AI seems stuck."
+                title="If the combat doesn't continue on its own, click to resume the AI."
+                style={{ fontWeight: 700 }}
               >
-                Step AI
+                ▶ Continue (resume AI)
               </button>
               {pc?.kind === 'CombatAssignDamage' && (
                 <button

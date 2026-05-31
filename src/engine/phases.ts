@@ -452,6 +452,26 @@ export function assignLeader(G: GameState, side: Side, missionId: string, leader
   return { ok: true };
 }
 
+/** Undo a mission assignment during the Assignment phase (issue #76): return
+ *  the mission's leader(s) to the pool and the mission card to hand, so the
+ *  player can re-plan. Safe because nothing is revealed until Command — every
+ *  Assignment-phase commitment is still just a plan. Does not change whose
+ *  turn it is (it's a take-back, not an action). */
+export function unassignLeader(G: GameState, side: Side, missionId: string): { ok: boolean; reason?: string } {
+  if (G.phase !== 'Assignment') return { ok: false, reason: 'wrong-phase' };
+  const f = faction(G, side);
+  const idx = f.leadersOnMissions.findIndex((m) => m.missionId === missionId);
+  if (idx < 0) return { ok: false, reason: 'not-assigned' };
+  const entry = f.leadersOnMissions[idx];
+  for (const lid of entry.leaderIds) {
+    if (!f.leaderPool.includes(lid)) f.leaderPool.push(lid);
+  }
+  f.leadersOnMissions.splice(idx, 1);
+  if (!f.missionHand.includes(missionId)) f.missionHand.push(missionId);
+  log(G, { kind: 'unassign-leader', side, payload: { missionId, leaderIds: entry.leaderIds } });
+  return { ok: true };
+}
+
 /** Signal "I'm done assigning". Rebel goes first; once Rebel signals, current
  *  player switches to Empire. Once both have signaled, advance to Command. */
 export function skipAssignment(G: GameState, side: Side): { ok: boolean; reason?: string } {
