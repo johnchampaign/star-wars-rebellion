@@ -5869,11 +5869,26 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
                   </span>
                 )}
               </div>
-              {isLeaderPick && leaderTargets!.length === 0 && (
-                <div style={{ color: '#ff8866', fontSize: 12, marginBottom: 6 }}>
-                  No Rebel leaders on the board to target.
-                </div>
-              )}
+              {isLeaderPick && leaderTargets!.length === 0 && (() => {
+                // Explain WHY there's no target. Empty can mean "no Rebel
+                // leaders anywhere" OR "leaders exist but none are in a
+                // system that qualifies" — e.g. Capture Rebel Operative needs
+                // one of your units in the leader's system. (#56: leaders sat
+                // at Corellia with no Imperial unit, so the old "no leaders"
+                // message was misleading.)
+                const anyRebelLeaders = Object.values(G.rebel.leadersOnBoard)
+                  .some((arr) => (arr?.length ?? 0) > 0);
+                const needsImperialUnit = (targets.note ?? '').toLowerCase().includes('imperial unit');
+                return (
+                  <div style={{ color: '#ff8866', fontSize: 12, marginBottom: 6 }}>
+                    {!anyRebelLeaders
+                      ? 'No Rebel leaders are on the board to target right now.'
+                      : needsImperialUnit
+                        ? 'There are Rebel leaders on the board, but this mission can only target a Rebel leader in a system where you have a unit. Move one of your units into their system first, then run the mission.'
+                        : <>There are Rebel leaders on the board, but none are in a system that qualifies for this mission{targets.note ? <> (needs: {targets.note})</> : null}.</>}
+                  </div>
+                );
+              })()}
               {!isLeaderPick && targets.systemIds.length === 0 && (
                 <div style={{ color: '#ff8866', fontSize: 12, marginBottom: 6 }}>
                   No legal targets for this mission right now.
