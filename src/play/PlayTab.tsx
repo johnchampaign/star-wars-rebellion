@@ -5145,13 +5145,23 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
             )}
           />
         )}
-        <Row label="Missions face-down" value={
-          side === humanSide
-            ? <HandTip count={f.leadersOnMissions.length} cards={f.leadersOnMissions.map((m) => {
-                const c = G.catalog.missions[m.missionId];
-                return { name: c?.name ?? m.missionId, image: c?.image, rulesText: c?.rulesText };
-              })} />
-            : `${f.leadersOnMissions.length} cards`
+        <Row label="Active missions" value={
+          f.leadersOnMissions.length === 0
+            ? '(none)'
+            // Show the assigned missions and which leaders are on each — for
+            // BOTH sides — so the opponent's plans are visible at a glance
+            // instead of buried in the log (reporter MightyFaben). The human
+            // side also keeps the hover-preview via HandTip.
+            : side === humanSide
+              ? <HandTip count={f.leadersOnMissions.length} cards={f.leadersOnMissions.map((m) => {
+                  const c = G.catalog.missions[m.missionId];
+                  return { name: c?.name ?? m.missionId, image: c?.image, rulesText: c?.rulesText };
+                })} />
+              : f.leadersOnMissions.map((m) => {
+                  const c = G.catalog.missions[m.missionId];
+                  const leaders = m.leaderIds.map((l) => G.catalog.leaders[l]?.name ?? l).join(', ');
+                  return `${c?.name ?? m.missionId}${leaders ? ` (${leaders})` : ''}`;
+                }).join(' · ')
         } />
         <Row label="Action hand" value={
           side === humanSide
@@ -5588,6 +5598,18 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
         ids.push(...matching.map((u) => u.instanceId));
       }
       if (ids.length > 0) orders.push({ fromSystemId: sysId, unitInstanceIds: ids });
+    }
+    // Guard the common misclick: committing a leader with NO units moving
+    // wastes the activation (a leader alone can't fight, subjugate, or carry
+    // troops) — reporter MightyFaben lost a turn this way. Confirm first.
+    const totalUnits = orders.reduce((n, o) => n + o.unitInstanceIds.length, 0);
+    if (totalUnits === 0) {
+      const sysName = G.catalog.systems[targetSystemId]?.name ?? targetSystemId;
+      const ok = window.confirm(
+        `Activate ${sysName} with NO units moving?\n\n`
+        + `Your leader will go there alone — this can't move troops, subjugate, `
+        + `or start a battle, and it uses up the activation. Continue anyway?`);
+      if (!ok) return;
     }
     const ok = onActivate(leaderId, targetSystemId, orders);
     if (ok !== false) reset();
