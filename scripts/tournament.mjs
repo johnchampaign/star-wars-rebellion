@@ -20,7 +20,9 @@ const ROOT = join(__dirname, '..');
 // Parse CLI args.
 const args = (() => {
   const a = process.argv.slice(2);
-  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 8 };
+  // maxRounds defaults to 16 — the real length of the time track. (It was 8,
+  // which force-ended healthy games early and inflated "max-rounds-reached".)
+  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16 };
   for (let i = 0; i < a.length; i++) {
     const k = a[i];
     if (k === '--games') out.games = parseInt(a[++i], 10);
@@ -44,7 +46,7 @@ const args = (() => {
 
 const { createGame } = await import('../src/engine/setup.ts');
 const phases = await import('../src/engine/phases.ts');
-const { stepOnce: aiStep } = await import('../src/play/randomAI.ts');
+const { stepOnce: aiStep, seedAI } = await import('../src/play/randomAI.ts');
 
 function loadJson(path) {
   return JSON.parse(readFileSync(join(ROOT, 'assets', path), 'utf-8'));
@@ -68,6 +70,9 @@ function playOne(seed) {
   // setup logic — including Rebel base-thinning — actually runs and can be
   // measured. With the default autoSetupUnits:true the engine pre-places
   // all units and the Setup phase is skipped entirely.
+  // Seed the AI's own RNG too (not just the engine) so each game is fully
+  // reproducible from its seed.
+  seedAI(seed);
   const G = createGame(data, { seed, autoSetupUnits: false });
   const t0 = performance.now();
 

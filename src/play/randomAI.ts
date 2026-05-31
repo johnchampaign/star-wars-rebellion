@@ -24,9 +24,27 @@ import * as phases from '../engine/phases';
 import * as combat from '../engine/combat';
 import { missionTargets } from '../engine/missionTargets';
 
+// AI randomness. Defaults to Math.random (live app), but the tournament
+// harness calls seedAI() so AI-vs-AI runs are reproducible per seed — without
+// this, the same game seed gives different outcomes run-to-run (the engine is
+// seeded via rng.ts, but the AI's own coin-flips were not), which made
+// intermittent stalls and win-rate comparisons impossible to pin down.
+let _aiRng: (() => number) | null = null;
+export function seedAI(seed: number): void {
+  let s = seed >>> 0;
+  _aiRng = () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+export function unseedAI(): void { _aiRng = null; }
+function aiRand(): number { return _aiRng ? _aiRng() : Math.random(); }
+
 function pick<T>(arr: T[]): T | undefined {
   if (arr.length === 0) return undefined;
-  return arr[Math.floor(Math.random() * arr.length)];
+  return arr[Math.floor(aiRand() * arr.length)];
 }
 
 /** Max Rebel units the AI keeps at the hidden base during setup. The rest go

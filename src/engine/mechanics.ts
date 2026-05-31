@@ -504,22 +504,29 @@ export function captureLeader(G: GameState, leaderId: LeaderId, ring: 'captured'
   e.capturedLeaders.push({ leaderId, ring, systemId: capturedSystemId });
   log(G, { kind: 'capture-leader', payload: { leaderId, ring, systemId: capturedSystemId } });
 
-  // Noble Sacrifice (Rebel/Obi-Wan) Special-timing trigger: if Obi-Wan was
-  // just captured and the Rebel holds Noble Sacrifice, post a choice for
-  // the Rebel to discard the card to eliminate Obi-Wan for +1 reputation.
-  // Only fires inside a mission context to avoid surprise triggers from
-  // setup or other system-driven captures.
-  if (leaderId === 'obi-wan-kenobi'
+  // Noble Sacrifice (Rebel/Obi-Wan) Special-timing trigger. The card reads
+  // "use when this leader becomes captured" — so the use-window opens at the
+  // moment of capture, BEFORE the automatic "no Imperial units → rescued"
+  // check resolves. If the offer is posted we DEFER the auto-rescue until the
+  // offer is answered (resolveNobleSacrificeOffer runs it on decline); posting
+  // the offer and then auto-rescuing Obi-Wan out from under it would strand a
+  // pendingChoice for a leader who's no longer captured (deadlock).
+  //   In practice the rescue never fires at capture time: the only two capture
+  // missions (Capture Rebel Operative, Collect Bounty) both guarantee an
+  // Imperial unit at the leader's system. But the offer must fire regardless,
+  // and the ordering is correct for any future capture source too.
+  const postNobleSacrifice = leaderId === 'obi-wan-kenobi'
     && G.pendingMission
     && G.rebel.actionHand.includes('noble-sacrifice')
-    && !G.pendingChoice) {
+    && !G.pendingChoice;
+  if (postNobleSacrifice) {
     G.pendingChoice = { kind: 'NobleSacrificeOffer', side: 'Rebel' };
     log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'NobleSacrificeOffer' } });
+  } else {
+    // If no Imperial units are at the captured leader's system, the leader is
+    // immediately rescued (rr p.3).
+    maybeAutoRescue(G, capturedSystemId);
   }
-
-  // If no Imperial units are at the captured leader's system, the leader is
-  // immediately rescued (rr p.3).
-  maybeAutoRescue(G, capturedSystemId);
 }
 
 /** Auto-rescue any captured leader at `systemId` if no Imperial units remain.

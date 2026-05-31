@@ -2045,14 +2045,14 @@ export function resolveOneInAMillionMission(
 export function resolveNobleSacrificeOffer(G: GameState, accept: boolean): { ok: boolean; reason?: string } {
   const pc = G.pendingChoice;
   if (!pc || pc.kind !== 'NobleSacrificeOffer') return { ok: false, reason: 'no-pending' };
-  if (accept) {
-    const handIdx = G.rebel.actionHand.indexOf('noble-sacrifice');
-    if (handIdx < 0) return { ok: false, reason: 'card-not-in-hand' };
-    // Remove Obi-Wan from capturedLeaders.
-    const e = G.empire;
-    if (!e.capturedLeaders) return { ok: false, reason: 'no-captured' };
-    const ci = e.capturedLeaders.findIndex((c) => c.leaderId === 'obi-wan-kenobi');
-    if (ci < 0) return { ok: false, reason: 'obi-not-captured' };
+  const e = G.empire;
+  const handIdx = G.rebel.actionHand.indexOf('noble-sacrifice');
+  const ci = e.capturedLeaders?.findIndex((c) => c.leaderId === 'obi-wan-kenobi') ?? -1;
+  // If accepting is no longer possible (card already gone, or Obi-Wan is no
+  // longer captured — e.g. auto-rescued before this resolved), treat it as a
+  // skip rather than failing: returning !ok here would strand the pending
+  // choice forever (deadlock). The offer just lapses.
+  if (accept && handIdx >= 0 && ci >= 0) {
     e.capturedLeaders.splice(ci, 1);
     // Add to Rebel eliminated leaders.
     if (!G.rebel.eliminatedLeaders.includes('obi-wan-kenobi')) {
@@ -2073,6 +2073,15 @@ export function resolveNobleSacrificeOffer(G: GameState, accept: boolean): { ok:
     log(G, { kind: 'noble-sacrifice-skipped', side: 'Rebel', payload: {} });
   }
   G.pendingChoice = undefined;
+  // captureLeader DEFERRED the automatic "no Imperial units → rescued" check
+  // while this use-window was open. Now that it's resolved, run it for every
+  // system still holding a captured leader. On accept Obi-Wan is already
+  // eliminated; on decline he (and any others) auto-rescue if unguarded. In
+  // normal play this is a no-op — captures always leave an Imperial unit
+  // present — but it keeps the deferred rescue correct.
+  for (const sysId of new Set((G.empire.capturedLeaders ?? []).map((c) => c.systemId))) {
+    M.maybeAutoRescue(G, sysId);
+  }
   // captureLeader posted this choice mid-resolution and the original
   // call-chain has already unwound (mission resolver bailed on pendingChoice).
   // If we're still mid-mission, resume the mission flow so it doesn't strand.
@@ -2104,6 +2113,14 @@ export function resolveItIsYourDestinyOffer(G: GameState, leaderId: LeaderId | n
   } else {
     log(G, { kind: 'it-is-your-destiny-skipped', side: 'Empire', payload: {} });
     G.pendingChoice = undefined;
+  }
+  // This offer is posted mid-mission (during a rescue effect). Resume the
+  // mission flow so it doesn't strand — unless capturing the rescuer posted a
+  // follow-on choice (e.g. Noble Sacrifice), in which case that resolver
+  // resumes once it's answered. Without this, pendingMission was left orphaned
+  // with no pendingChoice → both AIs idle → deadlock.
+  if (G.pendingMission && !G.pendingChoice) {
+    resumeMissionAfterChoice(G);
   }
   return { ok: true };
 }
