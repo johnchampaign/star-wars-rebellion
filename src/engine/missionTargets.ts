@@ -252,7 +252,12 @@ export function missionTargets(G: GameState, _side: Side, missionId: string): Ta
     if (namedMatch) {
       const target = namedMatch[1].trim();
       if (target === 'rebel base') {
-        return { systemIds: [], permissive: false, note: 'Targets the Rebel Base space (no system pick).' };
+        // Resolves in the Rebel Base space — there's no system to choose.
+        // Return the base-space key as the sole (auto-selected) target so
+        // the assignment UI doesn't read an empty list as "no legal targets"
+        // and leave Reveal permanently disabled. (Issue #52: Rapid
+        // Mobilization couldn't be played at all.)
+        return { systemIds: ['rebel-base-space'], permissive: false, note: 'Resolves in the Rebel Base space (auto-targeted).' };
       }
       const match = allSystems(G).find((id) => (G.catalog.systems[id]?.name ?? id).toLowerCase() === target);
       if (match) {

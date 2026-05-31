@@ -5924,7 +5924,9 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
                 >
                   <option value="">— pick target system —</option>
                   {[...targets.systemIds].sort().map((sysId) => (
-                    <option key={sysId} value={sysId}>{G.catalog.systems[sysId]?.name ?? sysId}</option>
+                    <option key={sysId} value={sysId}>
+                      {sysId === 'rebel-base-space' ? 'Rebel Base space' : (G.catalog.systems[sysId]?.name ?? sysId)}
+                    </option>
                   ))}
                 </select>
               )}
