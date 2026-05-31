@@ -574,6 +574,14 @@ export type ChoiceRequest =
       candidates: LeaderId[];
     }
   | {
+      // Plant False Lead: the Rebel took these probe cards from the Empire's
+      // hand and chooses how to return each — top or bottom of the deck, in
+      // any order, hidden from the Empire (RR). cards are probe-card ids.
+      kind: 'PlantFalseLeadPlacement';
+      side: Side;
+      cards: string[];
+    }
+  | {
       // Research & Development — Stage 1: Empire picks between
       //   A: draw 2 project cards, keep 1, bottom 1
       //   B: remove sabotage marker from target + draw 1 project card

@@ -1714,6 +1714,32 @@ export function resolveCovertOperationPick(G: GameState, keepInHandId: string): 
   return { ok: true };
 }
 
+/** Plant False Lead — the Rebel places each taken probe card on the top or
+ *  bottom of the probe deck. `placements` must cover exactly the taken cards;
+ *  the first-listed "top" card ends up on top of the deck. (#64 follow-up) */
+export function resolvePlantFalseLeadPlacement(
+  G: GameState,
+  placements: { cardId: string; position: 'top' | 'bottom' }[],
+): { ok: boolean; reason?: string } {
+  const c = G.pendingChoice;
+  if (!c || c.kind !== 'PlantFalseLeadPlacement') return { ok: false, reason: 'no-pending' };
+  const want = [...c.cards].sort();
+  const got = placements.map((p) => p.cardId).sort();
+  if (got.length !== want.length || got.some((id, i) => id !== want[i])) {
+    return { ok: false, reason: 'placements-must-cover-taken-cards' };
+  }
+  const top = placements.filter((p) => p.position === 'top').map((p) => p.cardId);
+  const bottom = placements.filter((p) => p.position === 'bottom').map((p) => p.cardId);
+  if (top.length) G.probeDeck.unshift(...top);     // first listed = top of deck
+  if (bottom.length) G.probeDeck.push(...bottom);
+  log(G, { kind: 'plant-false-lead', side: 'Rebel', payload: {
+    moved: c.cards.length, top: top.length, bottom: bottom.length,
+  }});
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Detained: Empire picks which Rebel leader at the target system gets the
  *  "skip next refresh retrieve" mark. */
 export function resolveDetainedTargetPick(G: GameState, leaderId: LeaderId): { ok: boolean; reason?: string } {

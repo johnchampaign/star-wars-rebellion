@@ -1153,6 +1153,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     }
     return phases.resolveDeployUnitPick(G, bestSys).ok;
   }
+  // Plant False Lead: AI Rebel buries all taken probe cards on the bottom of
+  // the deck (denies the Empire that ruled-out intel for the longest).
+  if (G.pendingChoice && G.pendingChoice.kind === 'PlantFalseLeadPlacement' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const placements = c.cards.map((cid) => ({ cardId: cid, position: 'bottom' as const }));
+    return phases.resolvePlantFalseLeadPlacement(G, placements).ok;
+  }
   // Detained: Empire picks any Rebel leader at the target.
   if (G.pendingChoice && G.pendingChoice.kind === 'DetainedTargetPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;

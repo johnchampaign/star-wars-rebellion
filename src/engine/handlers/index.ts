@@ -817,11 +817,12 @@ const plantFalseLead: EffectHandler = (G, _ctx) => {
     const i = nextInt(G.rng, hand.length);
     taken.push(hand.splice(i, 1)[0]);
   }
-  // Best for the Rebel: bury them at the BOTTOM so the Empire can't quickly
-  // re-learn those ruled-out systems. (RAW allows top and/or bottom; bottom
-  // is the strong play and matches the "false lead" intent.)
-  G.probeDeck.push(...taken);
-  log(G, { kind: 'plant-false-lead', side: 'Rebel', payload: { moved: n, placed: 'bottom' } });
+  // RAW: the Rebel places each taken card on the top and/or bottom of the
+  // deck, in any order, hidden from the Empire. Pause for that choice; the
+  // resolver places them and resumes the mission. (The cards are already
+  // removed from the Empire's hand and held on the choice.)
+  G.pendingChoice = { kind: 'PlantFalseLeadPlacement', side: 'Rebel', cards: taken };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'PlantFalseLeadPlacement', cards: taken } });
   return true;
 };
 

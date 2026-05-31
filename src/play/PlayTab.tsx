@@ -1116,6 +1116,20 @@ export default function PlayTab() {
       )}
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'PlantFalseLeadPlacement'
+        && humanSide === 'Rebel' && (
+        <PlantFalseLeadModal
+          G={G}
+          cards={G.pendingChoice.cards}
+          onConfirm={(placements) => {
+            const r = phases.resolvePlantFalseLeadPlacement(G, placements);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'CarbonFreezingPick'
         && humanSide === 'Empire' && (
         <SimpleLeaderPickModal
@@ -3233,6 +3247,65 @@ function InfiltrationPickModal({ G, choice, onPick }: {
 // ============================================================================
 // Covert Operation Pick Modal — Rebel draws 2 objectives, keeps 1 in hand
 // ============================================================================
+
+/** Plant False Lead placement modal: the Rebel chose to take these probe
+ *  cards from the Empire and decides where each returns — top or bottom of
+ *  the deck. (#64 follow-up) */
+function PlantFalseLeadModal({ G, cards, onConfirm }: {
+  G: GameState;
+  cards: string[];
+  onConfirm: (placements: { cardId: string; position: 'top' | 'bottom' }[]) => void;
+}) {
+  const color = sideColor('Rebel');
+  const [pos, setPos] = useState<Record<string, 'top' | 'bottom'>>(() => {
+    const m: Record<string, 'top' | 'bottom'> = {};
+    for (const c of cards) m[c] = 'bottom'; // default: bury (deny longest)
+    return m;
+  });
+  const sysName = (probeId: string) => {
+    const sid = G.catalog.probes[probeId]?.systemId;
+    return sid ? (G.catalog.systems[sid]?.name ?? sid) : probeId;
+  };
+  const btn = (active: boolean): React.CSSProperties => ({
+    padding: '4px 12px', borderRadius: 3, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+    border: `1px solid ${active ? color : '#3a3d44'}`,
+    background: active ? color : '#0c0d10', color: active ? '#000' : '#e8e8ea',
+  });
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
+      <div style={{ background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 460, width: '92%', boxShadow: '0 8px 32px rgba(0,0,0,0.7)' }}>
+        <div style={{ fontSize: 15, color, fontWeight: 700, marginBottom: 6 }}>
+          Plant False Lead — return the Empire's probe cards
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12, lineHeight: 1.5 }}>
+          You took these {cards.length} probe card{cards.length === 1 ? '' : 's'} from the Empire
+          (systems they'd ruled out). Choose where each goes — <b>Bottom</b> hides it the longest;
+          <b> Top</b> makes the Empire redraw it next, wasting their probe.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
+          {cards.map((c) => (
+            <div key={c} style={{ display: 'flex', alignItems: 'center', gap: 8,
+              background: '#0c0d10', border: '1px solid #2a2d34', borderRadius: 4, padding: '6px 10px' }}>
+              <span style={{ flex: 1, fontSize: 13, color: '#e8e8ea' }}>{sysName(c)}</span>
+              <button style={btn(pos[c] === 'top')} onClick={() => setPos((p) => ({ ...p, [c]: 'top' }))}>Top</button>
+              <button style={btn(pos[c] === 'bottom')} onClick={() => setPos((p) => ({ ...p, [c]: 'bottom' }))}>Bottom</button>
+            </div>
+          ))}
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <button
+            onClick={() => onConfirm(cards.map((c) => ({ cardId: c, position: pos[c] })))}
+            style={{ padding: '8px 22px', background: color, color: '#000', border: 'none',
+              borderRadius: 3, cursor: 'pointer', fontWeight: 700, fontSize: 14 }}>
+            Confirm placement
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 /** Generic single-leader-pick modal — used by Capture Rebel Operative,
  *  Carbon Freezing, and Lure Of The Dark Side. */
