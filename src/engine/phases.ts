@@ -16,6 +16,12 @@ import { missionTargets } from './missionTargets';
 import { rollDie, shuffle } from './rng';
 import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck } from './objectives';
 
+/** Time-track turns on which the Rebel recruits a new leader, per the printed
+ *  16-space board (turns 2-5). Single source of truth shared by the engine's
+ *  Refresh recruit step AND the UI turn tracker, so the "R" badge and the
+ *  actual recruit can never disagree (issues #48/#59). */
+export const RECRUIT_TIME_MARKERS: ReadonlySet<number> = new Set([2, 3, 4, 5]);
+
 /** Roll N mission dice and count successes. Per Rules Reference "Reveal a
  *  Mission" panel: each player rolls dice of any color, hit = 1 success,
  *  direct-hit = 2 successes. Per RR p.6 "Component Limitations": each player
@@ -2956,9 +2962,11 @@ function refreshRecruitIfApplicable(G: GameState, logStart: number): boolean {
   //   Time 6: Recruit + Build
   //   Time 7: Build
   //   Time 8: end (Rebel can win at any earlier point if reputation meets time)
-  // [VERIFY against the printed time track.]
-  const recruitOn: Record<number, boolean> = { 2: true, 4: true, 6: true };
-  if (!recruitOn[G.timeMarker]) return false;
+  // Recruit fires on time-track turns 2-5 (confirmed against the printed
+  // 16-space board). Was wrongly {2,4,6}, so turn 3 never recruited even
+  // though the turn tracker promised it (issues #48/#59). The UI imports
+  // RECRUIT_TIME_MARKERS too, so the tracker and engine can't drift apart.
+  if (!RECRUIT_TIME_MARKERS.has(G.timeMarker)) return false;
 
   // Draw 2 per side and collect pending picks. Edge cases (deck < 2):
   // 0 cards → skip side. 1 card → no choice, auto-keep that card.

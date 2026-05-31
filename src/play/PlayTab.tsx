@@ -6327,7 +6327,9 @@ function AssignmentPanel({ G, side, onChange }: { G: GameState; side: Side; onCh
 // reaches the reputation marker without the base being destroyed, the Rebels
 // win. Reputation gains slide the reputation marker left, shortening the
 // Empire's deadline.
-const RECRUIT_TURNS = new Set([2, 3, 4, 5]);
+// Single source of truth shared with the engine's recruit step (issues
+// #48/#59) — the tracker badge and the actual recruit can't drift apart.
+const RECRUIT_TURNS = phases.RECRUIT_TIME_MARKERS;
 const BUILD_TURNS = new Set([2, 4, 6, 8, 10, 12, 14, 16]);
 const TRACK_LENGTH = 16;
 const TRACK_WINDOW = 8;
