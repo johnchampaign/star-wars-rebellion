@@ -816,29 +816,43 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
         // unblocked systems. If 0 → leader-only invasion → free leader
         // capture for the Rebels. Drop the bonus and let the AI do something
         // useful (recruit, run a mission, stage).
+        // Capturing the base is a GROUND fight: you must destroy the Rebel
+        // ground units + base structures. Fighters and capital ships win the
+        // space battle but never take the system, so measure readiness by
+        // GROUND force vs. the base's ground defenders — not "any mobile unit"
+        // (baseline: Empire won only ~29% of base invasions because it rushed
+        // in under-strength). Only throw the assault when we can actually win
+        // the ground battle; otherwise prefer staging more force first.
         const adj = G.catalog.adjacency[sysId] ?? [];
-        let pullableForce = 0;
+        const isMobileGround = (uTypeId: string): boolean => {
+          const t = G.catalog.unitTypes[uTypeId];
+          return !!t && t.theater === 'ground' && t.class !== 'structure' && !t.transport.immobile;
+        };
+        let empireGroundAvail = 0;
+        // Ground already at the base (a prior wave that survived).
+        for (const u of sys.units) {
+          if (u.side === 'Empire' && isMobileGround(u.typeId)) empireGroundAvail++;
+        }
+        // Pullable ground from adjacent, non-leader-blocked systems.
         for (const a of adj) {
-          // Leader-blocked sources can't move units out (RAW p.2).
-          if ((G.empire.leadersOnBoard[a] ?? []).length > 0) continue;
+          if ((G.empire.leadersOnBoard[a] ?? []).length > 0) continue; // RAW p.2
           const ss2 = G.map.systems[a];
           if (!ss2) continue;
           for (const u of ss2.units) {
-            if (u.side !== 'Empire') continue;
-            const t = G.catalog.unitTypes[u.typeId];
-            if (!t || t.transport.immobile) continue;
-            // Count any mobile combat unit (ships, fighters, ground).
-            pullableForce++;
+            if (u.side === 'Empire' && isMobileGround(u.typeId)) empireGroundAvail++;
           }
         }
-        // Already-attacking units AT the base count too (force already in
-        // place from a prior wave).
+        // Rebel ground to clear (includes structures — they must be destroyed
+        // to take the system, even though they don't attack).
+        let rebelGroundDef = 0;
         for (const u of sys.units) {
-          if (u.side === 'Empire') pullableForce++;
+          const t = G.catalog.unitTypes[u.typeId];
+          if (u.side === 'Rebel' && t?.theater === 'ground') rebelGroundDef++;
         }
-        if (pullableForce >= 3) ts += 25;            // strong force → go
-        else if (pullableForce >= 1) ts += 10;       // weak force → maybe, with caveats
-        else ts -= 10;                               // ZERO force → actively penalize (don't gift the leader)
+        if (empireGroundAvail >= rebelGroundDef + 2) ts += 28;   // clear ground edge → assault
+        else if (empireGroundAvail > rebelGroundDef) ts += 14;   // slight edge → maybe
+        else if (empireGroundAvail >= 1) ts += 2;                // some ground, not enough → weak
+        else ts -= 12;                                           // no ground → never gift the leader
       } else if (G.rebelBaseRevealed && G.rebelBaseSystemId
                  && (G.catalog.adjacency[G.rebelBaseSystemId] ?? []).includes(sysId)
                  && empireLeadersHere === 0) {
