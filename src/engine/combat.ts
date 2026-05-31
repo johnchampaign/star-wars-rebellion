@@ -36,6 +36,32 @@ function bothSidesHaveTheater(G: GameState, sysId: SystemId, theater: Theater): 
       && unitsOf(G, 'Empire', sysId, theater).length > 0;
 }
 
+/** True if either side can still destroy an enemy unit somewhere — i.e. combat
+ *  can still make progress. False = genuine standoff (end inconclusively).
+ *  "Can damage" = a side has a unit that rolls ≥1 die in a contested theater
+ *  AND the opponent has a unit destructible by normal hits (health.color !==
+ *  null; the Death Star is invulnerable to dice, only Death Star Plans removes
+ *  it). This distinguishes a real attrition fight — e.g. a Death Star (4 attack
+ *  dice) grinding down a Rebel fleet, which SHOULD play out to an Empire win —
+ *  from a true standoff where neither side can ever destroy the other. */
+function combatCanProgress(G: GameState, sysId: SystemId): boolean {
+  for (const theater of ['space', 'ground'] as const) {
+    if (!bothSidesHaveTheater(G, sysId, theater)) continue;
+    for (const [atk, def] of [['Rebel', 'Empire'], ['Empire', 'Rebel']] as const) {
+      const hasAttacker = unitsOf(G, atk, sysId, theater).some((u) => {
+        const t = G.catalog.unitTypes[u.typeId];
+        return t ? (t.attack.red + t.attack.black) > 0 : false;
+      });
+      const hasDestructibleTarget = unitsOf(G, def, sysId, theater).some((u) => {
+        const t = G.catalog.unitTypes[u.typeId];
+        return t ? t.health.color !== null : false;
+      });
+      if (hasAttacker && hasDestructibleTarget) return true;
+    }
+  }
+  return false;
+}
+
 function bothSidesPresent(G: GameState, sysId: SystemId): boolean {
   return bothSidesHaveTheater(G, sysId, 'space') || bothSidesHaveTheater(G, sysId, 'ground');
 }
@@ -279,26 +305,49 @@ export function runCombat(G: GameState): void {
     if (!continues) {
       c.step = 'Ended';
     } else {
-      // Stalemate guard. Total units at the system only ever decreases (kills
-      // / retreats); it never grows mid-combat. If it hasn't dropped for
-      // STALEMATE_ROUND_LIMIT rounds, neither side can make progress (0-attack
-      // standoff, perpetual blocking, an unkillable Death Star, etc.) — end the
-      // fight as inconclusive rather than loop forever (the local safetyCounter
-      // can't catch this because it resets on every choice-pause re-entry).
-      const STALEMATE_ROUND_LIMIT = 5;
-      const totalUnits =
-        unitsOf(G, 'Rebel', c.systemId).length + unitsOf(G, 'Empire', c.systemId).length;
-      if (c.stalemateBaselineCount === undefined || totalUnits < c.stalemateBaselineCount) {
-        c.stalemateBaselineCount = totalUnits;
-        c.stalemateRounds = 0;
-      } else {
-        c.stalemateRounds = (c.stalemateRounds ?? 0) + 1;
-      }
-      if ((c.stalemateRounds ?? 0) >= STALEMATE_ROUND_LIMIT) {
+      // Stalemate guard. The combat ends normally only when one side is cleared
+      // from every shared theater — but if NEITHER side can destroy the other
+      // it would loop forever (the local safetyCounter can't catch this; it
+      // resets on every per-round choice-pause re-entry).
+      //
+      // Crucially this is a STRUCTURAL check, not "no kills for N rounds": an
+      // attrition fight where one side CAN damage the other (e.g. a Death Star
+      // grinding down a Rebel fleet — it rolls 4 dice and kills ships every
+      // round, the Rebels just can't kill it back) is NOT a stalemate and must
+      // play out to its conclusion (here, the Rebel fleet is wiped and the
+      // Empire wins). We only end inconclusively when neither side can deal
+      // lethal damage at all (two 0-attack forces, or a Death Star Under
+      // Construction vs units that can't scratch it).
+      let endStalemate = false;
+      if (!combatCanProgress(G, c.systemId)) {
         log(G, { kind: 'combat-stalemate-end', payload: {
           systemId: c.systemId, round: c.round,
-          explanation: 'Neither side could make progress — combat ended inconclusively.',
+          explanation: 'Neither side can destroy the other — combat ended inconclusively.',
         }});
+        endStalemate = true;
+      } else {
+        // Backstop for pathological no-progress loops where damage IS
+        // structurally possible but never lands (e.g. a defender that can
+        // block indefinitely). Far beyond any real fight's length, so a
+        // genuine attrition grind is never cut short.
+        const NO_PROGRESS_BACKSTOP = 25;
+        const totalUnits =
+          unitsOf(G, 'Rebel', c.systemId).length + unitsOf(G, 'Empire', c.systemId).length;
+        if (c.stalemateBaselineCount === undefined || totalUnits < c.stalemateBaselineCount) {
+          c.stalemateBaselineCount = totalUnits;
+          c.stalemateRounds = 0;
+        } else {
+          c.stalemateRounds = (c.stalemateRounds ?? 0) + 1;
+        }
+        if ((c.stalemateRounds ?? 0) >= NO_PROGRESS_BACKSTOP) {
+          log(G, { kind: 'combat-stalemate-end', payload: {
+            systemId: c.systemId, round: c.round,
+            explanation: 'Combat made no progress for many rounds — ended inconclusively.',
+          }});
+          endStalemate = true;
+        }
+      }
+      if (endStalemate) {
         c.step = 'Ended';
       } else {
         c.round++;
