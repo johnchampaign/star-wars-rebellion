@@ -5368,6 +5368,11 @@ function empireSearchedSystems(G: GameState): Set<string> {
     if (ss.subjugated || ss.loyalty === 'imperial') out.add(id);
   }
   out.delete(G.rebelBaseSystemId);
+  // Red (probe) rule-out wins over yellow (searched): drop any system already
+  // marked by a probe so it never shows both / shows yellow when it should be
+  // red.
+  const red = empireRuledOutSystems(G);
+  for (const id of red) out.delete(id);
   return out;
 }
 
