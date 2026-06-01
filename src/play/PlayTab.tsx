@@ -76,6 +76,32 @@ function sideColor(s: Side): string {
  *  to decide whether to wake the AI when the choice fires during the
  *  HUMAN's turn (e.g. Empire reveals a mission and Rebel auto-resolves
  *  the opposition; AI builds during refresh; etc.). */
+/** Summarize the AI side's notable Command actions from turnLog[fromIdx..] into
+ *  short human-readable lines for the "what the AI just did" banner. Only
+ *  side-tagged actions for `aiSide` (so the human's own actions are excluded);
+ *  combats surface via their own report modal so they're omitted here. */
+function summarizeAiActions(G: GameState, fromIdx: number, aiSide: Side): string[] {
+  const sysName = (id: string) => id === 'rebel-base-space' ? 'the Rebel Base' : (G.catalog.systems[id]?.name ?? id);
+  const ldrName = (id: string) => G.catalog.leaders[id]?.name ?? id;
+  const misName = (id: string) => G.catalog.missions[id]?.name ?? id;
+  const out: string[] = [];
+  for (let i = fromIdx; i < G.turnLog.length; i++) {
+    const e = G.turnLog[i];
+    if (e.side !== aiSide) continue;
+    const p = (e.payload ?? {}) as Record<string, unknown>;
+    if (e.kind === 'activate-system') {
+      const orders = (p.orders as number) ?? 0;
+      out.push(`Activated ${ldrName(p.leaderId as string)} at ${sysName(p.targetSystemId as string)}`
+        + (orders > 0 ? ` (moved ${orders} unit group${orders === 1 ? '' : 's'})` : ' (no units moved)'));
+    } else if (e.kind === 'reveal-mission') {
+      out.push(`Ran mission “${misName(p.missionId as string)}” at ${sysName(p.targetSystemId as string)}`);
+    } else if (e.kind === 'pass') {
+      out.push('Passed (done for the round)');
+    }
+  }
+  return out.slice(-8); // keep the banner short
+}
+
 function aiOwesChoice(G: GameState, side: Side): boolean {
   const pc = G.pendingChoice;
   if (!pc) return false;
@@ -206,7 +232,7 @@ export default function PlayTab() {
   const dataRef = useRef<Awaited<ReturnType<typeof loadAllForEngine>> | null>(null);
   const systemsRef = useRef<System[]>([]);
   const masksRef = useRef<MaskRect[]>([]);
-  const [, setTick] = useState(0);
+  const [tick, setTick] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [seed, setSeed] = useState<string>('');
   const [hasSaved, setHasSaved] = useState(false);
@@ -220,6 +246,14 @@ export default function PlayTab() {
     { objectiveId: string; reputation: number; turn: number }[]
   >([]);
   const seenObjectiveLogIdxRef = useRef<number>(0);
+  // "What the AI just did" banner. The AI takes its turns without player
+  // input (moves, leader placements, combats), and players reported losing
+  // track of what happened (MightyFaben). We scan the turnLog for the AI's
+  // notable Command-phase actions since the human last had control and show
+  // a brief dismissible summary.
+  const [aiActivity, setAiActivity] = useState<string[]>([]);
+  const aiActivitySeenIdxRef = useRef<number>(0);
+  const aiActivityInitRef = useRef<boolean>(false);
   // Queue of objective cards just drawn (one modal per draw, with the
   // objective's name, art, and rules text). User #39 needed to know which
   // objectives entered their hand at which Refresh — and there was no
@@ -540,6 +574,9 @@ export default function PlayTab() {
     gameRef.current = createGame(dataRef.current, { seed: s, autoSetupUnits: false });
     // New game: nothing scored yet, but reset the seen-cursor to be safe.
     seenObjectiveLogIdxRef.current = 0;
+    aiActivitySeenIdxRef.current = 0;
+    aiActivityInitRef.current = false;
+    setAiActivity([]);
     setObjectiveNoticeQueue([]);
     setDrawnObjectiveQueue([]);
     setLeaderRescuedQueue([]);
@@ -567,6 +604,9 @@ export default function PlayTab() {
       // forward the seen-cursor to the current end of log. Anything that
       // happens AFTER this point will pop the notice modal as expected.
       seenObjectiveLogIdxRef.current = restored.turnLog?.length ?? 0;
+      aiActivitySeenIdxRef.current = restored.turnLog?.length ?? 0;
+      aiActivityInitRef.current = true;
+      setAiActivity([]);
       setObjectiveNoticeQueue([]);
       setDrawnObjectiveQueue([]);
       setLeaderRescuedQueue([]);
@@ -588,6 +628,31 @@ export default function PlayTab() {
   // driver was racing with Strict Mode's effect-cleanup cycle.)
   // Re-arm the AI loop on initial render after data loads.
   useEffect(() => { runAILoop(); }, [runAILoop]);
+
+  // "What the AI just did" — when control returns to the human, summarize the
+  // AI's notable Command actions since the human last had control. Runs on
+  // every tick; only acts when the human is genuinely in control (no pending
+  // choice/combat/mission/report and it's their turn).
+  useEffect(() => {
+    const Gn = gameRef.current;
+    if (!Gn || Gn.isGameOver) return;
+    const ai: Side = humanSide === 'Rebel' ? 'Empire' : 'Rebel';
+    const reportsPending = (Gn.missionReports?.length ?? 0) > 0
+      || (Gn.combatReports?.length ?? 0) > 0 || (Gn.objectiveReports?.length ?? 0) > 0;
+    const humanInControl = Gn.currentPlayer === humanSide && !aiOwesChoice(Gn, ai)
+      && !reportsPending && !Gn.pendingChoice && !Gn.pendingCombat && !Gn.pendingMission;
+    if (!humanInControl) return;
+    if (!aiActivityInitRef.current) {
+      // First control-checkpoint after load/new game — just set the cursor.
+      aiActivityInitRef.current = true;
+      aiActivitySeenIdxRef.current = Gn.turnLog.length;
+      return;
+    }
+    if (aiActivitySeenIdxRef.current >= Gn.turnLog.length) return;
+    const summary = summarizeAiActions(Gn, aiActivitySeenIdxRef.current, ai);
+    aiActivitySeenIdxRef.current = Gn.turnLog.length;
+    if (summary.length) setAiActivity(summary);
+  }, [tick, humanSide]);
 
   if (error) return <div className="placeholder"><h2>Load error</h2><p>{error}</p></div>;
   if (!dataRef.current) return <div className="placeholder">Loading data…</div>;
@@ -903,6 +968,25 @@ export default function PlayTab() {
             {G.winner} wins!
           </strong>{' '}
           <span style={{ color: '#aaa' }}>reason: {G.winReason}</span>
+        </div>
+      )}
+
+      {aiActivity.length > 0 && (
+        <div style={{
+          margin: '8px 0', padding: '8px 12px', borderRadius: 6,
+          background: 'rgba(20,30,45,0.9)', border: `1px solid ${sideColor(aiSide)}`,
+          display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 12,
+        }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ color: sideColor(aiSide), fontWeight: 700, marginBottom: 2 }}>
+              {aiSide} just:
+            </div>
+            <div style={{ color: '#cfe2f5', display: 'flex', flexWrap: 'wrap', gap: '2px 10px' }}>
+              {aiActivity.map((line, i) => <span key={i}>• {line}</span>)}
+            </div>
+          </div>
+          <button className="tab-button" style={{ padding: '2px 8px', fontSize: 11 }}
+            onClick={() => setAiActivity([])}>dismiss</button>
         </div>
       )}
 
