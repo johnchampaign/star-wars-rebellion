@@ -3545,8 +3545,19 @@ function refreshDeployUnits(G: GameState): boolean {
     f.buildQueue[1] = f.buildQueue[2];
     f.buildQueue[2] = f.buildQueue[3];
     f.buildQueue[3] = [];
+    // Group by unit type (stable, in first-appearance order) so the player
+    // deploys ALL of one type before the next, instead of the queue flipping
+    // back and forth between types mid-deploy — which makes it easy to drop a
+    // unit on the wrong system (player report). e.g. TIE,TIE,AT-AT,TIE,SD
+    // becomes TIE,TIE,TIE,AT-AT,SD.
+    const order: UnitTypeId[] = [];
+    const byType = new Map<UnitTypeId, number>();
     for (const typeId of deploying) {
-      queue.push({ side, typeId });
+      if (!byType.has(typeId)) { byType.set(typeId, 0); order.push(typeId); }
+      byType.set(typeId, byType.get(typeId)! + 1);
+    }
+    for (const typeId of order) {
+      for (let i = 0; i < byType.get(typeId)!; i++) queue.push({ side, typeId });
     }
   }
   if (!G.refreshPaused) {
