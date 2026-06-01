@@ -1327,12 +1327,15 @@ export default function PlayTab() {
           title={`Deploy ${G.catalog.unitTypes[G.pendingChoice.typeId]?.name ?? G.pendingChoice.typeId}`}
           instructions={`Pick where this unit deploys. The galaxy map stays visible so you can see existing placements.`}
           candidates={G.pendingChoice.candidates}
-          unitTokens={[
-            G.pendingChoice.typeId,
-            ...((G.refreshPaused?.pendingDeployPicks ?? [])
-              .filter((p) => p.side === (G.pendingChoice as { side: Side }).side)
-              .map((p) => p.typeId)),
-          ]}
+          unitTokens={(() => {
+            // pendingDeployPicks already INCLUDES the unit being placed now as
+            // its first entry (it's only shifted off after you deploy it), so
+            // map it directly — don't prepend typeId or the count doubles.
+            const side = (G.pendingChoice as { side: Side }).side;
+            const q = (G.refreshPaused?.pendingDeployPicks ?? [])
+              .filter((p) => p.side === side).map((p) => p.typeId);
+            return q.length > 0 ? q : [G.pendingChoice.typeId];
+          })()}
           onPick={(sid) => {
             const r = phases.resolveDeployUnitPick(G, sid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
