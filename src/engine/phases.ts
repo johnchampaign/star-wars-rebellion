@@ -1392,6 +1392,17 @@ export function resolveStolenPlansPick(G: GameState, cardId: string): { ok: bool
   return { ok: true };
 }
 
+/** Undo the last Stolen Plans pick — moves the most recently ordered card
+ *  back into the remaining pool, so a misclick is recoverable. */
+export function undoStolenPlansPick(G: GameState): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'StolenPlansReorder') return { ok: false, reason: 'no-pending-stolen-plans' };
+  if (choice.orderedTop.length === 0) return { ok: false, reason: 'nothing-to-undo' };
+  const card = choice.orderedTop.pop()!;
+  choice.remaining.push(card);
+  return { ok: true };
+}
+
 /** Apply the Rebel's Infiltration pick. `keepOnTopId` is one of the two
  *  cards revealed; the other goes to the bottom of the objective deck. */
 /** Resolve Plan The Assault's ship-selection. `shipIds` are unit instance

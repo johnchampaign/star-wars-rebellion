@@ -1833,6 +1833,11 @@ export default function PlayTab() {
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }}
+          onUndo={() => {
+            const r = phases.undoStolenPlansPick(G);
+            if (!r.ok) alert(`Cannot undo: ${r.reason}`);
+            persist(); refresh();
+          }}
         />
       )}
 
@@ -2038,10 +2043,11 @@ function OpposeMissionModal({ G, choice, onResolve }: {
 // Stolen Plans Reorder Modal — Rebel sees top 4 objectives, picks order
 // ============================================================================
 
-function StolenPlansReorderModal({ G, choice, onPick }: {
+function StolenPlansReorderModal({ G, choice, onPick, onUndo }: {
   G: GameState;
   choice: { kind: 'StolenPlansReorder'; remaining: string[]; orderedTop: string[] };
   onPick: (cardId: string) => void;
+  onUndo: () => void;
 }) {
   const totalCount = choice.remaining.length + choice.orderedTop.length;
   const nextSlot = choice.orderedTop.length + 1; // 1-based for display
@@ -2084,6 +2090,10 @@ function StolenPlansReorderModal({ G, choice, onPick }: {
                 );
               })}
             </ol>
+            <button className="tab-button" onClick={onUndo}
+              style={{ marginTop: 6, fontSize: 11, padding: '2px 8px' }}>
+              ↩ Undo last pick
+            </button>
           </div>
         )}
 
