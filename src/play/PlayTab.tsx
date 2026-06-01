@@ -2641,13 +2641,28 @@ function RefreshReportModal({ G, report, humanSide, onDismiss }: {
         </Section>
 
         <Section title="Build queue additions">
-          {groupedBuilds.size === 0
-            ? <Quiet>(no builds this turn)</Quiet>
-            : Array.from(groupedBuilds.entries()).map(([sid, units]) => (
+          {groupedBuilds.size > 0
+            ? Array.from(groupedBuilds.entries()).map(([sid, units]) => (
                 <div key={sid}>
                   From <em>{sys(sid)}</em>: {units.join(', ')}
                 </div>
-              ))}
+              ))
+            : (() => {
+                // Explain WHY there's no build, so a non-build turn isn't
+                // mistaken for a broken build step. Build happens as the time
+                // marker advances ONTO a build space (2,4,6,…,14) — it's a
+                // every-other-round step, not every round.
+                const t = report.newTurn;
+                const isBuildSpace = phases.BUILD_TIME_MARKERS.has(t);
+                const next = [...phases.BUILD_TIME_MARKERS].sort((a, b) => a - b).find((s) => s > t);
+                return (
+                  <Quiet>
+                    {isBuildSpace
+                      ? '(build space, but nothing could be queued — your systems were blocked by enemy units, sabotaged, or had no resource icons)'
+                      : `(no build this turn — builds happen as the time marker advances onto a build space: 2, 4, 6, …, 14. It's now on space ${t}${next ? `, so the next build is at space ${next}` : ''}.)`}
+                  </Quiet>
+                );
+              })()}
         </Section>
 
         <Section title="Units deployed off the queue">
