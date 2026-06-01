@@ -497,6 +497,26 @@ export function returnLeader(G: GameState, side: Side, leaderId: LeaderId): void
   log(G, { kind: 'return-leader', side, payload: { leaderId } });
 }
 
+/** Move a leader that is already on the board from one system to another,
+ *  without touching the leader pool. Used when a leader leads a combat
+ *  retreat (rr p.5: "take one of his leaders from the system and place it in
+ *  an adjacent system"). */
+export function relocateLeader(
+  G: GameState, side: Side, leaderId: LeaderId, fromSystemId: SystemId, toSystemId: SystemId
+): void {
+  const f = faction(G, side);
+  const from = f.leadersOnBoard[fromSystemId];
+  if (from) {
+    const i = from.indexOf(leaderId);
+    if (i >= 0) {
+      from.splice(i, 1);
+      if (from.length === 0) delete f.leadersOnBoard[fromSystemId];
+    }
+  }
+  (f.leadersOnBoard[toSystemId] ??= []).push(leaderId);
+  log(G, { kind: 'leader-retreat', side, payload: { leaderId, from: fromSystemId, to: toSystemId } });
+}
+
 /** Capture a Rebel leader. Only one 'captured' ring exists at a time (rr p.3);
  *  if a second leader is captured, the first is rescued. */
 export function captureLeader(G: GameState, leaderId: LeaderId, ring: 'captured' | 'carbonite' = 'captured'): void {

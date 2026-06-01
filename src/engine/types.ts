@@ -825,6 +825,10 @@ export type ChoiceRequest =
       // Unit instance IDs the side currently has in the combat system
       // (split into space + ground by the UI).
       availableUnits: UnitInstanceId[];
+      // Leaders the side has in the combat system. RAW (rr p.5): retreat is
+      // led by a leader — the player moves ONE leader to the destination and
+      // the units follow. One of these must lead; any others stay behind.
+      leadersInSystem: LeaderId[];
     }
   | {
       // Attacker assigns each attack hit to a specific enemy unit (RR p.5).

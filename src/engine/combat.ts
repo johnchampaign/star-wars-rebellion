@@ -283,12 +283,17 @@ export function runCombat(G: GameState): void {
         if (c.flags?.opponentCannotRetreat?.includes(side)) continue; // Keep Them From Escaping (whole combat)
         const dests = legalRetreatDestinations(G, c, side);
         const hasUnits = unitsOf(G, side, c.systemId).length > 0;
-        if (dests.length === 0 || !hasUnits) continue;
+        // RAW (rr p.5): retreat is led by a leader — "take one of his leaders
+        // from the system and place it in an adjacent system." With no leader
+        // present, the side simply cannot retreat; skip the option entirely.
+        const leadersHere = (side === 'Rebel' ? G.rebel : G.empire).leadersOnBoard[c.systemId] ?? [];
+        if (dests.length === 0 || !hasUnits || leadersHere.length === 0) continue;
         G.pendingChoice = {
           kind: 'RetreatDecision',
           side, systemId: c.systemId,
           legalDestinations: dests,
           availableUnits: unitsOf(G, side, c.systemId).map((u) => u.instanceId),
+          leadersInSystem: [...leadersHere],
         };
         log(G, { kind: 'choice-request', side, payload: {
           kind: 'RetreatDecision', destinations: dests.length,
@@ -1658,7 +1663,8 @@ function legalRetreatDestinations(G: GameState, c: CombatState, side: Side): Sys
  *  the side has the `retreatIgnoresTransport` flag set (Escape Plan tactic
  *  card). Units left behind are destroyed per RAW. */
 export function resolveRetreatDecision(
-  G: GameState, destSystemId: SystemId | null, unitInstanceIds: string[] | null
+  G: GameState, destSystemId: SystemId | null, unitInstanceIds: string[] | null,
+  leaderId?: LeaderId | null
 ): { ok: boolean; reason?: string } {
   if (!G.pendingCombat) return { ok: false, reason: 'no-pending-combat' };
   const c = G.pendingCombat;
@@ -1777,6 +1783,16 @@ export function resolveRetreatDecision(
   // Now move the units that fit.
   for (const uid of toMove) {
     M.moveUnit(G, uid, c.systemId, destSystemId);
+  }
+  // RAW (rr p.5): one leader leads the retreat — move it to the destination.
+  // The player picks which (default: the first present); any OTHER leaders the
+  // side has in the system stay behind. The retreat step is only ever posted
+  // when ≥1 leader is present, so leadersHere is non-empty here in normal play.
+  const retreatingFaction = side === 'Rebel' ? G.rebel : G.empire;
+  const leadersHere = retreatingFaction.leadersOnBoard[c.systemId] ?? [];
+  const leaderToMove = (leaderId && leadersHere.includes(leaderId)) ? leaderId : leadersHere[0];
+  if (leaderToMove) {
+    M.relocateLeader(G, side, leaderToMove, c.systemId, destSystemId);
   }
   c.retreated.push(side);
   c.retreatDecidedThisRound = c.retreatDecidedThisRound ?? [];

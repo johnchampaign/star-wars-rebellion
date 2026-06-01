@@ -1698,11 +1698,16 @@ function RetreatPanel({ G, choice, onPersist }: {
   onPersist: () => void;
 }) {
   const [dest, setDest] = useState<string | null>(choice.legalDestinations[0] ?? null);
+  // RAW: one leader leads the retreat (the units follow it). Default to the
+  // first present; let the player choose if they have more than one here.
+  const [leader, setLeader] = useState<string | null>(choice.leadersInSystem[0] ?? null);
   const submit = (destSystemId: string | null) => {
-    const r = combat.resolveRetreatDecision(G, destSystemId, null);
+    // "Stay and fight" (null dest) doesn't move a leader; a real retreat does.
+    const r = combat.resolveRetreatDecision(G, destSystemId, null, destSystemId ? leader : null);
     if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
     onPersist();
   };
+  const leaderName = (lid: string) => G.catalog.leaders[lid]?.name ?? lid;
   const sysName = (sid: string) => G.catalog.systems[sid]?.name ?? sid;
 
   // Compute who will survive vs die. Mirror the engine's retreat-transport
@@ -1752,7 +1757,10 @@ function RetreatPanel({ G, choice, onPersist }: {
     <div>
       <div style={{ fontSize: 13, marginBottom: 6 }}>
         <b>Retreat?</b> {choice.availableUnits.length} unit{choice.availableUnits.length === 1 ? '' : 's'} can withdraw
-        to a friendly adjacent system. (Once per combat.)
+        to a friendly adjacent system, led by one of your leaders. (Once per combat.)
+        {choice.leadersInSystem.length > 1 && (
+          <span style={{ color: '#888' }}> Any leader you don't pick stays behind in the system.</span>
+        )}
       </div>
 
       {(willRetreat.length > 0 || willDie.length > 0) && (
@@ -1793,6 +1801,24 @@ function RetreatPanel({ G, choice, onPersist }: {
                 ))}
               </select>
             </label>
+            {choice.leadersInSystem.length > 1 ? (
+              <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
+                Led by:
+                <select
+                  value={leader ?? ''}
+                  onChange={(e) => setLeader(e.target.value || null)}
+                  style={{ background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '2px 4px', fontSize: 12 }}
+                >
+                  {choice.leadersInSystem.map((lid) => (
+                    <option key={lid} value={lid}>{leaderName(lid)}</option>
+                  ))}
+                </select>
+              </label>
+            ) : (
+              <span style={{ fontSize: 12, color: '#aaa' }}>
+                Led by <b style={{ color: '#fff' }}>{leaderName(choice.leadersInSystem[0] ?? '')}</b>
+              </span>
+            )}
             <button onClick={() => submit(dest)} disabled={!dest} style={btn(SIDE_COLOR[choice.side])}>
               Retreat ({willRetreat.length} survive{willDie.length > 0 ? `, ${willDie.length} die` : ''})
             </button>
