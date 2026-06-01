@@ -937,7 +937,7 @@ export default function PlayTab() {
       )}
 
       {G.phase === 'Assignment' && !G.isGameOver && (
-        <AssignmentPanel G={G} side={G.currentPlayer} onChange={() => { persist(); refresh(); }} />
+        <AssignmentPanel G={G} side={G.currentPlayer} humanSide={humanSide} onChange={() => { persist(); refresh(); }} />
       )}
 
       {G.phase === 'Command' && !G.isGameOver && G.currentPlayer === humanSide && (
@@ -6630,7 +6630,7 @@ function MissionNameHover({ name, image, color }: { name: string; image?: string
   );
 }
 
-function AssignmentPanel({ G, side, onChange }: { G: GameState; side: Side; onChange: () => void }) {
+function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side: Side; humanSide: Side; onChange: () => void }) {
   const f = side === 'Rebel' ? G.rebel : G.empire;
   const color = sideColor(side);
   const [pickerMissionId, setPickerMissionId] = useState<string | null>(null);
@@ -6671,6 +6671,41 @@ function AssignmentPanel({ G, side, onChange }: { G: GameState; side: Side; onCh
           still assign with insufficient skill, but the reveal will be rejected.
         </span>
       </div>
+
+      {/* Action cards playable during Assignment surface a button right here in
+          the on-screen panel. Previously the only "Play action card" button
+          lived in the top toolbar, which scrolls off-screen — players saw the
+          card's "use the Play action card button" hint but couldn't find the
+          button (player report). Gated to the human's own turn. */}
+      {side === humanSide && !G.pendingChoice && (() => {
+        const playable = phases.playableAssignmentActionCards(G, side);
+        if (playable.length === 0) return null;
+        const names = playable
+          .map((cid) => G.catalog.actions[cid]?.name ?? cid)
+          .join(', ');
+        return (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10,
+            padding: '8px 10px', background: '#1c1f27', borderRadius: 4,
+            border: '1px solid #3a6ea5',
+          }}>
+            <button
+              className="tab-button"
+              onClick={() => {
+                const r = phases.requestAssignmentActionCardPlay(G, side);
+                if (!r.ok) alert(`Cannot play: ${r.reason}`);
+                onChange();
+              }}
+              style={{ fontWeight: 700, whiteSpace: 'nowrap' }}
+            >
+              ▶ Play action card ({playable.length})
+            </button>
+            <span style={{ color: '#9bb8d6', fontSize: 12 }}>
+              Playable now: <strong style={{ color: '#cfe2f5' }}>{names}</strong>
+            </span>
+          </div>
+        );
+      })()}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         {/* Missions to assign */}
