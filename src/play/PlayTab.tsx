@@ -6603,23 +6603,29 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
 function MissionNameHover({ name, image, color }: { name: string; image?: string; color?: string }) {
   const [open, setOpen] = useState(false);
   const resolved = image ? getCachedArtUrlSync(image) : null;
+  // The outer <strong> keeps flex:1 so the skill/assign controls stay pushed to
+  // the right of the row, but the hover target is the inner span — sized to the
+  // text only — so the preview pops solely when the cursor is on the card NAME,
+  // not anywhere across the stretched row.
   return (
-    <strong
-      style={{ flex: 1, color: color ?? '#e8e8ea', position: 'relative', cursor: resolved ? 'help' : 'default' }}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
-    >
-      {name}
-      {open && resolved && (
-        <div style={{
-          position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)',
-          marginLeft: 12, zIndex: 2000, pointerEvents: 'none',
-          background: 'rgba(0,0,0,0.94)', border: '1px solid #555', borderRadius: 4,
-          padding: 6, boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
-        }}>
-          <img src={resolved} alt={name} style={{ width: 240, height: 'auto', borderRadius: 4, display: 'block' }} />
-        </div>
-      )}
+    <strong style={{ flex: 1, color: color ?? '#e8e8ea' }}>
+      <span
+        style={{ position: 'relative', display: 'inline-block', cursor: resolved ? 'help' : 'default' }}
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+      >
+        {name}
+        {open && resolved && (
+          <div style={{
+            position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)',
+            marginLeft: 12, zIndex: 2000, pointerEvents: 'none',
+            background: 'rgba(0,0,0,0.94)', border: '1px solid #555', borderRadius: 4,
+            padding: 6, boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+          }}>
+            <img src={resolved} alt={name} style={{ width: 240, height: 'auto', borderRadius: 4, display: 'block' }} />
+          </div>
+        )}
+      </span>
     </strong>
   );
 }
