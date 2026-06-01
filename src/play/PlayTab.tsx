@@ -5349,6 +5349,10 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
   // clicking the Rebel Base marker, so the ruled-out X's stay visible while
   // moving units around — instead of vanishing the moment the cursor leaves.
   const [pinProbeOverlay, setPinProbeOverlay] = useState<boolean>(false);
+  // After clicking to UNPIN, the cursor is still over the Rebel Base, so the
+  // hover would instantly re-show the overlay — making the unpin look broken.
+  // Suppress the hover display until the mouse actually leaves the base.
+  const [suppressBaseHover, setSuppressBaseHover] = useState<boolean>(false);
   // Build-queue hover: "1-rebel" | "2-empire" | etc.
   const [hoverBuildKind, setHoverBuildKind] = useState<string | null>(null);
   const hoverSystem = hoverSystemId ? systems.find((s) => s.id === hoverSystemId) : null;
@@ -5360,7 +5364,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
   // the same overlay as hovering the probe deck. (Only fires for Empire
   // players because the Rebel knows exactly where their own base is.)
   const baseHoverEliminated: Set<string> | null =
-    (hoverRebelBase || pinProbeOverlay) && humanSide === 'Empire'
+    ((hoverRebelBase && !suppressBaseHover) || pinProbeOverlay) && humanSide === 'Empire'
       ? new Set((G.empire.probeHand ?? [])
           .map((pid) => G.catalog.probes[pid]?.systemId)
           .filter((s): s is string => !!s))
@@ -5628,8 +5632,14 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
             pointerEvents="all"
             style={{ cursor: humanSide === 'Empire' ? 'pointer' : 'default' }}
             onMouseEnter={() => setHoverRebelBase(true)}
-            onMouseLeave={() => setHoverRebelBase(false)}
-            onClick={humanSide === 'Empire' ? () => setPinProbeOverlay((p) => !p) : undefined}
+            onMouseLeave={() => { setHoverRebelBase(false); setSuppressBaseHover(false); }}
+            onClick={humanSide === 'Empire' ? () => setPinProbeOverlay((p) => {
+              const next = !p;
+              // Unpinning while still hovering: hide the overlay until the
+              // cursor leaves, so the click visibly does something.
+              setSuppressBaseHover(!next);
+              return next;
+            }) : undefined}
           >
             <title>
               {humanSide === 'Empire'
