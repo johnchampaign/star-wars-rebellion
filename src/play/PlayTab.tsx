@@ -3388,13 +3388,30 @@ function RecruitCardPickModal({ G, side, drawnIds, canDrawMore, color, onConfirm
           {leaders.length === 0 && (
             <div style={{ fontSize: 10, color: '#888' }}>No leader</div>
           )}
-          {leaders.map((l) => (
-            <div key={l.lid} style={{ fontSize: 11, fontWeight: 700,
-              color: l.recruitable ? '#7fd17f' : '#c06060' }}>
-              {l.recruitable ? '✓ ' : '✗ '}{l.name}
-              {!l.recruitable && <span style={{ color: '#888', fontWeight: 400 }}> (already in play)</span>}
-            </div>
-          ))}
+          {leaders.map((l) => {
+            // Show the leader's skills + tactic values so the player can weigh
+            // who to recruit (reporter MightyFaben).
+            const ld = G.catalog.leaders[l.lid];
+            const skills = ld ? Object.entries(ld.skills)
+              .filter(([, v]) => (v as number) > 0)
+              .map(([k, v]) => `${k}:${v}`)
+              .join(' ') : '';
+            return (
+              <div key={l.lid} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 11, fontWeight: 700,
+                  color: l.recruitable ? '#7fd17f' : '#c06060' }}>
+                  {l.recruitable ? '✓ ' : '✗ '}{l.name}
+                  {!l.recruitable && <span style={{ color: '#888', fontWeight: 400 }}> (already in play)</span>}
+                </div>
+                {ld && (
+                  <div style={{ fontSize: 9, color: '#9aa3ad', lineHeight: 1.3 }}>
+                    {skills || 'no skills'}
+                    <br />tactic s{ld.tacticValues.space}/g{ld.tacticValues.ground}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
         {leaders.length > 0 && !anyRecruitable && (
           <div style={{ fontSize: 9, color: '#888', textAlign: 'center' }}>recruits no one</div>
@@ -5717,25 +5734,20 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
                 />
               ))}
               {state.sabotage && (() => {
-                // Sabotage badge — pure SVG (no asset), placed offset from the
-                // loyalty marker so both stay visible. Red circle with a wrench
-                // glyph and "SABOTAGE" label.
+                // Sabotage badge — pure SVG (no asset). Placed ON the planet
+                // image (its center) rather than near the loyalty hex, because
+                // the old position + "SABOTAGE" text label overlapped the
+                // printed planet name (reporter MightyFaben). The ⚠ glyph alone
+                // is enough; the hover/preview spells out "SABOTAGED".
                 const badgeR = 14;
-                // Stack the sabotage badge to the LEFT of the loyalty marker to
-                // avoid overlapping the subjugation offset (which sits down/right).
-                const bx = mx - markerSize / 2 - 6;
-                const by = my;
+                const bx = s.boardPos.x * BOARD_SCALE;
+                const by = s.boardPos.y * BOARD_SCALE;
                 return (
                   <g>
                     <circle cx={bx} cy={by} r={badgeR}
                       style={{ fill: 'rgba(180,20,20,0.95)', stroke: '#ff8a80', strokeWidth: 1.5 }} />
                     <text x={bx} y={by + 5} textAnchor="middle"
                       style={{ fill: '#fff', fontSize: 16, fontWeight: 700 }}>⚠</text>
-                    <text x={bx} y={by + badgeR + 10} textAnchor="middle"
-                      style={{ fill: '#ff8a80', fontSize: 8, fontWeight: 700,
-                              paintOrder: 'stroke', stroke: '#000', strokeWidth: 2 }}>
-                      SABOTAGE
-                    </text>
                   </g>
                 );
               })()}
