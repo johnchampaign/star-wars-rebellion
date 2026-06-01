@@ -516,6 +516,11 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
       pa.phase = 'awaitingR2D2Flip';
       G.pendingChoice = {
         kind: 'R2D2Flip',
+        // REQUIRED: routes the player's response to Combat.resolveR2D2Flip (vs
+        // the mission resolver). Omitting it left context undefined, so the
+        // combat board's R2-D2 panel (gated on context === 'combat') never
+        // rendered and the game hung on the unresolved choice.
+        context: 'combat',
         side: 'Rebel', theater: pa.theater, systemId: c.systemId,
         flippableDieIndices: flippable,
       };
