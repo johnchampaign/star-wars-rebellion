@@ -11,7 +11,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { GameState, Side, UnitInstance, Theater, DieResult } from '../engine/types';
 import * as combat from '../engine/combat';
 import { stepOnce as aiStepOnce } from './randomAI';
-import { vmodAssetUrl, CARD_IMAGE_BASE } from '../data/loadAssets';
+import { vmodAssetUrl, CARD_IMAGE_BASE, UNIT_IMAGE_BASE } from '../data/loadAssets';
+import { unitImageUrl, getUnitStyle } from './unitImages';
 
 const SIDE_COLOR = { Rebel: '#4fc3f7', Empire: '#ff8a80' } as const;
 
@@ -401,14 +402,14 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem }: {
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12, minHeight: 0 }}>
         <TheaterPanel
-          G={G} c={c} theater="space"
+          G={G} c={c} theater="space" humanSide={humanSide}
           attacker={attacker} defender={defender}
           dice={activeTheater === 'space' ? dice : null}
           rolling={activeTheater === 'space' ? c.pendingAttack?.side ?? null : null}
           damageAssign={damageAssignBundle?.theater === 'space' ? damageAssignBundle : null}
         />
         <TheaterPanel
-          G={G} c={c} theater="ground"
+          G={G} c={c} theater="ground" humanSide={humanSide}
           attacker={attacker} defender={defender}
           dice={activeTheater === 'ground' ? dice : null}
           rolling={activeTheater === 'ground' ? c.pendingAttack?.side ?? null : null}
@@ -639,11 +640,12 @@ type DamageAssignBundle = {
   onUnitClick: (unitInstanceId: string) => void;
 };
 
-function TheaterPanel({ G, c, theater, attacker, defender, dice, rolling, damageAssign }: {
+function TheaterPanel({ G, c, theater, attacker, defender, dice, rolling, damageAssign, humanSide }: {
   G: GameState; c: NonNullable<GameState['pendingCombat']>;
   theater: Theater; attacker: Side; defender: Side;
   dice: DieResult[] | null; rolling: Side | null;
   damageAssign?: DamageAssignBundle | null;
+  humanSide: Side;
 }) {
   const ss = G.map.systems[c.systemId] ?? G.map.rebelBaseSpace;
   const inTheater = (u: UnitInstance) => {
@@ -671,15 +673,17 @@ function TheaterPanel({ G, c, theater, attacker, defender, dice, rolling, damage
           units={attUnits}
           leaderIds={attLeaders}
           align="right"
+          isYou={attacker === humanSide}
           damageAssign={damageAssign && damageAssign.defenderSide === attacker ? damageAssign : null}
         />
-        <DicePanel dice={dice} side={rolling} />
+        <DicePanel dice={dice} side={rolling} humanSide={humanSide} />
         <SidePanel
           G={G}
           side={defender}
           units={defUnits}
           leaderIds={defLeaders}
           align="left"
+          isYou={defender === humanSide}
           damageAssign={damageAssign && damageAssign.defenderSide === defender ? damageAssign : null}
         />
       </div>
@@ -693,11 +697,26 @@ function TheaterPanel({ G, c, theater, attacker, defender, dice, rolling, damage
  *  matching its current damage. Wounded units visibly slide right as combat
  *  progresses. Squares are color-tinted by the unit's health colour
  *  (red-health vs black-health) so unit-class is legible at a glance. */
-function SidePanel({ G, side, units, leaderIds, align, damageAssign }: {
+function SidePanel({ G, side, units, leaderIds, align, damageAssign, isYou }: {
   G: GameState; side: Side; units: UnitInstance[]; leaderIds: string[]; align: 'left' | 'right';
   damageAssign?: DamageAssignBundle | null;
+  isYou?: boolean;
 }) {
   const color = SIDE_COLOR[side];
+  // Attack-dice pool this side's units contribute, capped at 5 red / 5 black
+  // (rr p.4). Shown as a caption so the player can see WHERE the dice come
+  // from — RAW rolls one shared pool per side, not per-unit dice, so this is
+  // the faithful way to surface "which units made these dice".
+  let poolRed = 0, poolBlack = 0;
+  for (const u of units) {
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t) continue;
+    poolRed += t.attack.red;
+    poolBlack += t.attack.black;
+  }
+  const cappedRed = Math.min(5, poolRed);
+  const cappedBlack = Math.min(5, poolBlack);
+  const capped = poolRed > 5 || poolBlack > 5;
   // Find the highest single-unit HP we need to show (decides how many
   // damage lanes to render). Cap at 5 (the SSD's max HP).
   const maxHp = Math.max(1, ...units.map((u) => G.catalog.unitTypes[u.typeId]?.health.value ?? 1));
@@ -716,7 +735,20 @@ function SidePanel({ G, side, units, leaderIds, align, damageAssign }: {
       gap: 4,
       minWidth: 0,
     }}>
-      <div style={{ color, fontSize: 12, fontWeight: 700 }}>{side}</div>
+      <div style={{ color, fontSize: 12, fontWeight: 700 }}>
+        {side}{isYou ? ' (you)' : ''}
+      </div>
+      {(cappedRed > 0 || cappedBlack > 0) && (
+        <div
+          title={`All of ${side}'s units roll into ONE shared pool (the rules don't tie individual dice to individual ships). This side's units add ${poolRed} red + ${poolBlack} black${capped ? ', capped at 5 of each per attack' : ''}.`}
+          style={{ fontSize: 10, color: '#bbb', display: 'flex', alignItems: 'center', gap: 4 }}
+        >
+          rolls
+          {cappedRed > 0 && <span style={{ color: '#e0625a', fontWeight: 700 }}>{cappedRed}🔴</span>}
+          {cappedBlack > 0 && <span style={{ color: '#cfcfcf', fontWeight: 700 }}>{cappedBlack}⚫</span>}
+          {capped && <span style={{ color: '#888' }}>(cap)</span>}
+        </div>
+      )}
       {leaderIds.length > 0 && (
         <div style={{ fontSize: 11, color: '#ccc' }}>
           ★ {leaderIds.map((lid) => G.catalog.leaders[lid]?.name ?? lid).join(', ')}
@@ -784,8 +816,12 @@ function UnitIcon({ G, unit, legalTarget, assignedCount, onClick }: {
               : hc === 'red' ? '2px solid #c4423a'
               : hc === 'black' ? '2px solid #888'
               : '1px dotted #555';
-  // Two-letter abbreviation derived from the type ID for a quick visual.
+  // Two-letter abbreviation derived from the type ID (fallback when the unit
+  // image isn't available).
   const abbr = (t?.id ?? unit.typeId).split('-').map((s) => s[0]?.toUpperCase()).join('').slice(0, 3);
+  // Actual ship/troop picture (player request: pictures, not letters). Falls
+  // back to the abbreviation when no art is mapped for this type.
+  const imgUrl = unitImageUrl(unit.typeId, UNIT_IMAGE_BASE, getUnitStyle());
   // Rich combat tooltip: attack dice, hp, theater, tier, transport.
   const tooltip = (() => {
     if (!t) return name;
@@ -811,14 +847,25 @@ function UnitIcon({ G, unit, legalTarget, assignedCount, onClick }: {
       onClick={onClick}
       style={{
         position: 'relative',
-        width: 22, height: 22, background: '#0c0d10', border,
+        width: 30, height: 30, background: '#0c0d10', border,
         borderRadius: 3, display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 9, fontWeight: 700, color: '#e8e8ea',
         cursor: onClick ? 'pointer' : 'default',
         boxShadow: legalTarget ? '0 0 6px #ffd54a' : undefined,
+        overflow: 'hidden',
       }}
     >
-      {abbr}
+      {imgUrl ? (
+        <img
+          src={imgUrl}
+          alt={name}
+          draggable={false}
+          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }}
+        />
+      ) : (
+        abbr
+      )}
       {assignedCount && assignedCount > 0 ? (
         <div style={{
           position: 'absolute', top: -6, right: -6,
@@ -836,16 +883,36 @@ function UnitIcon({ G, unit, legalTarget, assignedCount, onClick }: {
   );
 }
 
-function DicePanel({ dice, side }: { dice: DieResult[] | null; side: Side | null }) {
+function DicePanel({ dice, side, humanSide }: { dice: DieResult[] | null; side: Side | null; humanSide: Side }) {
   if (!dice || dice.length === 0) {
     return <div style={{ alignSelf: 'center', color: '#444', fontSize: 11, fontStyle: 'italic' }}>(no roll yet)</div>;
   }
   const color = side ? SIDE_COLOR[side] : '#888';
+  const isYou = side === humanSide;
+  // Plain-English tally so the player doesn't have to decode the glyphs.
+  const hits = dice.filter((d) => d.face === 'hit').length;
+  const direct = dice.filter((d) => d.face === 'direct-hit').length;
+  const special = dice.filter((d) => d.face === 'special').length;
+  const blanks = dice.filter((d) => d.face === 'blank').length;
+  const parts: string[] = [];
+  if (hits) parts.push(`${hits} hit${hits === 1 ? '' : 's'}`);
+  if (direct) parts.push(`${direct} direct`);
+  if (special) parts.push(`${special} special`);
+  if (blanks) parts.push(`${blanks} miss${blanks === 1 ? '' : 'es'}`);
   return (
-    <div style={{ alignSelf: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-      <div style={{ fontSize: 10, color, fontWeight: 700 }}>{side} rolled</div>
+    <div style={{
+      alignSelf: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+      padding: '6px 8px', borderRadius: 6,
+      border: `1px solid ${color}`, background: `${color}14`,
+    }}>
+      <div style={{ fontSize: 10, color, fontWeight: 700 }}>
+        {isYou ? `YOUR roll (${side})` : `${side}'s roll`}
+      </div>
       <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 220 }}>
         {dice.map((d, i) => <Die key={i} d={d} />)}
+      </div>
+      <div style={{ fontSize: 10, color: '#cbd2da' }}>
+        {parts.length ? parts.join(' · ') : 'no results'}
       </div>
     </div>
   );
