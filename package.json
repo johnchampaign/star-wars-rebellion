@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "test:turn-order": "node scripts/test-turn-order.mjs",
     "build": "node scripts/copy-dev-assets.mjs && vite build && node scripts/strip-images-from-dist.mjs",
     "build:with-art": "vite build",
     "preview": "vite preview",
