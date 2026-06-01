@@ -1327,6 +1327,12 @@ export default function PlayTab() {
           title={`Deploy ${G.catalog.unitTypes[G.pendingChoice.typeId]?.name ?? G.pendingChoice.typeId}`}
           instructions={`Pick where this unit deploys. The galaxy map stays visible so you can see existing placements.`}
           candidates={G.pendingChoice.candidates}
+          unitTokens={[
+            G.pendingChoice.typeId,
+            ...((G.refreshPaused?.pendingDeployPicks ?? [])
+              .filter((p) => p.side === (G.pendingChoice as { side: Side }).side)
+              .map((p) => p.typeId)),
+          ]}
           onPick={(sid) => {
             const r = phases.resolveDeployUnitPick(G, sid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
@@ -6019,15 +6025,23 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
 // ============================================================================
 
 function MapPickerOverlay({
-  G, systems, masks, humanSide, title, instructions, color, candidates, onPick, onCancel,
+  G, systems, masks, humanSide, title, instructions, color, candidates, onPick, onCancel, unitTokens,
 }: {
   G: GameState; systems: System[]; masks: MaskRect[]; humanSide: Side;
   title: string; instructions?: string; color: string;
   candidates: string[];
   onPick: (systemId: string) => void;
   onCancel?: () => void;
+  // Optional "still to deploy" tokens (unit typeIds) shown under the list.
+  // The first entry is the unit being placed right now; the rest are queued.
+  unitTokens?: string[];
 }) {
   const highlight = new Set(candidates);
+  const unitStyle = getUnitStyle();
+  // Group the remaining-to-deploy tokens by type, preserving the "current"
+  // (first) unit so we can flag it.
+  const currentTokenType = unitTokens && unitTokens.length > 0 ? unitTokens[0] : null;
+  const tokenGroups = unitTokens && unitTokens.length > 0 ? groupTypeIds(unitTokens) : [];
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000, padding: 12 }}>
@@ -6057,6 +6071,44 @@ function MapPickerOverlay({
               );
             })}
           </div>
+          {tokenGroups.length > 0 && (
+            <div style={{ marginTop: 14, borderTop: '1px solid #2a2d34', paddingTop: 10 }}>
+              <div style={{ fontSize: 11, color: '#9bb8d6', marginBottom: 6 }}>
+                Still to deploy ({unitTokens!.length}):
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {tokenGroups.map((g) => {
+                  const img = unitImageUrl(g.typeId, UNIT_IMAGE_BASE, unitStyle);
+                  const name = G.catalog.unitTypes[g.typeId]?.name ?? g.typeId;
+                  const isCurrent = g.typeId === currentTokenType;
+                  return (
+                    <div key={g.typeId} title={name} style={{
+                      position: 'relative', width: 34, height: 34, borderRadius: 4,
+                      background: '#0c0d10', overflow: 'hidden',
+                      border: isCurrent ? `2px solid ${color}` : '1px solid #2a2d34',
+                      boxShadow: isCurrent ? `0 0 6px ${color}` : undefined,
+                    }}>
+                      {img ? <img src={img} alt={name} draggable={false}
+                        style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                        : <span style={{ fontSize: 9, color: '#ccc' }}>{name.slice(0, 3)}</span>}
+                      {g.count > 1 && (
+                        <div style={{ position: 'absolute', bottom: -2, right: -2,
+                          minWidth: 14, height: 14, padding: '0 3px', background: '#222',
+                          color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: 7,
+                          border: '1px solid #000', display: 'flex', alignItems: 'center',
+                          justifyContent: 'center', lineHeight: 1 }}>
+                          {g.count}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 10, color: '#888', marginTop: 6 }}>
+                The glowing token is being placed now; tokens drop off as you deploy.
+              </div>
+            </div>
+          )}
           {onCancel && (
             <button className="tab-button" style={{ marginTop: 12 }} onClick={onCancel}>Cancel</button>
           )}
