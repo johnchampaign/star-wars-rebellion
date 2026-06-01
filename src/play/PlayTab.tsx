@@ -5406,6 +5406,14 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           ...(baseHoverEliminated ?? []),
         ])
       : null;
+  // "Searched" ruled-out systems (subjugated / Imperial-loyal since the base's
+  // last placement) — shown yellow, distinct from the red probe X's. Same
+  // hover/pin gating as the probe overlay.
+  const showOverlay = !!effectiveEliminated || (((hoverRebelBase && !suppressBaseHover) || pinProbeOverlay) && humanSide === 'Empire');
+  const effectiveSearched: Set<string> | null =
+    showOverlay && humanSide === 'Empire'
+      ? new Set(G.empireSearchedRuledOut ?? [])
+      : null;
 
   return (
     <div style={{ position: 'relative', display: 'inline-block', border: '1px solid #2a2d34' }}>
@@ -5530,6 +5538,8 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
 
           const grouped = groupByType(state.units);
           const isEliminated = effectiveEliminated?.has(s.id) ?? false;
+          // Yellow "searched" rule-out, only when not already red-X'd by a probe.
+          const isSearched = !isEliminated && (effectiveSearched?.has(s.id) ?? false);
           const isHighlighted = highlightSystemIds?.has(s.id) ?? false;
           const isSelected = selectedSystemIds?.has(s.id) ?? false;
           return (
@@ -5551,6 +5561,15 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
               {isSelected && (
                 <text x={x} y={y - MARKER_R - 14} textAnchor="middle"
                   style={{ fill: '#80dc78', fontSize: 16, fontWeight: 700, pointerEvents: 'none' }}>✓</text>
+              )}
+              {/* Searched/subjugated rule-out — yellow ring + magnifier glyph. */}
+              {isSearched && (
+                <g pointerEvents="none">
+                  <circle cx={x} cy={y} r={MARKER_R + 8}
+                    style={{ fill: 'rgba(255,213,74,0.14)', stroke: '#ffd54a', strokeWidth: 2 }} />
+                  <text x={x} y={y + 5} textAnchor="middle"
+                    style={{ fill: '#ffd54a', fontSize: 14, fontWeight: 700 }}>🔍</text>
+                </g>
               )}
               {isEliminated && (
                 <g pointerEvents="none">

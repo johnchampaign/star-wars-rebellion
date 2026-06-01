@@ -213,6 +213,9 @@ export function pickRebelBase(G: GameState, systemId: SystemId): { ok: boolean; 
       if (idx >= 0) G.probeDeck.splice(idx, 1);
     }
     G.rebelBaseSystemId = systemId;
+    // Base (re)placed → searched-ruled-out knowledge resets to currently-
+    // qualifying systems only.
+    M.resetEmpireSearchedForBaseMove(G);
   }
 
   G.pendingRebelBasePick = undefined;
@@ -1939,6 +1942,9 @@ export function resolveRapidMobilizationBasePick(
   if (!G.map.systems[systemId]) return { ok: false, reason: 'unknown-system' };
   const old = G.rebelBaseSystemId;
   G.rebelBaseSystemId = systemId;
+  // Base relocated → reset searched-ruled-out knowledge to systems that still
+  // qualify (still subjugated / Imperial-loyal).
+  M.resetEmpireSearchedForBaseMove(G);
   log(G, { kind: 'rapid-mobilization-base-established', side: 'Rebel', payload: {
     fromSystemId: old, toSystemId: systemId, baseRevealed: choice.baseRevealed,
   }});

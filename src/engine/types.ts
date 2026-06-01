@@ -1164,6 +1164,12 @@ export type GameState = {
   map: MapState;
   rebelBaseSystemId: SystemId; // secret; masked via playerView
   rebelBaseRevealed: boolean;
+  // Systems the Empire has ruled out as the base by SEARCHING (not probes):
+  // any system that has been subjugated (Empire ground) or held Imperial
+  // loyalty since the base's last placement — if the base were there, it would
+  // have been revealed. Cleared & re-seeded with still-qualifying systems when
+  // the base relocates. Not secret (these are systems ruled OUT).
+  empireSearchedRuledOut?: SystemId[];
 
   // Shared decks
   probeDeck: string[];

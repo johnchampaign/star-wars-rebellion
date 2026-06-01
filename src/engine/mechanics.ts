@@ -143,9 +143,39 @@ export function recomputeGameEnd(G: GameState): void {
   }
 }
 
+/** Record which systems the Empire has "searched" — i.e. satisfied the base-
+ *  reveal condition (subjugated/Empire-ground OR Imperial loyalty) while the
+ *  base was NOT there. Those systems are ruled out as the base location until
+ *  the base relocates. Safe to add ANY qualifying non-base system while the
+ *  base is unrevealed: if a system met the condition AND were the base, the
+ *  base would already be revealed (so we wouldn't be here). */
+export function recordEmpireSearched(G: GameState, affected?: SystemId[]): void {
+  if (G.rebelBaseRevealed) return; // moot once revealed
+  if (!G.empireSearchedRuledOut) G.empireSearchedRuledOut = [];
+  const set = new Set(G.empireSearchedRuledOut);
+  const ids = affected ?? Object.keys(G.map.systems);
+  for (const id of ids) {
+    if (id === 'rebel-base-space' || id === G.rebelBaseSystemId) continue;
+    const ss = G.map.systems[id];
+    if (!ss) continue;
+    if (ss.subjugated || ss.loyalty === 'imperial') set.add(id);
+  }
+  G.empireSearchedRuledOut = [...set];
+}
+
+/** Re-seed the searched-ruled-out set when the base relocates: prior searches
+ *  no longer rule out a freshly-hidden base, EXCEPT systems that still qualify
+ *  right now (still subjugated / Imperial-loyal — the base can't be hiding
+ *  under Empire ground or Imperial control). */
+export function resetEmpireSearchedForBaseMove(G: GameState): void {
+  G.empireSearchedRuledOut = [];
+  recordEmpireSearched(G);
+}
+
 function applyInvariants(G: GameState, affected?: SystemId[]): void {
   recomputeSubjugation(G, affected);
   recomputeRebelBaseReveal(G);
+  recordEmpireSearched(G, affected);
   // If a captured leader's system no longer has Imperial units, auto-rescue
   // (rr Capturing leaders). Scan affected systems only, since this is called
   // after every unit movement / destruction.
