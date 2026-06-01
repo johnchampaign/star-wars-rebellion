@@ -2103,7 +2103,7 @@ export function resolveNobleSacrificeOffer(G: GameState, accept: boolean): { ok:
   // skip rather than failing: returning !ok here would strand the pending
   // choice forever (deadlock). The offer just lapses.
   if (accept && handIdx >= 0 && ci >= 0) {
-    e.capturedLeaders.splice(ci, 1);
+    e.capturedLeaders!.splice(ci, 1); // ci >= 0 implies the array exists
     // Add to Rebel eliminated leaders.
     if (!G.rebel.eliminatedLeaders.includes('obi-wan-kenobi')) {
       G.rebel.eliminatedLeaders.push('obi-wan-kenobi');
@@ -2199,7 +2199,7 @@ export function resolveUndercoverOffer(G: GameState, leaderId: LeaderId | null):
       leaderId, targetSystemId: pc.targetSystemId,
     }});
     noteIntervention(G, pm,
-      `Rebel played Undercover: ${G.catalog.leaders[leaderId]?.name ?? leaderId} relocated to ${G.map.systems[pc.targetSystemId]?.name ?? pc.targetSystemId} to oppose.`,
+      `Rebel played Undercover: ${G.catalog.leaders[leaderId]?.name ?? leaderId} relocated to ${G.catalog.systems[pc.targetSystemId]?.name ?? pc.targetSystemId} to oppose.`,
     );
   } else {
     log(G, { kind: 'undercover-skipped', side: 'Rebel', payload: {} });
@@ -2356,7 +2356,7 @@ export function resolveFalconOffer(G: GameState, leaderId: LeaderId | null): { o
       explanation: `Millennium Falcon ring discarded — rescued ${leaderId} from ${pm.targetSystemId}.`,
     }});
     noteIntervention(G, pm,
-      `Rebel played Millennium Falcon: rescued ${G.catalog.leaders[leaderId]?.name ?? leaderId} from ${G.map.systems[pm.targetSystemId]?.name ?? pm.targetSystemId}.`,
+      `Rebel played Millennium Falcon: rescued ${G.catalog.leaders[leaderId]?.name ?? leaderId} from ${G.catalog.systems[pm.targetSystemId]?.name ?? pm.targetSystemId}.`,
     );
   } else {
     log(G, { kind: 'falcon-skipped', side: 'Rebel', payload: { missionId: pm.missionId } });
@@ -3378,7 +3378,7 @@ function refreshBuildIfApplicable(G: GameState, logStart: number): boolean {
       // Opponent unit in system blocks build (rr p.3).
       if (ss.units.some((u) => u.side === otherSide)) continue;
 
-      let icons = ss.resources ?? sysDef.resources;
+      let icons = sysDef.resources; // resources live on the catalog SystemDef, not SystemState
       if (side === 'Rebel') {
         if (ss.loyalty !== 'rebel' || ss.subjugated) continue;
       } else {

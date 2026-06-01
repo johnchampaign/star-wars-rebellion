@@ -375,7 +375,10 @@ export type ChoiceRequest =
       // Dice faces + colors to choose from. Resolver returns chosen indexes
       // + target faces; engine validates and applies.
       faces: string[];
-      colors: ('red' | 'black')[];
+      // Die colors are DieColor ('red' | 'black' | 'green'); combat dice are
+      // only red/black but the field is fed straight from DieResult.color, and
+      // the dice renderers handle every DieColor.
+      colors: DieColor[];
     }
   | {
       kind: 'NobleSacrificeOffer';

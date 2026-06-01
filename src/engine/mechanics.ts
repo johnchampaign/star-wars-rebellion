@@ -377,7 +377,11 @@ export function destroyUnit(G: GameState, unitInstanceId: UnitInstanceId, cause:
       log(G, { kind: 'invariant-violation', side: u.side, payload: { rule: 'destroy-indestructible', typeId: u.typeId, unit: u.instanceId, systemId: sysId, cause } });
       // Throw in dev so the bug is loud; in production the log entry above
       // gives us the audit trail and we keep the unit alive (graceful degrade).
-      if (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production') {
+      // Access `process` via globalThis so engine code typechecks without
+      // @types/node (which CLAUDE.md forbids in the main tsconfig) and still
+      // runs under both node (tsx scripts) and the browser.
+      const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+      if (proc && proc.env?.NODE_ENV !== 'production') {
         throw new Error(msg);
       }
       console.error(msg);

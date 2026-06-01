@@ -8,7 +8,7 @@
 // Start-of-Combat triggers, structure-destruction-on-no-ground-attacker rule.
 
 import type {
-  GameState, Side, SystemId, UnitInstance, Theater, DieColor, DieResult,
+  GameState, Side, SystemId, UnitInstance, UnitInstanceId, Theater, DieColor, DieResult,
   CombatState, CombatReport, CombatAttackReport, LeaderId,
 } from './types';
 import * as M from './mechanics';
