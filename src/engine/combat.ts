@@ -1878,35 +1878,65 @@ function endCombat(G: GameState): void {
 
   log(G, { kind: 'combat-end', payload: { systemId: c.systemId, rounds: c.round, winner: c.report.winner } });
 
-  // Combat-timed Rebel objectives — auto-play any whose triggers fire,
-  // grant their reputation, and either discard or return-to-deck per
-  // the card's rules. Done before clearing pendingCombat so the report
-  // sees the combat that triggered them.
+  // Combat-timed Rebel objectives — RAW ("Objective Cards"): only 1 objective
+  // may be played per combat. If exactly one triggered, play it. If 2+, post a
+  // PlayObjective choice so the player picks which to score (the rest stay in
+  // hand); pendingCombat is left set and the tail runs from
+  // resolveCombatObjectivePick(). Done before clearing pendingCombat so the
+  // report sees the combat that triggered them.
   const fired = objectives.combatObjectivesTriggered(G, c.report);
-  // RAW (rr "Objective Cards"): only 1 objective may be played per combat.
-  // If multiple triggered, play the highest-reputation one; the rest stay in
-  // hand for a future combat/refresh. (Was playing ALL of them.)
-  if (fired.length > 0) {
-    const best = fired
-      .map((oid) => ({ oid, rep: objectives.objectiveReputationGain(G, oid) }))
-      .sort((a, b) => b.rep - a.rep)[0];
-    const oid = best.oid;
-    const card = G.catalog.objectives[oid];
-    if (card) {
-      M.gainReputation(G, best.rep);
-      const hand = G.rebel.objectiveHand ?? [];
-      const idx = hand.indexOf(oid);
-      if (idx >= 0) hand.splice(idx, 1);
-      if (objectives.objectiveReturnsToDeck(G, oid)) {
-        (G.rebel.objectiveDeck ??= []).push(oid);
-      }
-      log(G, { kind: 'objective-played', side: 'Rebel', payload: {
-        objectiveId: oid, reputation: best.rep, timing: 'Combat',
-      }});
-      (G.objectiveReports ??= []).push({ objectiveId: oid, reputation: best.rep, via: 'combat' });
-    }
+  if (fired.length >= 2) {
+    objectives.postPlayObjectiveChoice(G, fired, 'combat');
+    return; // pendingCombat stays set; resolver continues via finishCombatTail
   }
+  if (fired.length === 1) {
+    playCombatObjective(G, fired[0]);
+  }
+  finishCombatTail(G, c);
+}
 
+/** Play a single combat-timed objective: grant reputation, remove from hand,
+ *  return-to-deck or box per the card, and record it. */
+function playCombatObjective(G: GameState, oid: string): void {
+  const card = G.catalog.objectives[oid];
+  if (!card) return;
+  const rep = objectives.objectiveReputationGain(G, oid);
+  M.gainReputation(G, rep);
+  const hand = G.rebel.objectiveHand ?? [];
+  const idx = hand.indexOf(oid);
+  if (idx >= 0) hand.splice(idx, 1);
+  if (objectives.objectiveReturnsToDeck(G, oid)) {
+    (G.rebel.objectiveDeck ??= []).push(oid);
+  }
+  log(G, { kind: 'objective-played', side: 'Rebel', payload: {
+    objectiveId: oid, reputation: rep, timing: 'Combat',
+  }});
+  (G.objectiveReports ??= []).push({ objectiveId: oid, reputation: rep, via: 'combat' });
+}
+
+/** Resolve the player's combat-objective choice (which one to score), then
+ *  run the rest of combat cleanup. `objectiveId` must be a posted candidate. */
+export function resolveCombatObjectivePick(
+  G: GameState, objectiveId: string
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'PlayObjective' || pc.window !== 'combat') {
+    return { ok: false, reason: 'no-pending' };
+  }
+  if (!pc.legal.includes(objectiveId)) return { ok: false, reason: 'illegal' };
+  G.pendingChoice = undefined;
+  playCombatObjective(G, objectiveId);
+  const c = G.pendingCombat;
+  if (c) finishCombatTail(G, c);
+  else G.pendingCombat = undefined;
+  return { ok: true };
+}
+
+/** Post-objective combat cleanup: Death Star Plans attempt, clear the
+ *  combat, and continue a mission-triggered combat's command hand-off.
+ *  Split out so it can run either inline (≤1 objective) or after the
+ *  player's PlayObjective choice resolves (2+ objectives). */
+function finishCombatTail(G: GameState, c: CombatState): void {
   // Death Star Plans 2/3 — player-discretion attempt. RAW eligibility:
   // (1) Rebel holds the card, (2) at least one Rebel fighter is at the
   // combat system after the space battle step (i.e. now), (3) at least one

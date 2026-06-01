@@ -152,7 +152,7 @@ export type ChoiceRequest =
   | { kind: 'RetreatTo'; legal: SystemId[]; allowSkip: boolean }
   | { kind: 'DeployTarget'; unitTypeId: UnitTypeId; legal: SystemId[] }
   | { kind: 'PickProbeForNewBase'; cards: string[] }
-  | { kind: 'PlayObjective'; legal: string[]; window: 'combat' | 'refresh' }
+  | { kind: 'PlayObjective'; side: Side; legal: string[]; window: 'combat' | 'refresh'; logStart?: number }
   | { kind: 'YesNo'; prompt: string }
   | { kind: 'ChooseActionCard'; from: string[] }
   | { kind: 'InfiltrationPick'; missionId: string; topId: string; bottomId: string }

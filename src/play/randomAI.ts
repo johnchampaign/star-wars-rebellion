@@ -1099,6 +1099,18 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     // AI: always attempt — it's a free shot at destroying the Death Star.
     return combat.resolveDeathStarPlansAttempt(G, true).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'PlayObjective' && G.pendingChoice.side === side) {
+    // AI: score the highest-reputation eligible objective (only one per
+    // refresh / combat). Dispatch by window — refresh vs combat live in
+    // different modules.
+    const pc = G.pendingChoice;
+    const best = [...pc.legal].sort(
+      (a, b) => (G.catalog.objectives[b]?.reputation ?? 0) - (G.catalog.objectives[a]?.reputation ?? 0)
+    )[0];
+    return pc.window === 'combat'
+      ? combat.resolveCombatObjectivePick(G, best).ok
+      : phases.resolvePlayObjectivePick(G, best).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'MoreDangerousTheaterPick' && G.pendingChoice.side === side) {
     // AI: pick the deck with more remaining cards (avoid drawing 0 of 0).
     const theater: 'space' | 'ground' = G.groundTacticDeck.length >= G.spaceTacticDeck.length ? 'ground' : 'space';

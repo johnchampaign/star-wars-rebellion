@@ -120,6 +120,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'TargetTheGeneratorPick':   return pc.side === side;
     case 'ReadyForActionLeaderPick': return pc.side === side;
     case 'DeathStarPlansAttempt':    return pc.side === side;
+    case 'PlayObjective':            return pc.side === side;
     case 'RetreatDecision':          return pc.side === side;
     // Infiltration / Stolen Plans / Plan The Assault are always Rebel choices.
     case 'InfiltrationPick':         return side === 'Rebel';
@@ -1455,6 +1456,21 @@ export default function PlayTab() {
         <DeathStarPlansAttemptModal G={G} choice={G.pendingChoice}
           onAttempt={(attempt, dsId) => {
             const r = combat.resolveDeathStarPlansAttempt(G, attempt, dsId);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'PlayObjective'
+        && G.pendingChoice.side === humanSide && (
+        <PlayObjectiveModal G={G} choice={G.pendingChoice}
+          onPick={(oid) => {
+            const r = G.pendingChoice && G.pendingChoice.kind === 'PlayObjective'
+              && G.pendingChoice.window === 'combat'
+              ? combat.resolveCombatObjectivePick(G, oid)
+              : phases.resolvePlayObjectivePick(G, oid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -9103,6 +9119,74 @@ function DeathStarPlansAttemptModal({
           >
             Reveal &amp; roll 3 dice
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- Which objective to score (only one per Refresh / per combat) -----
+
+function PlayObjectiveModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'PlayObjective'; side: Side; legal: string[]; window: 'combat' | 'refresh'; logStart?: number };
+  onPick: (objectiveId: string) => void;
+}) {
+  const windowLabel = choice.window === 'combat' ? 'combat' : 'Refresh phase';
+  // Show highest-reputation first so the "default best" is obvious, but the
+  // choice is the player's — they may prefer to bank a card for later.
+  const cards = [...choice.legal].sort(
+    (a, b) => (G.catalog.objectives[b]?.reputation ?? 0) - (G.catalog.objectives[a]?.reputation ?? 0)
+  );
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2600,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aed581', borderRadius: 8,
+        padding: 24, maxWidth: 680, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(174,213,129,0.4)',
+      }}>
+        <h3 style={{ color: '#aed581', marginTop: 0 }}>
+          🎯 Choose an objective to accomplish
+        </h3>
+        <div style={{ color: '#cbc4b0', fontSize: 13, marginBottom: 16, lineHeight: 1.5 }}>
+          Only <b>one objective card</b> can be accomplished per {windowLabel}. You qualify for
+          more than one right now — pick which to score for its reputation. The others stay in
+          your hand for a future {choice.window === 'combat' ? 'combat or Refresh phase' : 'Refresh phase'}.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {cards.map((oid) => {
+            const card = G.catalog.objectives[oid];
+            return (
+              <button
+                key={oid}
+                className="tab-button"
+                onClick={() => onPick(oid)}
+                style={{
+                  textAlign: 'left', padding: '10px 14px', display: 'flex',
+                  alignItems: 'center', gap: 12, borderColor: '#aed581',
+                }}
+              >
+                <span style={{
+                  flex: '0 0 auto', minWidth: 28, height: 28, borderRadius: 14,
+                  background: '#aed581', color: '#000', fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {card?.reputation ?? '?'}
+                </span>
+                <span>
+                  <div style={{ fontWeight: 700, color: '#fff' }}>{card?.name ?? oid}</div>
+                  {card?.rulesText && (
+                    <div style={{ color: '#9a937f', fontSize: 12, marginTop: 2 }}>{card.rulesText}</div>
+                  )}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

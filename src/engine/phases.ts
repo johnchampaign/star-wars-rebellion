@@ -15,7 +15,7 @@ import * as Handlers from './handlers/registry';
 import { missionTargets } from './missionTargets';
 import { PROJECT_ONLY_UNIT_IDS } from './units';
 import { rollDie, shuffle } from './rng';
-import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck } from './objectives';
+import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck, postPlayObjectiveChoice } from './objectives';
 
 /** Time-track turns on which the Rebel recruits a new leader, per the printed
  *  16-space board (turns 2-5). Single source of truth shared by the engine's
@@ -2906,10 +2906,18 @@ function enterRefreshPhase(G: GameState): void {
   }
 
   // Pre-step: resolve eligible StartOfRefresh objectives (rr p.10 — Rebel may
-  // play one objective at start of Refresh phase, just before step 1).
-  refreshPlayStartOfRefreshObjectives(G);
+  // play one objective at start of Refresh phase, just before step 1). If 2+
+  // objectives are eligible the Rebel chooses which to score (only one per
+  // refresh), so this may PAUSE and resume via resolvePlayObjectivePick().
+  if (refreshPlayStartOfRefreshObjectives(G, logStart)) return;
   if (G.isGameOver) return;
 
+  continueRefreshAfterObjectives(G, logStart);
+}
+
+/** Steps 1–6 of the Refresh phase, after the start-of-refresh objective step.
+ *  Split out so it can resume after the objective choice paused. */
+function continueRefreshAfterObjectives(G: GameState, logStart: number): void {
   // Step 1: Retrieve leaders
   refreshRetrieveLeaders(G);
   if (G.isGameOver) return;
@@ -3029,12 +3037,50 @@ function buildRefreshReport(G: GameState, logStart: number): void {
   (G.refreshReports ??= []).push(reb, emp);
 }
 
+/** Play one StartOfRefresh objective: remove from hand, return-to-deck or box
+ *  per the card, log it, record the report entry, and gain the reputation. */
+function playRefreshObjective(G: GameState, objectiveId: string, rep: number): void {
+  const hand = G.rebel.objectiveHand ?? [];
+  const handIdx = hand.indexOf(objectiveId);
+  if (handIdx < 0) return;
+  hand.splice(handIdx, 1);
+  if (objectiveReturnsToDeck(G, objectiveId)) {
+    if (!G.rebel.objectiveDeck) G.rebel.objectiveDeck = [];
+    G.rebel.objectiveDeck.push(objectiveId);
+  }
+  // Otherwise the card is returned to the game box (just removed from play).
+  log(G, { kind: 'play-objective', side: 'Rebel', payload: {
+    objectiveId, reputation: rep,
+  }});
+  (G.objectiveReports ??= []).push({ objectiveId, reputation: rep, via: 'refresh' });
+  M.gainReputation(G, rep);
+}
+
+/** Resolve the player's start-of-refresh objective choice and resume the
+ *  refresh phase. `objectiveId` must be one of the posted candidates. */
+export function resolvePlayObjectivePick(
+  G: GameState, objectiveId: string
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'PlayObjective' || pc.window !== 'refresh') {
+    return { ok: false, reason: 'no-pending' };
+  }
+  if (!pc.legal.includes(objectiveId)) return { ok: false, reason: 'illegal' };
+  const logStart = pc.logStart ?? G.turnLog.length;
+  G.pendingChoice = undefined;
+  playRefreshObjective(G, objectiveId, objectiveReputationGain(G, objectiveId));
+  if (G.isGameOver) return { ok: true };
+  continueRefreshAfterObjectives(G, logStart);
+  return { ok: true };
+}
+
 /** RR p.10: "Only one objective can be played during each Refresh Phase."
- *  Pick the highest-rep eligible StartOfRefresh objective the Rebel holds
- *  whose condition is met, gain that reputation, discard/return the card. */
-function refreshPlayStartOfRefreshObjectives(G: GameState): void {
+ *  Collect every eligible StartOfRefresh objective the Rebel holds whose
+ *  condition is met. If exactly one, play it; if 2+, post a PlayObjective
+ *  choice (returns true = paused) so the player picks which to score. */
+function refreshPlayStartOfRefreshObjectives(G: GameState, logStart: number): boolean {
   const hand = G.rebel.objectiveHand;
-  if (!hand || hand.length === 0) return;
+  if (!hand || hand.length === 0) return false;
   type Eligible = { id: string; rep: number };
   const eligible: Eligible[] = [];
   // Track "in-hand but condition not met" objectives so we can surface
@@ -3060,23 +3106,16 @@ function refreshPlayStartOfRefreshObjectives(G: GameState): void {
             'the objective stays in hand and will be re-checked at the next Refresh.',
     }});
   }
-  if (eligible.length === 0) return;
-  // RR p.10: only one objective per refresh. Auto-pick highest rep.
-  eligible.sort((a, b) => b.rep - a.rep);
-  const winner = eligible[0];
-  const handIdx = hand.indexOf(winner.id);
-  if (handIdx < 0) return;
-  hand.splice(handIdx, 1);
-  if (objectiveReturnsToDeck(G, winner.id)) {
-    if (!G.rebel.objectiveDeck) G.rebel.objectiveDeck = [];
-    G.rebel.objectiveDeck.push(winner.id);
+  if (eligible.length === 0) return false;
+  // RR p.10: only one objective per refresh. With a single eligible card
+  // there's no decision to make — play it. With 2+, let the player choose
+  // which one to score (the rest stay in hand for a future refresh).
+  if (eligible.length === 1) {
+    playRefreshObjective(G, eligible[0].id, eligible[0].rep);
+    return false;
   }
-  // Otherwise the card is returned to the game box (just removed from play).
-  log(G, { kind: 'play-objective', side: 'Rebel', payload: {
-    objectiveId: winner.id, reputation: winner.rep,
-  }});
-  (G.objectiveReports ??= []).push({ objectiveId: winner.id, reputation: winner.rep, via: 'refresh' });
-  M.gainReputation(G, winner.rep);
+  postPlayObjectiveChoice(G, eligible.map((e) => e.id), 'refresh', logStart);
+  return true;
 }
 
 function refreshRetrieveLeaders(G: GameState): void {

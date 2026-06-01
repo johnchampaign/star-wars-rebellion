@@ -9,6 +9,20 @@
 // destroyed) which is a separate piece of infra.
 
 import type { GameState, SystemId, Side } from './types';
+import { log } from './log';
+
+/** Post a player-facing "which objective do you want to score?" choice.
+ *  RAW caps objective play at one per Refresh phase and one per combat, so
+ *  when 2+ are eligible the player picks which to claim (the rest stay in
+ *  hand). `legal` is the eligible objective-card ids; `window` tells the
+ *  resolver/UI whether this is the refresh or combat slot; `logStart` is
+ *  carried through so the refresh phase can resume where it paused. */
+export function postPlayObjectiveChoice(
+  G: GameState, legal: string[], window: 'combat' | 'refresh', logStart?: number
+): void {
+  G.pendingChoice = { kind: 'PlayObjective', side: 'Rebel', legal, window, logStart };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'PlayObjective', window, legal } });
+}
 
 /** Return true if the given objective's condition is satisfied in the
  *  current state. Caller should already have verified the timing matches. */
