@@ -6600,17 +6600,19 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
 /** A mission name that floats the full card art on hover (issue #68 — during
  *  Assignment you couldn't see the card, only the name + skill). Falls back to
  *  just the name if the art isn't cached (the rulesText is shown inline too). */
-function MissionNameHover({ name, image, color }: { name: string; image?: string; color?: string }) {
+/** Inline text that reveals an enlarged card image on hover. Reused for mission
+ *  names, action-card names, etc. The preview uses position:fixed anchored to
+ *  the text's on-screen rect (NOT an absolutely-positioned child), so it escapes
+ *  maxHeight/overflow:auto scroll boxes that would otherwise clip it. It flips
+ *  to the left of the text when there isn't room on the right and clamps
+ *  vertically so a tall card never runs off the top/bottom. */
+function CardArtHover({ name, image, color, style }: {
+  name: string; image?: string; color?: string; style?: React.CSSProperties;
+}) {
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const spanRef = useRef<HTMLSpanElement>(null);
   const resolved = image ? getCachedArtUrlSync(image) : null;
 
-  // The popup uses position:fixed anchored to the name's on-screen rect rather
-  // than an absolutely-positioned child. The mission hand lives in a
-  // maxHeight/overflow:auto scroll box, which CLIPS an absolutely-positioned
-  // child — so the enlarged card was cut off (player report). Fixed positioning
-  // escapes the overflow container entirely. We also flip the preview to the
-  // LEFT of the name if there isn't room on the right.
   const open = () => {
     const el = spanRef.current;
     if (!el || !resolved) return;
@@ -6620,19 +6622,16 @@ function MissionNameHover({ name, image, color }: { name: string; image?: string
     const left = spaceRight >= PREVIEW_W + 16
       ? r.right + 12
       : Math.max(8, r.left - PREVIEW_W - 12);
-    // Clamp vertically so a tall card never runs off the top/bottom.
     const top = Math.min(Math.max(8, r.top + r.height / 2), window.innerHeight - 360);
     setPos({ left, top });
   };
 
-  // The outer <strong> keeps flex:1 so the skill/assign controls stay pushed to
-  // the right of the row, but the hover target is the inner span — sized to the
-  // text only — so the preview pops solely when the cursor is on the card NAME.
   return (
-    <strong style={{ flex: 1, color: color ?? '#e8e8ea' }}>
+    <>
       <span
         ref={spanRef}
-        style={{ display: 'inline-block', cursor: resolved ? 'help' : 'default' }}
+        style={{ display: 'inline-block', cursor: resolved ? 'help' : 'default',
+          color: color ?? undefined, ...style }}
         onMouseEnter={open}
         onMouseLeave={() => setPos(null)}
       >
@@ -6648,6 +6647,16 @@ function MissionNameHover({ name, image, color }: { name: string; image?: string
           <img src={resolved} alt={name} style={{ width: 240, height: 'auto', borderRadius: 4, display: 'block' }} />
         </div>
       )}
+    </>
+  );
+}
+
+/** Mission name in the assignment list: keeps flex:1 so the skill/assign
+ *  controls stay right-aligned, with the hover target scoped to the text. */
+function MissionNameHover({ name, image, color }: { name: string; image?: string; color?: string }) {
+  return (
+    <strong style={{ flex: 1, color: color ?? '#e8e8ea' }}>
+      <CardArtHover name={name} image={image} />
     </strong>
   );
 }
@@ -6890,9 +6899,6 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
           {side === humanSide && !G.pendingChoice && (() => {
             const playable = phases.playableAssignmentActionCards(G, side);
             if (playable.length === 0) return null;
-            const names = playable
-              .map((cid) => G.catalog.actions[cid]?.name ?? cid)
-              .join(', ');
             return (
               <div style={{
                 marginTop: 12, padding: '8px 10px', background: '#1c1f27',
@@ -6910,7 +6916,21 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
                   ▶ Play action card ({playable.length})
                 </button>
                 <div style={{ color: '#9bb8d6', fontSize: 12, marginTop: 6 }}>
-                  Playable now: <strong style={{ color: '#cfe2f5' }}>{names}</strong>
+                  Playable now:{' '}
+                  {playable.map((cid, i) => {
+                    const card = G.catalog.actions[cid];
+                    return (
+                      <span key={cid}>
+                        {i > 0 && ', '}
+                        <CardArtHover
+                          name={card?.name ?? cid}
+                          image={card?.image}
+                          style={{ color: '#cfe2f5', fontWeight: 700,
+                            textDecoration: card?.image ? 'underline dotted' : undefined }}
+                        />
+                      </span>
+                    );
+                  })}
                 </div>
               </div>
             );
