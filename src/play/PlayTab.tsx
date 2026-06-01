@@ -1294,7 +1294,12 @@ export default function PlayTab() {
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'ActionCardSystemPick'
         && G.pendingChoice.side === humanSide && (
-        <ActionCardSystemPickModal G={G} choice={G.pendingChoice}
+        <MapPickerOverlay
+          G={G} systems={systemsRef.current} masks={masksRef.current} humanSide={humanSide}
+          color={sideColor(G.pendingChoice.side)}
+          title={`${G.catalog.actions[G.pendingChoice.cardId]?.name ?? G.pendingChoice.cardId} — pick a system`}
+          instructions={G.catalog.actions[G.pendingChoice.cardId]?.rulesText}
+          candidates={G.pendingChoice.candidates}
           onPick={(sid) => {
             const r = phases.resolveActionCardSystemPick(G, sid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
@@ -1316,7 +1321,12 @@ export default function PlayTab() {
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'DeployUnitPick'
         && G.pendingChoice.side === humanSide && (
-        <DeployUnitPickModal G={G} choice={G.pendingChoice}
+        <MapPickerOverlay
+          G={G} systems={systemsRef.current} masks={masksRef.current} humanSide={humanSide}
+          color={sideColor(G.pendingChoice.side)}
+          title={`Deploy ${G.catalog.unitTypes[G.pendingChoice.typeId]?.name ?? G.pendingChoice.typeId}`}
+          instructions={`Pick where this unit deploys. The galaxy map stays visible so you can see existing placements.`}
+          candidates={G.pendingChoice.candidates}
           onPick={(sid) => {
             const r = phases.resolveDeployUnitPick(G, sid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
@@ -5390,10 +5400,15 @@ function UnitCluster({ centerX, centerY, groups, iconSize, maxWidth }: {
   );
 }
 
-function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
+function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSystemIds, onSystemClick }: {
   G: GameState; systems: System[]; masks: MaskRect[];
   eliminatedSystemIds?: Set<string> | null;
   humanSide?: Side;
+  // Picker mode: highlight a set of candidate systems with a green ring and
+  // make them clickable, so target-selection can happen ON the map instead of
+  // in a board-covering modal.
+  highlightSystemIds?: Set<string> | null;
+  onSystemClick?: (systemId: string) => void;
 }) {
   // Compute aggregate of Rebel Base space units (offboard staging area)
   const rbsUnits = G.map.rebelBaseSpace.units.length;
@@ -5563,11 +5578,19 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
 
           const grouped = groupByType(state.units);
           const isEliminated = effectiveEliminated?.has(s.id) ?? false;
+          const isHighlighted = highlightSystemIds?.has(s.id) ?? false;
           return (
-            <g key={s.id}>
+            <g key={s.id} style={isHighlighted && onSystemClick ? { cursor: 'pointer' } : undefined}>
               {isBaseRevealed && (
                 <circle cx={x} cy={y} r={MARKER_R + 6}
                   style={{ fill: 'none', stroke: '#80dc78', strokeWidth: 2 }} />
+              )}
+              {/* Target-picker highlight: a bright ring marking a legal candidate
+                  system, clickable to select it directly on the map. */}
+              {isHighlighted && (
+                <circle cx={x} cy={y} r={MARKER_R + 10}
+                  style={{ fill: 'rgba(255,213,74,0.16)', stroke: '#ffd54a', strokeWidth: 3 }}
+                  pointerEvents="none" />
               )}
               {isEliminated && (
                 <g pointerEvents="none">
@@ -5666,18 +5689,22 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
           );
         })}
 
-        {/* Invisible hover targets per system, sized generously for easy mouseover */}
+        {/* Invisible hover targets per system, sized generously for easy mouseover.
+            In picker mode, a highlighted candidate's target also fires onSystemClick. */}
         {systems.map((s) => {
           const x = s.boardPos.x * SCALE;
           const y = s.boardPos.y * SCALE;
+          const clickable = !!onSystemClick && (highlightSystemIds?.has(s.id) ?? false);
           return (
             <rect
               key={`hover-${s.id}`}
               x={x - 40} y={y - 40} width={80} height={80}
               fill="transparent"
               pointerEvents="all"
+              style={clickable ? { cursor: 'pointer' } : undefined}
               onMouseEnter={() => setHoverSystemId(s.id)}
               onMouseLeave={() => setHoverSystemId(null)}
+              onClick={clickable ? () => onSystemClick!(s.id) : undefined}
             />
           );
         })}
@@ -5975,6 +6002,60 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
             </span>
           );
         })()} />
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Map-with-side-picker overlay — pick a system ON the map (left) with the
+// candidates highlighted + clickable, and a docked picker sidebar (right).
+// Replaces the old board-covering target modals (reporter MightyFaben).
+// ============================================================================
+
+function MapPickerOverlay({
+  G, systems, masks, humanSide, title, instructions, color, candidates, onPick, onCancel,
+}: {
+  G: GameState; systems: System[]; masks: MaskRect[]; humanSide: Side;
+  title: string; instructions?: string; color: string;
+  candidates: string[];
+  onPick: (systemId: string) => void;
+  onCancel?: () => void;
+}) {
+  const highlight = new Set(candidates);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000, padding: 12 }}>
+      <div style={{ display: 'flex', gap: 12, maxWidth: '98vw', maxHeight: '94vh' }}>
+        {/* Map (left) — candidates highlighted + clickable. */}
+        <div style={{ overflow: 'auto', border: `1px solid ${color}`, borderRadius: 6, background: '#0a0b0e' }}>
+          <Board G={G} systems={systems} masks={masks} humanSide={humanSide}
+            highlightSystemIds={highlight} onSystemClick={onPick} />
+        </div>
+        {/* Picker sidebar (right). */}
+        <div style={{ width: 280, flex: '0 0 auto', display: 'flex', flexDirection: 'column',
+          background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+          padding: 14, maxHeight: '94vh', overflowY: 'auto' }}>
+          <div style={{ color, fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{title}</div>
+          {instructions && <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>{instructions}</div>}
+          <div style={{ color: '#9bb8d6', fontSize: 11, marginBottom: 8 }}>
+            Click a highlighted system on the map, or pick from the list:
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {candidates.map((sid) => {
+              const sys = G.catalog.systems[sid];
+              return (
+                <button key={sid} className="tab-button" onClick={() => onPick(sid)} style={{ textAlign: 'left' }}>
+                  <div style={{ fontWeight: 700 }}>{sys?.name ?? sid}</div>
+                  <div style={{ fontSize: 11, color: '#888' }}>region {sys?.region}</div>
+                </button>
+              );
+            })}
+          </div>
+          {onCancel && (
+            <button className="tab-button" style={{ marginTop: 12 }} onClick={onCancel}>Cancel</button>
+          )}
+        </div>
       </div>
     </div>
   );
