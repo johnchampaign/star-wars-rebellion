@@ -1932,11 +1932,21 @@ function endCombat(G: GameState): void {
       log(G, { kind: 'mission-discard', side: pm.resolverSide, payload: { missionId: pm.missionId } });
     }
     G.pendingMission = undefined;
-    // Don't call advanceCommandTurn here directly — circular import would
-    // matter, and the AI loop's next stepOnce iteration handles flow
-    // naturally now that no pending state blocks it. The combat-resolving
-    // side's command-phase turn continues as if the mission had wrapped
-    // up cleanly.
+    // Advance the Command turn: this mission (plus its combat) was the
+    // resolver's ONE command action, so control now passes to the opponent —
+    // exactly like a non-combat mission does via resolveOpposeMission. We
+    // inline the hand-off instead of importing advanceCommandTurn (circular
+    // import with phases.ts). The resolver did NOT pass this action, so the
+    // "both passed -> Refresh" case can't apply here; we only flip to the
+    // opponent, and if the opponent already passed we (correctly) keep going.
+    // BUG HISTORY: omitting this let the resolver take another mission
+    // immediately, so combat missions chained ("3 missions in a row" — issue
+    // #77 and others). Only fires for mission-triggered combat (pendingMission
+    // set); activate-triggered combat advances via activateSystem itself.
+    if (G.phase === 'Command') {
+      const next: Side = G.currentPlayer === 'Rebel' ? 'Empire' : 'Rebel';
+      if (!G.passedThisCommand.includes(next)) G.currentPlayer = next;
+    }
   }
 }
 
