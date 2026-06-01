@@ -7247,14 +7247,21 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
   }, [screenshotBase64]);
   const stateCodec = canEncode(G) ? encode(G) : '(state is mid-resolution; codec not safe to capture)';
 
+  // Which side the reporter controlled (and which the AI did). This modal is a
+  // sibling component, so humanSide isn't in scope here — read the recorded
+  // value straight from localStorage (same source the main game sets it from).
+  const humanSide = (() => {
+    try { return localStorage.getItem(LS_HUMAN_SIDE) || undefined; } catch { return undefined; }
+  })();
+  const aiSide = humanSide === 'Rebel' ? 'Empire' : humanSide === 'Empire' ? 'Rebel' : undefined;
+
   const buildReport = () => ({
     schema: 'rebellion-report-v1',
     timestamp: new Date().toISOString(),
     userAgent: navigator.userAgent,
     reporterId: getReporterId(),
     description,
-    // Which side the reporter controlled (and which the AI did). Recorded so a
-    // bug triager never has to infer it from the outcome.
+    // Recorded so a bug triager never has to infer it from the outcome.
     humanSide,
     aiSide,
     canEncodeState: canEncode(G),

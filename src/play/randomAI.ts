@@ -56,7 +56,10 @@ function pick<T>(arr: T[]): T | undefined {
  *  value is baked in. Guarded so the browser build (no `process`) is safe. */
 const REBEL_BASE_KEEP: number = (() => {
   try {
-    const env = (typeof process !== 'undefined' ? process.env : undefined) as Record<string, string | undefined> | undefined;
+    // Access process via globalThis so the browser build typechecks without
+    // @types/node (which CLAUDE.md forbids adding to the main tsconfig).
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    const env = proc?.env;
     const raw = env?.SWR_REBEL_BASE_KEEP;
     if (raw != null && Number.isFinite(Number(raw))) return Number(raw);
   } catch { /* browser: no process */ }
@@ -873,7 +876,7 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
         const d = distFrom(baseDist, sysId);
         if (d <= 1) ts -= 5;
       }
-      if (sys.loyalty?.side === 'Empire') ts += 3;
+      if (sys.loyalty === 'imperial') ts += 3;
     }
     if (hasOwnUnits && side === 'Rebel') ts += 1;
     // UNIVERSAL RULE (per user playtesting): never activate without troops.
@@ -2043,7 +2046,7 @@ function handleBuildPick(G: GameState): boolean {
     for (const u of G.map.rebelBaseSpace.units) {
       if (u.side === side && u.typeId === typeId) n++;
     }
-    const bq = side === 'Empire' ? G.buildQueue : G.buildQueue;
+    const bq = side === 'Empire' ? G.empire.buildQueue : G.rebel.buildQueue;
     for (const slot of [1, 2, 3] as const) {
       for (const t of bq[slot]) if (t === typeId) n++;
     }
