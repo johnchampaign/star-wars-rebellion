@@ -1783,9 +1783,10 @@ export default function PlayTab() {
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'HomingBeaconPlace'
         && humanSide === 'Rebel' && (
-        <HomingBeaconPlaceModal
-          G={G}
-          choice={G.pendingChoice}
+        <HomingBeaconMapModal
+          G={G} systems={systemsRef.current} masks={masksRef.current} humanSide={humanSide}
+          leaderCandidates={G.pendingChoice.leaderCandidates}
+          systemCandidates={G.pendingChoice.systemCandidates}
           onSubmit={(lid, sid) => {
             const r = phases.resolveHomingBeaconPlace(G, lid, sid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
@@ -6058,7 +6059,7 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
 // ============================================================================
 
 function MapPickerOverlay({
-  G, systems, masks, humanSide, title, instructions, color, candidates, onPick, onCancel, unitTokens, multi,
+  G, systems, masks, humanSide, title, instructions, color, candidates, onPick, onCancel, unitTokens, multi, headerExtra,
 }: {
   G: GameState; systems: System[]; masks: MaskRect[]; humanSide: Side;
   title: string; instructions?: string; color: string;
@@ -6070,6 +6071,9 @@ function MapPickerOverlay({
   unitTokens?: string[];
   // Multi-select mode: pick exactly `count` systems, then Confirm.
   multi?: { count: number; onSubmit: (systemIds: string[]) => void };
+  // Extra sidebar content rendered above the candidate list (e.g. a leader
+  // selector for a two-step pick).
+  headerExtra?: React.ReactNode;
 }) {
   const highlight = new Set(candidates);
   const unitStyle = getUnitStyle();
@@ -6099,6 +6103,7 @@ function MapPickerOverlay({
           padding: 14, maxHeight: '94vh', overflowY: 'auto' }}>
           <div style={{ color, fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{title}</div>
           {instructions && <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>{instructions}</div>}
+          {headerExtra}
           <div style={{ color: '#9bb8d6', fontSize: 11, marginBottom: 8 }}>
             {multi
               ? `Pick ${multi.count} system${multi.count === 1 ? '' : 's'} — click on the map or the list (selected ${selected.length}/${multi.count}):`
@@ -6173,6 +6178,50 @@ function MapPickerOverlay({
         </div>
       </div>
     </div>
+  );
+}
+
+/** Homing Beacon: two-step pick (which rescued leader, then which system in the
+ *  base's region) on the map layout. Leader chosen in the sidebar, system
+ *  clicked on the map. */
+function HomingBeaconMapModal({
+  G, systems, masks, humanSide, leaderCandidates, systemCandidates, onSubmit,
+}: {
+  G: GameState; systems: System[]; masks: MaskRect[]; humanSide: Side;
+  leaderCandidates: string[]; systemCandidates: string[];
+  onSubmit: (leaderId: string, systemId: string) => void;
+}) {
+  const [leaderId, setLeaderId] = useState<string>(leaderCandidates[0] ?? '');
+  return (
+    <MapPickerOverlay
+      G={G} systems={systems} masks={masks} humanSide={humanSide}
+      color={sideColor('Rebel')}
+      title="Homing Beacon — place the rescued leader"
+      instructions="Your leader was rescued; place them in any system in the base's region. Pick the leader, then click a highlighted system."
+      candidates={systemCandidates}
+      onPick={(sid) => { if (leaderId) onSubmit(leaderId, sid); }}
+      headerExtra={
+        leaderCandidates.length > 1 ? (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 11, color: '#9bb8d6', marginBottom: 4 }}>Leader to place:</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+              {leaderCandidates.map((lid) => (
+                <button key={lid} className="tab-button"
+                  onClick={() => setLeaderId(lid)}
+                  style={{ textAlign: 'left', fontWeight: lid === leaderId ? 700 : 400,
+                    border: lid === leaderId ? '1px solid #4fc3f7' : undefined }}>
+                  {lid === leaderId ? '● ' : '○ '}{G.catalog.leaders[lid]?.name ?? lid}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: '#cfe2f5', marginBottom: 10 }}>
+            Rescuing <strong>{G.catalog.leaders[leaderId]?.name ?? leaderId}</strong>.
+          </div>
+        )
+      }
+    />
   );
 }
 
