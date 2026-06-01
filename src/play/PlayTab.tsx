@@ -119,6 +119,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'RecruitActionCardPick':    return pc.side === side;
     case 'PlayAssignmentActionCard': return pc.side === side;
     case 'ActionCardSystemPick':     return pc.side === side;
+    case 'AttachRingPick':           return pc.side === side;
     case 'DeployUnitPick':           return pc.side === side;
     case 'DetainedTargetPick':       return pc.side === side;
     case 'RetrieveThePlansPick':     return pc.side === side;
@@ -1288,6 +1289,17 @@ export default function PlayTab() {
           onPick={(sid) => {
             const r = phases.resolveActionCardSystemPick(G, sid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'AttachRingPick'
+        && G.pendingChoice.side === humanSide && (
+        <AttachRingPickModal G={G} choice={G.pendingChoice}
+          onPick={(lid) => {
+            const r = phases.resolveAttachRing(G, lid);
+            if (!r.ok) alert(`Cannot attach: ${r.reason}`);
             persist(); refresh();
           }} />
       )}
@@ -2536,6 +2548,16 @@ function actionCardPlayHint(G: GameState, side: Side, cardId: string): string | 
   const reqs = card.leaderRequirement ?? [];
   const reqNames = reqs.map((lid) => G.catalog.leaders[lid]?.name ?? lid).join(' or ');
   const leaderReady = reqs.length === 0 || reqs.some((lid) => f.leaderPool.includes(lid as never));
+  // Droid ring cards: attach to a leader during your Assignment phase; the ring
+  // then triggers in that leader's system.
+  if (cardId === 'resourceful-astromech') {
+    return '💍 Attach the R2-D2 ring to a leader (Assignment phase, "Play action card" button). '
+      + 'It blanks one enemy die during a mission/combat in that leader\'s system.';
+  }
+  if (cardId === 'human-cyborg-relations') {
+    return '💍 Attach the C-3PO ring to a leader (Assignment phase, "Play action card" button). '
+      + 'It auto-succeeds a failed diplomacy mission in that leader\'s system.';
+  }
   switch (card.timing) {
     case 'Assignment':
       return '▶ Play during your Assignment phase'
@@ -5822,6 +5844,19 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
             : `${f.actionHand.length} cards`
         } />
         <Row label="Action deck" value={`${f.actionDeck.length} cards`} />
+        {side === 'Rebel' && (() => {
+          // Show where the R2-D2 / C-3PO rings are attached (the discard
+          // ability only works in the bearer's system).
+          const att = G.leaderAttachments ?? {};
+          const entries: string[] = [];
+          for (const lid of Object.keys(att)) {
+            const name = G.catalog.leaders[lid]?.name ?? lid;
+            if (att[lid].includes('r2d2')) entries.push(`R2-D2 → ${name}`);
+            if (att[lid].includes('c3po')) entries.push(`C-3PO → ${name}`);
+          }
+          if (entries.length === 0) return null;
+          return <Row label="Droid rings" value={entries.join(' · ')} />;
+        })()}
         <Row label="Mission hand" value={
           side === humanSide
             ? <HandTip count={f.missionHand.length} cards={f.missionHand.map((cid) => {
@@ -8326,6 +8361,66 @@ function ActionCardSystemPickModal({
               <button key={sid} className="tab-button" onClick={() => onPick(sid)} style={{ textAlign: 'left' }}>
                 <div style={{ fontWeight: 700 }}>{sys?.name ?? sid}</div>
                 <div style={{ fontSize: 11, color: '#888' }}>region {sys?.region}</div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Attach a droid ring (R2-D2 / C-3PO) to a Rebel leader. The ring's discard
+ *  effect later triggers only in the system where this leader is, so the modal
+ *  shows each candidate's current location to inform the choice. */
+function AttachRingPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'AttachRingPick'; side: Side; cardId: string; ringId: 'r2d2' | 'c3po'; candidates: string[] };
+  onPick: (leaderId: string) => void;
+}) {
+  const color = sideColor(choice.side);
+  const card = G.catalog.actions[choice.cardId];
+  // Where is each leader right now? (system name, or pool / on-mission)
+  const locationOf = (lid: string): string => {
+    for (const [sid, list] of Object.entries(G.rebel.leadersOnBoard)) {
+      if (list.includes(lid)) {
+        return sid === 'rebel-base-space' ? 'at the Rebel Base' : `at ${G.catalog.systems[sid]?.name ?? sid}`;
+      }
+    }
+    for (const am of G.rebel.leadersOnMissions) {
+      if (am.leaderIds.includes(lid)) {
+        const m = G.catalog.missions[am.missionId];
+        return `on a mission (${m?.name ?? am.missionId})`;
+      }
+    }
+    return 'in your leader pool';
+  };
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 640, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color, marginTop: 0 }}>{card?.name ?? choice.cardId} — attach the ring to a leader</h3>
+        <div style={{ color: '#ccc', fontSize: 13, marginBottom: 6, fontStyle: 'italic' }}>{card?.rulesText}</div>
+        <div style={{ color: '#9bb8d6', fontSize: 12, marginBottom: 12 }}>
+          The ring stays with this leader. Its discard ability only works in the
+          system where this leader is — so pick someone you expect to be where
+          the action is.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 6 }}>
+          {choice.candidates.map((lid) => {
+            const ld = G.catalog.leaders[lid];
+            return (
+              <button key={lid} className="tab-button" onClick={() => onPick(lid)} style={{ textAlign: 'left' }}>
+                <div style={{ fontWeight: 700 }}>{ld?.name ?? lid}</div>
+                <div style={{ fontSize: 11, color: '#888' }}>{locationOf(lid)}</div>
               </button>
             );
           })}

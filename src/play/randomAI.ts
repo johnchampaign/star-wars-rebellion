@@ -1152,6 +1152,17 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'PlayAssignmentActionCard' && G.pendingChoice.side === side) {
     return phases.cancelAssignmentActionCardPlay(G).ok;
   }
+  // Droid ring attach (R2-D2 / C-3PO). The AI doesn't proactively open this,
+  // but resolve it if posted so the game can't deadlock: prefer a leader
+  // already on the board (the ring only works in that leader's system).
+  if (G.pendingChoice && G.pendingChoice.kind === 'AttachRingPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const onBoard = new Set<string>();
+    for (const list of Object.values(G.rebel.leadersOnBoard)) for (const lid of list) onBoard.add(lid);
+    const target = c.candidates.find((lid) => onBoard.has(lid)) ?? c.candidates[0];
+    if (!target) return phases.cancelAssignmentActionCardPlay(G).ok;
+    return phases.resolveAttachRing(G, target).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'ActionCardSystemPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
     const sysId = pick(c.candidates);
