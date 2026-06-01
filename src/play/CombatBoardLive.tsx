@@ -1404,13 +1404,13 @@ function SpecialDieSpendPanel({ G, choice, onPersist }: {
   return (
     <div>
       <div style={{ fontSize: 13, marginBottom: 6 }}>
-        <b>Spend specials:</b> {choice.specialCount} ◈ available
-        ({spent} / {max} spent).
-        Each special draws 1 tactic card OR plays one special-requiring card.
+        <b>You rolled {choice.specialCount} special {choice.specialCount === 1 ? 'result' : 'results'} (◈).</b>
+        {' '}Each ◈ can do <i>one</i> of: <b>draw a tactic card</b>, or <b>play a tactic card that needs a ◈</b>.
+        {' '}({spent} of {max} ◈ used — you don't have to use them all.)
       </div>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}>
-          Draws:
+      <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <label style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+          Draw this many tactic cards:
           <input
             type="number"
             min={0}
@@ -1420,27 +1420,40 @@ function SpecialDieSpendPanel({ G, choice, onPersist }: {
             style={{ width: 50, background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '2px 4px' }}
           />
         </label>
-        {choice.specialCards.length > 0 && <span style={{ color: '#aaa', fontSize: 11 }}>·</span>}
-        {choice.specialCards.map((cid) => (
-          <label key={cid} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
-            <input
-              type="checkbox"
-              checked={picked.has(cid)}
-              disabled={!picked.has(cid) && spent >= max}
-              onChange={(e) => {
-                setPicked((prev) => {
-                  const next = new Set(prev);
-                  if (e.target.checked) next.add(cid); else next.delete(cid);
-                  return next;
-                });
-              }}
-            />
-            <CardHover G={G} cardId={cid}>{cardName(cid)}</CardHover>
-          </label>
-        ))}
+        <div style={{ minWidth: 200 }}>
+          {choice.specialCards.length > 0 ? (
+            <>
+              <div style={{ fontSize: 12, color: '#cbd2da', marginBottom: 2 }}>
+                …or spend a ◈ to play a card from your hand that needs one:
+              </div>
+              {choice.specialCards.map((cid) => (
+                <label key={cid} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+                  <input
+                    type="checkbox"
+                    checked={picked.has(cid)}
+                    disabled={!picked.has(cid) && spent >= max}
+                    onChange={(e) => {
+                      setPicked((prev) => {
+                        const next = new Set(prev);
+                        if (e.target.checked) next.add(cid); else next.delete(cid);
+                        return next;
+                      });
+                    }}
+                  />
+                  <CardHover G={G} cardId={cid}>{cardName(cid)}</CardHover>
+                </label>
+              ))}
+            </>
+          ) : (
+            <div style={{ fontSize: 11, color: '#888', fontStyle: 'italic' }}>
+              You have no ◈-requiring tactic cards in hand right now, so your only
+              use for these ◈ is drawing tactic cards (or just continue).
+            </div>
+          )}
+        </div>
         <div style={{ marginLeft: 'auto' }}>
           <button onClick={submit} disabled={spent > max} style={btn(SIDE_COLOR[choice.side])}>
-            Apply ({spent} spent)
+            {spent === 0 ? 'Continue (use no ◈)' : `Apply (${spent} ◈)`}
           </button>
         </div>
       </div>
