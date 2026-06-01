@@ -200,7 +200,7 @@ export type ChoiceRequest =
       // them in. Two-stage: leader pick, then system pick. We bundle
       // both into one choice; UI presents both selectors.
       kind: 'HomingBeaconPlace';
-      side: Side;             // always 'Empire'
+      side: Side;             // 'Rebel' — RAW: the Rebel places the rescued leader
       leaderCandidates: LeaderId[];
       systemCandidates: SystemId[];
     }

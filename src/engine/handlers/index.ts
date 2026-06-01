@@ -800,13 +800,16 @@ const homingBeacon: EffectHandler = (G, ctx) => {
     .filter((s) => s.region === baseDef.region && !s.isCoruscant)
     .map((s) => s.id);
   if (systemCandidates.length === 0) return true;
+  // RAW: "the Rebel player must place this leader in any system in the Rebel
+  // base's region." The Empire benefits from the region reveal, but the REBEL
+  // chooses the system. (Was wrongly assigned to Empire.)
   G.pendingChoice = {
     kind: 'HomingBeaconPlace',
-    side: 'Empire',
+    side: 'Rebel',
     leaderCandidates,
     systemCandidates,
   };
-  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
     kind: 'HomingBeaconPlace', leaders: leaderCandidates.length, systems: systemCandidates.length,
   }});
   return true;

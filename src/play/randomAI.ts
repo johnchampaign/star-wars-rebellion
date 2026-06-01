@@ -1741,7 +1741,7 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     }
     return phases.resolveLureOfTheDarkSidePick(G, best).ok;
   }
-  if (G.pendingChoice && G.pendingChoice.kind === 'HomingBeaconPlace' && side === 'Empire') {
+  if (G.pendingChoice && G.pendingChoice.kind === 'HomingBeaconPlace' && side === 'Rebel') {
     const c = G.pendingChoice;
     // AI: rescue highest-value leader; place at first system in region.
     let best = c.leaderCandidates[0]; let bestV = -1;

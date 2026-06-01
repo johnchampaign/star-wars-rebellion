@@ -13,6 +13,7 @@ import { beginCombat, runCombat } from './combat';
 import { log } from './log';
 import * as Handlers from './handlers/registry';
 import { missionTargets } from './missionTargets';
+import { PROJECT_ONLY_UNIT_IDS } from './units';
 import { rollDie, shuffle } from './rng';
 import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck } from './objectives';
 
@@ -2396,6 +2397,7 @@ export function resolveBrilliantAdministratorBuildPick(
     const icon = choice.icons[i];
     const t = G.catalog.unitTypes[tid];
     if (!t || t.side !== 'Empire') return { ok: false, reason: `bad-type:${tid}` };
+    if (PROJECT_ONLY_UNIT_IDS.has(tid)) return { ok: false, reason: `project-only:${tid}` };
     if (t.theater !== icon.theater) return { ok: false, reason: `theater-mismatch:${tid}` };
     const need = tierRank[icon.shape] ?? 2;
     const have = tierRank[t.tier ?? 'square'] ?? 2;
@@ -2669,6 +2671,7 @@ export function resolveBuildFromIconsPick(
     const icon = choice.icons[i];
     const t = G.catalog.unitTypes[tid];
     if (!t || t.side !== choice.side) return { ok: false, reason: `bad-type:${tid}` };
+    if (PROJECT_ONLY_UNIT_IDS.has(tid)) return { ok: false, reason: `project-only:${tid}` };
     if (t.theater !== icon.theater) return { ok: false, reason: `theater-mismatch:${tid}` };
     if (t.class === 'structure') return { ok: false, reason: `structure:${tid}` };
     const need = tierRank[icon.shape] ?? 2;

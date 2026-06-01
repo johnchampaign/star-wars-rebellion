@@ -26,6 +26,7 @@ const UnitStyleContext = createContext<UnitImageStyle>('vmod');
 const useUnitStyle = () => useContext(UnitStyleContext);
 import { createGame } from '../engine/setup';
 import * as phases from '../engine/phases';
+import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
 import * as combat from '../engine/combat';
 import { CombatBoardLive } from './CombatBoardLive';
 import { encode, decode, canEncode } from '../engine/codec';
@@ -1734,7 +1735,7 @@ export default function PlayTab() {
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'HomingBeaconPlace'
-        && humanSide === 'Empire' && (
+        && humanSide === 'Rebel' && (
         <HomingBeaconPlaceModal
           G={G}
           choice={G.pendingChoice}
@@ -5819,19 +5820,18 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
         <Row label="Active missions" value={
           f.leadersOnMissions.length === 0
             ? '(none)'
-            // Show the assigned missions and which leaders are on each — for
-            // BOTH sides — so the opponent's plans are visible at a glance
-            // instead of buried in the log (reporter MightyFaben). The human
-            // side also keeps the hover-preview via HandTip.
             : side === humanSide
+              // Your own missions: full hover-preview of each card.
               ? <HandTip count={f.leadersOnMissions.length} cards={f.leadersOnMissions.map((m) => {
                   const c = G.catalog.missions[m.missionId];
                   return { name: c?.name ?? m.missionId, image: c?.image, rulesText: c?.rulesText };
                 })} />
+              // Opponent's missions are FACEDOWN per RAW (reporter MightyFaben):
+              // you can see leaders are committed and how many, but not which
+              // mission, until it's revealed during your turn.
               : f.leadersOnMissions.map((m) => {
-                  const c = G.catalog.missions[m.missionId];
                   const leaders = m.leaderIds.map((l) => G.catalog.leaders[l]?.name ?? l).join(', ');
-                  return `${c?.name ?? m.missionId}${leaders ? ` (${leaders})` : ''}`;
+                  return `Facedown mission${leaders ? ` (${leaders})` : ''}`;
                 }).join(' · ')
         } />
         <Row label="Action hand" value={
@@ -9093,7 +9093,8 @@ function BrilliantAdministratorBuildPickModal({
       .filter((t) => t.side === 'Empire'
         && t.theater === icon.theater
         && (tierRank[t.tier ?? 'square'] ?? 2) <= need
-        && t.class !== 'structure')
+        && t.class !== 'structure'
+        && !PROJECT_ONLY_UNIT_IDS.has(t.id))
       .map((t) => t.id);
   };
   const defaults = choice.icons.map((icon) => {
@@ -9620,7 +9621,8 @@ function BuildFromIconsPickModal({
       .filter((t) => t.side === choice.side
         && t.theater === icon.theater
         && (tierRank[t.tier ?? 'square'] ?? 2) <= need
-        && t.class !== 'structure')
+        && t.class !== 'structure'
+        && !PROJECT_ONLY_UNIT_IDS.has(t.id))
       .map((t) => t.id);
   };
   const defaults = choice.icons.map((icon) => {

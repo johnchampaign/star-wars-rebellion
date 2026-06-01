@@ -7,6 +7,16 @@ import type { UnitType } from './types';
 const I = (u: Omit<UnitType, 'side'>): UnitType => ({ ...u, side: 'Empire' });
 const R = (u: Omit<UnitType, 'side'>): UnitType => ({ ...u, side: 'Rebel' });
 
+/** Units that can ONLY enter play via their project/research card (Construct
+ *  Super Star Destroyer / Construct Death Star) — never via a normal build
+ *  action, even though they share the square build icon with Star Destroyers.
+ *  Used to filter build-action unit choices (RAW). */
+export const PROJECT_ONLY_UNIT_IDS: ReadonlySet<string> = new Set([
+  'super-star-destroyer',
+  'death-star',
+  'death-star-under-construction',
+]);
+
 export const UNIT_TYPES: UnitType[] = [
   // ===== Imperial =====
   I({
