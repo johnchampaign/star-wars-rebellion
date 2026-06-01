@@ -145,6 +145,30 @@ If deploy fails, common causes:
 - Wrangler auth expired (`npx wrangler whoami` to check)
 - CF env vars missing (`npx wrangler pages secret list --project-name star-wars-rebellion`)
 
+## Typecheck before touching the engine
+
+The deploy path runs `vite build` only (esbuild), which **erases type-only
+imports and never type-checks** — so type errors, stale property reads, and
+out-of-scope references sail through the build and surface as runtime
+crashes instead. `tsc -b` is intentionally skipped (composite-reference
+issue), so it can't be the guard.
+
+**Run `npm run typecheck` before committing anything under `src/engine`**
+(and ideally `src/play`). It uses `tsconfig.typecheck.json`, which bypasses
+the composite-reference problem and checks all of `src/`. The engine is
+expected to report **zero** errors; a real typecheck pass once caught a
+report-payload `ReferenceError`, an AI reading a non-existent `G.buildQueue`,
+and a loyalty comparison that never fired.
+
+Known-cosmetic remaining errors live in `src/play` only (UI type-strictness:
+a self-referential `j` initializer, a couple `DieFace`/`UnitImageStyle`
+string-literal narrowings, the `OneInAMillionOffer` prop shape, and the
+captured-leader `Pip` type-predicate generics). None affect runtime; don't
+let them mask a *new* error — diff the list, don't eyeball the count.
+
+Do **not** "fix" these by adding `@types/node` to the main tsconfig, enabling
+`tsc -b` in deploy, or bulk-casting to `any`.
+
 ## Architecture quick-reference
 
 - **Engine** (`src/engine/`): pure-function TypeScript core. No React, no
