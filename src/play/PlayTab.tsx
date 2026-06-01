@@ -6503,8 +6503,18 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
       const hasOwn = ss.units.some((u) => u.side === side);
       if (hasOwn) sources.push(sysId);
     }
-    // Rebel can also pull from rebel-base-space (engine accepts it without adjacency check).
-    if (side === 'Rebel' && G.map.rebelBaseSpace.units.length > 0) sources.push('rebel-base-space');
+    // Rebel can pull from rebel-base-space ONLY when the target is the base's
+    // own system or adjacent to it (RAW: base units move only to base/adjacent
+    // while hidden), and no leader sits in the base space. The Rebel knows
+    // their base, so this leaks nothing.
+    if (side === 'Rebel' && G.map.rebelBaseSpace.units.length > 0) {
+      const baseId = G.rebelBaseSystemId;
+      const baseAdj = G.catalog.adjacency[baseId] ?? [];
+      const baseLeaderBlocks = (f.leadersOnBoard['rebel-base-space'] ?? []).length > 0;
+      if (!baseLeaderBlocks && (targetSystemId === baseId || baseAdj.includes(targetSystemId))) {
+        sources.push('rebel-base-space');
+      }
+    }
   }
 
   const reset = () => {

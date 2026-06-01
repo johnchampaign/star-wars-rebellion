@@ -1883,24 +1883,28 @@ function endCombat(G: GameState): void {
   // the card's rules. Done before clearing pendingCombat so the report
   // sees the combat that triggered them.
   const fired = objectives.combatObjectivesTriggered(G, c.report);
-  for (const oid of fired) {
+  // RAW (rr "Objective Cards"): only 1 objective may be played per combat.
+  // If multiple triggered, play the highest-reputation one; the rest stay in
+  // hand for a future combat/refresh. (Was playing ALL of them.)
+  if (fired.length > 0) {
+    const best = fired
+      .map((oid) => ({ oid, rep: objectives.objectiveReputationGain(G, oid) }))
+      .sort((a, b) => b.rep - a.rep)[0];
+    const oid = best.oid;
     const card = G.catalog.objectives[oid];
-    if (!card) continue;
-    const rep = objectives.objectiveReputationGain(G, oid);
-    M.gainReputation(G, rep);
-    // Remove from hand.
-    const hand = G.rebel.objectiveHand ?? [];
-    const idx = hand.indexOf(oid);
-    if (idx >= 0) hand.splice(idx, 1);
-    // Return to deck or box per the card's rule.
-    if (objectives.objectiveReturnsToDeck(G, oid)) {
-      (G.rebel.objectiveDeck ??= []).push(oid);
+    if (card) {
+      M.gainReputation(G, best.rep);
+      const hand = G.rebel.objectiveHand ?? [];
+      const idx = hand.indexOf(oid);
+      if (idx >= 0) hand.splice(idx, 1);
+      if (objectives.objectiveReturnsToDeck(G, oid)) {
+        (G.rebel.objectiveDeck ??= []).push(oid);
+      }
+      log(G, { kind: 'objective-played', side: 'Rebel', payload: {
+        objectiveId: oid, reputation: best.rep, timing: 'Combat',
+      }});
+      (G.objectiveReports ??= []).push({ objectiveId: oid, reputation: best.rep, via: 'combat' });
     }
-    log(G, { kind: 'objective-played', side: 'Rebel', payload: {
-      objectiveId: oid, reputation: rep, timing: 'Combat',
-    }});
-    (G.objectiveReports ??= []).push({ objectiveId: oid, reputation: rep, via: 'combat' });
-    if (G.isGameOver) break;
   }
 
   // Death Star Plans 2/3 — player-discretion attempt. RAW eligibility:

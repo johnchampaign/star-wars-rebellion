@@ -645,7 +645,19 @@ export function activateSystem(
       return { ok: false, reason: `friendly-leader-blocks-source:${order.fromSystemId}` };
     }
     // Adjacency check (rr p.9 — units can pass region borders but not impassable).
-    if (order.fromSystemId !== 'rebel-base-space') {
+    if (order.fromSystemId === 'rebel-base-space') {
+      // RAW ("Moving to and from the Rebel base"): while the base is hidden,
+      // units may move FROM the Rebel Base space only to the base's own system
+      // or a system adjacent to it. (Special missions that ignore adjacency —
+      // Hidden Fleet, Lead the Strike Team, Plan the Assault, Rapid Mobilization
+      // — move via their own handlers, not activateSystem.) Was skipping this
+      // check entirely, so base units could activate to any planet (reporter).
+      const baseId = G.rebelBaseSystemId;
+      const baseAdj = G.catalog.adjacency[baseId] ?? [];
+      if (targetSystemId !== baseId && !baseAdj.includes(targetSystemId)) {
+        return { ok: false, reason: `base-not-adjacent-to-target:${targetSystemId}` };
+      }
+    } else {
       const adj = G.catalog.adjacency[targetSystemId] ?? [];
       if (!adj.includes(order.fromSystemId)) {
         return { ok: false, reason: `not-adjacent:${order.fromSystemId}` };
