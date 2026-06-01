@@ -24,15 +24,13 @@ function CardHover({ G, cardId, children }: {
   cardId: string;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
-  // Anchor the popover to the LEFT of the trigger when it would otherwise
-  // run off the right edge of the viewport. Player report: the Escape Plan
-  // tooltip rendered off-screen to the right because the popover was hard-
-  // coded to left:'100%' (always to the right of the card name), and the
-  // combat tactic cards sit near the right edge (issue #55).
+  // Popover position is computed as fixed coordinates from the trigger's
+  // on-screen rect, then clamped to the viewport. Player report: the tactic
+  // card tooltip rendered off-screen to the right — the old absolute
+  // left:'100%' / flip-left approach could still overflow because the combat
+  // tactic cards sit near the right edge. Fixed + clamp can't run off any edge.
   const anchorRef = useRef<HTMLSpanElement | null>(null);
-  const [flipLeft, setFlipLeft] = useState(false);
-  const [openDown, setOpenDown] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const card =
     G.catalog.tactics[cardId] ??
     G.catalog.actions[cardId] ??
@@ -43,35 +41,28 @@ function CardHover({ G, cardId, children }: {
   const POPOVER_W = TILE_W + 16;
   const onEnter = () => {
     const el = anchorRef.current;
-    if (el && typeof window !== 'undefined') {
-      const r = el.getBoundingClientRect();
-      // If the right-anchored popover would overflow the viewport, flip it
-      // to the left of the trigger instead.
-      setFlipLeft(r.right + 8 + POPOVER_W > window.innerWidth);
-      // The tactic cards sit at the TOP of the combat board, so a popover that
-      // opens upward (bottom:100%) is clipped off the top of the page (player
-      // report). Open it downward when there isn't ~360px of room above.
-      setOpenDown(r.top < 360);
-    }
-    setOpen(true);
+    if (!el || typeof window === 'undefined') { setPos({ left: 100, top: 100 }); return; }
+    const r = el.getBoundingClientRect();
+    // Prefer the right of the trigger; fall back to the left if it wouldn't
+    // fit; then hard-clamp so the popover is always fully on-screen.
+    const spaceRight = window.innerWidth - r.right;
+    let left = spaceRight >= POPOVER_W + 16 ? r.right + 8 : r.left - POPOVER_W - 8;
+    left = Math.max(8, Math.min(left, window.innerWidth - POPOVER_W - 8));
+    // Vertically center on the trigger, clamped so a tall card stays on-screen.
+    const top = Math.min(Math.max(8, r.top + r.height / 2), window.innerHeight - 360);
+    setPos({ left, top });
   };
-  const horiz: import('react').CSSProperties = flipLeft
-    ? { right: '100%', marginRight: 8 }
-    : { left: '100%', marginLeft: 8 };
-  const vert: import('react').CSSProperties = openDown
-    ? { top: '100%', marginTop: 4 }
-    : { bottom: '100%', marginBottom: 4 };
   return (
     <span
       ref={anchorRef}
       style={{ borderBottom: '1px dotted #888', cursor: 'help', position: 'relative' }}
       onMouseEnter={onEnter}
-      onMouseLeave={() => setOpen(false)}
+      onMouseLeave={() => setPos(null)}
     >
       {children}
-      {open && (
+      {pos && (
         <div style={{
-          position: 'absolute', ...vert, ...horiz,
+          position: 'fixed', left: pos.left, top: pos.top, transform: 'translateY(-50%)',
           zIndex: 3000,
           background: 'rgba(0,0,0,0.95)', border: '1px solid #555',
           padding: 8, borderRadius: 4, width: POPOVER_W,

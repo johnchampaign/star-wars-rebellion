@@ -5345,6 +5345,10 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
   const artLoaded = useArtLoaded().loaded;
   const [hoverSystemId, setHoverSystemId] = useState<string | null>(null);
   const [hoverRebelBase, setHoverRebelBase] = useState<boolean>(false);
+  // #98 follow-up (player request): let the Empire PIN the probe overlay by
+  // clicking the Rebel Base marker, so the ruled-out X's stay visible while
+  // moving units around — instead of vanishing the moment the cursor leaves.
+  const [pinProbeOverlay, setPinProbeOverlay] = useState<boolean>(false);
   // Build-queue hover: "1-rebel" | "2-empire" | etc.
   const [hoverBuildKind, setHoverBuildKind] = useState<string | null>(null);
   const hoverSystem = hoverSystemId ? systems.find((s) => s.id === hoverSystemId) : null;
@@ -5356,7 +5360,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
   // the same overlay as hovering the probe deck. (Only fires for Empire
   // players because the Rebel knows exactly where their own base is.)
   const baseHoverEliminated: Set<string> | null =
-    hoverRebelBase && humanSide === 'Empire'
+    (hoverRebelBase || pinProbeOverlay) && humanSide === 'Empire'
       ? new Set((G.empire.probeHand ?? [])
           .map((pid) => G.catalog.probes[pid]?.systemId)
           .filter((s): s is string => !!s))
@@ -5622,9 +5626,19 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide }: {
             height={rebelBaseRect.height * BOARD_SCALE}
             fill="transparent"
             pointerEvents="all"
+            style={{ cursor: humanSide === 'Empire' ? 'pointer' : 'default' }}
             onMouseEnter={() => setHoverRebelBase(true)}
             onMouseLeave={() => setHoverRebelBase(false)}
-          />
+            onClick={humanSide === 'Empire' ? () => setPinProbeOverlay((p) => !p) : undefined}
+          >
+            <title>
+              {humanSide === 'Empire'
+                ? (pinProbeOverlay
+                    ? 'Probe overlay pinned — click to unpin (X = sectors ruled out by your probes)'
+                    : 'Click to PIN the probe overlay so the ruled-out X’s stay while you move units')
+                : ''}
+            </title>
+          </rect>
         )}
 
         {/* Loyalty / subjugation marker images placed on the printed hex */}
