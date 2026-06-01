@@ -1407,11 +1407,20 @@ export default function PlayTab() {
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'InterrogationDroidDecoyPick'
         && G.pendingChoice.side === humanSide && (
-        <InterrogationDroidDecoyPickModal G={G} choice={G.pendingChoice}
-          onPick={(sids) => {
-            const r = phases.resolveInterrogationDroidDecoyPick(G, sids);
-            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
-            persist(); refresh();
+        <MapPickerOverlay
+          G={G} systems={systemsRef.current} masks={masksRef.current} humanSide={humanSide}
+          color={sideColor(G.pendingChoice.side)}
+          title="Interrogation Droid — name decoy systems"
+          instructions="Name systems as decoys for the Rebel base. Pick them on the map."
+          candidates={G.pendingChoice.candidates}
+          onPick={() => {}}
+          multi={{
+            count: G.pendingChoice.count,
+            onSubmit: (sids) => {
+              const r = phases.resolveInterrogationDroidDecoyPick(G, sids);
+              if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+              persist(); refresh();
+            },
           }} />
       )}
 
@@ -1730,10 +1739,21 @@ export default function PlayTab() {
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'FearWillKeepThemInLinePick'
         && G.pendingChoice.side === humanSide && (
-        <SystemMultiPickModal G={G} choice={G.pendingChoice}
-          title="Fear Will Keep Them In Line — pick 2 systems in this region to gain loyalty"
-          color="#ffaaaa"
-          onSubmit={(ids) => { const r = phases.resolveFearWillKeepThemInLinePick(G, ids); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
+        <MapPickerOverlay
+          G={G} systems={systemsRef.current} masks={masksRef.current} humanSide={humanSide}
+          color={sideColor(G.pendingChoice.side)}
+          title="Fear Will Keep Them In Line"
+          instructions="Pick systems in this region to gain Imperial loyalty. Click them on the map."
+          candidates={G.pendingChoice.candidates}
+          onPick={() => {}}
+          multi={{
+            count: G.pendingChoice.count,
+            onSubmit: (ids) => {
+              const r = phases.resolveFearWillKeepThemInLinePick(G, ids);
+              if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+              persist(); refresh();
+            },
+          }} />
       )}
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
@@ -5409,7 +5429,7 @@ function UnitCluster({ centerX, centerY, groups, iconSize, maxWidth }: {
   );
 }
 
-function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSystemIds, onSystemClick }: {
+function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSystemIds, onSystemClick, selectedSystemIds }: {
   G: GameState; systems: System[]; masks: MaskRect[];
   eliminatedSystemIds?: Set<string> | null;
   humanSide?: Side;
@@ -5418,6 +5438,8 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
   // in a board-covering modal.
   highlightSystemIds?: Set<string> | null;
   onSystemClick?: (systemId: string) => void;
+  // Multi-select picker: systems currently selected get a filled green ring.
+  selectedSystemIds?: Set<string> | null;
 }) {
   // Compute aggregate of Rebel Base space units (offboard staging area)
   const rbsUnits = G.map.rebelBaseSpace.units.length;
@@ -5588,6 +5610,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           const grouped = groupByType(state.units);
           const isEliminated = effectiveEliminated?.has(s.id) ?? false;
           const isHighlighted = highlightSystemIds?.has(s.id) ?? false;
+          const isSelected = selectedSystemIds?.has(s.id) ?? false;
           return (
             <g key={s.id} style={isHighlighted && onSystemClick ? { cursor: 'pointer' } : undefined}>
               {isBaseRevealed && (
@@ -5595,11 +5618,18 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                   style={{ fill: 'none', stroke: '#80dc78', strokeWidth: 2 }} />
               )}
               {/* Target-picker highlight: a bright ring marking a legal candidate
-                  system, clickable to select it directly on the map. */}
+                  system, clickable to select it directly on the map. Selected
+                  candidates (multi-pick) get a filled green ring + check. */}
               {isHighlighted && (
                 <circle cx={x} cy={y} r={MARKER_R + 10}
-                  style={{ fill: 'rgba(255,213,74,0.16)', stroke: '#ffd54a', strokeWidth: 3 }}
+                  style={isSelected
+                    ? { fill: 'rgba(128,220,120,0.30)', stroke: '#80dc78', strokeWidth: 4 }
+                    : { fill: 'rgba(255,213,74,0.16)', stroke: '#ffd54a', strokeWidth: 3 }}
                   pointerEvents="none" />
+              )}
+              {isSelected && (
+                <text x={x} y={y - MARKER_R - 14} textAnchor="middle"
+                  style={{ fill: '#80dc78', fontSize: 16, fontWeight: 700, pointerEvents: 'none' }}>✓</text>
               )}
               {isEliminated && (
                 <g pointerEvents="none">
@@ -6028,7 +6058,7 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
 // ============================================================================
 
 function MapPickerOverlay({
-  G, systems, masks, humanSide, title, instructions, color, candidates, onPick, onCancel, unitTokens,
+  G, systems, masks, humanSide, title, instructions, color, candidates, onPick, onCancel, unitTokens, multi,
 }: {
   G: GameState; systems: System[]; masks: MaskRect[]; humanSide: Side;
   title: string; instructions?: string; color: string;
@@ -6038,9 +6068,17 @@ function MapPickerOverlay({
   // Optional "still to deploy" tokens (unit typeIds) shown under the list.
   // The first entry is the unit being placed right now; the rest are queued.
   unitTokens?: string[];
+  // Multi-select mode: pick exactly `count` systems, then Confirm.
+  multi?: { count: number; onSubmit: (systemIds: string[]) => void };
 }) {
   const highlight = new Set(candidates);
   const unitStyle = getUnitStyle();
+  const [selected, setSelected] = useState<string[]>([]);
+  const toggle = (sid: string) => setSelected((prev) =>
+    prev.includes(sid) ? prev.filter((s) => s !== sid)
+      : (prev.length < (multi?.count ?? 1) ? [...prev, sid] : prev));
+  const handleClick = multi ? toggle : onPick;
+  const selectedSet = new Set(selected);
   // Group the remaining-to-deploy tokens by type, preserving the "current"
   // (first) unit so we can flag it.
   const currentTokenType = unitTokens && unitTokens.length > 0 ? unitTokens[0] : null;
@@ -6052,7 +6090,8 @@ function MapPickerOverlay({
         {/* Map (left) — candidates highlighted + clickable. */}
         <div style={{ overflow: 'auto', border: `1px solid ${color}`, borderRadius: 6, background: '#0a0b0e' }}>
           <Board G={G} systems={systems} masks={masks} humanSide={humanSide}
-            highlightSystemIds={highlight} onSystemClick={onPick} />
+            highlightSystemIds={highlight} onSystemClick={handleClick}
+            selectedSystemIds={multi ? selectedSet : null} />
         </div>
         {/* Picker sidebar (right). */}
         <div style={{ width: 280, flex: '0 0 auto', display: 'flex', flexDirection: 'column',
@@ -6061,19 +6100,35 @@ function MapPickerOverlay({
           <div style={{ color, fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{title}</div>
           {instructions && <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>{instructions}</div>}
           <div style={{ color: '#9bb8d6', fontSize: 11, marginBottom: 8 }}>
-            Click a highlighted system on the map, or pick from the list:
+            {multi
+              ? `Pick ${multi.count} system${multi.count === 1 ? '' : 's'} — click on the map or the list (selected ${selected.length}/${multi.count}):`
+              : 'Click a highlighted system on the map, or pick from the list:'}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             {candidates.map((sid) => {
               const sys = G.catalog.systems[sid];
+              const sel = selectedSet.has(sid);
               return (
-                <button key={sid} className="tab-button" onClick={() => onPick(sid)} style={{ textAlign: 'left' }}>
-                  <div style={{ fontWeight: 700 }}>{sys?.name ?? sid}</div>
+                <button key={sid} className="tab-button" onClick={() => handleClick(sid)}
+                  style={{ textAlign: 'left', border: multi && sel ? '1px solid #80dc78' : undefined }}>
+                  <div style={{ fontWeight: 700 }}>{multi && sel ? '✓ ' : ''}{sys?.name ?? sid}</div>
                   <div style={{ fontSize: 11, color: '#888' }}>region {sys?.region}</div>
                 </button>
               );
             })}
           </div>
+          {multi && (
+            <button
+              className="tab-button"
+              disabled={selected.length !== multi.count}
+              onClick={() => multi.onSubmit(selected)}
+              style={{ marginTop: 10, fontWeight: 700,
+                background: selected.length === multi.count ? color : '#1a1c22',
+                color: selected.length === multi.count ? '#000' : '#555' }}
+            >
+              Confirm {selected.length}/{multi.count}
+            </button>
+          )}
           {tokenGroups.length > 0 && (
             <div style={{ marginTop: 14, borderTop: '1px solid #2a2d34', paddingTop: 10 }}>
               <div style={{ fontSize: 11, color: '#9bb8d6', marginBottom: 6 }}>
@@ -8505,45 +8560,6 @@ function PlayAssignmentActionCardModal({
   );
 }
 
-function ActionCardSystemPickModal({
-  G, choice, onPick,
-}: {
-  G: GameState;
-  choice: { kind: 'ActionCardSystemPick'; side: Side; cardId: string; candidates: string[] };
-  onPick: (sysId: string) => void;
-}) {
-  const color = sideColor(choice.side);
-  const card = G.catalog.actions[choice.cardId];
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
-    }}>
-      <div style={{
-        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88vh', overflowY: 'auto',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
-      }}>
-        <h3 style={{ color, marginTop: 0 }}>{card?.name ?? choice.cardId} — pick a system</h3>
-        <div style={{ color: '#ccc', fontSize: 13, marginBottom: 10, fontStyle: 'italic' }}>{card?.rulesText}</div>
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 6,
-        }}>
-          {choice.candidates.map((sid) => {
-            const sys = G.catalog.systems[sid];
-            return (
-              <button key={sid} className="tab-button" onClick={() => onPick(sid)} style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 700 }}>{sys?.name ?? sid}</div>
-                <div style={{ fontSize: 11, color: '#888' }}>region {sys?.region}</div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /** Attach a droid ring (R2-D2 / C-3PO) to a Rebel leader. The ring's discard
  *  effect later triggers only in the system where this leader is, so the modal
  *  shows each candidate's current location to inform the choice. */
@@ -10233,98 +10249,6 @@ function InterrogationDroidDecoyPickModal({
           >
             Reveal these 2 + base ({picks.size}/{choice.count})
           </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DeployUnitPickModal({
-  G, choice, onPick,
-}: {
-  G: GameState;
-  choice: { kind: 'DeployUnitPick'; side: Side; typeId: string; candidates: string[] };
-  onPick: (sysId: string) => void;
-}) {
-  const color = sideColor(choice.side);
-  const t = G.catalog.unitTypes[choice.typeId];
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
-    }}>
-      <div style={{
-        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88vh', overflowY: 'auto',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
-      }}>
-        <h3 style={{ color, marginTop: 0 }}>
-          Deploy {t?.name ?? choice.typeId} — pick a system
-        </h3>
-        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
-          This {t?.name ?? 'unit'} fell off slot 1 of the build queue. Pick any
-          system you control (or subjugate, for Empire) with no enemy units,
-          no sabotage, and that isn't remote.
-        </div>
-        {(() => {
-          // Show the rest of the deploy queue (everything still to place this
-          // Refresh, both sides) so the player can decide whether to save a
-          // good system for the stronger unit coming up next.
-          const remaining = G.refreshPaused?.pendingDeployPicks ?? [];
-          // Skip [0] — that's THIS pick. The rest are upcoming.
-          const upcoming = remaining.slice(1);
-          if (upcoming.length === 0) return null;
-          const bySide: Record<string, Map<string, number>> = { Rebel: new Map(), Empire: new Map() };
-          for (const u of upcoming) {
-            const m = bySide[u.side];
-            m.set(u.typeId, (m.get(u.typeId) ?? 0) + 1);
-          }
-          const fmt = (m: Map<string, number>) => [...m.entries()]
-            .map(([tid, n]) => {
-              const name = G.catalog.unitTypes[tid]?.name ?? tid;
-              return n > 1 ? `${name}×${n}` : name;
-            })
-            .join(', ');
-          return (
-            <div style={{
-              background: '#0c0d10', border: '1px solid #2a2d34', borderRadius: 4,
-              padding: 8, marginBottom: 10, fontSize: 12,
-            }}>
-              <div style={{ color: '#888', marginBottom: 4 }}>
-                Still to deploy this Refresh ({upcoming.length}):
-              </div>
-              {bySide.Rebel.size > 0 && (
-                <div style={{ color: '#aae0ff' }}>
-                  Rebel: <span style={{ color: '#fff' }}>{fmt(bySide.Rebel)}</span>
-                </div>
-              )}
-              {bySide.Empire.size > 0 && (
-                <div style={{ color: '#ffaaaa' }}>
-                  Empire: <span style={{ color: '#fff' }}>{fmt(bySide.Empire)}</span>
-                </div>
-              )}
-            </div>
-          );
-        })()}
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 6,
-        }}>
-          {choice.candidates.map((sid) => {
-            const sys = G.catalog.systems[sid];
-            const ss = G.map.systems[sid];
-            const unitCount = ss?.units.filter((u) => u.side === choice.side).length ?? 0;
-            return (
-              <button key={sid} className="tab-button" onClick={() => onPick(sid)} style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 700 }}>
-                  {sid === 'rebel-base-space' ? 'Rebel Base (hidden)' : (sys?.name ?? sid)}
-                </div>
-                <div style={{ fontSize: 11, color: '#888' }}>
-                  {sid === 'rebel-base-space' ? '' : `region ${sys?.region}`}
-                  {unitCount > 0 ? ` · ${unitCount} of your units` : ''}
-                </div>
-              </button>
-            );
-          })}
         </div>
       </div>
     </div>
