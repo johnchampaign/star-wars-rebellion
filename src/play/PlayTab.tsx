@@ -5581,13 +5581,16 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                 <text x={x} y={y - MARKER_R - 14} textAnchor="middle"
                   style={{ fill: '#80dc78', fontSize: 16, fontWeight: 700, pointerEvents: 'none' }}>✓</text>
               )}
-              {/* Searched/subjugated rule-out — yellow ring + magnifier glyph. */}
+              {/* Searched/subjugated rule-out — yellow ring + cross, mirroring
+                  the red probe X so both read as "not the base". */}
               {isSearched && (
                 <g pointerEvents="none">
                   <circle cx={x} cy={y} r={MARKER_R + 8}
-                    style={{ fill: 'rgba(255,213,74,0.14)', stroke: '#ffd54a', strokeWidth: 2 }} />
-                  <text x={x} y={y + 5} textAnchor="middle"
-                    style={{ fill: '#ffd54a', fontSize: 14, fontWeight: 700 }}>🔍</text>
+                    style={{ fill: 'rgba(255,213,74,0.16)', stroke: '#ffd54a', strokeWidth: 2 }} />
+                  <line x1={x - MARKER_R} y1={y - MARKER_R} x2={x + MARKER_R} y2={y + MARKER_R}
+                    style={{ stroke: '#ffd54a', strokeWidth: 3, strokeLinecap: 'round' }} />
+                  <line x1={x + MARKER_R} y1={y - MARKER_R} x2={x - MARKER_R} y2={y + MARKER_R}
+                    style={{ stroke: '#ffd54a', strokeWidth: 3, strokeLinecap: 'round' }} />
                 </g>
               )}
               {isEliminated && (
