@@ -7,6 +7,14 @@ import type {
   ActionCard, MissionCard, ObjectiveCard, TacticCard, ProbeCard,
 } from '../types';
 
+// Re-export the root data-file types the engine modules treat as engine types.
+// They live in src/types.ts, but engine code imports them from './types'
+// alongside the engine-state types — so surface them here. (Without this,
+// `import type { Side, SystemId } from './types'` in combat.ts/phases.ts/etc.
+// fails typecheck; it only worked at runtime because esbuild erases type-only
+// imports. Run `npm run typecheck` to catch this class of issue.)
+export type { Side, SystemId } from '../types';
+
 // ---------- Units ----------
 
 export type UnitTypeId = string; // 'tie-fighter', 'x-wing', 'death-star', ...
