@@ -6777,39 +6777,6 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
               })
             )}
           </div>
-
-          {/* Play-an-action-card button, placed right under the mission area
-              where the player is looking. The top-toolbar button (still there)
-              scrolls off-screen, so players couldn't find it (report). Gated to
-              the human's own turn with no pending sub-choice. */}
-          {side === humanSide && !G.pendingChoice && (() => {
-            const playable = phases.playableAssignmentActionCards(G, side);
-            if (playable.length === 0) return null;
-            const names = playable
-              .map((cid) => G.catalog.actions[cid]?.name ?? cid)
-              .join(', ');
-            return (
-              <div style={{
-                marginTop: 12, padding: '8px 10px', background: '#1c1f27',
-                borderRadius: 4, border: '1px solid #3a6ea5',
-              }}>
-                <button
-                  className="tab-button"
-                  onClick={() => {
-                    const r = phases.requestAssignmentActionCardPlay(G, side);
-                    if (!r.ok) alert(`Cannot play: ${r.reason}`);
-                    onChange();
-                  }}
-                  style={{ fontWeight: 700, whiteSpace: 'nowrap' }}
-                >
-                  ▶ Play action card ({playable.length})
-                </button>
-                <div style={{ color: '#9bb8d6', fontSize: 12, marginTop: 6 }}>
-                  Playable now: <strong style={{ color: '#cfe2f5' }}>{names}</strong>
-                </div>
-              </div>
-            );
-          })()}
         </div>
 
         {/* Leader pool */}
@@ -6911,6 +6878,39 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
                   <button className="tab-button" onClick={() => { setPickerMissionId(null); setSelectedLeaders([]); }}>
                     Cancel
                   </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Play-an-action-card button, placed under the leader pool where the
+              player is looking. The top-toolbar button (still there) scrolls
+              off-screen, so players couldn't find it (report). Gated to the
+              human's own turn with no pending sub-choice. */}
+          {side === humanSide && !G.pendingChoice && (() => {
+            const playable = phases.playableAssignmentActionCards(G, side);
+            if (playable.length === 0) return null;
+            const names = playable
+              .map((cid) => G.catalog.actions[cid]?.name ?? cid)
+              .join(', ');
+            return (
+              <div style={{
+                marginTop: 12, padding: '8px 10px', background: '#1c1f27',
+                borderRadius: 4, border: '1px solid #3a6ea5',
+              }}>
+                <button
+                  className="tab-button"
+                  onClick={() => {
+                    const r = phases.requestAssignmentActionCardPlay(G, side);
+                    if (!r.ok) alert(`Cannot play: ${r.reason}`);
+                    onChange();
+                  }}
+                  style={{ fontWeight: 700, whiteSpace: 'nowrap' }}
+                >
+                  ▶ Play action card ({playable.length})
+                </button>
+                <div style={{ color: '#9bb8d6', fontSize: 12, marginTop: 6 }}>
+                  Playable now: <strong style={{ color: '#cfe2f5' }}>{names}</strong>
                 </div>
               </div>
             );
