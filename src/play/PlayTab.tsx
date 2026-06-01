@@ -7151,6 +7151,15 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
                     <span style={{ color: '#888', fontSize: 11 }}>
                       {card.skill} × {card.skillCost}
                     </span>
+                    {card.leaderPortrait && (
+                      <span
+                        title={`This mission pictures ${G.catalog.leaders[card.leaderPortrait]?.name ?? card.leaderPortrait} — assign that leader here for +2 automatic successes.`}
+                        style={{ fontSize: 10, color: '#ffb84d', fontWeight: 600,
+                          background: 'rgba(80,50,10,0.5)', border: '1px solid #6a4a1a',
+                          borderRadius: 3, padding: '0 5px' }}>
+                        🖼 {G.catalog.leaders[card.leaderPortrait]?.name ?? card.leaderPortrait} +2
+                      </span>
+                    )}
                     <button
                       className="tab-button"
                       onClick={() => startPicker(mid)}
@@ -7211,11 +7220,17 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
             {f.leaderPool.length === 0 && (
               <div style={{ color: '#666', fontSize: 12, fontStyle: 'italic' }}>(no available leaders)</div>
             )}
-            {f.leaderPool.map((lid) => {
+            {(() => {
+              // When a mission with a pictured leader is being assigned,
+              // highlight that leader in the pool (+2 successes if assigned).
+              const picturedLeaderId = pickerMissionId
+                ? G.catalog.missions[pickerMissionId]?.leaderPortrait : undefined;
+              return f.leaderPool.map((lid) => {
               const leader = G.catalog.leaders[lid];
               if (!leader) return null;
               const selectable = pickerMissionId !== null;
               const isSelected = selectedLeaders.includes(lid);
+              const isPictured = !!picturedLeaderId && lid === picturedLeaderId;
               return (
                 <button
                   key={lid}
@@ -7226,7 +7241,8 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
                     padding: '4px 8px',
                     background: isSelected ? color : '#0c0d10',
                     color: isSelected ? '#000' : '#e8e8ea',
-                    border: `1px solid ${isSelected ? color : '#2a2d34'}`,
+                    border: `${isPictured ? 2 : 1}px solid ${isSelected ? color : isPictured ? '#ffb84d' : '#2a2d34'}`,
+                    boxShadow: isPictured && !isSelected ? '0 0 6px rgba(255,184,77,0.6)' : undefined,
                     borderRadius: 3,
                     cursor: selectable ? 'pointer' : 'default',
                     opacity: selectable ? 1 : 0.5,
@@ -7234,6 +7250,7 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
                   }}
                 >
                   <strong>{leader.name}</strong>
+                  {isPictured && <span style={{ marginLeft: 4, color: isSelected ? '#000' : '#ffb84d', fontWeight: 700 }}>🖼 +2</span>}
                   <span style={{ marginLeft: 6, color: isSelected ? '#000a' : '#888', fontSize: 10 }}>
                     {Object.entries(leader.skills)
                       .filter(([, v]) => v > 0)
@@ -7243,7 +7260,8 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
                   </span>
                 </button>
               );
-            })}
+              });
+            })()}
           </div>
 
           {pickerMissionId && (() => {
