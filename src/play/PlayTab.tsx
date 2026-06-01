@@ -3683,49 +3683,6 @@ function SimpleLeaderPickModal({ G, color, title, candidates, onPick }: {
   );
 }
 
-/** Generic system-multi-pick modal — used by Fear Will Keep Them In Line. */
-function SystemMultiPickModal({ G, choice, title, color, onSubmit }: {
-  G: GameState;
-  choice: { kind: 'FearWillKeepThemInLinePick'; candidates: string[]; count: number };
-  title: string;
-  color: string;
-  onSubmit: (systemIds: string[]) => void;
-}) {
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const toggle = (sid: string) => setPicked((p) => {
-    const n = new Set(p);
-    if (n.has(sid)) n.delete(sid);
-    else if (n.size < choice.count) n.add(sid);
-    return n;
-  });
-  return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
-      <div style={{ background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-        padding: 20, maxWidth: 520, width: '92%' }}>
-        <div style={{ fontSize: 14, color, fontWeight: 700, marginBottom: 6 }}>{title}</div>
-        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>Pick {choice.count} of {choice.candidates.length}.</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
-          {choice.candidates.map((sid) => (
-            <label key={sid} style={{ display: 'flex', gap: 6, padding: 4, background: '#1f2128', borderRadius: 3, cursor: 'pointer', fontSize: 13 }}>
-              <input type="checkbox" checked={picked.has(sid)} onChange={() => toggle(sid)} />
-              {G.catalog.systems[sid]?.name ?? sid}
-            </label>
-          ))}
-        </div>
-        <div style={{ marginTop: 12, textAlign: 'right' }}>
-          <button onClick={() => onSubmit(Array.from(picked))}
-            disabled={picked.size !== choice.count}
-            style={{ padding: '6px 16px', background: picked.size === choice.count ? color : '#444', color: '#000',
-              border: 'none', borderRadius: 3, cursor: picked.size === choice.count ? 'pointer' : 'not-allowed', fontWeight: 600 }}>
-            Apply
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /** Destroy Up To N Health — generic unit-checklist with budget tracking. */
 function DestroyUpToHealthModal({ G, choice, onSubmit }: {
   G: GameState;
@@ -4076,60 +4033,6 @@ function OverseeProjectPickModal({ G, choice, onPick }: {
               </button>
             );
           })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** Homing Beacon: Empire picks a captured leader to rescue + system to place them in. */
-function HomingBeaconPlaceModal({ G, choice, onSubmit }: {
-  G: GameState;
-  choice: { kind: 'HomingBeaconPlace'; leaderCandidates: string[]; systemCandidates: string[] };
-  onSubmit: (leaderId: string, systemId: string) => void;
-}) {
-  const [leader, setLeader] = useState(choice.leaderCandidates[0]);
-  const [sys, setSys] = useState(choice.systemCandidates[0]);
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
-    }}>
-      <div style={{
-        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
-        padding: 20, maxWidth: 640, width: '92%',
-      }}>
-        <div style={{ fontSize: 14, color: '#ffaaaa', fontWeight: 700, marginBottom: 6 }}>
-          Homing Beacon — release a leader to expose the Rebel base region
-        </div>
-        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
-          Rescue 1 captured Rebel leader; place them in any system in the
-          Rebel base's region. (Placement reveals the region to the Empire.)
-        </div>
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, color: '#aaa', marginBottom: 4 }}>Leader to release:</div>
-          <select value={leader} onChange={(e) => setLeader(e.target.value)}
-            style={{ background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '4px 6px', width: '100%' }}>
-            {choice.leaderCandidates.map((lid) => (
-              <option key={lid} value={lid}>{G.catalog.leaders[lid]?.name ?? lid}</option>
-            ))}
-          </select>
-        </div>
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 11, color: '#aaa', marginBottom: 4 }}>Place in system:</div>
-          <select value={sys} onChange={(e) => setSys(e.target.value)}
-            style={{ background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '4px 6px', width: '100%' }}>
-            {choice.systemCandidates.map((sid) => (
-              <option key={sid} value={sid}>{G.catalog.systems[sid]?.name ?? sid}</option>
-            ))}
-          </select>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <button onClick={() => onSubmit(leader, sys)}
-            style={{ padding: '6px 18px', background: '#ffaaaa', color: '#000',
-              border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}>
-            Release & place
-          </button>
         </div>
       </div>
     </div>
@@ -10227,77 +10130,6 @@ function RetrieveThePlansPickModal({
               </button>
             );
           })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function InterrogationDroidDecoyPickModal({
-  G, choice, onPick,
-}: {
-  G: GameState;
-  choice: { kind: 'InterrogationDroidDecoyPick'; side: Side; candidates: string[]; count: number };
-  onPick: (systemIds: string[]) => void;
-}) {
-  const [picks, setPicks] = useState<Set<string>>(new Set());
-  const toggle = (sid: string) => {
-    setPicks((prev) => {
-      const next = new Set(prev);
-      if (next.has(sid)) next.delete(sid);
-      else if (next.size < choice.count) next.add(sid);
-      return next;
-    });
-  };
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
-    }}>
-      <div style={{
-        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88vh', overflowY: 'auto',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
-      }}>
-        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>
-          Interrogation Droid — name 2 decoy systems
-        </h3>
-        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
-          Empire's Interrogation Droid succeeded. RAW: you must name 3
-          systems, one of which contains the Rebel base. Pick {choice.count} decoys;
-          the engine will add the actual base ({G.catalog.systems[G.rebelBaseSystemId]?.name ?? G.rebelBaseSystemId})
-          and reveal all three (shuffled) to the Empire. Picked: {picks.size}/{choice.count}.
-        </div>
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 4,
-          marginBottom: 10,
-        }}>
-          {choice.candidates.map((sid) => {
-            const sys = G.catalog.systems[sid];
-            const on = picks.has(sid);
-            return (
-              <button key={sid} onClick={() => toggle(sid)}
-                style={{
-                  padding: '6px 8px',
-                  background: on ? '#2a4d6e' : '#0c0d10',
-                  border: on ? '2px solid #aae0ff' : '1px solid #2a2d34',
-                  borderRadius: 3, color: '#e8e8ea', cursor: 'pointer', fontSize: 12,
-                  textAlign: 'left',
-                }}>
-                {sys?.name ?? sid}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <button
-            className="tab-button"
-            disabled={picks.size !== choice.count}
-            onClick={() => onPick(Array.from(picks))}
-            style={{ opacity: picks.size === choice.count ? 1 : 0.45 }}
-          >
-            Reveal these 2 + base ({picks.size}/{choice.count})
-          </button>
         </div>
       </div>
     </div>
