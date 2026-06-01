@@ -5349,7 +5349,26 @@ function empireRuledOutSystems(G: GameState): Set<string> {
     if (sid === G.rebelBaseSystemId) continue; // NEVER reveal the actual base
     ruledOut.add(sid);
   }
+  // Coruscant is never a valid hidden-base location and has no probe card, so
+  // mark it ruled out implicitly.
+  for (const s of Object.values(G.catalog.systems)) {
+    if (s.isCoruscant && s.id !== G.rebelBaseSystemId) ruledOut.add(s.id);
+  }
   return ruledOut;
+}
+
+/** Systems ruled out by SEARCHING (subjugation / Imperial loyalty). Unions the
+ *  engine-tracked cumulative set with systems that currently qualify, so the
+ *  overlay shows correctly even on a game saved before the field existed (and
+ *  immediately, before the next invariant pass). Excludes the base. */
+function empireSearchedSystems(G: GameState): Set<string> {
+  const out = new Set<string>(G.empireSearchedRuledOut ?? []);
+  for (const [id, ss] of Object.entries(G.map.systems)) {
+    if (id === G.rebelBaseSystemId) continue;
+    if (ss.subjugated || ss.loyalty === 'imperial') out.add(id);
+  }
+  out.delete(G.rebelBaseSystemId);
+  return out;
 }
 
 function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSystemIds, onSystemClick, selectedSystemIds }: {
@@ -5412,7 +5431,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
   const showOverlay = !!effectiveEliminated || (((hoverRebelBase && !suppressBaseHover) || pinProbeOverlay) && humanSide === 'Empire');
   const effectiveSearched: Set<string> | null =
     showOverlay && humanSide === 'Empire'
-      ? new Set(G.empireSearchedRuledOut ?? [])
+      ? empireSearchedSystems(G)
       : null;
 
   return (
