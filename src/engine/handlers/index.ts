@@ -6,7 +6,7 @@ import type { GameState } from '../types';
 import * as M from '../mechanics';
 import { register, type EffectHandler } from './registry';
 import { beginCombat, runCombat } from '../combat';
-import { notImplemented, log } from '../log';
+import { notImplemented, log, pushNotice } from '../log';
 import { shuffle, nextInt } from '../rng';
 
 /** Resolve a combat at `sysId` initiated by `attackerSide`. Used by mission
@@ -452,14 +452,27 @@ const imperialPropaganda: EffectHandler = (G, ctx) => {
 };
 
 /** "If successful, the Rebel player must tell you if the Rebel base is in
- *  this system." Logs the answer (hidden-info gap is acceptable in hot-seat). */
+ *  this system." Surfaces the yes/no to the Empire via a modal notice, and on
+ *  a "no" rules the system out (yellow searched marker). RAW: this does NOT
+ *  reveal the base — the Empire just learns the answer. */
 const longRangeProbe: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
+  const sysName = G.catalog.systems[sysId]?.name ?? sysId;
   const isBase = G.rebelBaseSystemId === sysId;
   log(G, { kind: 'probe-result', side: 'Empire', payload: {
     systemId: sysId, isBase, source: 'long-range-probe',
   }});
+  if (isBase) {
+    pushNotice(G, `lrp-${sysId}-t${G.timeMarker}`, 'Long Range Probe',
+      `The Rebel base IS at ${sysName}! (Move units there to capture it — it isn't revealed yet.)`);
+  } else {
+    // Rule it out — same knowledge as a "no" probe card. Shows as a yellow X.
+    if (!G.empireSearchedRuledOut) G.empireSearchedRuledOut = [];
+    if (!G.empireSearchedRuledOut.includes(sysId)) G.empireSearchedRuledOut.push(sysId);
+    pushNotice(G, `lrp-${sysId}-t${G.timeMarker}`, 'Long Range Probe',
+      `The Rebel base is NOT at ${sysName}. Marked as ruled out on the map.`);
+  }
   return true;
 };
 

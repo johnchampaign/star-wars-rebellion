@@ -10,7 +10,7 @@ import type {
 // (Phase advances from Setup → Assignment internally; no extra imports needed.)
 import * as M from './mechanics';
 import { beginCombat, runCombat } from './combat';
-import { log } from './log';
+import { log, pushNotice } from './log';
 import * as Handlers from './handlers/registry';
 import { missionTargets } from './missionTargets';
 import { PROJECT_ONLY_UNIT_IDS } from './units';
@@ -2781,6 +2781,18 @@ export function resolveInterrogationDroidDecoyPick(G: GameState, systemIds: Syst
     named: shuffled,
     note: 'One of these contains the Rebel base.',
   }});
+  // Surface the result to the Empire AND rule out every OTHER system — the
+  // base is one of these three, so everything else is eliminated (shown as
+  // yellow searched-X). Mirrors Long Range Probe's behaviour.
+  const named = new Set(shuffled);
+  if (!G.empireSearchedRuledOut) G.empireSearchedRuledOut = [];
+  for (const sid of Object.keys(G.map.systems)) {
+    if (sid === 'rebel-base-space' || named.has(sid)) continue;
+    if (!G.empireSearchedRuledOut.includes(sid)) G.empireSearchedRuledOut.push(sid);
+  }
+  const names = shuffled.map((sid) => G.catalog.systems[sid]?.name ?? sid).join(', ');
+  pushNotice(G, `interrogation-droid-t${G.timeMarker}`, 'Interrogation Droid',
+    `The Rebel base is one of these three systems: ${names}. Every other system has been ruled out on the map.`);
   G.pendingChoice = undefined;
   resumeMissionAfterChoice(G);
   return { ok: true };
