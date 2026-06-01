@@ -249,6 +249,7 @@ export default function PlayTab() {
     { number: number; title: string; htmlUrl: string; response: string }[]
   >([]);
   const [unitStyle, setUnitStyleState] = useState<UnitImageStyle>(getUnitStyle());
+  const [showUnitKey, setShowUnitKey] = useState<boolean>(false);
   // Player-toggleable "images on / images off" switch. When OFF, every
   // <img> and SVG <image> in the play tree is hidden via CSS, letting
   // the text fallbacks (unit abbreviations, dice glyphs, etc.) carry the
@@ -790,6 +791,9 @@ export default function PlayTab() {
           <span style={{ color: '#888' }}>(AI: {aiSide})</span>
         </span>
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <button className="tab-button" onClick={() => setShowUnitKey(true)} title="Show a key of every unit type — picture, name, tier shape and theater">
+            unit key
+          </button>
           <button className="tab-button" onClick={toggleUnitStyle} title="Toggle between Vassal mini photos and reference-sheet silhouettes">
             units: {unitStyle}
           </button>
@@ -978,6 +982,10 @@ export default function PlayTab() {
           onClose={() => setShowLoadArt(false)}
           onLoaded={() => { refresh(); }}
         />
+      )}
+
+      {showUnitKey && (
+        <UnitKeyModal G={G} unitStyle={unitStyle} onClose={() => setShowUnitKey(false)} />
       )}
 
       {G.pendingNotices && G.pendingNotices.length > 0 && (
@@ -1874,6 +1882,7 @@ function OpposeMissionModal({ G, choice, onResolve }: {
     opposerSide: Side;
     skill: string;
     attackerDice: number;
+    attackerPortrait: number;
     poolLeaders: string[];
     existingAtTarget: string[];
   };
@@ -1913,6 +1922,18 @@ function OpposeMissionModal({ G, choice, onResolve }: {
           {' '}at <strong style={{ color: '#ffd54a' }}>{targetName}</strong>
           {' '}— attacker will roll <strong style={{ color: '#fff' }}>{choice.attackerDice}</strong> {choice.skill} dice.
         </div>
+
+        {choice.attackerPortrait > 0 && (
+          <div style={{
+            fontSize: 12, color: '#ffb84d', marginBottom: 8, fontWeight: 600,
+            background: 'rgba(80,50,10,0.6)', border: '1px solid #6a4a1a',
+            borderRadius: 3, padding: '4px 8px',
+          }}>
+            ⚠ Portrait bonus: this mission pictures a leader the attacker assigned —
+            they get <strong>+{choice.attackerPortrait} automatic successes</strong> on
+            top of their dice. Factor this in before opposing.
+          </div>
+        )}
 
         {choice.existingAtTarget.length > 0 && (
           <div style={{ fontSize: 12, color: '#80dc78', marginBottom: 8 }}>
@@ -8436,6 +8457,71 @@ function AttachRingPickModal({
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** A reference key of every unit type: picture, name, tier shape, theater.
+ *  Players asked for a way to look up "which unit is the orange circle?"
+ *  (reporter MightyFaben). */
+function UnitKeyModal({ G, unitStyle, onClose }: {
+  G: GameState; unitStyle: UnitImageStyle; onClose: () => void;
+}) {
+  const shapeGlyph = (tier?: string) => tier === 'triangle' ? '▲' : tier === 'circle' ? '●' : '■';
+  const all = Object.values(G.catalog.unitTypes);
+  const renderSide = (side: Side) => {
+    const units = all.filter((t) => t.side === side);
+    return (
+      <div style={{ flex: 1, minWidth: 240 }}>
+        <div style={{ color: sideColor(side), fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{side}</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {units.map((t) => {
+            const img = unitImageUrl(t.id, UNIT_IMAGE_BASE, unitStyle);
+            return (
+              <div key={t.id} style={{ display: 'flex', alignItems: 'center', gap: 8,
+                padding: '3px 4px', background: '#0c0d10', borderRadius: 3 }}>
+                <div style={{ width: 30, height: 30, flex: '0 0 auto', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+                  {img ? <img src={img} alt={t.name} draggable={false}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain' }} /> : '—'}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 12, color: '#e8e8ea', fontWeight: 600 }}>{t.name}</div>
+                  <div style={{ fontSize: 10, color: '#9aa3ad' }}>
+                    {shapeGlyph(t.tier)} {t.tier ?? '?'} · {t.theater}
+                    {' · '}HP {t.health.value}{t.health.color ? ` (${t.health.color})` : ''}
+                    {' · atk '}{t.attack.red}R+{t.attack.black}B
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}
+      onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: '#15171c', border: '2px solid #555', borderRadius: 6,
+        padding: 20, maxWidth: 720, width: '94%', maxHeight: '90vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
+          <h3 style={{ margin: 0, color: '#ffd54a' }}>Unit key</h3>
+          <button className="tab-button" style={{ marginLeft: 'auto' }} onClick={onClose}>Close</button>
+        </div>
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
+          ▲ triangle · ● circle · ■ square — the shape is the unit's tier (used by
+          build icons and combat). Pictures use your current unit style ({unitStyle}).
+        </div>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          {renderSide('Rebel')}
+          {renderSide('Empire')}
         </div>
       </div>
     </div>

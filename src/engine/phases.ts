@@ -872,6 +872,7 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
       kind: 'OpposeMission',
       missionId: pending.missionId, targetSystemId: pending.targetSystemId, opposerSide: oppSide,
       skill, attackerDice,
+      attackerPortrait: portraitBonus(G, pending.missionId, pending.leaderIds as LeaderId[]),
       poolLeaders: pool,
       existingAtTarget: existing,
     };

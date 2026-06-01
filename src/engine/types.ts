@@ -142,6 +142,7 @@ export type ChoiceRequest =
       opposerSide: Side;
       skill: string;            // mission's required skill (for tooltip)
       attackerDice: number;     // count of dice the resolver will roll
+      attackerPortrait: number; // +successes from the mission's pictured leader (rr p.9)
       poolLeaders: LeaderId[];  // opposer's pool leaders available to send
       existingAtTarget: LeaderId[]; // already-there opposer leaders (auto-oppose)
     }
