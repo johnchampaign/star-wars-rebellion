@@ -6601,31 +6601,53 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
  *  Assignment you couldn't see the card, only the name + skill). Falls back to
  *  just the name if the art isn't cached (the rulesText is shown inline too). */
 function MissionNameHover({ name, image, color }: { name: string; image?: string; color?: string }) {
-  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const spanRef = useRef<HTMLSpanElement>(null);
   const resolved = image ? getCachedArtUrlSync(image) : null;
+
+  // The popup uses position:fixed anchored to the name's on-screen rect rather
+  // than an absolutely-positioned child. The mission hand lives in a
+  // maxHeight/overflow:auto scroll box, which CLIPS an absolutely-positioned
+  // child — so the enlarged card was cut off (player report). Fixed positioning
+  // escapes the overflow container entirely. We also flip the preview to the
+  // LEFT of the name if there isn't room on the right.
+  const open = () => {
+    const el = spanRef.current;
+    if (!el || !resolved) return;
+    const r = el.getBoundingClientRect();
+    const PREVIEW_W = 252; // 240 img + padding/border
+    const spaceRight = window.innerWidth - r.right;
+    const left = spaceRight >= PREVIEW_W + 16
+      ? r.right + 12
+      : Math.max(8, r.left - PREVIEW_W - 12);
+    // Clamp vertically so a tall card never runs off the top/bottom.
+    const top = Math.min(Math.max(8, r.top + r.height / 2), window.innerHeight - 360);
+    setPos({ left, top });
+  };
+
   // The outer <strong> keeps flex:1 so the skill/assign controls stay pushed to
   // the right of the row, but the hover target is the inner span — sized to the
-  // text only — so the preview pops solely when the cursor is on the card NAME,
-  // not anywhere across the stretched row.
+  // text only — so the preview pops solely when the cursor is on the card NAME.
   return (
     <strong style={{ flex: 1, color: color ?? '#e8e8ea' }}>
       <span
-        style={{ position: 'relative', display: 'inline-block', cursor: resolved ? 'help' : 'default' }}
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
+        ref={spanRef}
+        style={{ display: 'inline-block', cursor: resolved ? 'help' : 'default' }}
+        onMouseEnter={open}
+        onMouseLeave={() => setPos(null)}
       >
         {name}
-        {open && resolved && (
-          <div style={{
-            position: 'absolute', left: '100%', top: '50%', transform: 'translateY(-50%)',
-            marginLeft: 12, zIndex: 2000, pointerEvents: 'none',
-            background: 'rgba(0,0,0,0.94)', border: '1px solid #555', borderRadius: 4,
-            padding: 6, boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
-          }}>
-            <img src={resolved} alt={name} style={{ width: 240, height: 'auto', borderRadius: 4, display: 'block' }} />
-          </div>
-        )}
       </span>
+      {pos && resolved && (
+        <div style={{
+          position: 'fixed', left: pos.left, top: pos.top, transform: 'translateY(-50%)',
+          zIndex: 4000, pointerEvents: 'none',
+          background: 'rgba(0,0,0,0.94)', border: '1px solid #555', borderRadius: 4,
+          padding: 6, boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+        }}>
+          <img src={resolved} alt={name} style={{ width: 240, height: 'auto', borderRadius: 4, display: 'block' }} />
+        </div>
+      )}
     </strong>
   );
 }
@@ -6676,36 +6698,8 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
           the on-screen panel. Previously the only "Play action card" button
           lived in the top toolbar, which scrolls off-screen — players saw the
           card's "use the Play action card button" hint but couldn't find the
-          button (player report). Gated to the human's own turn. */}
-      {side === humanSide && !G.pendingChoice && (() => {
-        const playable = phases.playableAssignmentActionCards(G, side);
-        if (playable.length === 0) return null;
-        const names = playable
-          .map((cid) => G.catalog.actions[cid]?.name ?? cid)
-          .join(', ');
-        return (
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10,
-            padding: '8px 10px', background: '#1c1f27', borderRadius: 4,
-            border: '1px solid #3a6ea5',
-          }}>
-            <button
-              className="tab-button"
-              onClick={() => {
-                const r = phases.requestAssignmentActionCardPlay(G, side);
-                if (!r.ok) alert(`Cannot play: ${r.reason}`);
-                onChange();
-              }}
-              style={{ fontWeight: 700, whiteSpace: 'nowrap' }}
-            >
-              ▶ Play action card ({playable.length})
-            </button>
-            <span style={{ color: '#9bb8d6', fontSize: 12 }}>
-              Playable now: <strong style={{ color: '#cfe2f5' }}>{names}</strong>
-            </span>
-          </div>
-        );
-      })()}
+          button (player report). Now lives below "Already assigned"; see
+          renderPlayActionCard. */}
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         {/* Missions to assign */}
@@ -6783,6 +6777,39 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
               })
             )}
           </div>
+
+          {/* Play-an-action-card button, placed right under the mission area
+              where the player is looking. The top-toolbar button (still there)
+              scrolls off-screen, so players couldn't find it (report). Gated to
+              the human's own turn with no pending sub-choice. */}
+          {side === humanSide && !G.pendingChoice && (() => {
+            const playable = phases.playableAssignmentActionCards(G, side);
+            if (playable.length === 0) return null;
+            const names = playable
+              .map((cid) => G.catalog.actions[cid]?.name ?? cid)
+              .join(', ');
+            return (
+              <div style={{
+                marginTop: 12, padding: '8px 10px', background: '#1c1f27',
+                borderRadius: 4, border: '1px solid #3a6ea5',
+              }}>
+                <button
+                  className="tab-button"
+                  onClick={() => {
+                    const r = phases.requestAssignmentActionCardPlay(G, side);
+                    if (!r.ok) alert(`Cannot play: ${r.reason}`);
+                    onChange();
+                  }}
+                  style={{ fontWeight: 700, whiteSpace: 'nowrap' }}
+                >
+                  ▶ Play action card ({playable.length})
+                </button>
+                <div style={{ color: '#9bb8d6', fontSize: 12, marginTop: 6 }}>
+                  Playable now: <strong style={{ color: '#cfe2f5' }}>{names}</strong>
+                </div>
+              </div>
+            );
+          })()}
         </div>
 
         {/* Leader pool */}
