@@ -5782,14 +5782,19 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                 />
               ))}
               {state.sabotage && (() => {
-                // Sabotage badge — pure SVG (no asset). Placed ON the planet
-                // image (its center) rather than near the loyalty hex, because
-                // the old position + "SABOTAGE" text label overlapped the
-                // printed planet name (reporter MightyFaben). The ⚠ glyph alone
-                // is enough; the hover/preview spells out "SABOTAGED".
+                // Sabotage badge — pure SVG (no asset). In the physical game the
+                // marker covers the system's RESOURCE icons (sabotage disables
+                // production). We don't store per-resource-icon pixel coords (the
+                // icons are baked into the printed map art), so place it on the
+                // loyalty/production cluster (loyaltyMarkerPos) — the closest
+                // proxy, right by the resource + build banner. No "SABOTAGE" text
+                // label (it overlapped the planet name — reporter MightyFaben).
+                // The hover/detail preview still strikes each resource icon
+                // individually for the precise read.
                 const badgeR = 14;
-                const bx = s.boardPos.x * BOARD_SCALE;
-                const by = s.boardPos.y * BOARD_SCALE;
+                const pos = s.loyaltyMarkerPos ?? s.boardPos;
+                const bx = pos.x * BOARD_SCALE;
+                const by = pos.y * BOARD_SCALE;
                 return (
                   <g>
                     <circle cx={bx} cy={by} r={badgeR}
