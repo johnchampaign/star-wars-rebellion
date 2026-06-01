@@ -1416,6 +1416,7 @@ export default function PlayTab() {
               .filter((p) => p.side === side).map((p) => p.typeId);
             return q.length > 0 ? q : [G.pendingChoice.typeId];
           })()}
+          handReference={humanSide}
           onPick={(sid) => {
             const r = phases.resolveDeployUnitPick(G, sid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
@@ -6119,7 +6120,7 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
 // ============================================================================
 
 function MapPickerOverlay({
-  G, systems, masks, humanSide, title, instructions, color, candidates, onPick, onCancel, unitTokens, multi, headerExtra,
+  G, systems, masks, humanSide, title, instructions, color, candidates, onPick, onCancel, unitTokens, multi, headerExtra, handReference,
 }: {
   G: GameState; systems: System[]; masks: MaskRect[]; humanSide: Side;
   title: string; instructions?: string; color: string;
@@ -6134,6 +6135,10 @@ function MapPickerOverlay({
   // Extra sidebar content rendered above the candidate list (e.g. a leader
   // selector for a two-step pick).
   headerExtra?: React.ReactNode;
+  // Optional "your cards" reference (the human's hands) shown in the sidebar —
+  // used during deployment so you can check missions/objectives without
+  // leaving the deploy screen (reporter MightyFaben).
+  handReference?: Side;
 }) {
   const highlight = new Set(candidates);
   const unitStyle = getUnitStyle();
@@ -6194,6 +6199,41 @@ function MapPickerOverlay({
               Confirm {selected.length}/{multi.count}
             </button>
           )}
+          {handReference && (() => {
+            // Your cards, for planning while you deploy. Names are hoverable
+            // (CardArtHover shows the full card).
+            const f = handReference === 'Rebel' ? G.rebel : G.empire;
+            const groups: { label: string; ids: string[]; cat: 'missions' | 'actions' | 'objectives' }[] = [
+              { label: 'Missions', ids: f.missionHand ?? [], cat: 'missions' },
+              { label: 'Action cards', ids: f.actionHand ?? [], cat: 'actions' },
+              ...(handReference === 'Rebel' ? [{ label: 'Objectives', ids: f.objectiveHand ?? [], cat: 'objectives' as const }] : []),
+            ];
+            const lookup = (cat: string, id: string) =>
+              cat === 'missions' ? G.catalog.missions[id]
+              : cat === 'actions' ? G.catalog.actions[id]
+              : G.catalog.objectives[id];
+            return (
+              <div style={{ marginTop: 14, borderTop: '1px solid #2a2d34', paddingTop: 10 }}>
+                <div style={{ fontSize: 11, color: '#9bb8d6', marginBottom: 4 }}>Your cards (hover to read):</div>
+                {groups.map((g) => g.ids.length > 0 && (
+                  <div key={g.label} style={{ marginBottom: 6 }}>
+                    <div style={{ fontSize: 10, color: '#888' }}>{g.label} ({g.ids.length}):</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0 8px' }}>
+                      {g.ids.map((id, i) => {
+                        const c = lookup(g.cat, id);
+                        return (
+                          <span key={id + i} style={{ fontSize: 11 }}>
+                            <CardArtHover name={c?.name ?? id} image={c?.image}
+                              style={{ color: '#cfe2f5', textDecoration: c?.image ? 'underline dotted' : undefined }} />
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
           {tokenGroups.length > 0 && (
             <div style={{ marginTop: 14, borderTop: '1px solid #2a2d34', paddingTop: 10 }}>
               <div style={{ fontSize: 11, color: '#9bb8d6', marginBottom: 6 }}>
