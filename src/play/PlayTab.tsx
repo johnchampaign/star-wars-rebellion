@@ -918,11 +918,7 @@ export default function PlayTab() {
         masks={masksRef.current}
         humanSide={humanSide}
         eliminatedSystemIds={
-          probeHover && humanSide === 'Empire'
-            ? new Set((G.empire.probeHand ?? [])
-                .map((pid) => G.catalog.probes[pid]?.systemId)
-                .filter((s): s is string => !!s))
-            : null
+          probeHover && humanSide === 'Empire' ? empireRuledOutSystems(G) : null
         }
       />
 
@@ -5333,6 +5329,29 @@ function UnitCluster({ centerX, centerY, groups, iconSize, maxWidth }: {
   );
 }
 
+/** Systems the EMPIRE can rule out as the Rebel base, from probe knowledge.
+ *  A system is ruled out once its probe card has left the deck — that happens
+ *  when the Empire draws it (into probeHand) OR it was removed at setup because
+ *  the system got Imperial loyalty. The base's own probe is also removed from
+ *  the deck (rr p.15), so we MUST exclude the base or we'd reveal it. This is
+ *  cumulative and matches "cards left in deck = still-possible systems" — the
+ *  old version only marked the current probeHand, badly under-counting
+ *  (reporter: "only 4 in deck but far more than 4 unmarked"). */
+function empireRuledOutSystems(G: GameState): Set<string> {
+  const inDeck = new Set(
+    (G.probeDeck ?? []).map((pid) => G.catalog.probes[pid]?.systemId).filter(Boolean) as string[],
+  );
+  const ruledOut = new Set<string>();
+  for (const p of Object.values(G.catalog.probes)) {
+    const sid = p.systemId;
+    if (!sid) continue;
+    if (inDeck.has(sid)) continue;           // still a possible base location
+    if (sid === G.rebelBaseSystemId) continue; // NEVER reveal the actual base
+    ruledOut.add(sid);
+  }
+  return ruledOut;
+}
+
 function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSystemIds, onSystemClick, selectedSystemIds }: {
   G: GameState; systems: System[]; masks: MaskRect[];
   eliminatedSystemIds?: Set<string> | null;
@@ -5376,9 +5395,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
   // players because the Rebel knows exactly where their own base is.)
   const baseHoverEliminated: Set<string> | null =
     ((hoverRebelBase && !suppressBaseHover) || pinProbeOverlay) && humanSide === 'Empire'
-      ? new Set((G.empire.probeHand ?? [])
-          .map((pid) => G.catalog.probes[pid]?.systemId)
-          .filter((s): s is string => !!s))
+      ? empireRuledOutSystems(G)
       : null;
   // Effective eliminated set is the union of the probe-deck hover and
   // the base hover, so highlighting one or the other looks the same.
@@ -6784,7 +6801,14 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
                     const cur = moveCounts[sysId]?.[g.typeId] ?? 0;
                     return (
                       <div key={g.typeId} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
-                        <span style={{ flex: 1, fontSize: 11, color: '#aaa' }}>{g.typeId}</span>
+                        {/* Fixed-width name (not flex:1) so the +/- stepper sits
+                            right next to it instead of being pushed to the far
+                            right of a wide panel (reporter: controls were way
+                            out on the right, names all the way left). */}
+                        <span style={{ width: 132, flex: '0 0 auto', fontSize: 11, color: '#aaa',
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {G.catalog.unitTypes[g.typeId]?.name ?? g.typeId}
+                        </span>
                         <button className="tab-button" style={{ padding: '0 6px', fontSize: 14 }} onClick={() => bump(sysId, g.typeId, -1, g.count)} disabled={cur <= 0}>−</button>
                         <span style={{ minWidth: 28, textAlign: 'center', fontSize: 12, color: cur > 0 ? '#ffd54a' : '#666' }}>
                           {cur}/{g.count}
