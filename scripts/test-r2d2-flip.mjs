@@ -27,13 +27,16 @@ function fail(msg) { console.error('FAIL:', msg); process.exit(1); }
 // Rebel holds Resourceful Astromech. Empire rolls first → R2-D2 window opens.
 function setup(seed) {
   const G = createGame(data, { seed, autoSetupUnits: true });
-  // Wipe leader pools / boards so no CombatAddLeaderPick is offered.
+  // Wipe leader pools so no CombatAddLeaderPick is offered.
   G.rebel.leaderPool = []; G.empire.leaderPool = [];
-  G.rebel.leadersOnBoard = {}; G.empire.leadersOnBoard = {};
-  // Empty hands except the R2-D2 card for the Rebel.
-  G.empire.actionHand = []; G.rebel.actionHand = ['resourceful-astromech'];
+  G.empire.leadersOnBoard = {};
+  G.empire.actionHand = []; G.rebel.actionHand = [];
   G.spaceTacticDeck = []; G.groundTacticDeck = []; // no tactic draws to wade through
   const sysId = 'corellia';
+  // RAW: the R2-D2 ring must be attached to a Rebel leader present in the
+  // combat system. Place Mon Mothma at corellia and attach the ring to her.
+  G.rebel.leadersOnBoard = { [sysId]: ['mon-mothma'] };
+  G.leaderAttachments = { 'mon-mothma': ['r2d2'] };
   const ss = G.map.systems[sysId];
   ss.units = [
     // Empire attacker: several Star Destroyers → many red dice, ~certainly a non-blank.
@@ -63,4 +66,18 @@ for (let seed = 1; seed <= 40 && asserted === 0; seed++) {
 }
 
 if (asserted === 0) fail(`R2D2Flip never triggered across 40 seeds (posted=${posted}) — test could not exercise the path`);
+
+// NEGATIVE: with NO ring attached, R2-D2 must NOT be offered (RAW gating —
+// it no longer fires just from the card being around).
+for (let seed = 1; seed <= 20; seed++) {
+  const { G, sysId } = setup(seed);
+  G.leaderAttachments = {}; // detach the ring
+  combat.beginCombat(G, 'Empire', sysId, sysId);
+  combat.runCombat(G);
+  if (G.pendingChoice?.kind === 'R2D2Flip') {
+    fail(`R2D2Flip offered with NO ring attached (seed ${seed}) — system/leader gating is broken`);
+  }
+}
+console.log('OK: no R2-D2 offer when the ring is unattached');
+
 console.log('PASS: R2-D2 combat flip regression test');

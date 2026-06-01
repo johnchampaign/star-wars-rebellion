@@ -507,8 +507,11 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
   //     discard the Resourceful Astromech ring to turn 1 of Empire's dice
   //     to the blank side. RAW: "discard to turn 1 opponent's die to the
   //     blank side." Player can skip to preserve the card for a future roll.
-  if (!pa.r2d2Resolved && pa.side === 'Empire'
-      && G.rebel.actionHand.includes('resourceful-astromech')) {
+  // RAW: the R2-D2 ring must be attached to a Rebel leader who is present in
+  // this combat's system. (Trigger no longer fires just from holding the card.)
+  const r2d2Holder = M.findRingHolder(G, 'r2d2');
+  const r2d2Here = !!r2d2Holder && (G.rebel.leadersOnBoard[c.systemId] ?? []).includes(r2d2Holder);
+  if (!pa.r2d2Resolved && pa.side === 'Empire' && r2d2Here) {
     const flippable = pa.dice
       .map((d, i) => d.face !== 'blank' ? i : -1)
       .filter((i) => i >= 0);
@@ -702,12 +705,11 @@ export function resolveR2D2Flip(
     const before = pa.dice[flipIndex].face;
     if (before === 'blank') return { ok: false, reason: 'already-blank' };
     pa.dice[flipIndex] = { ...pa.dice[flipIndex], face: 'blank' };
-    // Discard the R2-D2 card.
-    const i = G.rebel.actionHand.indexOf('resourceful-astromech');
-    if (i >= 0) {
-      G.rebel.actionHand.splice(i, 1);
-      G.rebel.actionDiscard.push('resourceful-astromech');
-    }
+    // Discard the R2-D2 ring: remove it from its bearer and put the card in
+    // the discard pile (it lived attached-to-a-leader, not in hand).
+    const holder = M.findRingHolder(G, 'r2d2');
+    if (holder) M.removeAttachment(G, holder, 'r2d2');
+    G.rebel.actionDiscard.push('resourceful-astromech');
     log(G, { kind: 'r2d2-flip', side: 'Rebel', payload: {
       systemId: c.systemId, theater: pa.theater,
       dieIndex: flipIndex,

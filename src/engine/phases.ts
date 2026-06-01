@@ -1143,8 +1143,20 @@ function maybePostMissionYodaReroll(G: GameState, pm: MissionResolution): boolea
 /** Post the mission-context R2-D2 flip choice if eligible. Returns true
  *  if posted. Eligibility: Rebel holds the Resourceful Astromech card AND
  *  an Empire side (attacker or opposer) rolled a non-blank face. */
+/** Is the leader bearing `ring` present at the mission's target system?
+ *  A leader sent on the mission (pm.leaderIds) is at the target during
+ *  resolution; one standing there is in leadersOnBoard[target]. */
+function ringHolderAtMissionTarget(G: GameState, pm: MissionResolution, ring: 'r2d2' | 'c3po'): boolean {
+  const holder = M.findRingHolder(G, ring);
+  if (!holder) return false;
+  const onBoard = (G.rebel.leadersOnBoard[pm.targetSystemId] ?? []).includes(holder);
+  const onThisMission = pm.leaderIds.includes(holder);
+  return onBoard || onThisMission;
+}
+
 function maybePostMissionR2D2(G: GameState, pm: MissionResolution): boolean {
-  if (!G.rebel.actionHand.includes('resourceful-astromech')) return false;
+  // RAW: requires the R2-D2 ring on a leader in the mission's system.
+  if (!ringHolderAtMissionTarget(G, pm, 'r2d2')) return false;
   const stash = pm.r2d2Pending;
   if (!stash) return false;
   // Determine which side is Empire-rolled.
@@ -1307,12 +1319,10 @@ export function resolveR2D2MissionFlip(G: GameState, flipIndex: number | null): 
     if (facesArr[flipIndex] === 'blank') return { ok: false, reason: 'already-blank' };
     const before = facesArr[flipIndex];
     facesArr[flipIndex] = 'blank';
-    // Discard the R2-D2 card.
-    const i = G.rebel.actionHand.indexOf('resourceful-astromech');
-    if (i >= 0) {
-      G.rebel.actionHand.splice(i, 1);
-      G.rebel.actionDiscard.push('resourceful-astromech');
-    }
+    // Discard the R2-D2 ring: remove from bearer, card to discard pile.
+    const holder = M.findRingHolder(G, 'r2d2');
+    if (holder) M.removeAttachment(G, holder, 'r2d2');
+    G.rebel.actionDiscard.push('resourceful-astromech');
     // Recompute successes on the side that was flipped.
     if (stash.empireSide === 'attacker') {
       stash.attSuccesses = successesFromFaces(stash.attFaces);
@@ -1945,7 +1955,8 @@ function maybePostMissionRingTrigger(G: GameState, pm: MissionResolution): boole
   // C-3PO: failed diplomacy.
   if (pm.stage === 'failed') {
     const card = G.catalog.missions[pm.missionId];
-    if (card?.skill === 'diplomacy' && G.rebel.actionHand.includes('human-cyborg-relations')) {
+    // RAW: requires the C-3PO ring on a leader in the failed mission's system.
+    if (card?.skill === 'diplomacy' && ringHolderAtMissionTarget(G, pm, 'c3po')) {
       G.pendingChoice = {
         kind: 'C3POOffer',
         side: 'Rebel',
@@ -2317,9 +2328,10 @@ export function resolveC3POOffer(G: GameState, accept: boolean): { ok: boolean; 
   const pm = G.pendingMission;
   if (!pm) return { ok: false, reason: 'no-mission' };
   if (accept) {
-    const i = G.rebel.actionHand.indexOf('human-cyborg-relations');
-    if (i < 0) return { ok: false, reason: 'card-not-in-hand' };
-    G.rebel.actionHand.splice(i, 1);
+    // Discard the C-3PO ring: remove from bearer, card to discard pile.
+    const holder = M.findRingHolder(G, 'c3po');
+    if (!holder) return { ok: false, reason: 'ring-not-attached' };
+    M.removeAttachment(G, holder, 'c3po');
     G.rebel.actionDiscard.push('human-cyborg-relations');
     pm.stage = 'effect';
     log(G, { kind: 'c3po-applied', side: 'Rebel', payload: {
@@ -3650,12 +3662,25 @@ export function resolveDeployUnitPick(G: GameState, systemId: SystemId): { ok: b
 //   ‡ our-most-desperate-hour (place Leia on a mission card in hand — already handled by player at assign step; log notice)
 //   ‡ start-the-evacuation    (no leader to place in pool; Rieekan + base-units move — manual)
 
+/** Droid "ring" action cards the Rebel may ATTACH during their Assignment
+ *  phase: in hand and not already attached to a leader. */
+const DROID_RING_CARDS: Record<string, 'r2d2' | 'c3po'> = {
+  'resourceful-astromech': 'r2d2',
+  'human-cyborg-relations': 'c3po',
+};
+
 export function playableAssignmentActionCards(G: GameState, side: Side): string[] {
   const f = faction(G, side);
   const out: string[] = [];
   for (const cid of f.actionHand) {
     const card = G.catalog.actions[cid];
     if (!card) continue;
+    // Droid ring cards (timing 'Immediate') can be ATTACHED during Assignment,
+    // as long as the ring isn't already on a leader.
+    if (DROID_RING_CARDS[cid]) {
+      if (side === 'Rebel' && !M.findRingHolder(G, DROID_RING_CARDS[cid])) out.push(cid);
+      continue;
+    }
     if (card.timing !== 'Assignment') continue;
     // Leader requirement: at least one named leader must be in the pool.
     const reqs = card.leaderRequirement ?? [];
@@ -3663,6 +3688,35 @@ export function playableAssignmentActionCards(G: GameState, side: Side): string[
     out.push(cid);
   }
   return out;
+}
+
+/** All of a side's leaders (pool + on-board + on-missions), deduped — the legal
+ *  attach targets for a droid ring. */
+function allLeadersOf(G: GameState, side: Side): LeaderId[] {
+  const f = faction(G, side);
+  const set = new Set<LeaderId>(f.leaderPool);
+  for (const list of Object.values(f.leadersOnBoard)) for (const lid of list) set.add(lid as LeaderId);
+  for (const am of f.leadersOnMissions) for (const lid of am.leaderIds) set.add(lid as LeaderId);
+  return [...set];
+}
+
+/** Resolve the player's choice of which leader to attach a droid ring to. */
+export function resolveAttachRing(G: GameState, leaderId: LeaderId): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'AttachRingPick') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'not-a-candidate' };
+  const f = faction(G, pc.side);
+  // The card leaves the hand into an attached/in-play state — NOT the discard
+  // pile. It is discarded only when the ring's effect is used.
+  const i = f.actionHand.indexOf(pc.cardId);
+  if (i < 0) return { ok: false, reason: 'card-not-in-hand' };
+  f.actionHand.splice(i, 1);
+  M.attachRing(G, leaderId, pc.ringId);
+  log(G, { kind: 'action-card-play', side: pc.side, payload: {
+    cardId: pc.cardId, leaderId, systemId: null, timing: 'attach-ring',
+  }});
+  G.pendingChoice = undefined;
+  return { ok: true };
 }
 
 /** Player explicitly opens the action-card play modal during their Assignment turn. */
@@ -3752,6 +3806,16 @@ export function playAssignmentActionCard(G: GameState, cardId: string): { ok: bo
   const side = pc.side;
   const card = G.catalog.actions[cardId];
   if (!card) return { ok: false, reason: 'unknown-card' };
+
+  // Droid ring card → pick a leader to attach the ring to (not a system).
+  const ringId = DROID_RING_CARDS[cardId];
+  if (ringId) {
+    const candidates = allLeadersOf(G, side);
+    if (candidates.length === 0) return { ok: false, reason: 'no-leader-to-attach' };
+    G.pendingChoice = { kind: 'AttachRingPick', side, cardId, ringId, candidates };
+    log(G, { kind: 'choice-request', side, payload: { kind: 'AttachRingPick', cardId, ringId, candidates } });
+    return { ok: true };
+  }
 
   const legalSystems = legalSystemsForAssignmentCard(G, side, cardId);
   if (legalSystems !== null) {

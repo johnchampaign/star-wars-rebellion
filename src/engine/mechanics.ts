@@ -601,17 +601,26 @@ export function rescueLeader(G: GameState, leaderId: LeaderId, reason: string = 
 // are tracked separately in G.empire.capturedLeaders[].ring (a leader can
 // have both an attachment ring AND a captured/carbonite status).
 
-export type AttachmentKind = 'yoda' | 'dark-side';
+export type AttachmentKind = 'yoda' | 'dark-side' | 'r2d2' | 'c3po';
 
 export function attachRing(G: GameState, leaderId: LeaderId, ring: AttachmentKind): void {
   if (!G.leaderAttachments) G.leaderAttachments = {};
   const existing = G.leaderAttachments[leaderId] ?? [];
-  if (existing.length > 0 && !existing.includes(ring)) {
-    // Replace any pre-existing ring.
-    log(G, { kind: 'ring-remove', payload: { leaderId, ring: existing[0], replacedBy: ring } });
-  }
-  G.leaderAttachments[leaderId] = [ring];
+  // Append (dedup) rather than replace: a leader can bear more than one ring
+  // (e.g. the R2-D2 and C-3PO droid rings are distinct tokens). Every trigger
+  // site keys off `includes(ring)`, so co-existence is safe.
+  if (!existing.includes(ring)) existing.push(ring);
+  G.leaderAttachments[leaderId] = existing;
   log(G, { kind: 'ring-attach', payload: { leaderId, ring } });
+}
+
+/** Find which leader (if any) currently bears the given ring. */
+export function findRingHolder(G: GameState, ring: AttachmentKind): LeaderId | null {
+  const map = G.leaderAttachments ?? {};
+  for (const lid of Object.keys(map)) {
+    if (map[lid]?.includes(ring)) return lid as LeaderId;
+  }
+  return null;
 }
 
 export function removeAttachment(G: GameState, leaderId: LeaderId, ring: AttachmentKind): void {
@@ -675,6 +684,14 @@ export function eliminateLeader(G: GameState, side: Side, leaderId: LeaderId): v
     if (i >= 0) G.empire.capturedLeaders.splice(i, 1);
   }
   if (!f.eliminatedLeaders.includes(leaderId)) f.eliminatedLeaders.push(leaderId);
+  // A ring-bearer who's eliminated loses their rings (the droid action card
+  // is gone with them — push it to discard so it leaves the deck cleanly).
+  const rings = G.leaderAttachments?.[leaderId];
+  if (rings && rings.length) {
+    if (rings.includes('r2d2')) G.rebel.actionDiscard.push('resourceful-astromech');
+    if (rings.includes('c3po')) G.rebel.actionDiscard.push('human-cyborg-relations');
+    delete G.leaderAttachments![leaderId];
+  }
   log(G, { kind: 'eliminate-leader', side, payload: { leaderId } });
 }
 

@@ -582,6 +582,16 @@ export type ChoiceRequest =
       candidates: SystemId[];
     }
   | {
+      // Droid ring (R2-D2 / C-3PO): the Rebel attaches the ring to one of
+      // their leaders. The ring's discard effect later triggers only in that
+      // leader's system. Posted when the player plays the droid action card.
+      kind: 'AttachRingPick';
+      side: Side; // 'Rebel'
+      cardId: string; // 'resourceful-astromech' | 'human-cyborg-relations'
+      ringId: 'r2d2' | 'c3po';
+      candidates: LeaderId[];
+    }
+  | {
       // Refresh recruit step: drew (at least) 2 action cards, keep 1 (into
       // hand) which determines a leader to recruit if eligible; the rest go
       // to the bottom. Per-side; processed Rebel first, then Empire.
@@ -1191,7 +1201,7 @@ export type GameState = {
   // rulebook, a leader can have only one ring at a time — a new ring replaces
   // the old. The capture / carbonite rings live in capturedLeaders.ring;
   // these are the *other* rings (Yoda, dark-side, R2D2, etc).
-  leaderAttachments?: Record<string, ('yoda' | 'dark-side')[]>;
+  leaderAttachments?: Record<string, ('yoda' | 'dark-side' | 'r2d2' | 'c3po')[]>;
 
   // Leaders who can't be opposed by pool leaders this round (Misdirection).
   // Cleared at end of Command phase. The protection only blocks pool
