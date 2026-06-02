@@ -1697,8 +1697,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'SupportOfMonCalamariPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
-    const alreadyRebel = c.monCalaLoyalty === 'rebel' && !c.monCalaSubjugated;
-    return phases.resolveSupportOfMonCalamariPick(G, alreadyRebel ? 'cruiser' : 'loyalty').ok;
+    // Take the 2 loyalty only when it can actually shift Mon Calamari toward
+    // us. If it's already Rebel (no gain) OR the Empire is occupying it
+    // (subjugated — the marker masks any loyalty we add), the loyalty is
+    // wasted, so take the guaranteed Mon Cala Cruiser instead. (Player report
+    // #95: the Rebel AI kept gaining masked loyalty on Empire-held Mon Cala.)
+    const loyaltyWasted = c.monCalaSubjugated || c.monCalaLoyalty === 'rebel';
+    return phases.resolveSupportOfMonCalamariPick(G, loyaltyWasted ? 'cruiser' : 'loyalty').ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'MisdirectionPick' && G.pendingChoice.side === side) {
     // AI: protect the highest-value Rebel leader.

@@ -4183,10 +4183,37 @@ function applyAssignmentActionCardEffect(
       if (!systemId) break;
       const sysDef = G.catalog.systems[systemId];
       const baseDef = G.catalog.systems[G.rebelBaseSystemId];
+      const region = sysDef?.region;
       const sameRegion = !!(sysDef && baseDef && sysDef.region === baseDef.region);
       log(G, { kind: 'local-rumors-reveal', side: 'Empire', payload: {
-        systemId, region: sysDef?.region, baseInRegion: sameRegion,
+        systemId, region, baseInRegion: sameRegion,
       }});
+      // Rule out the whole region on the probe map when the base isn't there.
+      // Local Rumors is region intel (RAW: the Rebel says whether the base is
+      // in this system's region), so a "no" eliminates EVERY system in that
+      // region — including neutral worlds that recordEmpireSearched skips.
+      let ruledOut = 0;
+      if (!sameRegion && region != null && !G.rebelBaseRevealed) {
+        if (!G.empireSearchedRuledOut) G.empireSearchedRuledOut = [];
+        const set = new Set(G.empireSearchedRuledOut);
+        for (const [sid, def] of Object.entries(G.catalog.systems)) {
+          if (def.region === region && sid !== 'rebel-base-space' && sid !== G.rebelBaseSystemId) {
+            set.add(sid);
+            ruledOut++;
+          }
+        }
+        G.empireSearchedRuledOut = [...set];
+      }
+      // Surface the result — the reporter played it and got no feedback (#95).
+      const sysName = sysDef?.name ?? systemId;
+      pushNotice(
+        G,
+        `local-rumors-t${G.timeMarker}-${systemId}`,
+        'Local Rumors',
+        sameRegion
+          ? `The Rebel base IS somewhere in ${sysName}'s region (Region ${region}). Focus your search there.`
+          : `The Rebel base is NOT in ${sysName}'s region (Region ${region}). All ${ruledOut} systems in that region are ruled out on your probe map.`,
+      );
       break;
     }
     case 'boba-fett-where': {
