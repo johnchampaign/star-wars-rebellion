@@ -10172,10 +10172,35 @@ function MissionListPickModal({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {choice.candidates.map((mid) => {
             const m = G.catalog.missions[mid];
+            const art = m?.image ? getCachedArtUrlSync(m.image) : null;
+            const skillName = (s?: string) => s === 'specOps' ? 'spec-ops' : (s ?? '');
+            // A leader pictured on the card grants +2 successes if that leader
+            // resolves it (the "portrait bonus") — surface it so the player can
+            // line up the right leader (e.g. Chewbacca for a Kashyyyk uprising).
+            const portrait = m?.leaderPortrait ? (G.catalog.leaders[m.leaderPortrait]?.name ?? m.leaderPortrait) : null;
             return (
-              <button key={mid} className="tab-button" onClick={() => onPick(mid)} style={{ textAlign: 'left' }}>
-                <div style={{ fontWeight: 600 }}>{m?.name ?? mid}</div>
-                {m?.rulesText && <div style={{ fontSize: 10, opacity: 0.8 }}>{m.rulesText}</div>}
+              <button key={mid} className="tab-button" onClick={() => onPick(mid)}
+                style={{ textAlign: 'left', display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 8px' }}>
+                {art && (
+                  <img src={art} alt={m?.name ?? mid}
+                    style={{ width: 36, height: 50, objectFit: 'cover', objectPosition: 'top',
+                      borderRadius: 3, flex: '0 0 auto' }} />
+                )}
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600 }}>{m?.name ?? mid}</div>
+                  {m && (
+                    <div style={{ fontSize: 11, color: '#9fb3d9' }}>
+                      Needs {m.skillCost} {skillName(m.skill)} icon{m.skillCost === 1 ? '' : 's'}
+                      {m.isAttempt ? ' · attempt (rolls dice vs opposition)' : ' · auto-resolves if unopposed'}
+                    </div>
+                  )}
+                  {portrait && (
+                    <div style={{ fontSize: 11, color: '#ffd54a' }}>
+                      🖼 Pictures {portrait} — +2 successes if {portrait} resolves it
+                    </div>
+                  )}
+                  {m?.rulesText && <div style={{ fontSize: 10, opacity: 0.85 }}>{m.rulesText}</div>}
+                </div>
               </button>
             );
           })}
