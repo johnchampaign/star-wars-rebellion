@@ -1685,7 +1685,7 @@ export default function PlayTab() {
         && G.pendingChoice.side === humanSide && (
         <MissionListPickModal G={G} choice={G.pendingChoice}
           title="Our Most Desperate Hour — pick a mission"
-          subtitle="Search your full mission deck. Leia will be assigned to the chosen mission and the card moves into your hand."
+          subtitle="Search your full mission deck. Leia is placed directly on the chosen mission (assigned and ready to reveal this turn)."
           color="#aae0ff"
           onPick={(mid) => {
             const r = phases.resolveOurMostDesperateHourPick(G, mid);

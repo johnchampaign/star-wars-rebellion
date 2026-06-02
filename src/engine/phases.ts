@@ -2530,8 +2530,10 @@ export function resolveOurMostDesperateHourPick(
     am.leaderIds = am.leaderIds.filter((l) => l !== 'princess-leia');
   }
   f.leadersOnMissions = f.leadersOnMissions.filter((m) => m.leaderIds.length > 0);
-  // Mission goes into hand, then Leia assigned via leadersOnMissions.
-  f.missionHand.push(missionId);
+  // The card is pulled straight from the deck into the ASSIGNED area with Leia
+  // on it — exactly like a normally-assigned mission (which lives only in
+  // leadersOnMissions, not in hand). Do NOT also add it to the hand, or it
+  // shows up twice and can be "taken back" from hand (player report #89).
   f.leadersOnMissions.push({ missionId, leaderIds: ['princess-leia'] });
   log(G, { kind: 'our-most-desperate-hour-applied', side: 'Rebel', payload: {
     missionId, leaderId: 'princess-leia',
@@ -2560,7 +2562,8 @@ export function resolveProceedingAsPlannedPick(
   f.leadersOnMissions = f.leadersOnMissions.filter((m) => m.leaderIds.length > 0);
   const poolIdx = f.leaderPool.indexOf(leaderId);
   if (poolIdx >= 0) f.leaderPool.splice(poolIdx, 1);
-  f.missionHand.push(missionId);
+  // Assigned only (like a normal assignment) — not also added to hand, which
+  // would duplicate it and let it be taken back (cf. #89 for the Rebel twin).
   f.leadersOnMissions.push({ missionId, leaderIds: [leaderId] });
   log(G, { kind: 'proceeding-as-planned-applied', side: 'Empire', payload: {
     missionId, leaderId,
