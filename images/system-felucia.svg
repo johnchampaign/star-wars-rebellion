@@ -1,0 +1,242 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background gradient - deep space -->
+    <radialGradient id="spaceGrad" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#0a0a1a"/>
+    </radialGradient>
+
+    <!-- Felucia atmosphere glow -->
+    <radialGradient id="atmosGlow" cx="50%" cy="50%" r="50%">
+      <stop offset="60%" stop-color="#e94560" stop-opacity="0.15"/>
+      <stop offset="80%" stop-color="#e94560" stop-opacity="0.05"/>
+      <stop offset="100%" stop-color="#e94560" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Planet surface gradient -->
+    <radialGradient id="planetGrad" cx="40%" cy="35%" r="55%">
+      <stop offset="0%" stop-color="#2ecc71"/>
+      <stop offset="30%" stop-color="#27ae60"/>
+      <stop offset="55%" stop-color="#1a8a4a"/>
+      <stop offset="75%" stop-color="#0f6b3a"/>
+      <stop offset="100%" stop-color="#0a4a2a"/>
+    </radialGradient>
+
+    <!-- Fungal glow filter -->
+    <filter id="fungalGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Soft glow filter -->
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Star twinkle filter -->
+    <filter id="twinkle">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="1" result="noise"/>
+      <feColorMatrix type="saturate" values="0" in="noise" result="grayNoise"/>
+      <feComposite operator="in" in="SourceGraphic" in2="grayNoise" result="twinkled"/>
+      <feMerge>
+        <feMergeNode in="twinkled"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Grid pattern -->
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#16213e" stroke-width="0.5" stroke-opacity="0.3"/>
+    </pattern>
+
+    <!-- Hex grid pattern -->
+    <pattern id="hexGrid" width="60" height="103.923" patternUnits="userSpaceOnUse">
+      <path d="M30 0 L60 17.32 L60 51.96 L30 69.28 L0 51.96 L0 17.32 Z" fill="none" stroke="#0f3460" stroke-width="0.5" stroke-opacity="0.15"/>
+      <path d="M30 103.923 L60 86.603 L60 51.96 L30 69.28 L0 51.96 L0 86.603 Z" fill="none" stroke="#0f3460" stroke-width="0.5" stroke-opacity="0.15"/>
+    </pattern>
+
+    <!-- Bug marker gradient -->
+    <radialGradient id="bugMarker" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#e74c3c" stop-opacity="0.8"/>
+      <stop offset="50%" stop-color="#e74c3c" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#e74c3c" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Alert pulse animation -->
+    <radialGradient id="alertPulse" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#f39c12" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#f39c12" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- Clip path for planet -->
+    <clipPath id="planetClip">
+      <circle cx="256" cy="256" r="120"/>
+    </clipPath>
+  </defs>
+
+  <!-- Deep space background -->
+  <rect width="512" height="512" fill="url(#spaceGrad)"/>
+
+  <!-- Grid overlay -->
+  <rect width="512" height="512" fill="url(#grid)"/>
+  <rect width="512" height="512" fill="url(#hexGrid)"/>
+
+  <!-- Stars - background layer -->
+  <g opacity="0.6">
+    <circle cx="45" cy="38" r="1.5" fill="#eaeaea"/>
+    <circle cx="120" cy="85" r="1" fill="#eaeaea"/>
+    <circle cx="400" cy="50" r="1.5" fill="#eaeaea"/>
+    <circle cx="470" cy="120" r="1" fill="#eaeaea"/>
+    <circle cx="30" cy="200" r="1" fill="#eaeaea"/>
+    <circle cx="490" cy="300" r="1.2" fill="#eaeaea"/>
+    <circle cx="80" cy="420" r="1" fill="#eaeaea"/>
+    <circle cx="440" cy="460" r="1.5" fill="#eaeaea"/>
+    <circle cx="350" cy="30" r="0.8" fill="#eaeaea"/>
+    <circle cx="200" cy="480" r="1" fill="#eaeaea"/>
+    <circle cx="60" cy="350" r="0.8" fill="#eaeaea"/>
+    <circle cx="460" cy="180" r="1" fill="#eaeaea"/>
+  </g>
+
+  <!-- Stars - bright layer -->
+  <g>
+    <circle cx="150" cy="60" r="2" fill="#eaeaea" opacity="0.8"/>
+    <circle cx="380" cy="90" r="2.5" fill="#eaeaea" opacity="0.9"/>
+    <circle cx="90" cy="300" r="2" fill="#eaeaea" opacity="0.7"/>
+    <circle cx="430" cy="380" r="2" fill="#eaeaea" opacity="0.8"/>
+    <circle cx="300" cy="470" r="1.8" fill="#eaeaea" opacity="0.7"/>
+  </g>
+
+  <!-- Nebula wisps -->
+  <ellipse cx="150" cy="120" rx="80" ry="40" fill="#0f3460" opacity="0.08" transform="rotate(-30 150 120)"/>
+  <ellipse cx="380" cy="400" rx="100" ry="30" fill="#e94560" opacity="0.05" transform="rotate(20 380 400)"/>
+
+  <!-- Felucia atmosphere glow -->
+  <circle cx="256" cy="256" r="180" fill="url(#atmosGlow)"/>
+
+  <!-- Planet Felucia -->
+  <circle cx="256" cy="256" r="120" fill="url(#planetGrad)"/>
+
+  <!-- Planet surface details -->
+  <g clip-path="url(#planetClip)">
+    <!-- Fungal forest patches -->
+    <ellipse cx="220" cy="230" rx="35" ry="25" fill="#2ecc71" opacity="0.3" transform="rotate(-15 220 230)"/>
+    <ellipse cx="290" cy="280" rx="30" ry="20" fill="#27ae60" opacity="0.25" transform="rotate(10 290 280)"/>
+    <ellipse cx="240" cy="310" rx="25" ry="18" fill="#1a8a4a" opacity="0.3" transform="rotate(-5 240 310)"/>
+
+    <!-- Fungal spires / tall mushrooms -->
+    <g filter="url(#fungalGlow)">
+      <!-- Spire 1 -->
+      <path d="M200 200 Q195 185 200 170 Q205 165 210 170 Q215 185 210 200 Z" fill="#2ecc71" opacity="0.7"/>
+      <ellipse cx="205" cy="168" rx="10" ry="5" fill="#2ecc71" opacity="0.6"/>
+
+      <!-- Spire 2 -->
+      <path d="M280 220 Q275 200 280 185 Q285 180 290 185 Q295 200 290 220 Z" fill="#27ae60" opacity="0.7"/>
+      <ellipse cx="285" cy="183" rx="12" ry="6" fill="#27ae60" opacity="0.6"/>
+
+      <!-- Spire 3 -->
+      <path d="M230 290 Q225 275 230 260 Q235 255 240 260 Q245 275 240 290 Z" fill="#1a8a4a" opacity="0.7"/>
+      <ellipse cx="235" cy="258" rx="9" ry="4" fill="#1a8a4a" opacity="0.6"/>
+
+      <!-- Spire 4 -->
+      <path d="M300 310 Q295 295 300 280 Q305 275 310 280 Q315 295 310 310 Z" fill="#2ecc71" opacity="0.5"/>
+      <ellipse cx="305" cy="278" rx="8" ry="4" fill="#2ecc71" opacity="0.5"/>
+
+      <!-- Spire 5 -->
+      <path d="M180 270 Q175 258 180 248 Q185 244 190 248 Q195 258 190 270 Z" fill="#27ae60" opacity="0.5"/>
+      <ellipse cx="185" cy="246" rx="7" ry="3.5" fill="#27ae60" opacity="0.5"/>
+    </g>
+
+    <!-- Bioluminescent spots -->
+    <g filter="url(#softGlow)">
+      <circle cx="215" cy="210" r="3" fill="#2ecc71" opacity="0.8"/>
+      <circle cx="270" cy="240" r="2.5" fill="#2ecc71" opacity="0.7"/>
+      <circle cx="240" cy="270" r="2" fill="#27ae60" opacity="0.8"/>
+      <circle cx="295" cy="300" r="2.5" fill="#2ecc71" opacity="0.6"/>
+      <circle cx="195" cy="290" r="2" fill="#27ae60" opacity="0.7"/>
+      <circle cx="310" cy="260" r="1.8" fill="#2ecc71" opacity="0.6"/>
+      <circle cx="225" cy="330" r="2" fill="#1a8a4a" opacity="0.7"/>
+    </g>
+
+    <!-- Surface terrain lines -->
+    <path d="M160 280 Q200 270 240 285 Q280 300 320 290 Q350 280 370 290" fill="none" stroke="#0a4a2a" stroke-width="1" opacity="0.4"/>
+    <path d="M170 310 Q210 300 250 315 Q290 330 330 320" fill="none" stroke="#0a4a2a" stroke-width="1" opacity="0.3"/>
+    <path d="M180 250 Q220 240 260 255 Q300 270 340 260" fill="none" stroke="#0a4a2a" stroke-width="0.8" opacity="0.3"/>
+
+    <!-- Crater -->
+    <ellipse cx="260" cy="250" rx="15" ry="10" fill="#0a4a2a" opacity="0.3"/>
+    <ellipse cx="260" cy="250" rx="10" ry="6" fill="#0a3a1a" opacity="0.2"/>
+  </g>
+
+  <!-- Planet highlight/shine -->
+  <circle cx="256" cy="256" r="120" fill="none" stroke="#2ecc71" stroke-width="1" opacity="0.3"/>
+  <ellipse cx="220" cy="200" rx="50" ry="40" fill="white" opacity="0.04" transform="rotate(-20 220 200)"/>
+
+  <!-- Orbit ring -->
+  <ellipse cx="256" cy="256" rx="170" ry="60" fill="none" stroke="#0f3460" stroke-width="1.5" stroke-opacity="0.4" transform="rotate(-15 256 256)"/>
+  <ellipse cx="256" cy="256" rx="170" ry="60" fill="none" stroke="#e94560" stroke-width="0.5" stroke-opacity="0.15" transform="rotate(-15 256 256)" stroke-dasharray="4 8"/>
+
+  <!-- System label -->
+  <text x="256" y="420" text-anchor="middle" font-family="'Orbitron', 'Arial Black', sans-serif" font-size="28" fill="#eaeaea" font-weight="bold" letter-spacing="4">
+    FELUCIA
+  </text>
+  <text x="256" y="445" text-anchor="middle" font-family="'Roboto Mono', 'Courier New', monospace" font-size="12" fill="#e94560" letter-spacing="6" opacity="0.8">
+    SYSTEM
+  </text>
+
+  <!-- Bug indicator - alert marker -->
+  <g transform="translate(256, 256)">
+    <!-- Alert pulse rings -->
+    <circle cx="0" cy="0" r="140" fill="none" stroke="#f39c12" stroke-width="1.5" stroke-dasharray="6 10" opacity="0.6">
+      <animate attributeName="r" values="140;150;140" dur="3s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.6;0.2;0.6" dur="3s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="0" cy="0" r="155" fill="none" stroke="#e74c3c" stroke-width="1" stroke-dasharray="4 12" opacity="0.4">
+      <animate attributeName="r" values="155;165;155" dur="3s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="0.4;0.1;0.4" dur="3s" repeatCount="indefinite"/>
+    </circle>
+
+    <!-- Bug marker icon -->
+    <g transform="translate(0, -165)">
+      <circle cx="0" cy="0" r="18" fill="url(#bugMarker)"/>
+      <circle cx="0" cy="0" r="12" fill="#e74c3c" opacity="0.9"/>
+      <circle cx="0" cy="0" r="8" fill="#c0392b"/>
+
+      <!-- Bug icon (simplified) -->
+      <g transform="translate(0, 0)" fill="none" stroke="#eaeaea" stroke-width="1.5">
+        <!-- Body -->
+        <ellipse cx="0" cy="1" rx="4" ry="5" fill="#eaeaea" stroke="none" opacity="0.8"/>
+        <!-- Antennae -->
+        <path d="M-2 -4 Q-5 -8 -3 -10" stroke-width="1"/>
+        <path d="M2 -4 Q5 -8 3 -10" stroke-width="1"/>
+        <!-- Legs -->
+        <path d="M-3 0 L-6 2" stroke-width="0.8"/>
+        <path d="M-3 2 L-6 4" stroke-width="0.8"/>
+        <path d="M3 0 L6 2" stroke-width="0.8"/>
+        <path d="M3 2 L6 4" stroke-width="0.8"/>
+      </g>
+
+      <!-- Exclamation mark -->
+      <text x="0" y="5" text-anchor="middle" font-family="'Arial Black', sans-serif" font-size="10" fill="#eaeaea" font-weight="bold">!</text>
+    </g>
+  </g>
+
+  <!-- Coordinate markers -->
+  <g font-family="'Roboto Mono', 'Courier New', monospace" font-size="9" fill="#0f3460" opacity="0.6">
+    <text x="15" y="495">SECTOR: 7G</text>
+    <text x="380" y="495">REF: FEL-001</text>
+    <text x="15" y="20">STATUS: ANOMALY</text>
+  </g>
+
+  <!-- Border frame -->
+  <rect x="2" y="2" width="508" height="508" fill="none" stroke="#0f3460" stroke-width="2" opacity="0.5" rx="4"/>
+  <rect x="6" y="6" width="500" height="500" fill="none" stroke="#16213e" stroke-width="1" opacity="0.3" rx="2"/>
+
+  <!-- Corner accents -->
+  <g stroke="#e94560" stroke-width
