@@ -1915,6 +1915,16 @@ function stepOnceInner(G: GameState, side: Side): boolean {
             orders.push({ fromSystemId: fromId, unitInstanceIds: pickIds });
           }
         }
+        // Don't waste an activation on a lone leader that moves NO units and
+        // starts NO combat — it just sits there (player reports #92/#93:
+        // "activated Palpatine but moved no units"). If there's an enemy at the
+        // target a leaderless move still triggers a worthwhile fight; otherwise
+        // pass and keep the leader available.
+        if (orders.length === 0) {
+          const tss = G.map.systems[action.targetSystemId];
+          const enemyAtTarget = tss?.units.some((u) => u.side !== side) ?? false;
+          if (!enemyAtTarget) return phases.pass(G, side).ok;
+        }
         const r = phases.activateSystem(G, side, action.leaderId, action.targetSystemId, orders);
         if (r.ok) return true;
         return phases.pass(G, side).ok;

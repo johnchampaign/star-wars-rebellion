@@ -1050,7 +1050,7 @@ export default function PlayTab() {
         <FactionPanel G={G} side="Empire" humanSide={humanSide} />
       </div>
 
-      <LogPanel G={G} />
+      <LogPanel G={G} humanSide={humanSide} />
 
       {showReport && (
         <ReportProblemModal
@@ -7925,7 +7925,14 @@ const ONSCREEN_REDACTED_KINDS = new Set<string>([
   'rapid-mobilization-deferred',
 ]);
 
-function LogPanel({ G }: { G: GameState }) {
+/** Log kinds that are SECRET when they belong to the opponent: leader
+ *  assignments are hidden (RAW: simultaneous + face-down) until a mission is
+ *  revealed. Your OWN show normally; the opponent's render as "(private)" so
+ *  the log can't be used to peek at their plans (player report #90 — follow-up
+ *  to the assignment info-leak fix #87). */
+const OPPONENT_SECRET_KINDS = new Set<string>(['assign-leader', 'unassign-leader']);
+
+function LogPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
   // Pre-filter to count what's actually visible (so the header count
   // matches what the player sees).
   const visible = G.turnLog.filter((e) => !ONSCREEN_HIDDEN_KINDS.has(e.kind));
@@ -7939,7 +7946,8 @@ function LogPanel({ G }: { G: GameState }) {
       </div>
       <div style={{ fontFamily: 'monospace', fontSize: 11 }}>
         {visible.slice(-100).map((entry, i) => {
-          const redacted = ONSCREEN_REDACTED_KINDS.has(entry.kind);
+          const redacted = ONSCREEN_REDACTED_KINDS.has(entry.kind)
+            || (!!entry.side && entry.side !== humanSide && OPPONENT_SECRET_KINDS.has(entry.kind));
           return (
             <div key={i} style={{ color: entry.side ? sideColor(entry.side) : '#aaa', marginBottom: entry.kind === 'mission-roll' ? 6 : 1 }}>
               <span style={{ color: '#666' }}>[t{entry.turn}]</span>{' '}
