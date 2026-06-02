@@ -295,6 +295,10 @@ export default function PlayTab() {
   const [showUnitKey, setShowUnitKey] = useState<boolean>(false);
   const [showDiceKey, setShowDiceKey] = useState<boolean>(false);
   const [showTacticKey, setShowTacticKey] = useState<boolean>(false);
+  // "Peek the board": temporarily hide the open modal/overlay so you can see
+  // the full map behind it, then toggle back to make your choice (idea:
+  // MightyFaben — softens every "greyed-out map behind a prompt" case at once).
+  const [peekBoard, setPeekBoard] = useState<boolean>(false);
   // Player-toggleable "images on / images off" switch. When OFF, every
   // <img> and SVG <image> in the play tree is hidden via CSS, letting
   // the text fallbacks (unit abbreviations, dice glyphs, etc.) carry the
@@ -465,6 +469,9 @@ export default function PlayTab() {
   }, []);
 
   const refresh = useCallback(() => {
+    // Any state advance ends a "peek" — so a leftover peek can never hide the
+    // next prompt; each new decision shows its modal normally.
+    setPeekBoard(false);
     setTick((t) => t + 1);
     runAILoop();
     // Detect newly-scored objectives since the last refresh. We scan the
@@ -1118,6 +1125,10 @@ export default function PlayTab() {
 
       <LogPanel G={G} humanSide={humanSide} />
 
+      {/* All modal/overlay layers live in this wrapper. "Peek board" sets
+          display:none on it so the map behind shows through; display:contents
+          keeps the fixed-position children laying out normally otherwise. */}
+      <div style={{ display: peekBoard ? 'none' : 'contents' }}>
       {showReport && (
         <ReportProblemModal
           G={G}
@@ -2083,7 +2094,29 @@ export default function PlayTab() {
           }}
         />
       )}
+      </div>
 
+      {/* Floating "peek the board" toggle — shown whenever a prompt/overlay is
+          up that greys out the map. Lives OUTSIDE the wrapper above so it stays
+          clickable while peeking. (idea: MightyFaben) */}
+      {(!!G.pendingChoice || !!G.pendingCombat
+        || !!(G.missionReports?.length) || !!(G.combatReports?.length)
+        || !!(G.refreshReports?.length) || !!(G.objectiveReports?.length)) && (
+        <button
+          onClick={() => setPeekBoard((p) => !p)}
+          title="Temporarily hide this prompt to see the whole map, then click again to go back and choose"
+          style={{
+            position: 'fixed', top: 10, left: 10, zIndex: 10000,
+            background: peekBoard ? '#ffd54a' : '#1a2230',
+            color: peekBoard ? '#000' : '#9fb3d9',
+            border: `2px solid ${peekBoard ? '#ffd54a' : '#3a4a6a'}`,
+            padding: '6px 12px', borderRadius: 4, cursor: 'pointer',
+            fontWeight: 700, fontSize: 13, boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+          }}
+        >
+          {peekBoard ? '↩ Back to choice' : '👁 Peek board'}
+        </button>
+      )}
     </div>
     </UnitStyleContext.Provider>
   );
@@ -9943,6 +9976,11 @@ function WookieGuardianOfferModal({
 }) {
   const m = G.catalog.missions[choice.missionId];
   const sysName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  // Who's making the attempt — the Empire leader(s) resolving the mission.
+  // The reporter could only tell it was Vader AFTER playing the card (#95/forum).
+  const attackers = (G.pendingMission?.leaderIds ?? [])
+    .map((lid) => G.catalog.leaders[lid as string]?.name ?? lid)
+    .join(' & ');
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
@@ -9955,7 +9993,8 @@ function WookieGuardianOfferModal({
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Wookie Guardian — auto-stop?</h3>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
-          Empire is attempting <b>{m?.name ?? choice.missionId}</b> (special-ops) at <b>{sysName}</b>,
+          {attackers ? <><b style={{ color: '#ff8866' }}>{attackers}</b> is attempting </> : 'Empire is attempting '}
+          <b>{m?.name ?? choice.missionId}</b> (special-ops) at <b>{sysName}</b>,
           where Chewbacca is. Discard Wookie Guardian to auto-fail it before the roll.
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
