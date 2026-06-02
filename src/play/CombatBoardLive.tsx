@@ -125,6 +125,45 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem }: {
   const attacker = c.attackerSide;
   const defender = attacker === 'Rebel' ? 'Empire' : 'Rebel';
 
+  // "What just happened" — reconstruct from the log how this fight started
+  // (which leader the attacker activated, and where the units came from), so
+  // the combat window isn't a cold open (feature: MightyFaben).
+  const triggerSummary = (() => {
+    const tl = G.turnLog;
+    let beginIdx = -1;
+    for (let i = tl.length - 1; i >= 0; i--) {
+      const e = tl[i];
+      if (e.kind === 'combat-begin' && (e.payload as { systemId?: string })?.systemId === c.systemId) { beginIdx = i; break; }
+    }
+    if (beginIdx < 0) return null;
+    let leaderName: string | null = null;
+    const fromCounts = new Map<string, number>();
+    let missionName: string | null = null;
+    // Scan the entries leading up to combat-begin (same turn) for the cause.
+    for (let i = beginIdx - 1; i >= 0 && i >= beginIdx - 40; i--) {
+      const e = tl[i];
+      const p = (e.payload ?? {}) as Record<string, unknown>;
+      if (e.kind === 'combat-begin' || e.kind === 'combat-end') break; // previous combat
+      if (e.kind === 'activate-system' && p.targetSystemId === c.systemId && !leaderName) {
+        leaderName = G.catalog.leaders[p.leaderId as string]?.name ?? (p.leaderId as string);
+      }
+      if (e.kind === 'reveal-mission' && p.targetSystemId === c.systemId && !missionName) {
+        missionName = G.catalog.missions[p.missionId as string]?.name ?? (p.missionId as string);
+      }
+      if (e.kind === 'move-unit' && p.to === c.systemId && p.from) {
+        const from = p.from as string;
+        fromCounts.set(from, (fromCounts.get(from) ?? 0) + 1);
+      }
+    }
+    const sysName = (sid: string) => sid === 'rebel-base-space' ? 'the Rebel Base' : (G.catalog.systems[sid]?.name ?? sid);
+    const froms = [...fromCounts.entries()].map(([s, n]) => `${n} from ${sysName(s)}`).join(', ');
+    if (missionName) return `Triggered by the ${attacker} mission “${missionName}”.`;
+    if (leaderName && froms) return `${attacker} activated ${leaderName} into ${systemName}, moving ${froms}.`;
+    if (leaderName) return `${attacker} activated ${leaderName} into ${systemName}.`;
+    if (froms) return `${attacker} moved in: ${froms}.`;
+    return null;
+  })();
+
   // Current decision (if any) and which side owns it.
   const pc = G.pendingChoice;
   const decisionSide: Side | null =
@@ -389,6 +428,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem }: {
         round={c.round}
         humanSide={humanSide}
         onReportProblem={onReportProblem}
+        trigger={triggerSummary}
       />
 
       <TacticHandsBar
@@ -596,11 +636,12 @@ function TacticHandsBar({
   );
 }
 
-function Header({ systemName, attacker, defender, round, humanSide, onReportProblem }: {
+function Header({ systemName, attacker, defender, round, humanSide, onReportProblem, trigger }: {
   systemName: string; attacker: Side; defender: Side; round: number; humanSide: Side;
-  onReportProblem?: () => void;
+  onReportProblem?: () => void; trigger?: string | null;
 }) {
   return (
+    <>
     <div style={{ display: 'flex', alignItems: 'baseline', gap: 16 }}>
       <h2 style={{ margin: 0, fontSize: 20, color: '#ffd54a' }}>Combat at {systemName}</h2>
       <div style={{ fontSize: 13, color: '#aaa' }}>
@@ -628,6 +669,12 @@ function Header({ systemName, attacker, defender, round, humanSide, onReportProb
         )}
       </div>
     </div>
+    {trigger && (
+      <div style={{ fontSize: 12, color: '#cbc4b0', marginTop: 4, fontStyle: 'italic' }}>
+        ⚔ {trigger}
+      </div>
+    )}
+    </>
   );
 }
 
