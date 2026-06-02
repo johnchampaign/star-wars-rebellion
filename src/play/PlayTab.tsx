@@ -5972,6 +5972,98 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
 }
 
 // ============================================================================
+// Leader roster — every leader for a side, with stats + current status. Lets
+// you size up the enemy's leaders at a glance (skills, combat tactic values,
+// where each one is). Mission commitments stay secret while the opponent is
+// still assigning (#87); leader STATS are public knowledge (printed on the
+// cards) so they always show. (Feature request: MightyFaben.)
+// ============================================================================
+
+/** Current whereabouts of a leader, for the roster status badge. */
+function leaderStatusFor(
+  G: GameState, side: Side, leaderId: string, humanSide: Side
+): { label: string; color: string } {
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  // Captured/carbonite leaders are held in the captor's capturedLeaders list
+  // (only the Empire captures, so check the opposing faction).
+  const captor = side === 'Rebel' ? G.empire : G.rebel;
+  const cap = captor.capturedLeaders?.find((c) => c.leaderId === leaderId);
+  if (cap) {
+    return cap.ring === 'carbonite'
+      ? { label: 'Carbonite', color: '#4fc3f7' }
+      : { label: 'Captured', color: '#ff6b6b' };
+  }
+  for (const [sysId, list] of Object.entries(f.leadersOnBoard)) {
+    if (list.includes(leaderId)) {
+      return { label: G.catalog.systems[sysId]?.name ?? sysId, color: '#cbc4b0' };
+    }
+  }
+  const inPool = f.leaderPool.includes(leaderId);
+  const onMission = f.leadersOnMissions.some((m) => m.leaderIds.includes(leaderId));
+  // RAW: assignment is secret. Hide pool-vs-mission for the opponent until the
+  // Command phase, so the roster can't be used to peek at their commitments.
+  if (side !== humanSide && G.phase === 'Assignment' && (inPool || onMission)) {
+    return { label: 'assigning…', color: '#888' };
+  }
+  if (inPool) return { label: 'In pool', color: '#80dc78' };
+  if (onMission) return { label: 'On a mission', color: '#ffd54a' };
+  return { label: 'Not in play', color: '#5a5a5a' };
+}
+
+function LeaderRoster({ G, side, humanSide }: { G: GameState; side: Side; humanSide: Side }) {
+  const color = sideColor(side);
+  const leaders = Object.values(G.catalog.leaders).filter((l) => l.side === side);
+  if (leaders.length === 0) return null;
+  return (
+    <details style={{ marginTop: 8 }}>
+      <summary style={{ cursor: 'pointer', fontSize: 12, color, fontWeight: 600 }}>
+        Leaders ({leaders.length}) — stats &amp; whereabouts
+      </summary>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+        {leaders.map((l) => {
+          const st = leaderStatusFor(G, side, l.id, humanSide);
+          const art = l.image ? getCachedArtUrlSync(l.image) : null;
+          return (
+            <div
+              key={l.id}
+              title={`${l.name}\nDiplomacy ${l.skills.diplomacy} · Intel ${l.skills.intel} · SpecOps ${l.skills.specOps} · Logistics ${l.skills.logistics}\nTactics: space ${l.tacticValues.space} / ground ${l.tacticValues.ground}\n${st.label}`}
+              style={{
+                width: 132, background: '#0c0d10', border: `1px solid ${st.color}55`,
+                borderLeft: `3px solid ${st.color}`, borderRadius: 4, padding: '4px 6px',
+                display: 'flex', gap: 6, alignItems: 'center',
+              }}
+            >
+              {art && (
+                <img src={art} alt={l.name}
+                  style={{ width: 26, height: 26, objectFit: 'cover', objectPosition: 'top',
+                    borderRadius: 3, flex: '0 0 auto' }} />
+              )}
+              <div style={{ minWidth: 0, lineHeight: 1.25 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#fff',
+                  whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {l.name}
+                </div>
+                <div style={{ fontSize: 9.5, color: '#9a937f', whiteSpace: 'nowrap' }}>
+                  D{l.skills.diplomacy} I{l.skills.intel} O{l.skills.specOps} L{l.skills.logistics}
+                  {' · '}<span style={{ color: '#cbc4b0' }}>S{l.tacticValues.space}/G{l.tacticValues.ground}</span>
+                </div>
+                <div style={{ fontSize: 9.5, color: st.color, whiteSpace: 'nowrap',
+                  overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {st.label}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 9.5, color: '#666', marginTop: 4 }}>
+        D/I/O/L = Diplomacy / Intel / Spec-Ops / Logistics skill · S/G = space / ground tactic value
+      </div>
+    </details>
+  );
+}
+
+// ============================================================================
 // Faction panel
 // ============================================================================
 
@@ -6147,6 +6239,7 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
           );
         })()} />
       </div>
+      <LeaderRoster G={G} side={side} humanSide={humanSide} />
     </div>
   );
 }
