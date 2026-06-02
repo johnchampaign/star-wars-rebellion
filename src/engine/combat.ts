@@ -1694,21 +1694,20 @@ export function resolveRetreatDecision(
   // combat round."
   //
   // So on retreat:
-  //   - Carriers (capital ships + transports — space units with no restriction
-  //     icon) MUST all move out, regardless of what the player selected.
-  //   - Fighters (restriction icon) and ground units MAY be left behind; they
-  //     move only if the player chose to bring them AND transport capacity
-  //     allows. Anything left behind STAYS IN THE SYSTEM ALIVE — it is NOT
-  //     destroyed. If a contested theater remains, combat continues next round.
+  //   - Self-mobile ships — anything in the space theater WITHOUT the
+  //     transport-restriction icon — MUST all move out, regardless of what the
+  //     player selected. This is capital ships, transports, AND the Rebel
+  //     fighters (X-/Y-Wings have no restriction icon and move on their own).
+  //   - Restriction-icon units (TIE Fighters) and ground units MAY be left
+  //     behind; they move only if the player chose to bring them AND transport
+  //     capacity allows. Anything left behind STAYS IN THE SYSTEM ALIVE — it is
+  //     NOT destroyed. If a contested theater remains, combat continues next
+  //     round. This matches the printed "leave ground units and TIE Fighters
+  //     behind" exactly: TIEs carry the restriction icon, X-/Y-Wings do not.
   //   - Immobile units can never move; they stay (alive).
   //
-  // NOTE on "TIE Fighters": the printed text names them specifically, but
-  // forcing Rebel X-/Y-Wings to move out contradicts transport rules (a
-  // restriction fighter with no carrier literally cannot move). We therefore
-  // treat ANY fighter as leave-able — the symmetric reading used in practice.
-  //
-  // `unitInstanceIds` = the units the player wants to BRING (carriers are
-  // force-included). Escape Plan (retreatIgnoresTransport) waives capacity.
+  // `unitInstanceIds` = the units the player wants to BRING (self-mobile ships
+  // are force-included). Escape Plan (retreatIgnoresTransport) waives capacity.
   const ignoresTransport = !!c.flags?.retreatIgnoresTransport?.[side];
   const ss = c.systemId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[c.systemId];
   const requested = new Set(

@@ -1699,9 +1699,10 @@ function RetreatPanel({ G, choice, onPersist }: {
 }) {
   const ss = G.map.systems[choice.systemId];
   const ours = (ss?.units ?? []).filter((u) => u.side === choice.side);
-  // RAW p.5: carriers (capital ships + transports — space, no restriction) MUST
-  // move out; fighters (restriction) and ground units MAY be left behind alive;
-  // immobile units can never move (stay alive). Nothing is destroyed.
+  // RAW p.5: self-mobile ships — space units with no transport-restriction icon
+  // (capital ships, transports, and Rebel X-/Y-Wings) — MUST move out;
+  // restriction-icon units (TIE Fighters) and ground units MAY be left behind
+  // alive; immobile units can never move (stay alive). Nothing is destroyed.
   const unitClass = (u: { typeId: string }): 'carrier' | 'leaveable' | 'immobile' => {
     const t = G.catalog.unitTypes[u.typeId];
     if (!t || t.transport.immobile) return 'immobile';
