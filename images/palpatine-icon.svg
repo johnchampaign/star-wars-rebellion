@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0a0a1a;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="sithGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e94560;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#c0392b;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="hoodGrad" x1="50%" y1="0%" x2="50%" y2="100%">
+      <stop offset="0%" style="stop-color:#2c2c3e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1a1a2e;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="1.5" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="softGlow">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="50" cy="50" r="48" fill="url(#bgGrad)" stroke="#0f3460" stroke-width="2"/>
+
+  <!-- Outer ring -->
+  <circle cx="50" cy="50" r="44" fill="none" stroke="#16213e" stroke-width="1.5"/>
+  <circle cx="50" cy="50" r="40" fill="none" stroke="#0f3460" stroke-width="0.5" opacity="0.5"/>
+
+  <!-- Hood / robe shape -->
+  <path d="M25 85 Q25 50 35 35 Q40 28 50 25 Q60 28 65 35 Q75 50 75 85 Z" fill="url(#hoodGrad)" stroke="#2c2c3e" stroke-width="1"/>
+
+  <!-- Hood opening (face area) -->
+  <path d="M38 38 Q50 32 62 38 Q65 45 62 52 Q58 58 50 60 Q42 58 38 52 Q35 45 38 38 Z" fill="#0a0a1a" stroke="#1a1a2e" stroke-width="0.8"/>
+
+  <!-- Face - pale sith skin -->
+  <path d="M40 40 Q50 36 60 40 Q62 44 60 50 Q56 56 50 57 Q44 56 40 50 Q38 44 40 40 Z" fill="#4a4a5a" opacity="0.8"/>
+
+  <!-- Eyes - glowing sith yellow -->
+  <ellipse cx="44" cy="46" rx="3" ry="2.5" fill="#f39c12" filter="url(#glow)" opacity="0.9"/>
+  <ellipse cx="56" cy="46" rx="3" ry="2.5" fill="#f39c12" filter="url(#glow)" opacity="0.9"/>
+  <ellipse cx="44" cy="46" rx="1.5" ry="2" fill="#e94560" opacity="0.6"/>
+  <ellipse cx="56" cy="46" rx="1.5" ry="2" fill="#e94560" opacity="0.6"/>
+
+  <!-- Eye pupils -->
+  <circle cx="44" cy="46" r="1" fill="#1a1a2e"/>
+  <circle cx="56" cy="46" r="1" fill="#1a1a2e"/>
+
+  <!-- Wrinkled brow -->
+  <path d="M40 42 Q45 40 50 41 Q55 40 60 42" fill="none" stroke="#2c2c3e" stroke-width="0.8" opacity="0.6"/>
+
+  <!-- Nose shadow -->
+  <path d="M48 48 L50 52 L52 48" fill="none" stroke="#2c2c3e" stroke-width="0.6" opacity="0.5"/>
+
+  <!-- Grim mouth -->
+  <path d="M44 55 Q50 53 56 55" fill="none" stroke="#2c2c3e" stroke-width="1" opacity="0.7"/>
+
+  <!-- Hood cowl lines -->
+  <path d="M30 80 Q35 60 38 45" fill="none" stroke="#16213e" stroke-width="0.8" opacity="0.4"/>
+  <path d="M70 80 Q65 60 62 45" fill="none" stroke="#16213e" stroke-width="0.8" opacity="0.4"/>
+
+  <!-- Lightning bolts - Sith energy -->
+  <g filter="url(#softGlow)">
+    <path d="M30 30 L38 42 L34 44 L42 56" fill="none" stroke="#e94560" stroke-width="1.2" opacity="0.7"/>
+    <path d="M70 30 L62 42 L66 44 L58 56" fill="none" stroke="#e94560" stroke-width="1.2" opacity="0.7"/>
+    <path d="M28 50 L36 54 L32 58 L40 65" fill="none" stroke="#f39c12" stroke-width="0.8" opacity="0.4"/>
+    <path d="M72 50 L64 54 L68 58 L60 65" fill="none" stroke="#f39c12" stroke-width="0.8" opacity="0.4"/>
+  </g>
+
+  <!-- Small lightning forks -->
+  <g filter="url(#glow)" opacity="0.5">
+    <path d="M34 36 L38 40 L36 42" fill="none" stroke="#e94560" stroke-width="0.8"/>
+    <path d="M66 36 L62 40 L64 42" fill="none" stroke="#e94560" stroke-width="0.8"/>
+  </g>
+
+  <!-- Imperial cog symbol faintly behind -->
+  <g opacity="0.15">
+    <circle cx="50" cy="50" r="18" fill="none" stroke="#eaeaea" stroke-width="1.5"/>
+    <circle cx="50" cy="50" r="12" fill="none" stroke="#eaeaea" stroke-width="1"/>
+    <line x1="50" y1="30" x2="50" y2="34" stroke="#eaeaea" stroke-width="1.5"/>
+    <line x1="50" y1="66" x2="50" y2="70" stroke="#eaeaea" stroke-width="1.5"/>
+    <line x1="30" y1="50" x2="34" y2="50" stroke="#eaeaea" stroke-width="1.5"/>
+    <line x1="66" y1="50" x2="70" y2="50" stroke="#eaeaea" stroke-width="1.5"/>
+    <line x1="36" y1="36" x2="39" y2="39" stroke="#eaeaea" stroke-width="1.5"/>
+    <line x1="61" y1="61" x2="64" y2="64" stroke="#eaeaea" stroke-width="1.5"/>
+    <line x1="36" y1="64" x2="39" y2="61" stroke="#eaeaea" stroke-width="1.5"/>
+    <line x1="61" y1="39" x2="64" y2="36" stroke="#eaeaea" stroke-width="1.5"/>
+  </g>
+
+  <!-- Inner glow ring -->
+  <circle cx="50" cy="50" r="38" fill="none" stroke="#e94560" stroke-width="0.3" opacity="0.3"/>
+
+  <!-- Subtle highlight on hood -->
+  <path d="M35 40 Q38 35 45 32" fill="none" stroke="#0f3460" stroke-width="0.5" opacity="0.4"/>
+  <path d="M65 40 Q62 35 55 32" fill="none" stroke="#0f3460" stroke-width="0.5" opacity="0.4"/>
+</svg>
