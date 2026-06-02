@@ -7121,7 +7121,21 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
               const short = capNeeded > capProvided;
               return (
                 <div key={sysId} style={{ background: '#0c0d10', padding: 6, borderRadius: 3, border: short ? '1px solid #ff6b6b' : '1px solid #2a2d34' }}>
-                  <div style={{ fontSize: 11, color: '#ccc', marginBottom: 4, fontWeight: 600 }}>{name}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, color: '#ccc', fontWeight: 600, flex: 1,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+                    {/* One-click "grab the whole stack" / clear (reporter MightyFaben). */}
+                    <button className="tab-button" style={{ padding: '0 6px', fontSize: 10 }}
+                      title="Select every unit in this system"
+                      onClick={() => setMoveCounts((m) => ({
+                        ...m, [sysId]: Object.fromEntries(byType.map((g) => [g.typeId, g.count])),
+                      }))}
+                    >all</button>
+                    <button className="tab-button" style={{ padding: '0 6px', fontSize: 10 }}
+                      title="Deselect all units from this system"
+                      onClick={() => setMoveCounts((m) => { const c = { ...m }; delete c[sysId]; return c; })}
+                    >none</button>
+                  </div>
                   {byType.map((g) => {
                     const cur = moveCounts[sysId]?.[g.typeId] ?? 0;
                     return (
