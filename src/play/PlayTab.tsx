@@ -2962,26 +2962,41 @@ function CardNameHover({ name, image, rulesText, children, color }: {
   children?: React.ReactNode;
   color?: string;
 }) {
-  const [open, setOpen] = useState(false);
+  // Anchor rect captured at hover time. The preview is rendered position:fixed
+  // (relative to the viewport, NOT the hovered element) so it escapes any
+  // scrolling/overflow:auto container — otherwise it gets clipped by the modal
+  // it lives in (player report #94: Stolen Plans card previews cut off).
+  const [rect, setRect] = useState<DOMRect | null>(null);
   const TILE_W = 200;
+  const PW = TILE_W + 16;
   const resolved = image ? getCachedArtUrlSync(image) : null;
+  // Clamp horizontally to the viewport; flip above/below based on room.
+  let posStyle: React.CSSProperties = {};
+  if (rect) {
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
+    const left = Math.max(8, Math.min(rect.left + rect.width / 2 - PW / 2, vw - PW - 8));
+    posStyle = rect.top > vh / 2
+      ? { left, bottom: vh - rect.top + 6 } // place above the name
+      : { left, top: rect.bottom + 6 };     // place below
+  }
   return (
     <span
-      style={{ position: 'relative', cursor: 'help', color: color ?? 'inherit' }}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      style={{ cursor: 'help', color: color ?? 'inherit' }}
+      onMouseEnter={(e) => setRect(e.currentTarget.getBoundingClientRect())}
+      onMouseLeave={() => setRect(null)}
     >
       {children ?? name}
-      {open && (
+      {rect && (
         <span
           style={{
-            position: 'absolute', left: '50%', bottom: 'calc(100% + 6px)',
-            transform: 'translateX(-50%)',
+            position: 'fixed', ...posStyle,
             zIndex: 6000,
             display: 'block',
             background: 'rgba(0,0,0,0.96)', border: '1px solid #555',
             padding: 8, borderRadius: 4,
             width: TILE_W + 16,
+            maxHeight: '80vh', overflowY: 'auto',
             boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
             pointerEvents: 'none',
             textAlign: 'center',
