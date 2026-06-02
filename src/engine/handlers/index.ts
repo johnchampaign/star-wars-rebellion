@@ -183,6 +183,18 @@ const rapidMobilization: EffectHandler = (G, ctx) => {
   log(G, { kind: 'rapid-mobilization-deferred', side: 'Rebel', payload: {
     twoLeaders, queueDepth: G.pendingRapidMobilizations.length,
   }});
+  // Acknowledge the play immediately — its effect is deferred to the end of
+  // the Command phase per the card text ("At the end of this phase, choose…"),
+  // so without this it looks like nothing happened (player report).
+  pushNotice(
+    G,
+    `rapid-mobilization-queued-t${G.timeMarker}-${G.pendingRapidMobilizations.length}`,
+    'Rapid Mobilization — queued',
+    'This resolves at the END of the Command phase, once both players have passed. ' +
+      'You\'ll then choose to either move up to 5 units from one system to the Rebel ' +
+      'Base (ignoring adjacency) or establish a new Rebel Base.' +
+      (twoLeaders ? ' Two leaders were assigned, so a new-base search draws 8 probe cards instead of 4.' : ''),
+  );
   return true;
 };
 
