@@ -1,0 +1,574 @@
+"""
+Star Wars: Rebellion - Game Engine Core Module
+===============================================
+
+Production-grade game engine implementation with comprehensive error handling,
+type safety, logging, and performance optimizations.
+
+Version: 2.0.3
+Author: Rebellion Game Systems
+License: Proprietary
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import os
+import time
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum, auto
+from functools import lru_cache, wraps
+from typing import (
+    Any,
+    Dict,
+    Final,
+    Generic,
+    List,
+    Optional,
+    Protocol,
+    Set,
+    Tuple,
+    TypeVar,
+    Union,
+    cast,
+)
+from uuid import UUID, uuid4
+
+# Third-party imports
+import aiofiles
+import orjson
+import httpx
+from pydantic import BaseModel, Field, ValidationError, validator
+from redis.asyncio import Redis
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+    before_sleep_log,
+    after_log,
+)
+
+# ---------------------------------------------------------------------------
+# Constants & Configuration
+# ---------------------------------------------------------------------------
+
+MAX_RETRIES: Final[int] = 3
+CACHE_TTL: Final[int] = 300  # 5 minutes
+RATE_LIMIT_CALLS: Final[int] = 100
+RATE_LIMIT_WINDOW: Final[int] = 60  # 1 minute
+MAX_LEADER_NAME_LENGTH: Final[int] = 100
+MAX_SYSTEM_NAME_LENGTH: Final[int] = 100
+MAX_UNITS_PER_SYSTEM: Final[int] = 50
+
+# GitHub API Configuration
+GITHUB_API_BASE_URL: Final[str] = "https://api.github.com"
+GITHUB_API_TIMEOUT: Final[int] = 30  # seconds
+GITHUB_API_MAX_RETRIES: Final[int] = 3
+GITHUB_API_RATE_LIMIT_CALLS: Final[int] = 60
+GITHUB_API_RATE_LIMIT_WINDOW: Final[int] = 60  # 1 minute
+
+# GitHub Authentication - Required for API access
+GITHUB_TOKEN: Final[Optional[str]] = os.environ.get("GITHUB_TOKEN")
+GITHUB_USER_AGENT: Final[str] = "StarWarsRebellion-GameEngine/2.0.3"
+
+# ---------------------------------------------------------------------------
+# Logging Configuration
+# ---------------------------------------------------------------------------
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# Structured JSON logging handler
+class JSONLogHandler(logging.Handler):
+    """Custom handler for structured JSON logging."""
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            log_entry = {
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "level": record.levelname,
+                "module": record.module,
+                "function": record.funcName,
+                "line": record.lineno,
+                "message": record.getMessage(),
+                "extra": getattr(record, "extra", {}),
+            }
+            print(orjson.dumps(log_entry).decode())
+        except (orjson.JSONEncodeError, TypeError) as e:
+            print(f"Logging serialization error: {e}")
+        except Exception as e:
+            print(f"Logging error: {e}")
+
+handler = JSONLogHandler()
+handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter("%(message)s")
+handler.setFormatter(formatter)
+logger.addHandler(handler)
+
+# ---------------------------------------------------------------------------
+# Custom Exceptions
+# ---------------------------------------------------------------------------
+
+class GameEngineError(Exception):
+    """Base exception for game engine errors."""
+    pass
+
+class InvalidActionError(GameEngineError):
+    """Raised when an invalid game action is attempted."""
+    pass
+
+class ResourceNotFoundError(GameEngineError):
+    """Raised when a required resource is not found."""
+    pass
+
+class ConcurrencyError(GameEngineError):
+    """Raised when concurrent access conflicts occur."""
+    pass
+
+class ValidationError(GameEngineError):
+    """Raised when input validation fails."""
+    pass
+
+class StatePersistenceError(GameEngineError):
+    """Raised when state persistence fails."""
+    pass
+
+class RateLimitExceededError(GameEngineError):
+    """Raised when rate limit is exceeded."""
+    pass
+
+class GitHubAPIError(GameEngineError):
+    """Raised when GitHub API calls fail."""
+    pass
+
+class GitHubForbiddenError(GitHubAPIError):
+    """Raised when GitHub API returns 403 Forbidden."""
+    pass
+
+class GitHubAuthenticationError(GitHubAPIError):
+    """Raised when GitHub API authentication fails."""
+    pass
+
+# ---------------------------------------------------------------------------
+# Type Definitions & Protocols
+# ---------------------------------------------------------------------------
+
+T = TypeVar("T")
+GameState = TypeVar("GameState")
+LeaderId = str
+SystemId = str
+UnitId = str
+
+class Serializable(Protocol):
+    """Protocol for serializable objects."""
+    def to_dict(self) -> Dict[str, Any]: ...
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Serializable: ...
+
+# ---------------------------------------------------------------------------
+# Enums
+# ---------------------------------------------------------------------------
+
+class Faction(Enum):
+    """Game factions."""
+    EMPIRE = auto()
+    REBEL = auto()
+
+class MissionType(Enum):
+    """Available mission types."""
+    INFILTRATION = "infiltration"
+    SUPPORT = "support-of-mon-calamari"
+    LOCAL_RUMORS = "local-rumors"
+    SABOTAGE = "sabotage"
+    RECRUITMENT = "recruitment"
+
+class Loyalty(Enum):
+    """System loyalty states."""
+    IMPERIAL = "imperial"
+    REBEL = "rebel"
+    NEUTRAL = "neutral"
+
+class Phase(Enum):
+    """Game phases."""
+    COMMAND = "Command"
+    ACTION = "Action"
+    REFRESH = "Refresh"
+
+# ---------------------------------------------------------------------------
+# Pydantic Models for Validation
+# ---------------------------------------------------------------------------
+
+class LeaderModel(BaseModel):
+    """Validated leader data model."""
+    id: str = Field(..., min_length=1, max_length=50)
+    name: str = Field(..., min_length=1, max_length=MAX_LEADER_NAME_LENGTH)
+    faction: Faction
+    is_available: bool = True
+    location: Optional[str] = None
+
+    @validator("id")
+    def validate_id(cls, v: str) -> str:
+        """Validate leader ID format."""
+        if not v or not v.replace("-", "").isalnum():
+            raise ValueError("Leader ID must be alphanumeric with hyphens")
+        return v.lower()
+
+    @validator("name")
+    def validate_name(cls, v: str) -> str:
+        """Validate leader name."""
+        if not v.strip():
+            raise ValueError("Leader name cannot be empty")
+        return v.strip()
+
+class SystemModel(BaseModel):
+    """Validated system data model."""
+    id: str = Field(..., min_length=1, max_length=50)
+    name: str = Field(..., min_length=1, max_length=MAX_SYSTEM_NAME_LENGTH)
+    loyalty: Loyalty = Loyalty.NEUTRAL
+    units: List[str] = Field(default_factory=list)
+    is_probed: bool = False
+
+    @validator("units")
+    def validate_units(cls, v: List[str]) -> List[str]:
+        """Validate units list."""
+        if len(v) > MAX_UNITS_PER_SYSTEM:
+            raise ValueError(f"Maximum {MAX_UNITS_PER_SYSTEM} units per system")
+        return v
+
+class MissionModel(BaseModel):
+    """Validated mission data model."""
+    id: str = Field(..., min_length=1, max_length=50)
+    type: MissionType
+    target_system: str = Field(..., min_length=1, max_length=50)
+    attacker_dice: int = Field(..., ge=0, le=10)
+    is_attempt: bool = True
+    result: Optional[str] = None
+
+# ---------------------------------------------------------------------------
+# Rate Limiter
+# ---------------------------------------------------------------------------
+
+class RateLimiter:
+    """
+    Token bucket rate limiter for API calls.
+    
+    Implements a sliding window rate limiting algorithm with burst support.
+    """
+
+    def __init__(self, max_calls: int = RATE_LIMIT_CALLS, window: int = RATE_LIMIT_WINDOW) -> None:
+        """
+        Initialize rate limiter.
+        
+        Args:
+            max_calls: Maximum number of calls allowed in the window
+            window: Time window in seconds
+        """
+        self.max_calls = max_calls
+        self.window = window
+        self.calls: List[float] = []
+
+    def _cleanup(self) -> None:
+        """Remove expired call timestamps."""
+        now = time.time()
+        cutoff = now - self.window
+        self.calls = [t for t in self.calls if t > cutoff]
+
+    def acquire(self) -> bool:
+        """
+        Try to acquire a rate limit slot.
+        
+        Returns:
+            True if slot acquired, False if rate limited
+        """
+        self._cleanup()
+        if len(self.calls) >= self.max_calls:
+            return False
+        self.calls.append(time.time())
+        return True
+
+    async def wait_and_acquire(self) -> None:
+        """Wait until a rate limit slot is available."""
+        while not self.acquire():
+            await asyncio.sleep(1.0)
+
+# ---------------------------------------------------------------------------
+# GitHub API Client
+# ---------------------------------------------------------------------------
+
+class GitHubAPIClient:
+    """
+    GitHub API client with authentication, rate limiting, and error handling.
+    
+    Handles 403 Forbidden errors with proper authentication and retry logic.
+    """
+
+    def __init__(self, token: Optional[str] = None) -> None:
+        """
+        Initialize GitHub API client.
+        
+        Args:
+            token: GitHub personal access token (optional but recommended)
+        """
+        self.token = token or GITHUB_TOKEN
+        self.base_url = GITHUB_API_BASE_URL
+        self.timeout = GITHUB_API_TIMEOUT
+        self.rate_limiter = RateLimiter(
+            max_calls=GITHUB_API_RATE_LIMIT_CALLS,
+            window=GITHUB_API_RATE_LIMIT_WINDOW
+        )
+        self._client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create the HTTP client."""
+        if self._client is None or self._client.is_closed:
+            headers = {
+                "Accept": "application/vnd.github.v3+json",
+                "User-Agent": GITHUB_USER_AGENT,
+            }
+            if self.token:
+                headers["Authorization"] = f"Bearer {self.token}"
+            
+            self._client = httpx.AsyncClient(
+                base_url=self.base_url,
+                headers=headers,
+                timeout=self.timeout,
+                follow_redirects=True,
+            )
+        return self._client
+
+    async def close(self) -> None:
+        """Close the HTTP client."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+
+    async def _handle_response(self, response: httpx.Response) -> Dict[str, Any]:
+        """
+        Handle API response with proper error handling.
+        
+        Args:
+            response: HTTP response object
+            
+        Returns:
+            Parsed JSON response
+            
+        Raises:
+            GitHubForbiddenError: On 403 Forbidden
+            GitHubAuthenticationError: On authentication failures
+            GitHubAPIError: On other API errors
+        """
+        if response.status_code == 403:
+            error_msg = f"GitHub API 403 Forbidden for {response.url}"
+            logger.error(error_msg, extra={
+                "url": str(response.url),
+                "status_code": response.status_code,
+                "headers": dict(response.headers),
+                "rate_limit_remaining": response.headers.get("X-RateLimit-Remaining"),
+                "rate_limit_reset": response.headers.get("X-RateLimit-Reset"),
+            })
+            
+            # Check if it's an authentication issue
+            if response.headers.get("X-RateLimit-Remaining") == "0":
+                raise GitHubRateLimitError(
+                    f"GitHub API rate limit exceeded. Reset at: {response.headers.get('X-RateLimit-Reset')}"
+                )
+            elif not self.token:
+                raise GitHubAuthenticationError(
+                    "GitHub API requires authentication. Set GITHUB_TOKEN environment variable."
+                )
+            else:
+                raise GitHubForbiddenError(
+                    f"GitHub API returned 403 Forbidden. "
+                    f"URL: {response.url}, "
+                    f"Token present: {bool(self.token)}, "
+                    f"Rate limit remaining: {response.headers.get('X-RateLimit-Remaining')}"
+                )
+        
+        elif response.status_code == 401:
+            raise GitHubAuthenticationError(
+                "GitHub API authentication failed. Check your GITHUB_TOKEN."
+            )
+        
+        elif response.status_code >= 400:
+            error_body = response.text[:500]  # Limit error body size
+            raise GitHubAPIError(
+                f"GitHub API error {response.status_code}: {error_body}"
+            )
+        
+        return response.json()
+
+    @retry(
+        retry=retry_if_exception_type((
+            GitHubForbiddenError,
+            GitHubAPIError,
+            httpx.TimeoutException,
+            httpx.NetworkError,
+        )),
+        stop=stop_after_attempt(GITHUB_API_MAX_RETRIES),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        after=after_log(logger, logging.INFO),
+    )
+    async def fork_repository(self, owner: str, repo: str) -> Dict[str, Any]:
+        """
+        Fork a GitHub repository.
+        
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            
+        Returns:
+            Fork repository data
+            
+        Raises:
+            GitHubForbiddenError: On 403 Forbidden
+            GitHubAuthenticationError: On authentication failures
+            GitHubAPIError: On other API errors
+        """
+        await self.rate_limiter.wait_and_acquire()
+        
+        client = await self._get_client()
+        
+        try:
+            response = await client.post(f"/repos/{owner}/{repo}/forks")
+            return await self._handle_response(response)
+        
+        except httpx.TimeoutException as e:
+            logger.error(f"GitHub API timeout for fork: {owner}/{repo}", extra={"error": str(e)})
+            raise
+        
+        except httpx.NetworkError as e:
+            logger.error(f"GitHub API network error for fork: {owner}/{repo}", extra={"error": str(e)})
+            raise
+        
+        except (GitHubForbiddenError, GitHubAuthenticationError, GitHubAPIError):
+            raise
+        
+        except Exception as e:
+            logger.error(f"Unexpected error forking repository: {owner}/{repo}", extra={"error": str(e)})
+            raise GitHubAPIError(f"Unexpected error: {str(e)}")
+
+    @retry(
+        retry=retry_if_exception_type((
+            GitHubForbiddenError,
+            GitHubAPIError,
+            httpx.TimeoutException,
+            httpx.NetworkError,
+        )),
+        stop=stop_after_attempt(GITHUB_API_MAX_RETRIES),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        after=after_log(logger, logging.INFO),
+    )
+    async def get_repository(self, owner: str, repo: str) -> Dict[str, Any]:
+        """
+        Get repository information.
+        
+        Args:
+            owner: Repository owner
+            repo: Repository name
+            
+        Returns:
+            Repository data
+            
+        Raises:
+            GitHubForbiddenError: On 403 Forbidden
+            GitHubAuthenticationError: On authentication failures
+            GitHubAPIError: On other API errors
+        """
+        await self.rate_limiter.wait_and_acquire()
+        
+        client = await self._get_client()
+        
+        try:
+            response = await client.get(f"/repos/{owner}/{repo}")
+            return await self._handle_response(response)
+        
+        except httpx.TimeoutException as e:
+            logger.error(f"GitHub API timeout for repo: {owner}/{repo}", extra={"error": str(e)})
+            raise
+        
+        except httpx.NetworkError as e:
+            logger.error(f"GitHub API network error for repo: {owner}/{repo}", extra={"error": str(e)})
+            raise
+        
+        except (GitHubForbiddenError, GitHubAuthenticationError, GitHubAPIError):
+            raise
+        
+        except Exception as e:
+            logger.error(f"Unexpected error getting repository: {owner}/{repo}", extra={"error": str(e)})
+            raise GitHubAPIError(f"Unexpected error: {str(e)}")
+
+    async def check_rate_limit(self) -> Dict[str, Any]:
+        """
+        Check current rate limit status.
+        
+        Returns:
+            Rate limit information
+        """
+        await self.rate_limiter.wait_and_acquire()
+        
+        client = await self._get_client()
+        
+        try:
+            response = await client.get("/rate_limit")
+            return response.json()
+        except Exception as e:
+            logger.error(f"Error checking rate limit: {e}")
+            return {"error": str(e)}
+
+# ---------------------------------------------------------------------------
+# GitHub Rate Limit Error
+# ---------------------------------------------------------------------------
+
+class GitHubRateLimitError(GitHubAPIError):
+    """Raised when GitHub API rate limit is exceeded."""
+    pass
+
+# ---------------------------------------------------------------------------
+# Game Engine Core
+# ---------------------------------------------------------------------------
+
+class GameEngine:
+    """
+    Core game engine for Star Wars: Rebellion.
+    
+    Manages game state, validates actions, and coordinates game flow.
+    """
+
+    def __init__(self, game_id: Optional[str] = None) -> None:
+        """
+        Initialize game engine.
+        
+        Args:
+            game_id: Optional game identifier
+        """
+        self.game_id = game_id or str(uuid4())
+        self.state: Dict[str, Any] = {}
+        self.phase: Phase = Phase.COMMAND
+        self.github_client = GitHubAPIClient()
+        self.rate_limiter = RateLimiter()
+        self._initialized = False
+
+    async def initialize(self) -> None:
+        """Initialize game engine resources."""
+        if self._initialized:
+            return
+        
+        logger.info(f"Initializing game engine: {self.game_id}")
+        
+        # Initialize GitHub client
+        if not self.github_client.token:
+            logger.warning(
+                "GitHub token not configured. API calls may fail with 403 Forbidden.",
+                extra={"game_id": self.game_id}
+            )
+        
+        self._initialized = True
+
+    async def cleanup(self) -> None:
+        """Clean up game engine resources."""
+        await self.github_client.close()
+        self._initialized = False
