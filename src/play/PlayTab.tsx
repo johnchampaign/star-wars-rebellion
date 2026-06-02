@@ -2943,6 +2943,26 @@ function CardNameHover({ name, image, rulesText, children, color }: {
 // Build Pick Modal — choose unit type for each ambiguous build icon
 // ============================================================================
 
+/** Compact one-line unit stat readout: theater, red/black attack dice, health,
+ *  and transport (capacity provided or needs-a-lift). Shown in the build picker
+ *  so you can compare ships before queueing them (feature: MightyFaben). */
+function UnitStatLine({ G, typeId }: { G: GameState; typeId: string }) {
+  const t = G.catalog.unitTypes[typeId];
+  if (!t) return null;
+  return (
+    <span style={{ color: '#9a937f', fontSize: 11, whiteSpace: 'nowrap' }}>
+      {t.theater === 'space' ? '🚀 space' : '🛡 ground'}
+      {' · atk '}
+      <span style={{ color: '#ff8866' }}>{t.attack.red}R</span>
+      <span style={{ color: '#888' }}>/</span>
+      <span style={{ color: '#ccc' }}>{t.attack.black}B</span>
+      {' · HP '}{t.health.value}
+      {t.transport.capacity > 0 && ` · carries ${t.transport.capacity}`}
+      {t.transport.restriction && ' · needs a transport'}
+    </span>
+  );
+}
+
 function BuildPickModal({ G, choice, onSubmit }: {
   G: GameState;
   choice: {
@@ -3041,7 +3061,8 @@ function BuildPickModal({ G, choice, onSubmit }: {
                   checked={selections[i] === tid}
                   onChange={() => setPick(i, tid)}
                 />
-                <span style={{ color: '#fff', fontSize: 13 }}>{unitName(tid)}</span>
+                <span style={{ color: '#fff', fontSize: 13, minWidth: 120 }}>{unitName(tid)}</span>
+                <UnitStatLine G={G} typeId={tid} />
               </label>
             ))}
           </div>
