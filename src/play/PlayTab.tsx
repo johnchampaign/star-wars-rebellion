@@ -7840,7 +7840,9 @@ function ProbeHandValue({ probeHand, catalog, visible }: {
   visible: boolean;
 }) {
   if (probeHand.length === 0) return <>0 cards</>;
-  if (!visible) return <>{probeHand.length} cards (hidden)</>;
+  // The COUNT is public (you can watch the draws / deduce it from the deck);
+  // only which systems they name is secret.
+  if (!visible) return <>{probeHand.length} card{probeHand.length === 1 ? '' : 's'} held <span style={{ color: '#666' }}>(which systems hidden)</span></>;
   const names = probeHand.map((pid) => {
     const probe = catalog.probes[pid];
     if (!probe) return pid;
@@ -7973,8 +7975,8 @@ function MissionRollEntry({ payload, side }: { payload: MissionRollPayload; side
  *  attached to problem reports) still contains them — those audiences need
  *  full information. */
 const ONSCREEN_HIDDEN_KINDS = new Set<string>([
-  // Card draws into private hands.
-  'draw-action', 'draw-mission', 'draw-objective', 'draw-probe', 'draw-tactic',
+  // Combat tactic draws (private tactic hand; mid-combat noise).
+  'draw-tactic',
   'objective-draw-only', 'objective-peek',
   // Empire's private project deck operations.
   'project-peek', 'project-draw',
@@ -8021,6 +8023,11 @@ const ONSCREEN_REDACTED_KINDS = new Set<string>([
  *  to the assignment info-leak fix #87). */
 const OPPONENT_SECRET_KINDS = new Set<string>(['assign-leader', 'unassign-leader']);
 
+/** Card draws where the NUMBER is public (you can watch the draws / deduce it
+ *  from the deck size) but the card identities are private. Show "drew N",
+ *  never the payload. (Player point: card-draw counts are public info.) */
+const COUNT_ONLY_KINDS = new Set<string>(['draw-action', 'draw-mission', 'draw-objective', 'draw-probe']);
+
 function LogPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
   // Pre-filter to count what's actually visible (so the header count
   // matches what the player sees).
@@ -8037,12 +8044,17 @@ function LogPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
         {visible.slice(-100).map((entry, i) => {
           const redacted = ONSCREEN_REDACTED_KINDS.has(entry.kind)
             || (!!entry.side && entry.side !== humanSide && OPPONENT_SECRET_KINDS.has(entry.kind));
+          const countOnly = COUNT_ONLY_KINDS.has(entry.kind);
+          const drawCount = countOnly ? ((entry.payload as { count?: number } | undefined)?.count ?? 1) : 0;
           return (
             <div key={i} style={{ color: entry.side ? sideColor(entry.side) : '#aaa', marginBottom: entry.kind === 'mission-roll' ? 6 : 1 }}>
               <span style={{ color: '#666' }}>[t{entry.turn}]</span>{' '}
               {entry.side ? <span style={{ marginRight: 4 }}>{entry.side}</span> : null}
               <span style={{ color: '#fff' }}>{entry.kind}</span>
-              {redacted ? (
+              {countOnly ? (
+                // Number is public; identities are not.
+                <span style={{ color: '#888', marginLeft: 4 }}>drew {drawCount} <span style={{ color: '#666', fontStyle: 'italic' }}>(which cards hidden)</span></span>
+              ) : redacted ? (
                 <span style={{ color: '#666', marginLeft: 4, fontStyle: 'italic' }}>(private)</span>
               ) : entry.kind === 'mission-roll' && entry.payload ? (
                 <MissionRollEntry payload={entry.payload as MissionRollPayload} side={entry.side} />
