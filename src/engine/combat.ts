@@ -1686,101 +1686,72 @@ export function resolveRetreatDecision(
   if (!ch.legalDestinations.includes(destSystemId)) {
     return { ok: false, reason: `illegal-dest:${destSystemId}` };
   }
-  const requested = (unitInstanceIds ?? ch.availableUnits).filter((uid) =>
-    ch.availableUnits.includes(uid)
-  );
-  // Transport-capacity check per RR p.5-6. Retreats are a kind of move;
-  // unless an effect explicitly ignores transport (Escape Plan tactic card
-  // → retreatIgnoresTransport flag), restriction-icon fighters and ground
-  // units need capacity-providing ships in the retreat group.
+  // RAW (rr p.5): "When a player retreats, he must move all of his ships out
+  // of the system. The player can choose to leave ground units and TIE
+  // Fighters behind in the system." Plus: "any of his immobile units cannot
+  // move; they stay in the system," and "If a player leaves units in the
+  // system and his opponent has units the same theater, they resolve another
+  // combat round."
+  //
+  // So on retreat:
+  //   - Carriers (capital ships + transports — space units with no restriction
+  //     icon) MUST all move out, regardless of what the player selected.
+  //   - Fighters (restriction icon) and ground units MAY be left behind; they
+  //     move only if the player chose to bring them AND transport capacity
+  //     allows. Anything left behind STAYS IN THE SYSTEM ALIVE — it is NOT
+  //     destroyed. If a contested theater remains, combat continues next round.
+  //   - Immobile units can never move; they stay (alive).
+  //
+  // NOTE on "TIE Fighters": the printed text names them specifically, but
+  // forcing Rebel X-/Y-Wings to move out contradicts transport rules (a
+  // restriction fighter with no carrier literally cannot move). We therefore
+  // treat ANY fighter as leave-able — the symmetric reading used in practice.
+  //
+  // `unitInstanceIds` = the units the player wants to BRING (carriers are
+  // force-included). Escape Plan (retreatIgnoresTransport) waives capacity.
   const ignoresTransport = !!c.flags?.retreatIgnoresTransport?.[side];
   const ss = c.systemId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[c.systemId];
-  let toMove: string[] = requested;
-  let capacityDropped: string[] = [];
-  if (!ignoresTransport && ss) {
-    let capAvail = 0;
-    let capProviders = 0;
-    let restrictionNeed = 0;
-    let groundNeed = 0;
-    const restrictionUids: string[] = [];
-    const groundUids: string[] = [];
-    for (const uid of requested) {
-      const u = ss.units.find((x) => x.instanceId === uid);
-      if (!u) continue;
+  const requested = new Set(
+    (unitInstanceIds ?? ch.availableUnits).filter((uid) => ch.availableUnits.includes(uid))
+  );
+  const toMove: string[] = [];
+  const stayBehind: string[] = [];
+  const carriers: string[] = [];
+  let capAvail = 0;
+  if (ss) {
+    const leaveableSelected: string[] = [];
+    for (const u of ss.units) {
+      if (u.side !== side) continue;
       const t = G.catalog.unitTypes[u.typeId];
-      if (!t) continue;
-      if (t.transport.immobile) continue; // immobile can't retreat
-      if (t.transport.capacity > 0) {
+      if (!t || t.transport.immobile) { stayBehind.push(u.instanceId); continue; } // can't move
+      if (t.theater === 'space' && !t.transport.restriction) {
+        carriers.push(u.instanceId); // capital ship / transport: must move out
         capAvail += t.transport.capacity;
-        capProviders++;
-      }
-      if (t.transport.restriction) { restrictionNeed++; restrictionUids.push(uid); }
-      if (t.theater === 'ground' && t.class !== 'structure') {
-        groundNeed++;
-        groundUids.push(uid);
+      } else if (requested.has(u.instanceId)) {
+        leaveableSelected.push(u.instanceId); // fighter/ground the player wants to bring
+      } else {
+        stayBehind.push(u.instanceId); // fighter/ground the player leaves behind (alive)
       }
     }
-    const needed = restrictionNeed + groundNeed;
-    if (needed > 0 && capProviders === 0) {
-      // No transport ship in the group — all restriction/ground must stay.
-      const stayBehind = new Set([...restrictionUids, ...groundUids]);
-      toMove = requested.filter((uid) => !stayBehind.has(uid));
-      capacityDropped = [...stayBehind];
-    } else if (needed > capAvail) {
-      // Some restriction/ground units exceed capacity. Drop them greedily,
-      // ground first (typically more replaceable than fighters in a retreat
-      // scenario — purely a policy call when the player overpacks).
-      let surplus = needed - capAvail;
-      const dropOrder = [...groundUids, ...restrictionUids];
-      const stayBehind = new Set<string>();
-      for (const uid of dropOrder) {
-        if (surplus <= 0) break;
-        stayBehind.add(uid);
-        surplus--;
+    toMove.push(...carriers);
+    // Bring selected fighters/ground up to transport capacity; overflow stays.
+    let cap = capAvail;
+    for (const uid of leaveableSelected) {
+      if (ignoresTransport || cap > 0) {
+        toMove.push(uid);
+        if (!ignoresTransport) cap--;
+      } else {
+        stayBehind.push(uid);
       }
-      toMove = requested.filter((uid) => !stayBehind.has(uid));
-      capacityDropped = [...stayBehind];
     }
   }
-  // Destroy units left behind by capacity (RR p.5-6: "units not moved are
-  // destroyed"). Same rule applies to immobile units in the system.
-  // Capture typeIds BEFORE destroying for the combat report — destroyUnit
-  // splices the instances out, so post-destroy we can't recover the type.
-  const retreatLostTypeIds: string[] = [];
-  if (ss) {
-    for (const uid of capacityDropped) {
-      const u = ss.units.find((x) => x.instanceId === uid);
-      if (u) retreatLostTypeIds.push(u.typeId);
-    }
-  }
-  for (const uid of capacityDropped) {
-    M.destroyUnit(G, uid, 'retreat-no-transport');
-  }
-  // Also destroy ANY unit at the combat system not in toMove and not just
-  // dropped above — RAW: "all of your units not moved are destroyed." This
-  // includes units the player explicitly chose to leave (e.g. damaged
-  // structures, immobile units).
-  if (ss) {
-    const movingSet = new Set(toMove);
-    const droppedSet = new Set(capacityDropped);
-    const leftBehind = ss.units
-      .filter((u) => u.side === side && !movingSet.has(u.instanceId) && !droppedSet.has(u.instanceId))
-      .map((u) => ({ instanceId: u.instanceId, typeId: u.typeId }));
-    for (const u of leftBehind) retreatLostTypeIds.push(u.typeId);
-    for (const u of leftBehind) M.destroyUnit(G, u.instanceId, 'retreat-left-behind');
-    if (leftBehind.length > 0) {
-      log(G, { kind: 'combat-retreat-leftbehind', side, payload: {
-        systemId: c.systemId, units: leftBehind.length, instances: leftBehind.map((u) => u.instanceId),
-      }});
-    }
-  }
-  // Record in the report so combat-end objective checks (e.g. Crippling Blow,
-  // which counts 3+ ground HP destroyed in the combat) include retreat
-  // losses. Per RAW: retreat is part of the combat, not separate from it.
-  if (retreatLostTypeIds.length > 0) {
-    c.report.retreatDestructions.push({ side, typeIds: retreatLostTypeIds });
-  }
-  // Now move the units that fit.
+  // A leader can retreat only if the player is also retreating units (rr p.5).
+  // If nothing can actually move (e.g. only fighters/ground with no carrier),
+  // the retreat is illegal — the player must stay and fight.
+  if (toMove.length === 0) return { ok: false, reason: 'no-movable-units' };
+
+  // Move the units (carriers + any fighters/ground that fit). Nothing left
+  // behind is destroyed — those units remain in the system.
   for (const uid of toMove) {
     M.moveUnit(G, uid, c.systemId, destSystemId);
   }
@@ -1800,7 +1771,8 @@ export function resolveRetreatDecision(
   log(G, { kind: 'combat-retreat', side, payload: {
     from: c.systemId, to: destSystemId,
     units: toMove.length,
-    droppedByCapacity: capacityDropped.length,
+    leaderId: leaderToMove,
+    stayedBehind: stayBehind.length,
     ignoresTransport,
   }});
 

@@ -1697,53 +1697,58 @@ function RetreatPanel({ G, choice, onPersist }: {
   choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'RetreatDecision' }>;
   onPersist: () => void;
 }) {
+  const ss = G.map.systems[choice.systemId];
+  const ours = (ss?.units ?? []).filter((u) => u.side === choice.side);
+  // RAW p.5: carriers (capital ships + transports — space, no restriction) MUST
+  // move out; fighters (restriction) and ground units MAY be left behind alive;
+  // immobile units can never move (stay alive). Nothing is destroyed.
+  const unitClass = (u: { typeId: string }): 'carrier' | 'leaveable' | 'immobile' => {
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t || t.transport.immobile) return 'immobile';
+    if (t.theater === 'space' && !t.transport.restriction) return 'carrier';
+    return 'leaveable';
+  };
+  const carriers = ours.filter((u) => unitClass(u) === 'carrier');
+  const leaveable = ours.filter((u) => unitClass(u) === 'leaveable');
+  const immobile = ours.filter((u) => unitClass(u) === 'immobile');
+  const capacity = carriers.reduce((s, u) => s + (G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0), 0);
+  const ignoresTransport = !!G.pendingCombat?.flags?.retreatIgnoresTransport?.[choice.side];
+
   const [dest, setDest] = useState<string | null>(choice.legalDestinations[0] ?? null);
   // RAW: one leader leads the retreat (the units follow it). Default to the
   // first present; let the player choose if they have more than one here.
   const [leader, setLeader] = useState<string | null>(choice.leadersInSystem[0] ?? null);
+  // Which fighters/ground to bring (default: all). Anything not brought — or
+  // over transport capacity — stays behind alive.
+  const [bring, setBring] = useState<Set<string>>(() => new Set(leaveable.map((u) => u.instanceId)));
+  const toggleBring = (uid: string) => setBring((prev) => {
+    const next = new Set(prev);
+    if (next.has(uid)) next.delete(uid); else next.add(uid);
+    return next;
+  });
+
+  const broughtList = leaveable.filter((u) => bring.has(u.instanceId));
+  const fitting = ignoresTransport ? broughtList : broughtList.slice(0, capacity);
+  const overflow = ignoresTransport ? [] : broughtList.slice(capacity);
+  const willRetreat = [...carriers, ...fitting];
+  const willStay = [
+    ...immobile,
+    ...leaveable.filter((u) => !bring.has(u.instanceId)),
+    ...overflow,
+  ];
+
   const submit = (destSystemId: string | null) => {
     // "Stay and fight" (null dest) doesn't move a leader; a real retreat does.
-    const r = combat.resolveRetreatDecision(G, destSystemId, null, destSystemId ? leader : null);
+    const moveIds = destSystemId
+      ? [...carriers.map((u) => u.instanceId), ...fitting.map((u) => u.instanceId)]
+      : null;
+    const r = combat.resolveRetreatDecision(G, destSystemId, moveIds, destSystemId ? leader : null);
     if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
     onPersist();
   };
   const leaderName = (lid: string) => G.catalog.leaders[lid]?.name ?? lid;
   const sysName = (sid: string) => G.catalog.systems[sid]?.name ?? sid;
 
-  // Compute who will survive vs die. Mirror the engine's retreat-transport
-  // accounting: capital ships move free, restriction-icon fighters and ground
-  // need transport capacity; immobile units always die; any unit not in the
-  // selected move group is destroyed (RAW p.5-6).
-  const ss = G.map.systems[choice.systemId];
-  const ours = (ss?.units ?? []).filter((u) => u.side === choice.side);
-  let capacity = 0;
-  const willRetreat: typeof ours = [];
-  const willDie: typeof ours = [];
-  // First pass: capital ships go (they provide capacity).
-  for (const u of ours) {
-    const t = G.catalog.unitTypes[u.typeId];
-    if (!t || t.transport.immobile) { willDie.push(u); continue; }
-    if (t.transport.capacity > 0) {
-      willRetreat.push(u);
-      capacity += t.transport.capacity;
-    }
-  }
-  // Second pass: pack restriction/ground into available capacity.
-  for (const u of ours) {
-    const t = G.catalog.unitTypes[u.typeId];
-    if (!t || t.transport.immobile) continue;
-    if (t.transport.capacity > 0) continue;
-    const needsTransport = t.transport.restriction
-      || (t.theater === 'ground' && t.class !== 'structure');
-    if (!needsTransport) {
-      willRetreat.push(u);
-    } else if (capacity > 0) {
-      willRetreat.push(u);
-      capacity--;
-    } else {
-      willDie.push(u);
-    }
-  }
   const fmt = (units: typeof ours) => {
     const counts = new Map<string, number>();
     for (const u of units) counts.set(u.typeId, (counts.get(u.typeId) ?? 0) + 1);
@@ -1763,22 +1768,37 @@ function RetreatPanel({ G, choice, onPersist }: {
         )}
       </div>
 
-      {(willRetreat.length > 0 || willDie.length > 0) && (
+      {leaveable.length > 0 && (
+        <div style={{ marginBottom: 8, fontSize: 11 }}>
+          <div style={{ color: '#aaa', marginBottom: 3 }}>
+            Bring along (fighters &amp; ground — transport capacity {ignoresTransport ? '∞ (Escape Plan)' : capacity}).
+            Unchecked units stay behind in the system, alive.
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {leaveable.map((u) => (
+              <label key={u.instanceId} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                <input type="checkbox" checked={bring.has(u.instanceId)} onChange={() => toggleBring(u.instanceId)} />
+                {G.catalog.unitTypes[u.typeId]?.name ?? u.typeId}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(willRetreat.length > 0 || willStay.length > 0) && (
         <div style={{ marginBottom: 8, padding: 8, background: '#0c0d10', border: '1px solid #2a2d34', borderRadius: 4, fontSize: 11 }}>
           {willRetreat.length > 0 && (
-            <div style={{ color: '#80dc78', marginBottom: willDie.length > 0 ? 4 : 0 }}>
+            <div style={{ color: '#80dc78', marginBottom: willStay.length > 0 ? 4 : 0 }}>
               <b>Will retreat ({willRetreat.length}):</b> {fmt(willRetreat)}
             </div>
           )}
-          {willDie.length > 0 && (
-            <div style={{ color: '#ff6b6b', fontWeight: 600 }}>
-              <b>Will be DESTROYED ({willDie.length})</b> — no transport / immobile: {fmt(willDie)}
-            </div>
-          )}
-          {willDie.length > 0 && (
-            <div style={{ color: '#888', marginTop: 4, fontStyle: 'italic' }}>
-              Per RAW: declaring retreat doesn't grant free movement — units that can't be transported are destroyed.
-              Reconsider \"Stay and fight\" if these losses are unacceptable.
+          {willStay.length > 0 && (
+            <div style={{ color: '#e0c060' }}>
+              <b>Will stay behind ({willStay.length}):</b> {fmt(willStay)}
+              <div style={{ color: '#888', marginTop: 2, fontStyle: 'italic' }}>
+                These remain in the system (alive, not destroyed). If the enemy still has units in
+                their theater, another combat round is fought.
+              </div>
             </div>
           )}
         </div>
@@ -1819,8 +1839,8 @@ function RetreatPanel({ G, choice, onPersist }: {
                 Led by <b style={{ color: '#fff' }}>{leaderName(choice.leadersInSystem[0] ?? '')}</b>
               </span>
             )}
-            <button onClick={() => submit(dest)} disabled={!dest} style={btn(SIDE_COLOR[choice.side])}>
-              Retreat ({willRetreat.length} survive{willDie.length > 0 ? `, ${willDie.length} die` : ''})
+            <button onClick={() => submit(dest)} disabled={!dest || willRetreat.length === 0} style={btn(SIDE_COLOR[choice.side])}>
+              Retreat ({willRetreat.length} move{willStay.length > 0 ? `, ${willStay.length} stay` : ''})
             </button>
           </>
         )}
