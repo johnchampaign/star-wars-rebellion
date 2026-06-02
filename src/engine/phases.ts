@@ -220,6 +220,13 @@ export function pickRebelBase(G: GameState, systemId: SystemId): { ok: boolean; 
 
   G.pendingRebelBasePick = undefined;
   log(G, { kind: 'pick-rebel-base', side: 'Rebel', payload: { systemId } });
+  // The base pick can be the LAST remaining setup step (if the Rebel deployed
+  // all units before choosing the base). maybeAdvanceFromSetup gates leaving
+  // Setup on pendingRebelBasePick being cleared (above), and only this function
+  // clears it — so it must re-check advancement here, exactly like
+  // setupDeployUnit/setupAutoFill do. Without it, deploy-all-then-pick-base
+  // soft-locks in Setup with both deployments empty and no legal actions.
+  maybeAdvanceFromSetup(G);
   return { ok: true };
 }
 
