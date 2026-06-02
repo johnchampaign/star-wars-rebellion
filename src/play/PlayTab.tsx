@@ -80,23 +80,31 @@ function sideColor(s: Side): string {
  *  short human-readable lines for the "what the AI just did" banner. Only
  *  side-tagged actions for `aiSide` (so the human's own actions are excluded);
  *  combats surface via their own report modal so they're omitted here. */
-function summarizeAiActions(G: GameState, fromIdx: number, aiSide: Side): string[] {
+/** One AI-activity line. `missionId` is set for mission runs so the banner can
+ *  show the card's rules text on hover (player request: MightyFaben wanted a
+ *  reminder of what e.g. "Research and Development" does). */
+type AiActivityLine = { text: string; missionId?: string };
+
+function summarizeAiActions(G: GameState, fromIdx: number, aiSide: Side): AiActivityLine[] {
   const sysName = (id: string) => id === 'rebel-base-space' ? 'the Rebel Base' : (G.catalog.systems[id]?.name ?? id);
   const ldrName = (id: string) => G.catalog.leaders[id]?.name ?? id;
   const misName = (id: string) => G.catalog.missions[id]?.name ?? id;
-  const out: string[] = [];
+  const out: AiActivityLine[] = [];
   for (let i = fromIdx; i < G.turnLog.length; i++) {
     const e = G.turnLog[i];
     if (e.side !== aiSide) continue;
     const p = (e.payload ?? {}) as Record<string, unknown>;
     if (e.kind === 'activate-system') {
       const orders = (p.orders as number) ?? 0;
-      out.push(`Activated ${ldrName(p.leaderId as string)} at ${sysName(p.targetSystemId as string)}`
-        + (orders > 0 ? ` (moved ${orders} unit group${orders === 1 ? '' : 's'})` : ' (no units moved)'));
+      out.push({ text: `Activated ${ldrName(p.leaderId as string)} at ${sysName(p.targetSystemId as string)}`
+        + (orders > 0 ? ` (moved ${orders} unit group${orders === 1 ? '' : 's'})` : ' (no units moved)') });
     } else if (e.kind === 'reveal-mission') {
-      out.push(`Ran mission “${misName(p.missionId as string)}” at ${sysName(p.targetSystemId as string)}`);
+      out.push({
+        text: `Ran mission “${misName(p.missionId as string)}” at ${sysName(p.targetSystemId as string)}`,
+        missionId: p.missionId as string,
+      });
     } else if (e.kind === 'pass') {
-      out.push('Passed (done for the round)');
+      out.push({ text: 'Passed (done for the round)' });
     }
   }
   return out.slice(-8); // keep the banner short
@@ -252,7 +260,7 @@ export default function PlayTab() {
   // track of what happened (MightyFaben). We scan the turnLog for the AI's
   // notable Command-phase actions since the human last had control and show
   // a brief dismissible summary.
-  const [aiActivity, setAiActivity] = useState<string[]>([]);
+  const [aiActivity, setAiActivity] = useState<AiActivityLine[]>([]);
   const aiActivitySeenIdxRef = useRef<number>(0);
   const aiActivityInitRef = useRef<boolean>(false);
   // Queue of objective cards just drawn (one modal per draw, with the
@@ -625,6 +633,42 @@ export default function PlayTab() {
     refresh();
   }, [refresh]);
 
+  // Export / import a game as a portable code (base64 of the engine codec +
+  // which side you control), so you can hand a game from one browser/device to
+  // another — there's no server-side save (player question: MightyFaben).
+  const exportGameCode = useCallback(() => {
+    const Gx = gameRef.current;
+    if (!Gx || !canEncode(Gx)) {
+      alert('Can\'t export mid-action — finish the current step (or wait for the AI) and try again.');
+      return;
+    }
+    const code = btoa(JSON.stringify({ v: 1, codec: encode(Gx), humanSide }));
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(code).then(
+        () => alert('Game code copied to your clipboard.\n\nOn the other device, open the game and use "import game", then paste this code.'),
+        () => window.prompt('Copy this game code and paste it via "import game" on the other device:', code),
+      );
+    } else {
+      window.prompt('Copy this game code and paste it via "import game" on the other device:', code);
+    }
+  }, [humanSide]);
+
+  const importGameCode = useCallback(() => {
+    const raw = window.prompt('Paste a game code (from "export game" on another device):');
+    if (!raw) return;
+    try {
+      const obj = JSON.parse(atob(raw.trim())) as { codec?: string; humanSide?: string };
+      if (!obj?.codec) throw new Error('not a game code');
+      const human: Side = obj.humanSide === 'Empire' ? 'Empire' : 'Rebel';
+      localStorage.setItem(LS_HUMAN_SIDE, human);
+      setHumanSide(human);
+      localStorage.setItem(LS_CURRENT, obj.codec);
+      resumeSaved(); // decodes LS_CURRENT into the live game
+    } catch (e) {
+      alert(`That doesn't look like a valid game code: ${String(e)}`);
+    }
+  }, [resumeSaved]);
+
   const G = gameRef.current;
 
   // (AI driver moved into refresh() / runAILoop() above — a useEffect-based
@@ -868,6 +912,12 @@ export default function PlayTab() {
           <button className="tab-button" onClick={() => setShowTacticKey(true)} title="Show every tactic card and how the tactic decks work">
             tactic key
           </button>
+          <button className="tab-button" onClick={exportGameCode} title="Copy a code for this game so you can continue it on another device/browser">
+            export game
+          </button>
+          <button className="tab-button" onClick={importGameCode} title="Load a game from a code exported on another device/browser">
+            import game
+          </button>
           <button className="tab-button" onClick={toggleUnitStyle} title="Toggle between Vassal mini photos and reference-sheet silhouettes">
             units: {unitStyle}
           </button>
@@ -981,17 +1031,33 @@ export default function PlayTab() {
       )}
 
       {aiActivity.length > 0 && (
+        // Sticky so it stays in view as you scroll down to your leaders/command
+        // controls — no more scrolling back up to see what the AI did
+        // (player request: MightyFaben).
         <div style={{
+          position: 'sticky', top: 0, zIndex: 1500,
           margin: '8px 0', padding: '8px 12px', borderRadius: 6,
-          background: 'rgba(20,30,45,0.9)', border: `1px solid ${sideColor(aiSide)}`,
+          background: 'rgba(20,30,45,0.97)', border: `1px solid ${sideColor(aiSide)}`,
           display: 'flex', alignItems: 'flex-start', gap: 10, fontSize: 12,
+          boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
         }}>
           <div style={{ flex: 1 }}>
             <div style={{ color: sideColor(aiSide), fontWeight: 700, marginBottom: 2 }}>
               {aiSide} just:
             </div>
             <div style={{ color: '#cfe2f5', display: 'flex', flexWrap: 'wrap', gap: '2px 10px' }}>
-              {aiActivity.map((line, i) => <span key={i}>• {line}</span>)}
+              {aiActivity.map((line, i) => {
+                const card = line.missionId ? G.catalog.missions[line.missionId] : null;
+                // Hover a mission run to read what the card does (e.g. what
+                // "Research and Development" actually resolves).
+                return (
+                  <span key={i}
+                    title={card?.rulesText ? `${card.name}: ${card.rulesText}` : undefined}
+                    style={card?.rulesText ? { textDecoration: 'underline dotted', textUnderlineOffset: 2, cursor: 'help' } : undefined}>
+                    • {line.text}
+                  </span>
+                );
+              })}
             </div>
           </div>
           <button className="tab-button" style={{ padding: '2px 8px', fontSize: 11 }}
