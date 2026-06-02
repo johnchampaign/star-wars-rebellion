@@ -5995,7 +5995,15 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
         )}
       </div>
       <div style={{ fontSize: 12, color: '#aaa' }}>
-        <Row label="Leader pool" value={f.leaderPool.length ? f.leaderPool.join(', ') : '(empty)'} />
+        <Row label="Leader pool" value={
+          // RAW: assignment is simultaneous and SECRET. While the Assignment
+          // phase is in progress, don't reveal the opponent's pool — its
+          // shrinking would leak which leaders they've committed to missions
+          // before you've locked in your own (player report #87).
+          side !== humanSide && G.phase === 'Assignment'
+            ? '(assigning in secret)'
+            : (f.leaderPool.length ? f.leaderPool.join(', ') : '(empty)')
+        } />
         <Row label="Leaders on board" value={Object.keys(f.leadersOnBoard).length ? Object.entries(f.leadersOnBoard).map(([s, l]) => `${s}:${l.join(',')}`).join(' · ') : '(none)'} />
         {side === 'Rebel' && (
           <Row
@@ -6010,7 +6018,11 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
           />
         )}
         <Row label="Active missions" value={
-          f.leadersOnMissions.length === 0
+          // Hidden entirely while the opponent is still assigning (#87) —
+          // revealed (as facedown missions) once the Command phase begins.
+          side !== humanSide && G.phase === 'Assignment'
+            ? '(assigning in secret)'
+            : f.leadersOnMissions.length === 0
             ? '(none)'
             : side === humanSide
               // Your own missions: full hover-preview of each card.
@@ -6456,15 +6468,12 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onReset, undoCount 
     }
   } else {
     legalTargets.push({ id: 'rebel-base-space', name: 'Rebel Base space', note: 'staging area (hidden)' });
-    if (G.rebelDeployTarget) {
-      const sysDef = G.catalog.systems[G.rebelDeployTarget];
-      legalTargets.push({ id: G.rebelDeployTarget, name: sysDef?.name ?? G.rebelDeployTarget, note: 'chosen Rebel system' });
-    } else {
-      for (const [sysId, ss] of Object.entries(G.map.systems)) {
+    // Rebel starting units deploy to the base or to the Rebellion's own
+    // (Rebel-loyalty) systems — not arbitrary neutral worlds (#86).
+    for (const [sysId, ss] of Object.entries(G.map.systems)) {
+      if (ss.loyalty === 'rebel' && !ss.subjugated) {
         const sysDef = G.catalog.systems[sysId];
-        if (sysDef?.isCoruscant || sysDef?.isRemote) continue; // remote systems aren't valid setup targets
-        if (ss.subjugated || ss.loyalty === 'imperial') continue;
-        legalTargets.push({ id: sysId, name: sysDef?.name ?? sysId });
+        legalTargets.push({ id: sysId, name: sysDef?.name ?? sysId, note: 'Rebel-loyal system' });
       }
     }
   }
@@ -6479,7 +6488,7 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onReset, undoCount 
         <span style={{ color: '#888', fontSize: 12 }}>
           {pending.length} unit{pending.length === 1 ? '' : 's'} left to place.{' '}
           {side === 'Empire' && '(Place in Imperial-loyalty or subjugated systems; every Imperial system needs ≥1 ground unit.)'}
-          {side === 'Rebel' && '(Rebel Base space and/or one Rebel/neutral system of your choice.)'}
+          {side === 'Rebel' && '(Rebel Base space and/or your Rebel-loyalty systems.)'}
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button

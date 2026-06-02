@@ -282,12 +282,26 @@ export function runCombat(G: GameState): void {
         if (c.flags?.cannotRetreatThisRound?.[side]) continue; // No Escape (single-round)
         if (c.flags?.opponentCannotRetreat?.includes(side)) continue; // Keep Them From Escaping (whole combat)
         const dests = legalRetreatDestinations(G, c, side);
-        const hasUnits = unitsOf(G, side, c.systemId).length > 0;
+        const here = unitsOf(G, side, c.systemId);
+        const hasUnits = here.length > 0;
         // RAW (rr p.5): retreat is led by a leader — "take one of his leaders
         // from the system and place it in an adjacent system." With no leader
         // present, the side simply cannot retreat; skip the option entirely.
         const leadersHere = (side === 'Rebel' ? G.rebel : G.empire).leadersOnBoard[c.systemId] ?? [];
-        if (dests.length === 0 || !hasUnits || leadersHere.length === 0) continue;
+        // "A leader can retreat only if the player is also retreating units."
+        // Ground units and restriction fighters (TIEs) can't move without a
+        // carrier, so a force with no self-mobile ship simply cannot retreat
+        // (e.g. a ground-only base garrison). Don't offer the dead-end option.
+        // Escape Plan (retreatIgnoresTransport) waives this — anything mobile
+        // can then go.
+        const ignoresT = !!c.flags?.retreatIgnoresTransport?.[side];
+        const hasMovable = here.some((u) => {
+          const t = G.catalog.unitTypes[u.typeId];
+          if (!t || t.transport.immobile) return false;
+          if (ignoresT) return true;
+          return t.theater === 'space' && !t.transport.restriction;
+        });
+        if (dests.length === 0 || !hasUnits || !hasMovable || leadersHere.length === 0) continue;
         G.pendingChoice = {
           kind: 'RetreatDecision',
           side, systemId: c.systemId,

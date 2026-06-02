@@ -2176,12 +2176,19 @@ function handleRetreatDecision(G: GameState): boolean {
   const ss = G.map.systems[c.systemId];
   const my = ss?.units.filter((u) => u.side === c.side).length ?? 0;
   const opp = ss?.units.filter((u) => u.side !== c.side).length ?? 0;
-  const shouldRetreat = my > 0 && opp >= my * 2 && c.legalDestinations.length > 0;
+  // NEVER retreat the Rebel garrison out of its own base system: leaving the
+  // base undefended lets the Empire conquer it and win on the spot. Defend it
+  // to the last (player report #85 — AI retreated a winning base defense and
+  // handed the Empire the game).
+  const isOwnBase = c.side === 'Rebel' && c.systemId === G.rebelBaseSystemId;
+  const shouldRetreat = !isOwnBase && my > 0 && opp >= my * 2 && c.legalDestinations.length > 0;
   if (!shouldRetreat) {
     const r = combat.resolveRetreatDecision(G, null, null);
     return r.ok;
   }
-  // Pick the first legal destination.
+  // Retreat via the first legal destination. If the engine rejects it (e.g. no
+  // unit can actually move), fall back to staying rather than stalling.
   const r = combat.resolveRetreatDecision(G, c.legalDestinations[0], null);
+  if (!r.ok) return combat.resolveRetreatDecision(G, null, null).ok;
   return r.ok;
 }
