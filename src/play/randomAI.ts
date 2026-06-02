@@ -1045,7 +1045,12 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       const v = ld.tacticValues.space + ld.tacticValues.ground;
       if (!best || v > best.v) best = { id: lid, v };
     }
-    return combat.resolveCombatAddLeaderPick(G, best?.id ?? null).ok;
+    const r = combat.resolveCombatAddLeaderPick(G, best?.id ?? null);
+    // Fail-safe: if the chosen leader is somehow rejected, decline (null) so
+    // the choice always resolves and the game can't hang here (tournament
+    // showed games stuck on this pending choice).
+    if (!r.ok && best) return combat.resolveCombatAddLeaderPick(G, null).ok;
+    return r.ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'PlanTheAssaultShips' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
@@ -1518,7 +1523,12 @@ function stepOnceInner(G: GameState, side: Side): boolean {
         .sort((a, b) => (tierRank[a.tier ?? 'square'] ?? 2) - (tierRank[b.tier ?? 'square'] ?? 2));
       return opts.length > 0 ? opts[opts.length - 1].id : null; // highest tier <= icon
     });
-    return phases.resolveBuildFromIconsPick(G, picks).ok;
+    let r = phases.resolveBuildFromIconsPick(G, picks);
+    // Fail-safe: a single invalid pick rejects the whole call, which would
+    // leave this choice pending forever (tournament showed games stuck here).
+    // Retry skipping every icon (all-null is always accepted) so we resolve.
+    if (!r.ok) r = phases.resolveBuildFromIconsPick(G, c.icons.map(() => null));
+    return r.ok;
   }
   // Contingency Plan: pick a random starting mission from the candidates.
   if (G.pendingChoice && G.pendingChoice.kind === 'ContingencyPlanPick' && G.pendingChoice.side === side) {
