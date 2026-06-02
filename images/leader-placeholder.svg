@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 280" width="200" height="280">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e"/>
+      <stop offset="100%" style="stop-color:#0a0a1a"/>
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0f3460"/>
+      <stop offset="100%" style="stop-color:#16213e"/>
+    </linearGradient>
+    <linearGradient id="highlightGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#e94560"/>
+      <stop offset="100%" style="stop-color:#c23152"/>
+    </linearGradient>
+    <clipPath id="avatarClip">
+      <circle cx="100" cy="85" r="50"/>
+    </clipPath>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="2" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="innerShadow">
+      <feOffset dx="0" dy="2"/>
+      <feGaussianBlur stdDeviation="3"/>
+      <feComposite operator="out" in="SourceGraphic"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.5"/>
+      </feComponentTransfer>
+      <feBlend in="SourceGraphic" mode="normal"/>
+    </filter>
+  </defs>
+
+  <!-- Card background -->
+  <rect x="0" y="0" width="200" height="280" rx="12" ry="12" fill="url(#bgGrad)" stroke="#0f3460" stroke-width="2"/>
+
+  <!-- Decorative border lines -->
+  <rect x="4" y="4" width="192" height="272" rx="10" ry="10" fill="none" stroke="#16213e" stroke-width="1" opacity="0.6"/>
+  <rect x="8" y="8" width="184" height="264" rx="8" ry="8" fill="none" stroke="#0f3460" stroke-width="0.5" opacity="0.4"/>
+
+  <!-- Avatar circle background -->
+  <circle cx="100" cy="85" r="52" fill="url(#accentGrad)" stroke="#0f3460" stroke-width="2"/>
+  <circle cx="100" cy="85" r="50" fill="#1a1a2e"/>
+
+  <!-- Avatar silhouette - generic leader figure -->
+  <g clip-path="url(#avatarClip)">
+    <!-- Head -->
+    <ellipse cx="100" cy="68" rx="18" ry="20" fill="#16213e" stroke="#0f3460" stroke-width="1"/>
+    <!-- Body/shoulders -->
+    <path d="M72 130 Q75 105 85 100 L115 100 Q125 105 128 130 Z" fill="#16213e" stroke="#0f3460" stroke-width="1"/>
+    <!-- Collar detail -->
+    <path d="M88 100 L92 112 L100 106 L108 112 L112 100" fill="none" stroke="#0f3460" stroke-width="1.5"/>
+    <!-- Rank insignia dots -->
+    <circle cx="96" cy="104" r="1.5" fill="#e94560" opacity="0.8"/>
+    <circle cx="100" cy="101" r="1.5" fill="#e94560" opacity="0.8"/>
+    <circle cx="104" cy="104" r="1.5" fill="#e94560" opacity="0.8"/>
+  </g>
+
+  <!-- Avatar ring highlight -->
+  <circle cx="100" cy="85" r="50" fill="none" stroke="#e94560" stroke-width="1.5" opacity="0.5" filter="url(#glow)"/>
+
+  <!-- Faction indicator - Rebel star -->
+  <g transform="translate(100, 85)" opacity="0.15">
+    <polygon points="0,-30 7,-10 28,-10 11,3 17,24 0,12 -17,24 -11,3 -28,-10 -7,-10" fill="#eaeaea"/>
+  </g>
+
+  <!-- Leader icon (generic command symbol) -->
+  <g transform="translate(100, 85)" opacity="0.3">
+    <circle cx="0" cy="0" r="8" fill="none" stroke="#eaeaea" stroke-width="1.5"/>
+    <path d="M-5,-5 L5,5 M-5,5 L5,-5" stroke="#eaeaea" stroke-width="1.5"/>
+  </g>
+
+  <!-- Name placeholder bar -->
+  <rect x="30" y="150" width="140" height="14" rx="7" ry="7" fill="#16213e" stroke="#0f3460" stroke-width="0.5"/>
+  <rect x="50" y="153" width="100" height="8" rx="4" ry="4" fill="#0f3460" opacity="0.5"/>
+
+  <!-- Subtitle placeholder -->
+  <rect x="45" y="172" width="110" height="10" rx="5" ry="5" fill="#16213e" stroke="#0f3460" stroke-width="0.5" opacity="0.7"/>
+  <rect x="60" y="175" width="80" height="4" rx="2" ry="2" fill="#0f3460" opacity="0.4"/>
+
+  <!-- Stats section -->
+  <g transform="translate(0, 200)">
+    <!-- Stat boxes -->
+    <rect x="20" y="0" width="50" height="24" rx="4" ry="4" fill="#16213e" stroke="#0f3460" stroke-width="0.5"/>
+    <rect x="75" y="0" width="50" height="24" rx="4" ry="4" fill="#16213e" stroke="#0f3460" stroke-width="0.5"/>
+    <rect x="130" y="0" width="50" height="24" rx="4" ry="4" fill="#16213e" stroke="#0f3460" stroke-width="0.5"/>
+
+    <!-- Stat labels -->
+    <text x="45" y="10" text-anchor="middle" fill="#0f3460" font-family="'Roboto Mono', monospace" font-size="6" opacity="0.7">ATK</text>
+    <text x="100" y="10" text-anchor="middle" fill="#0f3460" font-family="'Roboto Mono', monospace" font-size="6" opacity="0.7">DEF</text>
+    <text x="155" y="10" text-anchor="middle" fill="#0f3460" font-family="'Roboto Mono', monospace" font-size="6" opacity="0.7">INT</text>
+
+    <!-- Stat values (dashes) -->
+    <text x="45" y="20" text-anchor="middle" fill="#e94560" font-family="'Orbitron', sans-serif" font-size="8" opacity="0.6">--</text>
+    <text x="100" y="20" text-anchor="middle" fill="#e94560" font-family="'Orbitron', sans-serif" font-size="8" opacity="0.6">--</text>
+    <text x="155" y="20" text-anchor="middle" fill="#e94560" font-family="'Orbitron', sans-serif" font-size="8" opacity="0.6">--</text>
+  </g>
+
+  <!-- Ability text placeholder -->
+  <rect x="20" y="235" width="160" height="6" rx="3" ry="3" fill="#16213e" opacity="0.5"/>
+  <rect x="20" y="247" width="140" height="6" rx="3" ry="3" fill="#16213e" opacity="0.4"/>
+  <rect x="20" y="259" width="120" height="6" rx="3" ry="3" fill="#16213e" opacity="0.3"/>
+
+  <!-- Bottom accent line -->
+  <rect x="40" y="272" width="120" height="2" rx="1" ry="1" fill="#e94560" opacity="0.3"/>
+</svg>
