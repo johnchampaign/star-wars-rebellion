@@ -278,19 +278,24 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
       return { ok: false, reason: 'must-be-imperial-or-subjugated' };
     }
   } else {
-    // Rebel: the Rebel Base space OR a system with Rebel loyalty (your own
-    // planets). RAW setup is scripted and base-centric — Rebel starting units
-    // go to the base and the Rebellion's own worlds, NOT onto arbitrary
-    // neutral/enemy systems. (Player report #86: too many planets were
-    // offered. Auto-fill already places everything at the base.)
+    // Rebel: the Rebel Base space OR ONE populous system of the player's choice
+    // — a neutral world or one with Rebel loyalty (RAW; confirmed by the
+    // reporter who originally flagged #86: starting on a neutral world far from
+    // the hidden base is a legitimate cat-and-mouse opening). Just not an
+    // Imperial/subjugated system, Coruscant, or a remote (non-populous) world.
     if (systemId === 'rebel-base-space') {
       // always allowed
     } else {
       const ss = G.map.systems[systemId];
       if (!ss) return { ok: false, reason: 'unknown-system' };
-      if (ss.loyalty !== 'rebel' || ss.subjugated) {
-        return { ok: false, reason: 'must-be-rebel-loyalty-or-base' };
+      if (G.rebelDeployTarget && G.rebelDeployTarget !== systemId) {
+        return { ok: false, reason: `rebel-already-chose-${G.rebelDeployTarget}` };
       }
+      const def = G.catalog.systems[systemId];
+      if (ss.subjugated || ss.loyalty === 'imperial' || def?.isCoruscant || def?.isRemote) {
+        return { ok: false, reason: 'must-be-populous-rebel-or-neutral' };
+      }
+      G.rebelDeployTarget = systemId;
     }
   }
 

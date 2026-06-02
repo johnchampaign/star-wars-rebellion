@@ -1782,6 +1782,7 @@ export function resolveRetreatDecision(
     M.relocateLeader(G, side, leaderToMove, c.systemId, destSystemId);
   }
   c.retreated.push(side);
+  (c.report.retreats ??= []).push({ side, toSystemId: destSystemId, leaderId: leaderToMove });
   c.retreatDecidedThisRound = c.retreatDecidedThisRound ?? [];
   if (!c.retreatDecidedThisRound.includes(side)) c.retreatDecidedThisRound.push(side);
   log(G, { kind: 'combat-retreat', side, payload: {

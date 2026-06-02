@@ -1069,6 +1069,11 @@ export type CombatReport = {
   // combat-end objective check sees them. Same shape as
   // structureDestructions — one entry per retreat decision.
   retreatDestructions: { side: Side; typeIds: string[] }[];
+  /** Retreats that happened during this combat — who pulled out and to where,
+   *  so the end-of-combat report can say "Empire retreated to X" instead of
+   *  the player having to scan the log/map (player request: MightyFaben).
+   *  Optional for backward-compat with old saved reports. */
+  retreats?: { side: Side; toSystemId: SystemId; leaderId?: LeaderId }[];
   winner: Side | 'draw' | null;
   totalRounds: number;
 };

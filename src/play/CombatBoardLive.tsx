@@ -107,10 +107,14 @@ function CardHover({ G, cardId, children }: {
   );
 }
 
-export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem }: {
+export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onShowDiceKey, onShowTacticKey }: {
   G: GameState;
   humanSide: Side;
   onPersist: () => void;
+  /** Open the dice / tactic reference modals from inside combat — that's
+   *  exactly when you need them (player request: MightyFaben). */
+  onShowDiceKey?: () => void;
+  onShowTacticKey?: () => void;
   /** Opens the "Report a problem" dialog from inside the combat overlay.
    *  Needed because the play-tab header (where the normal report button
    *  lives) is hidden behind the full-screen combat board, so players
@@ -451,6 +455,8 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem }: {
         round={c.round}
         humanSide={humanSide}
         onReportProblem={onReportProblem}
+        onShowDiceKey={onShowDiceKey}
+        onShowTacticKey={onShowTacticKey}
         trigger={triggerSummary}
       />
 
@@ -676,9 +682,9 @@ function TacticHandsBar({
   );
 }
 
-function Header({ systemName, attacker, defender, round, humanSide, onReportProblem, trigger }: {
+function Header({ systemName, attacker, defender, round, humanSide, onReportProblem, onShowDiceKey, onShowTacticKey, trigger }: {
   systemName: string; attacker: Side; defender: Side; round: number; humanSide: Side;
-  onReportProblem?: () => void; trigger?: string | null;
+  onReportProblem?: () => void; onShowDiceKey?: () => void; onShowTacticKey?: () => void; trigger?: string | null;
 }) {
   return (
     <>
@@ -694,6 +700,20 @@ function Header({ systemName, attacker, defender, round, humanSide, onReportProb
           You are <span style={{ color: SIDE_COLOR[humanSide], fontWeight: 700 }}>{humanSide}</span>
           {' · '}Round {round}
         </span>
+        {onShowDiceKey && (
+          <button onClick={onShowDiceKey} title="What each die face means + odds"
+            style={{ background: '#1a2230', color: '#9fb3d9', border: '1px solid #3a4a6a',
+              padding: '4px 10px', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>
+            dice key
+          </button>
+        )}
+        {onShowTacticKey && (
+          <button onClick={onShowTacticKey} title="Every tactic card + how the decks work"
+            style={{ background: '#241f17', color: '#d9c79f', border: '1px solid #5a4a2a',
+              padding: '4px 10px', borderRadius: 3, cursor: 'pointer', fontSize: 12 }}>
+            tactic key
+          </button>
+        )}
         {onReportProblem && (
           <button
             onClick={onReportProblem}

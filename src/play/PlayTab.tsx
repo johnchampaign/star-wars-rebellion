@@ -1980,6 +1980,8 @@ export default function PlayTab() {
           G={G}
           humanSide={humanSide}
           onPersist={() => { persist(); refresh(); }}
+          onShowDiceKey={() => setShowDiceKey(true)}
+          onShowTacticKey={() => setShowTacticKey(true)}
           onReportProblem={() => {
             // Open the modal first; capture screenshot in background with
             // a 5s timeout so html2canvas can't strand the user behind a
@@ -4543,6 +4545,21 @@ function CombatReportModal({ G, report, onDismiss }: {
           </div>
         ))}
 
+        {report.retreats && report.retreats.length > 0 && (
+          <div style={{ marginTop: 8, padding: 6, background: '#14202a', borderRadius: 3 }}>
+            <div style={{ fontSize: 12, color: '#9fd0ff', fontWeight: 600, marginBottom: 2 }}>
+              Retreats
+            </div>
+            {report.retreats.map((r, i) => (
+              <div key={i} style={{ fontSize: 11, color: '#fff' }}>
+                <span style={{ color: sideColor(r.side), fontWeight: 700 }}>{r.side}</span>
+                {' '}retreated to <em>{G.catalog.systems[r.toSystemId]?.name ?? r.toSystemId}</em>
+                {r.leaderId && <span style={{ color: '#aaa' }}> (led by {G.catalog.leaders[r.leaderId]?.name ?? r.leaderId})</span>}
+              </div>
+            ))}
+          </div>
+        )}
+
         {report.structureDestructions.length > 0 && (
           <div style={{ marginTop: 8, padding: 6, background: '#2a1414', borderRadius: 3 }}>
             <div style={{ fontSize: 12, color: '#ff8866', fontWeight: 600, marginBottom: 2 }}>
@@ -6596,12 +6613,18 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onReset, undoCount 
     }
   } else {
     legalTargets.push({ id: 'rebel-base-space', name: 'Rebel Base space', note: 'staging area (hidden)' });
-    // Rebel starting units deploy to the base or to the Rebellion's own
-    // (Rebel-loyalty) systems — not arbitrary neutral worlds (#86).
-    for (const [sysId, ss] of Object.entries(G.map.systems)) {
-      if (ss.loyalty === 'rebel' && !ss.subjugated) {
+    // Rebel starting units: the base, plus ONE populous system of your choice —
+    // neutral or Rebel-loyal (RAW). Once you've placed in one such system, that
+    // becomes your only off-base target for the rest of setup.
+    if (G.rebelDeployTarget) {
+      const sysDef = G.catalog.systems[G.rebelDeployTarget];
+      legalTargets.push({ id: G.rebelDeployTarget, name: sysDef?.name ?? G.rebelDeployTarget, note: 'your chosen system' });
+    } else {
+      for (const [sysId, ss] of Object.entries(G.map.systems)) {
         const sysDef = G.catalog.systems[sysId];
-        legalTargets.push({ id: sysId, name: sysDef?.name ?? sysId, note: 'Rebel-loyal system' });
+        if (sysDef?.isCoruscant || sysDef?.isRemote) continue;
+        if (ss.subjugated || ss.loyalty === 'imperial') continue;
+        legalTargets.push({ id: sysId, name: sysDef?.name ?? sysId });
       }
     }
   }
@@ -6616,7 +6639,7 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onReset, undoCount 
         <span style={{ color: '#888', fontSize: 12 }}>
           {pending.length} unit{pending.length === 1 ? '' : 's'} left to place.{' '}
           {side === 'Empire' && '(Place in Imperial-loyalty or subjugated systems; every Imperial system needs ≥1 ground unit.)'}
-          {side === 'Rebel' && '(Rebel Base space and/or your Rebel-loyalty systems.)'}
+          {side === 'Rebel' && '(Rebel Base space and/or one populous system of your choice — neutral or Rebel-loyal.)'}
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button
