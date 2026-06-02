@@ -286,6 +286,7 @@ export default function PlayTab() {
   const [unitStyle, setUnitStyleState] = useState<UnitImageStyle>(getUnitStyle());
   const [showUnitKey, setShowUnitKey] = useState<boolean>(false);
   const [showDiceKey, setShowDiceKey] = useState<boolean>(false);
+  const [showTacticKey, setShowTacticKey] = useState<boolean>(false);
   // Player-toggleable "images on / images off" switch. When OFF, every
   // <img> and SVG <image> in the play tree is hidden via CSS, letting
   // the text fallbacks (unit abbreviations, dice glyphs, etc.) carry the
@@ -864,6 +865,9 @@ export default function PlayTab() {
           <button className="tab-button" onClick={() => setShowDiceKey(true)} title="Show what each die face means in combat and on missions, with odds">
             dice key
           </button>
+          <button className="tab-button" onClick={() => setShowTacticKey(true)} title="Show every tactic card and how the tactic decks work">
+            tactic key
+          </button>
           <button className="tab-button" onClick={toggleUnitStyle} title="Toggle between Vassal mini photos and reference-sheet silhouettes">
             units: {unitStyle}
           </button>
@@ -1074,6 +1078,9 @@ export default function PlayTab() {
       )}
       {showDiceKey && (
         <DiceKeyModal onClose={() => setShowDiceKey(false)} />
+      )}
+      {showTacticKey && (
+        <TacticKeyModal G={G} onClose={() => setShowTacticKey(false)} />
       )}
 
       {G.pendingNotices && G.pendingNotices.length > 0 && (
@@ -9071,6 +9078,68 @@ function DiceKeyModal({ onClose }: { onClose: () => void }) {
           For <b>missions</b>, both dice average <b>5/6 of a success</b> per die (the special's double-count
           balances black's extra hit), so red and black are equally good there. A mission rolls at most
           5 red + 5 black dice.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// Tactic key — every tactic card (space + ground) plus how the decks work.
+// Feature request: MightyFaben ("have a look at all available tactic cards"
+// and "do you keep them between rounds?"). RAW summary verified against the
+// Rules Reference "Tactic Cards" + "Combat" entries.
+// ============================================================================
+
+function TacticKeyModal({ G, onClose }: { G: GameState; onClose: () => void }) {
+  const all = Object.values(G.catalog.tactics);
+  const space = all.filter((t) => t.theater === 'space');
+  const ground = all.filter((t) => t.theater === 'ground');
+  const Group = ({ title, cards, accent }: { title: string; cards: typeof all; accent: string }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontWeight: 700, color: accent, marginBottom: 6 }}>{title}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {cards.map((t) => (
+          <div key={t.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline',
+            borderLeft: `3px solid ${accent}`, paddingLeft: 8 }}>
+            <div style={{ minWidth: 150, fontWeight: 600, color: '#fff', fontSize: 12 }}>
+              {t.name}
+              {t.requiresSpecial && <span title="Requires spending a special (★) die" style={{ color: '#ffd54a' }}> ★</span>}
+            </div>
+            <div style={{ fontSize: 12, color: '#cbc4b0' }}>{t.rulesText}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 6000 }}
+      onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: '#15171c', border: '2px solid #8c7a5a', borderRadius: 8,
+        padding: 22, maxWidth: 720, width: '94%', maxHeight: '88vh', overflowY: 'auto',
+        color: '#fff', boxShadow: '0 8px 32px rgba(0,0,0,0.8)' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
+          <h3 style={{ margin: 0, color: '#d9c79f' }}>🃏 Tactic cards</h3>
+          <span style={{ color: '#888', fontSize: 12 }}>every card + how the decks work</span>
+          <button className="tab-button" style={{ marginLeft: 'auto' }} onClick={onClose}>Close</button>
+        </div>
+        <div style={{ fontSize: 12.5, color: '#cbc4b0', marginBottom: 12, lineHeight: 1.5,
+          background: '#0c0d10', border: '1px solid #2a2d34', borderRadius: 4, padding: 10 }}>
+          <b>How tactic cards work.</b> At the <b>start of each combat</b> you draw cards equal to your
+          leader's tactic value — space cards for the space battle, ground cards for the ground battle
+          (only if both sides have units in that theater). During an attack you can spend a die showing
+          a <b>special (★)</b> to either draw another tactic card or play one that needs a ★. Cards aren't
+          revealed to your opponent until played. <b>At the end of every combat, both players discard
+          their whole hand and ALL tactic cards are shuffled back into the decks</b> — so you never keep
+          cards between combats. The only reason to hold a card is for a later round of the <i>same</i>
+          fight; there's no point hoarding one for next time.
+        </div>
+        <Group title="Space tactic cards" cards={space} accent="#7fb0ff" />
+        <Group title="Ground tactic cards" cards={ground} accent="#ffb060" />
+        <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
+          ★ = costs a special (★) die to play.
         </div>
       </div>
     </div>

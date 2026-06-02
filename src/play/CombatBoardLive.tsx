@@ -164,6 +164,29 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem }: {
     return null;
   })();
 
+  // Tactic cards played so far THIS combat, both sides (RAW: revealed once
+  // played). Lets you see the enemy actually played one and click to read it
+  // (feature: MightyFaben — "you can't tell if the enemy played a tactic").
+  const playedTactics: { side: Side; card: string }[] = (() => {
+    const tl = G.turnLog;
+    let beginIdx = -1;
+    for (let i = tl.length - 1; i >= 0; i--) {
+      const e = tl[i];
+      if (e.kind === 'combat-begin' && (e.payload as { systemId?: string })?.systemId === c.systemId) { beginIdx = i; break; }
+    }
+    if (beginIdx < 0) return [];
+    const out: { side: Side; card: string }[] = [];
+    for (let i = beginIdx + 1; i < tl.length; i++) {
+      const e = tl[i];
+      if (e.kind === 'combat-end') break;
+      if (e.kind === 'combat-tactic' && e.side) {
+        const card = (e.payload as { card?: string })?.card;
+        if (card) out.push({ side: e.side as Side, card });
+      }
+    }
+    return out;
+  })();
+
   // Current decision (if any) and which side owns it.
   const pc = G.pendingChoice;
   const decisionSide: Side | null =
@@ -439,6 +462,23 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem }: {
         attackerHand={c.attackerHand}
         defenderHand={c.defenderHand}
       />
+
+      {playedTactics.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6, fontSize: 12 }}>
+          <span style={{ color: '#888' }}>Tactics played:</span>
+          {playedTactics.map((p, i) => (
+            <span key={i} style={{
+              background: '#0c0d10', border: `1px solid ${SIDE_COLOR[p.side]}88`,
+              borderRadius: 3, padding: '2px 6px',
+            }}>
+              <span style={{ color: SIDE_COLOR[p.side], fontWeight: 700, marginRight: 4 }}>{p.side}</span>
+              <CardHover G={G} cardId={p.card}>
+                {G.catalog.tactics[p.card]?.name ?? p.card}
+              </CardHover>
+            </span>
+          ))}
+        </div>
+      )}
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12, minHeight: 0 }}>
         <TheaterPanel
