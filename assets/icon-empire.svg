@@ -1,0 +1,481 @@
+"""
+Star Wars: Rebellion - Game Engine Module
+Production-grade implementation with comprehensive error handling, type safety,
+logging, and performance optimizations.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+import os
+from dataclasses import dataclass, field
+from enum import Enum, auto
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+    final,
+    overload,
+)
+from uuid import UUID, uuid4
+
+# Third-party imports (if available)
+try:
+    import orjson as json_processor
+    JSON_AVAILABLE = True
+except ImportError:
+    import json as json_processor
+    JSON_AVAILABLE = False
+
+# ---------------------------------------------------------------------------
+# Constants & Configuration
+# ---------------------------------------------------------------------------
+
+MAX_RETRY_ATTEMPTS: int = 3
+CACHE_TTL_SECONDS: int = 300
+DEFAULT_TIMEOUT_SECONDS: float = 30.0
+MAX_LEADERS_PER_SYSTEM: int = 3
+MAX_MISSION_ATTEMPTS: int = 5
+
+# GitHub API configuration
+GITHUB_API_BASE_URL: str = "https://api.github.com"
+GITHUB_API_TIMEOUT: float = 10.0
+GITHUB_API_RETRY_DELAY: float = 1.0
+GITHUB_API_MAX_RETRIES: int = 3
+GITHUB_API_TOKEN: Optional[str] = os.environ.get("GITHUB_TOKEN")  # Set via environment variable
+
+# ---------------------------------------------------------------------------
+# Enums
+# ---------------------------------------------------------------------------
+
+class GamePhase(Enum):
+    """Represents the current phase of a game turn."""
+    COMMAND = auto()
+    ACTION = auto()
+    REFRESH = auto()
+    END = auto()
+
+class Loyalty(Enum):
+    """Faction loyalty for a system."""
+    EMPIRE = "empire"
+    REBEL = "rebel"
+    NEUTRAL = "neutral"
+
+class MissionType(Enum):
+    """Types of missions available in the game."""
+    INFILTRATION = "infiltration"
+    SUPPORT = "support-of-mon-calamari"
+    LOCAL_RUMORS = "local-rumors"
+    SABOTAGE = "sabotage"
+    RECRUITMENT = "recruitment"
+
+class LogLevel(Enum):
+    """Logging severity levels."""
+    DEBUG = logging.DEBUG
+    INFO = logging.INFO
+    WARNING = logging.WARNING
+    ERROR = logging.ERROR
+    CRITICAL = logging.CRITICAL
+
+class MissionResult(Enum):
+    """Possible outcomes of a mission."""
+    SUCCESS = auto()
+    FAILURE = auto()
+    AUTO_SUCCESS = auto()
+    OPPOSED = auto()
+    CANCELLED = auto()
+
+# ---------------------------------------------------------------------------
+# Custom Exceptions
+# ---------------------------------------------------------------------------
+
+class GameEngineError(Exception):
+    """Base exception for game engine errors."""
+    pass
+
+class InvalidMoveError(GameEngineError):
+    """Raised when an invalid move is attempted."""
+    pass
+
+class InvalidMissionError(GameEngineError):
+    """Raised when a mission cannot be executed."""
+    pass
+
+class ResourceNotFoundError(GameEngineError):
+    """Raised when a requested resource does not exist."""
+    pass
+
+class StateEncodingError(GameEngineError):
+    """Raised when state encoding/decoding fails."""
+    pass
+
+class ConcurrencyError(GameEngineError):
+    """Raised when concurrent access conflicts occur."""
+    pass
+
+class ValidationError(GameEngineError):
+    """Raised when input validation fails."""
+    pass
+
+class SecurityError(GameEngineError):
+    """Raised when security checks fail."""
+    pass
+
+class GitHubAPIError(GameEngineError):
+    """Raised when GitHub API operations fail."""
+    pass
+
+# ---------------------------------------------------------------------------
+# Data Models
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class Position:
+    """Immutable position in 2D space."""
+    x: float
+    y: float
+
+    def __post_init__(self) -> None:
+        """Validate position coordinates."""
+        if not isinstance(self.x, (int, float)):
+            raise ValidationError(f"x coordinate must be numeric, got {type(self.x)}")
+        if not isinstance(self.y, (int, float)):
+            raise ValidationError(f"y coordinate must be numeric, got {type(self.y)}")
+
+    def distance_to(self, other: Position) -> float:
+        """Calculate Euclidean distance to another position."""
+        if not isinstance(other, Position):
+            raise ValidationError(f"Expected Position, got {type(other)}")
+        return ((self.x - other.x) ** 2 + (self.y - other.y) ** 2) ** 0.5
+
+    def is_within_range(self, other: Position, range_limit: float) -> bool:
+        """Check if another position is within range."""
+        return self.distance_to(other) <= range_limit
+
+@dataclass
+class Leader:
+    """Represents a game leader/character."""
+    id: str
+    name: str
+    faction: str
+    is_available: bool = True
+    current_system: Optional[str] = None
+    assigned_mission: Optional[str] = None
+
+    def validate(self) -> None:
+        """Validate leader data."""
+        if not self.id or not isinstance(self.id, str):
+            raise ValidationError("Leader ID must be a non-empty string")
+        if not self.name or not isinstance(self.name, str):
+            raise ValidationError("Leader name must be a non-empty string")
+        if self.faction not in ("empire", "rebel"):
+            raise ValidationError(f"Invalid faction: {self.faction}")
+
+@dataclass
+class System:
+    """Represents a star system in the game."""
+    id: str
+    name: str
+    position: Position
+    loyalty: Loyalty = Loyalty.NEUTRAL
+    units: List[str] = field(default_factory=list)
+    leaders: List[str] = field(default_factory=list)
+    is_probed: bool = False
+    has_base: bool = False
+
+    def validate(self) -> None:
+        """Validate system data."""
+        if not self.id or not isinstance(self.id, str):
+            raise ValidationError("System ID must be a non-empty string")
+        if not self.name or not isinstance(self.name, str):
+            raise ValidationError("System name must be a non-empty string")
+        if not isinstance(self.position, Position):
+            raise ValidationError("Position must be a Position instance")
+
+@dataclass
+class Mission:
+    """Represents a mission in the game."""
+    id: str
+    type: MissionType
+    target_system: str
+    assigned_leaders: List[str] = field(default_factory=list)
+    is_attempt: bool = False
+    result: Optional[MissionResult] = None
+    dice_rolled: int = 0
+    timestamp: float = field(default_factory=time.time)
+
+    def validate(self) -> None:
+        """Validate mission data."""
+        if not self.id or not isinstance(self.id, str):
+            raise ValidationError("Mission ID must be a non-empty string")
+        if not isinstance(self.type, MissionType):
+            raise ValidationError("Mission type must be a MissionType enum")
+        if not self.target_system or not isinstance(self.target_system, str):
+            raise ValidationError("Target system must be a non-empty string")
+
+@dataclass
+class GameState:
+    """Represents the complete state of a game session."""
+    game_id: UUID = field(default_factory=uuid4)
+    current_phase: GamePhase = GamePhase.COMMAND
+    turn_number: int = 1
+    empire_loyalty: Dict[str, Loyalty] = field(default_factory=dict)
+    rebel_loyalty: Dict[str, Loyalty] = field(default_factory=dict)
+    mission_results: Dict[str, MissionResult] = field(default_factory=dict)
+    systems: Dict[str, System] = field(default_factory=dict)
+    leaders: Dict[str, Leader] = field(default_factory=dict)
+    missions: Dict[str, Mission] = field(default_factory=dict)
+    last_updated: float = field(default_factory=time.time)
+    version: int = 1
+
+    def encode(self) -> bytes:
+        """Encode game state to bytes with validation."""
+        try:
+            data = {
+                "game_id": str(self.game_id),
+                "current_phase": self.current_phase.name,
+                "turn_number": self.turn_number,
+                "empire_loyalty": {k: v.value for k, v in self.empire_loyalty.items()},
+                "rebel_loyalty": {k: v.value for k, v in self.rebel_loyalty.items()},
+                "mission_results": {k: v.name for k, v in self.mission_results.items()},
+                "systems": {
+                    k: {
+                        "id": v.id,
+                        "name": v.name,
+                        "position": {"x": v.position.x, "y": v.position.y},
+                        "loyalty": v.loyalty.value,
+                        "units": v.units,
+                        "leaders": v.leaders,
+                        "is_probed": v.is_probed,
+                        "has_base": v.has_base,
+                    }
+                    for k, v in self.systems.items()
+                },
+                "leaders": {
+                    k: {
+                        "id": v.id,
+                        "name": v.name,
+                        "faction": v.faction,
+                        "is_available": v.is_available,
+                        "current_system": v.current_system,
+                        "assigned_mission": v.assigned_mission,
+                    }
+                    for k, v in self.leaders.items()
+                },
+                "missions": {
+                    k: {
+                        "id": v.id,
+                        "type": v.type.value,
+                        "target_system": v.target_system,
+                        "assigned_leaders": v.assigned_leaders,
+                        "is_attempt": v.is_attempt,
+                        "result": v.result.name if v.result else None,
+                        "dice_rolled": v.dice_rolled,
+                        "timestamp": v.timestamp,
+                    }
+                    for k, v in self.missions.items()
+                },
+                "last_updated": self.last_updated,
+                "version": self.version,
+            }
+            return json_processor.dumps(data)
+        except Exception as e:
+            raise StateEncodingError(f"Failed to encode game state: {e}") from e
+
+    @classmethod
+    def decode(cls, data: bytes) -> GameState:
+        """Decode game state from bytes with validation."""
+        try:
+            raw = json_processor.loads(data)
+            state = cls(
+                game_id=UUID(raw["game_id"]),
+                current_phase=GamePhase[raw["current_phase"]],
+                turn_number=raw["turn_number"],
+                empire_loyalty={k: Loyalty(v) for k, v in raw["empire_loyalty"].items()},
+                rebel_loyalty={k: Loyalty(v) for k, v in raw["rebel_loyalty"].items()},
+                mission_results={k: MissionResult[v] for k, v in raw["mission_results"].items()},
+                last_updated=raw["last_updated"],
+                version=raw["version"],
+            )
+            # Reconstruct systems
+            for sys_id, sys_data in raw.get("systems", {}).items():
+                state.systems[sys_id] = System(
+                    id=sys_data["id"],
+                    name=sys_data["name"],
+                    position=Position(sys_data["position"]["x"], sys_data["position"]["y"]),
+                    loyalty=Loyalty(sys_data["loyalty"]),
+                    units=sys_data.get("units", []),
+                    leaders=sys_data.get("leaders", []),
+                    is_probed=sys_data.get("is_probed", False),
+                    has_base=sys_data.get("has_base", False),
+                )
+            # Reconstruct leaders
+            for leader_id, leader_data in raw.get("leaders", {}).items():
+                state.leaders[leader_id] = Leader(
+                    id=leader_data["id"],
+                    name=leader_data["name"],
+                    faction=leader_data["faction"],
+                    is_available=leader_data.get("is_available", True),
+                    current_system=leader_data.get("current_system"),
+                    assigned_mission=leader_data.get("assigned_mission"),
+                )
+            # Reconstruct missions
+            for mission_id, mission_data in raw.get("missions", {}).items():
+                state.missions[mission_id] = Mission(
+                    id=mission_data["id"],
+                    type=MissionType(mission_data["type"]),
+                    target_system=mission_data["target_system"],
+                    assigned_leaders=mission_data.get("assigned_leaders", []),
+                    is_attempt=mission_data.get("is_attempt", False),
+                    result=MissionResult[mission_data["result"]] if mission_data.get("result") else None,
+                    dice_rolled=mission_data.get("dice_rolled", 0),
+                    timestamp=mission_data.get("timestamp", time.time()),
+                )
+            return state
+        except Exception as e:
+            raise StateEncodingError(f"Failed to decode game state: {e}") from e
+
+# ---------------------------------------------------------------------------
+# GitHub API Client
+# ---------------------------------------------------------------------------
+
+class GitHubAPIClient:
+    """Client for interacting with GitHub API with retry logic and error handling."""
+
+    def __init__(self, token: Optional[str] = None, base_url: str = GITHUB_API_BASE_URL):
+        self.token = token or GITHUB_API_TOKEN
+        self.base_url = base_url.rstrip("/")
+        self._session: Optional[Any] = None
+        self._logger = logging.getLogger(__name__)
+
+    async def _ensure_session(self) -> Any:
+        """Ensure an aiohttp session exists."""
+        if self._session is None or self._session.closed:
+            try:
+                import aiohttp
+                headers = {
+                    "Accept": "application/vnd.github.v3+json",
+                    "User-Agent": "StarWarsRebellion-GameEngine/1.0",
+                }
+                if self.token:
+                    headers["Authorization"] = f"token {self.token}"
+                self._session = aiohttp.ClientSession(headers=headers)
+            except ImportError:
+                raise GitHubAPIError("aiohttp is required for GitHub API calls")
+        return self._session
+
+    async def close(self) -> None:
+        """Close the HTTP session."""
+        if self._session and not self._session.closed:
+            await self._session.close()
+
+    async def _make_request(
+        self,
+        method: str,
+        endpoint: str,
+        **kwargs: Any,
+    ) -> Any:
+        """Make an HTTP request with retry logic."""
+        url = f"{self.base_url}/{endpoint.lstrip('/')}"
+        session = await self._ensure_session()
+
+        for attempt in range(GITHUB_API_MAX_RETRIES):
+            try:
+                async with session.request(method, url, timeout=GITHUB_API_TIMEOUT, **kwargs) as response:
+                    if response.status == 403:
+                        error_body = await response.text()
+                        self._logger.error(
+                            "GitHub API 403 Forbidden: %s - Headers: %s - Body: %s",
+                            url,
+                            dict(response.headers),
+                            error_body,
+                        )
+                        raise GitHubAPIError(
+                            f"GitHub API returned 403 Forbidden for {url}. "
+                            f"Check authentication token and permissions. "
+                            f"Response: {error_body[:500]}"
+                        )
+                    elif response.status == 404:
+                        raise GitHubAPIError(f"Resource not found: {url}")
+                    elif response.status == 429:
+                        retry_after = int(response.headers.get("Retry-After", GITHUB_API_RETRY_DELAY))
+                        self._logger.warning("Rate limited, waiting %d seconds", retry_after)
+                        await asyncio.sleep(retry_after)
+                        continue
+                    elif response.status >= 500:
+                        self._logger.warning(
+                            "Server error %d on attempt %d/%d",
+                            response.status,
+                            attempt + 1,
+                            GITHUB_API_MAX_RETRIES,
+                        )
+                        if attempt < GITHUB_API_MAX_RETRIES - 1:
+                            await asyncio.sleep(GITHUB_API_RETRY_DELAY * (attempt + 1))
+                            continue
+                        raise GitHubAPIError(f"GitHub API server error: {response.status}")
+                    
+                    response.raise_for_status()
+                    return await response.json()
+
+            except asyncio.TimeoutError:
+                self._logger.warning(
+                    "Request timeout on attempt %d/%d",
+                    attempt + 1,
+                    GITHUB_API_MAX_RETRIES,
+                )
+                if attempt < GITHUB_API_MAX_RETRIES - 1:
+                    await asyncio.sleep(GITHUB_API_RETRY_DELAY * (attempt + 1))
+                    continue
+                raise GitHubAPIError(f"Request timed out after {GITHUB_API_MAX_RETRIES} attempts")
+            
+            except GitHubAPIError:
+                raise
+            
+            except Exception as e:
+                self._logger.error("Unexpected error during GitHub API request: %s", str(e))
+                if attempt < GITHUB_API_MAX_RETRIES - 1:
+                    await asyncio.sleep(GITHUB_API_RETRY_DELAY * (attempt + 1))
+                    continue
+                raise GitHubAPIError(f"Unexpected error: {e}") from e
+
+        raise GitHubAPIError(f"Request failed after {GITHUB_API_MAX_RETRIES} attempts")
+
+    async def fork_repository(self, owner: str, repo: str) -> Dict[str, Any]:
+        """Fork a repository with proper authentication."""
+        endpoint = f"repos/{owner}/{repo}/forks"
+        return await self._make_request("POST", endpoint)
+
+    async def get_repository(self, owner: str, repo: str) -> Dict[str, Any]:
+        """Get repository information."""
+        endpoint = f"repos/{owner}/{repo}"
+        return await self._make_request("GET", endpoint)
+
+    async def create_issue(
+        self,
+        owner: str,
+        repo: str,
+        title: str,
+        body: str,
+        labels: Optional[List[str]] = None,
+    ) -> Dict[str, Any]:
+        """Create an issue in the repository."""
+        endpoint = f"repos/{owner}/{repo}/issues"
+        data: Dict[str, Any] = {"title": title, "body": body}
+        if labels:
+            data["labels"] = labels
+        return await self._make_request("POST", endpoint, json=data)
+
+# ---------------------------------------------------------------------------
+# Game Engine Core
+# ---------------------------------------------------------------------------
+
+class GameEngine:
+    """Core game engine for Star Wars: Rebellion."""
+
+    def __init__(self, config: Optional[Dict[str, Any]] = None):
