@@ -1059,7 +1059,7 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
                 disabled={sacrificeCandidates.length === 0}
                 onChange={(e) => setUsePaid(e.target.checked)}
               />
-              <CardHover G={G} cardId={paid}>{label(paid)}</CardHover> (block 1, discard another)
+              <CardHover G={G} cardId={paid}>{label(paid)}</CardHover> (discard another card → block up to 2)
             </label>
             {sacrificeCandidates.length === 0 && (
               // Explain WHY it's greyed out — this card blocks a hit only by
@@ -1100,7 +1100,9 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
               cursor: blocks.length === 0 ? 'not-allowed' : 'pointer',
             }}
           >
-            Block {blocks.length}
+            {/* Damage blocked, not card count: defensive-formation blocks 1,
+                dig-in/outmaneuver block up to 2. */}
+            Block {(useFree && free ? 1 : 0) + (usePaid && paid && sacrifice ? 2 : 0)}
           </button>
         </div>
       </div>

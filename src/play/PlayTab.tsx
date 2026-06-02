@@ -2636,15 +2636,10 @@ function RefreshReportModal({ G, report, humanSide, onDismiss }: {
           </Section>
         )}
 
-        {report.objectivesPlayed.length > 0 && (
-          <Section title="Objectives auto-played">
-            {report.objectivesPlayed.map((o) => (
-              <div key={o.objectiveId}>
-                <strong>{obj(o.objectiveId)}</strong> — gained {o.reputation} reputation
-              </div>
-            ))}
-          </Section>
-        )}
+        {/* "Objectives auto-played" intentionally omitted: each completed
+            objective already gets its own prominent "Objective completed"
+            modal (with card art) before this report shows, so listing it here
+            too read as the same card appearing twice (player report). */}
 
         <Section title="Recruits">
           {report.recruits.length === 0

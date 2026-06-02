@@ -904,14 +904,17 @@ export function resolveCombatDefenderTactics(
       pa.tacticsPlayed.push({ card: cid, detail: 'blocked 1 damage' });
       log(G, { kind: 'combat-tactic', side: defenderSide, payload: { card: cid, blocked: 1 } });
     } else if (cid.includes('dig-in') || cid.includes('outmaneuver')) {
-      // Requires sacrificing a second card.
+      // RAW: "Discard 1 [ground/space] tactic card from your hand to block up
+      // to 2 damage." Playing the card requires sacrificing one OTHER tactic
+      // card, and it blocks up to 2 (not 1 — that was the bug). finalizeAttack
+      // caps blocks at the actual incoming hits, so overshooting is harmless.
       const sacrifice = plays.sacrificeCardIds[sacrificeIdx++];
       if (!sacrifice || !defHand.includes(sacrifice) || sacrifice === cid) continue;
       discardCard(G, defHand, cid);
       discardCard(G, defHand, sacrifice);
-      blocks++;
-      pa.tacticsPlayed.push({ card: cid, detail: `blocked 1 (discarded ${sacrifice})` });
-      log(G, { kind: 'combat-tactic', side: defenderSide, payload: { card: cid, blocked: 1, discarded: sacrifice } });
+      blocks += 2;
+      pa.tacticsPlayed.push({ card: cid, detail: `blocked up to 2 (discarded ${sacrifice})` });
+      log(G, { kind: 'combat-tactic', side: defenderSide, payload: { card: cid, blocked: 2, discarded: sacrifice } });
     }
   }
   // Clear the defender-tactics choice before finalizeAttack runs — it may
