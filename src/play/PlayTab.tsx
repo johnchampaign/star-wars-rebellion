@@ -285,6 +285,7 @@ export default function PlayTab() {
   >([]);
   const [unitStyle, setUnitStyleState] = useState<UnitImageStyle>(getUnitStyle());
   const [showUnitKey, setShowUnitKey] = useState<boolean>(false);
+  const [showDiceKey, setShowDiceKey] = useState<boolean>(false);
   // Player-toggleable "images on / images off" switch. When OFF, every
   // <img> and SVG <image> in the play tree is hidden via CSS, letting
   // the text fallbacks (unit abbreviations, dice glyphs, etc.) carry the
@@ -860,6 +861,9 @@ export default function PlayTab() {
           <button className="tab-button" onClick={() => setShowUnitKey(true)} title="Show a key of every unit type — picture, name, tier shape and theater">
             unit key
           </button>
+          <button className="tab-button" onClick={() => setShowDiceKey(true)} title="Show what each die face means in combat and on missions, with odds">
+            dice key
+          </button>
           <button className="tab-button" onClick={toggleUnitStyle} title="Toggle between Vassal mini photos and reference-sheet silhouettes">
             units: {unitStyle}
           </button>
@@ -1067,6 +1071,9 @@ export default function PlayTab() {
 
       {showUnitKey && (
         <UnitKeyModal G={G} unitStyle={unitStyle} onClose={() => setShowUnitKey(false)} />
+      )}
+      {showDiceKey && (
+        <DiceKeyModal onClose={() => setShowDiceKey(false)} />
       )}
 
       {G.pendingNotices && G.pendingNotices.length > 0 && (
@@ -8935,6 +8942,106 @@ function AttachRingPickModal({
 /** A reference key of every unit type: picture, name, tier shape, theater.
  *  Players asked for a way to look up "which unit is the orange circle?"
  *  (reporter MightyFaben). */
+// ============================================================================
+// Dice key — what every die face means in combat vs on missions, with odds.
+// Mirrors the RNG face tables in src/engine/rng.ts (keep in sync). Feature
+// request: MightyFaben ("a key like the unit key ... to calculate odds").
+// ============================================================================
+
+function DiceKeyModal({ onClose }: { onClose: () => void }) {
+  // Faces per die, matching RED_FACES / BLACK_FACES in rng.ts exactly.
+  const dice: { color: 'red' | 'black'; faces: { face: string; n: number }[] }[] = [
+    { color: 'red',   faces: [{ face: 'hit', n: 2 }, { face: 'direct-hit', n: 1 }, { face: 'special', n: 1 }, { face: 'blank', n: 2 }] },
+    { color: 'black', faces: [{ face: 'hit', n: 3 }, { face: 'special', n: 1 }, { face: 'blank', n: 2 }] },
+  ];
+  const Cell = ({ children, color }: { children: React.ReactNode; color?: string }) => (
+    <td style={{ padding: '4px 8px', borderBottom: '1px solid #2a2d34', color: color ?? '#cbc4b0', verticalAlign: 'top' }}>{children}</td>
+  );
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 6000 }}
+      onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: '#15171c', border: '2px solid #5a6b8c', borderRadius: 8,
+        padding: 22, maxWidth: 640, width: '94%', maxHeight: '88vh', overflowY: 'auto',
+        color: '#fff', boxShadow: '0 8px 32px rgba(0,0,0,0.8)' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
+          <h3 style={{ margin: 0, color: '#9fb3d9' }}>🎲 Dice key</h3>
+          <span style={{ color: '#888', fontSize: 12 }}>what each face does, and the odds</span>
+          <button className="tab-button" style={{ marginLeft: 'auto' }} onClick={onClose}>Close</button>
+        </div>
+
+        <div style={{ fontSize: 13, color: '#cbc4b0', marginBottom: 10 }}>
+          Units roll a number of <b style={{ color: '#ff8866' }}>red</b> and/or{' '}
+          <b style={{ color: '#ccc' }}>black</b> dice equal to their attack values; on a mission you
+          roll one die per matching skill icon. Each die has 6 faces:
+        </div>
+
+        {dice.map((d) => (
+          <div key={d.color} style={{ marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, color: d.color === 'red' ? '#ff8866' : '#ccc', marginBottom: 4 }}>
+              {d.color === 'red' ? 'Red die' : 'Black die'} (6 faces)
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+              {d.faces.flatMap((fc) =>
+                Array.from({ length: fc.n }, (_, i) => (
+                  <span key={`${fc.face}-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <DieFaceImg face={fc.face} color={d.color} />
+                  </span>
+                ))
+              )}
+              <span style={{ color: '#888', fontSize: 12, marginLeft: 6 }}>
+                {d.faces.map((fc) => `${fc.n}× ${fc.face}`).join(', ')}
+              </span>
+            </div>
+          </div>
+        ))}
+
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginTop: 10 }}>
+          <thead>
+            <tr style={{ color: '#9fb3d9', textAlign: 'left' }}>
+              <th style={{ padding: '4px 8px' }}>Face</th>
+              <th style={{ padding: '4px 8px' }}>In combat</th>
+              <th style={{ padding: '4px 8px' }}>On a mission</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <Cell color="#fff"><DieFaceImg face="hit" color="black" /> Hit</Cell>
+              <Cell>1 damage — can be blocked, and must be assigned to a unit of the matching die colour.</Cell>
+              <Cell>1 success.</Cell>
+            </tr>
+            <tr>
+              <Cell color="#fff"><DieFaceImg face="direct-hit" color="red" /> Direct hit</Cell>
+              <Cell>1 damage that <b>ignores blocks</b> and can be assigned to <b>any</b> unit (any colour). Only on red dice.</Cell>
+              <Cell>1 success (same as a hit).</Cell>
+            </tr>
+            <tr>
+              <Cell color="#fff"><DieFaceImg face="special" color="black" /> Special</Cell>
+              <Cell>No damage by itself — it fuels special abilities (tactic cards and special-die spend actions like rerolls or extra damage).</Cell>
+              <Cell><b>2 successes</b> — the most valuable mission face.</Cell>
+            </tr>
+            <tr>
+              <Cell color="#fff"><DieFaceImg face="blank" color="black" /> Blank</Cell>
+              <Cell>Nothing.</Cell>
+              <Cell>0 successes.</Cell>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style={{ fontSize: 12, color: '#9a937f', marginTop: 12, lineHeight: 1.5 }}>
+          <b>Quick odds.</b> In combat, both dice deal damage on <b>3 of 6 faces</b> (½): the red die's
+          come as 2 hits + 1 direct hit, the black die's as 3 hits. Red is better on attack because its
+          direct hit can't be blocked and ignores colour matching; black's damage is all blockable.
+          For <b>missions</b>, both dice average <b>5/6 of a success</b> per die (the special's double-count
+          balances black's extra hit), so red and black are equally good there. A mission rolls at most
+          5 red + 5 black dice.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UnitKeyModal({ G, unitStyle, onClose }: {
   G: GameState; unitStyle: UnitImageStyle; onClose: () => void;
 }) {
