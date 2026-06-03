@@ -6099,30 +6099,46 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           // Coruscant + remote systems have no loyalty hex, but a sabotage
           // badge still needs to be visible. Fall back to the planet position.
           if (!s.loyaltyMarkerPos && !state.sabotage) return null;
-          const mx = (s.loyaltyMarkerPos ?? s.boardPos).x * BOARD_SCALE;
-          const my = (s.loyaltyMarkerPos ?? s.boardPos).y * BOARD_SCALE;
+          // The authored loyaltyMarkerPos values sit a touch right of the
+          // printed loyalty hex (calibrated against the board art: ~22 native
+          // px). Nudge left so the disc lands centered on its hex (#109).
+          // Only when actually using loyaltyMarkerPos — the boardPos fallback
+          // (remote/Coruscant sabotage) needs no correction.
+          const LOYALTY_MARKER_DX = -22;
+          const usingLoyaltyPos = !!s.loyaltyMarkerPos;
+          const basePos = s.loyaltyMarkerPos ?? s.boardPos;
+          const mx = (basePos.x + (usingLoyaltyPos ? LOYALTY_MARKER_DX : 0)) * BOARD_SCALE;
+          const my = basePos.y * BOARD_SCALE;
           const markerSize = 36;
 
-          // Pick which marker to render. Per rr p.13: subjugation marker sits
-          // ON TOP of any loyalty marker. Render both (loyalty first, subjugation overlapping)
-          // so a Rebel-loyalty-underneath-subjugation case is visible.
+          // One disc per system, exactly on the hex. Per rr p.13 the subjugation
+          // marker sits ON TOP of any loyalty marker — so when subjugated we draw
+          // ONLY the subjugation disc (it fully covers the loyalty hex; the
+          // underneath loyalty is surfaced on hover below). Otherwise draw the
+          // single loyalty marker.
           const markers: { src: string; offsetX: number; offsetY: number; opacity?: number }[] = [];
-          if (state.loyalty === 'rebel') {
+          if (state.subjugated) {
+            markers.push({ src: 'MarkerLoyaltySubjugated.png', offsetX: 0, offsetY: 0 });
+          } else if (state.loyalty === 'rebel') {
             markers.push({ src: 'MarkerLoyaltyRebel.png', offsetX: 0, offsetY: 0 });
           } else if (state.loyalty === 'imperial') {
             markers.push({ src: 'MarkerLoyaltyEmpire.png', offsetX: 0, offsetY: 0 });
           }
-          if (state.subjugated) {
-            // Subjugation marker fully covers any underlying loyalty marker —
-            // matches the physical-board read where the disc sits on top of
-            // the loyalty hex. Underneath-loyalty info is still available in
-            // the hover/details panel; the visual was too cluttered with the
-            // previous offset layout.
-            markers.push({ src: 'MarkerLoyaltySubjugated.png', offsetX: 0, offsetY: 0 });
-          }
           if (markers.length === 0 && !state.sabotage) return null;
+          // Hover tooltip — lets the player read a system's loyalty at a glance,
+          // INCLUDING what's hidden under a subjugation disc (#109 request).
+          const sysName = s.name ?? s.id;
+          const loyaltyTip = state.subjugated
+            ? `${sysName} — Subjugated by the Empire${state.loyalty === 'rebel' ? ' (Rebel loyalty underneath)' : ' (neutral underneath)'}`
+            : state.loyalty === 'rebel' ? `${sysName} — Rebel loyalty`
+            : state.loyalty === 'imperial' ? `${sysName} — Imperial loyalty`
+            : `${sysName}`;
+          // Enable hover only when NOT picking a target on the map, so the
+          // tooltip can't swallow clicks meant for the system underneath.
+          const pickerActive = !!onSystemClick;
           return (
-            <g key={`loyalty-${s.id}`} pointerEvents="none">
+            <g key={`loyalty-${s.id}`} pointerEvents={pickerActive ? 'none' : 'auto'}>
+              {markers.length > 0 && <title>{loyaltyTip}</title>}
               {markers.map((m, i) => (
                 <image
                   key={i}
@@ -6145,9 +6161,8 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                 // The hover/detail preview still strikes each resource icon
                 // individually for the precise read.
                 const badgeR = 14;
-                const pos = s.loyaltyMarkerPos ?? s.boardPos;
-                const bx = pos.x * BOARD_SCALE;
-                const by = pos.y * BOARD_SCALE;
+                const bx = mx;
+                const by = my;
                 return (
                   <g>
                     <circle cx={bx} cy={by} r={badgeR}
