@@ -15,13 +15,18 @@ const INV_SCALE = NATIVE_W / DISPLAY_W;
 const MARKER_R = 22;
 const LS_KEY = 'rebellion-dev-systems-edits';
 
-type SystemEdits = Record<string, Partial<Pick<System, 'region' | 'resources' | 'buildSlot' | 'boardPos'>>>;
+type SystemEdits = Record<string, Partial<Pick<System, 'region' | 'resources' | 'buildSlot' | 'boardPos' | 'loyaltyMarkerPos'>>>;
+type MarkerKind = 'planet' | 'loyalty';
 
 function applyEdits(systems: System[], edits: SystemEdits): System[] {
   return systems.map((s) => {
     const e = edits[s.id];
     if (!e) return s;
-    return { ...s, ...e, boardPos: e.boardPos ?? s.boardPos };
+    return {
+      ...s, ...e,
+      boardPos: e.boardPos ?? s.boardPos,
+      loyaltyMarkerPos: e.loyaltyMarkerPos ?? s.loyaltyMarkerPos,
+    };
   });
 }
 
@@ -39,7 +44,7 @@ function saveEdits(edits: SystemEdits) {
 export default function PositionsTab() {
   const [data, setData] = useState<SystemsFile | null>(null);
   const [edits, setEdits] = useState<SystemEdits>({});
-  const [dragging, setDragging] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<{ id: string; kind: MarkerKind } | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Prefer the loaded .vmod board (the real art the player sees, e.g. v1.2e
@@ -73,33 +78,40 @@ export default function PositionsTab() {
 
   const effective = useMemo(() => data ? applyEdits(data.systems, edits) : null, [data, edits]);
 
-  const editedFlag = useCallback((s: System) => {
+  const planetEdited = useCallback((s: System) => {
     if (!data) return false;
     const orig = data.systems.find((o) => o.id === s.id);
     if (!orig) return false;
     return orig.boardPos.x !== s.boardPos.x || orig.boardPos.y !== s.boardPos.y;
   }, [data]);
+  const loyaltyEdited = useCallback((s: System) => {
+    if (!data) return false;
+    const orig = data.systems.find((o) => o.id === s.id);
+    if (!orig || !orig.loyaltyMarkerPos || !s.loyaltyMarkerPos) return false;
+    return orig.loyaltyMarkerPos.x !== s.loyaltyMarkerPos.x || orig.loyaltyMarkerPos.y !== s.loyaltyMarkerPos.y;
+  }, [data]);
+  const editedFlag = useCallback((s: System) => planetEdited(s) || loyaltyEdited(s), [planetEdited, loyaltyEdited]);
 
   const isDirty = useMemo(() => {
     if (!data || !effective) return false;
     return effective.some(editedFlag);
   }, [data, effective, editedFlag]);
 
-  const updateBoardPos = useCallback((id: string, x: number, y: number) => {
+  const updatePos = useCallback((id: string, kind: MarkerKind, x: number, y: number) => {
     if (!data) return;
     const orig = data.systems.find((s) => s.id === id);
     if (!orig) return;
     const newX = Math.round(x);
     const newY = Math.round(y);
+    const origPos = kind === 'planet' ? orig.boardPos : orig.loyaltyMarkerPos;
+    const field: 'boardPos' | 'loyaltyMarkerPos' = kind === 'planet' ? 'boardPos' : 'loyaltyMarkerPos';
     setEdits((prev) => {
       const next = { ...prev };
       const merged = { ...(next[id] ?? {}) };
-      const sameX = newX === orig.boardPos.x;
-      const sameY = newY === orig.boardPos.y;
-      if (sameX && sameY) {
-        delete merged.boardPos;
+      if (origPos && newX === origPos.x && newY === origPos.y) {
+        delete merged[field];
       } else {
-        merged.boardPos = { x: newX, y: newY };
+        merged[field] = { x: newX, y: newY };
       }
       if (Object.keys(merged).length === 0) delete next[id];
       else next[id] = merged;
@@ -116,8 +128,8 @@ export default function PositionsTab() {
     const nativeX = localX * INV_SCALE;
     const nativeY = localY * INV_SCALE;
     if (nativeX < 0 || nativeY < 0 || nativeX > NATIVE_W || nativeY > NATIVE_H) return;
-    updateBoardPos(dragging, nativeX, nativeY);
-  }, [dragging, updateBoardPos]);
+    updatePos(dragging.id, dragging.kind, nativeX, nativeY);
+  }, [dragging, updatePos]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -129,9 +141,10 @@ export default function PositionsTab() {
   const handleResetOne = (id: string) => {
     setEdits((prev) => {
       const next = { ...prev };
-      if (next[id]?.boardPos) {
+      if (next[id]?.boardPos || next[id]?.loyaltyMarkerPos) {
         const merged = { ...next[id] };
         delete merged.boardPos;
+        delete merged.loyaltyMarkerPos;
         if (Object.keys(merged).length === 0) delete next[id];
         else next[id] = merged;
       }
@@ -184,9 +197,12 @@ export default function PositionsTab() {
       <h2 style={{ marginTop: 0 }}>Positions</h2>
 
       <div className="meta-notes">
-        <strong>What this is:</strong> the .vmod's <code>boardPos</code> coordinates came from
-        drag-target boxes for game pieces, not the centers of planet artwork. Drag each marker
-        onto its planet's center to fix it everywhere.
+        <strong>What this is:</strong> drag each marker onto the real board to calibrate it.
+        The big <span style={{ color: '#ffd54a' }}>yellow</span> marker is the planet center
+        (<code>boardPos</code> — drives leader pips &amp; unit stacks); the smaller{' '}
+        <span style={{ color: '#5aaaff' }}>blue</span> marker is the printed loyalty hex
+        (<code>loyaltyMarkerPos</code> — where the loyalty/subjugation disc sits). Drop each on
+        the matching spot, then Export. Repositioned markers turn green.
       </div>
 
       <div style={{ marginBottom: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -201,7 +217,7 @@ export default function PositionsTab() {
         </span>
         {dragging && (
           <span style={{ marginLeft: 'auto', color: '#ff7ab8', fontWeight: 600, fontSize: 13 }}>
-            Dragging: {dragging}
+            Dragging: {dragging.id} ({dragging.kind === 'planet' ? 'planet' : 'loyalty marker'})
           </span>
         )}
       </div>
@@ -276,34 +292,65 @@ export default function PositionsTab() {
               const x = s.boardPos.x * SCALE;
               const y = s.boardPos.y * SCALE;
               const isHover = hoverId === s.id;
-              const isDragging = dragging === s.id;
-              const isEdited = editedFlag(s);
+              const draggingPlanet = dragging?.id === s.id && dragging.kind === 'planet';
+              const draggingLoyalty = dragging?.id === s.id && dragging.kind === 'loyalty';
+              const planetIsEdited = planetEdited(s);
+              const loyaltyIsEdited = loyaltyEdited(s);
+              // Loyalty hex marker (smaller, blue) — only for systems that have one.
+              const lp = s.loyaltyMarkerPos;
+              const lx = lp ? lp.x * SCALE : 0;
+              const ly = lp ? lp.y * SCALE : 0;
               return (
                 <g key={s.id}>
-                  {(isHover || isDragging) && (
+                  {(isHover || draggingPlanet) && (
                     <>
                       <line x1={x - 30} y1={y} x2={x + 30} y2={y} stroke="rgba(255,215,80,0.5)" strokeWidth={1} pointerEvents="none" />
                       <line x1={x} y1={y - 30} x2={x} y2={y + 30} stroke="rgba(255,215,80,0.5)" strokeWidth={1} pointerEvents="none" />
                     </>
                   )}
+                  {/* Planet center (boardPos) — yellow/green */}
                   <circle
                     cx={x} cy={y} r={MARKER_R}
                     style={{
-                      fill: isEdited ? 'rgba(80, 220, 120, 0.45)' : 'rgba(255, 215, 80, 0.35)',
-                      stroke: isDragging ? '#ff7ab8' : isHover ? '#ffd54a' : (isEdited ? 'rgba(80, 220, 120, 0.9)' : 'rgba(255, 215, 80, 0.6)'),
-                      strokeWidth: isDragging ? 3 : 2,
+                      fill: planetIsEdited ? 'rgba(80, 220, 120, 0.45)' : 'rgba(255, 215, 80, 0.35)',
+                      stroke: draggingPlanet ? '#ff7ab8' : isHover ? '#ffd54a' : (planetIsEdited ? 'rgba(80, 220, 120, 0.9)' : 'rgba(255, 215, 80, 0.6)'),
+                      strokeWidth: draggingPlanet ? 3 : 2,
                       cursor: 'grab',
                       pointerEvents: 'all',
                     }}
                     onMouseEnter={() => setHoverId(s.id)}
                     onMouseLeave={() => setHoverId(null)}
-                    onMouseDown={(e) => { e.preventDefault(); setDragging(s.id); }}
+                    onMouseDown={(e) => { e.preventDefault(); setDragging({ id: s.id, kind: 'planet' }); }}
                   />
+                  {/* Loyalty hex marker (loyaltyMarkerPos) — blue, draggable */}
+                  {lp && (
+                    <>
+                      {draggingLoyalty && (
+                        <>
+                          <line x1={lx - 30} y1={ly} x2={lx + 30} y2={ly} stroke="rgba(90,170,255,0.6)" strokeWidth={1} pointerEvents="none" />
+                          <line x1={lx} y1={ly - 30} x2={lx} y2={ly + 30} stroke="rgba(90,170,255,0.6)" strokeWidth={1} pointerEvents="none" />
+                        </>
+                      )}
+                      <circle
+                        cx={lx} cy={ly} r={MARKER_R * 0.7}
+                        style={{
+                          fill: loyaltyIsEdited ? 'rgba(80, 220, 120, 0.5)' : 'rgba(90, 170, 255, 0.4)',
+                          stroke: draggingLoyalty ? '#ff7ab8' : (loyaltyIsEdited ? 'rgba(80,220,120,0.95)' : 'rgba(90,170,255,0.95)'),
+                          strokeWidth: draggingLoyalty ? 3 : 2,
+                          cursor: 'grab',
+                          pointerEvents: 'all',
+                        }}
+                        onMouseDown={(e) => { e.preventDefault(); setDragging({ id: s.id, kind: 'loyalty' }); }}
+                      >
+                        <title>{s.name} — loyalty marker</title>
+                      </circle>
+                    </>
+                  )}
                   <text
                     x={x} y={y + MARKER_R + 12}
                     textAnchor="middle"
                     className="system-label"
-                    opacity={isHover || isDragging || isEdited ? 1 : 0.5}
+                    opacity={isHover || draggingPlanet || draggingLoyalty || planetIsEdited || loyaltyIsEdited ? 1 : 0.5}
                     style={{ pointerEvents: 'none' }}
                   >
                     {s.name}
