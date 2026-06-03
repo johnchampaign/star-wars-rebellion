@@ -6099,16 +6099,17 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           // Coruscant + remote systems have no loyalty hex, but a sabotage
           // badge still needs to be visible. Fall back to the planet position.
           if (!s.loyaltyMarkerPos && !state.sabotage) return null;
-          // The authored loyaltyMarkerPos values are actually well-centered on
-          // the printed loyalty hex (verified against the board art). The
-          // earlier "too far right" report was really a SIZE problem: a 36px
-          // disc is wider than the ~30px hex, so it spilled past the hex's
-          // right edge and read as both oversized and right-shifted (#109 +
-          // follow-up). Keep the authored position; shrink the disc to hex size.
+          // Marker size is tied to the ACTUAL printed loyalty hex, measured
+          // from the board art (76 native px wide, consistent across systems),
+          // and scaled with the board. A fixed pixel size looked "too large"
+          // because it didn't track the board's display scale — the marker has
+          // to scale with the map, not stay constant (#109 follow-up). The disc
+          // now exactly matches the hex it sits in.
+          const HEX_NATIVE_W = 76;
+          const markerSize = HEX_NATIVE_W * BOARD_SCALE;
           const basePos = s.loyaltyMarkerPos ?? s.boardPos;
           const mx = basePos.x * BOARD_SCALE;
           const my = basePos.y * BOARD_SCALE;
-          const markerSize = 30;
 
           // One disc per system, exactly on the hex. Per rr p.13 the subjugation
           // marker sits ON TOP of any loyalty marker — so when subjugated we draw
