@@ -402,7 +402,7 @@
       "isStarting": false,
       "isProject": true,
       "skill": "logistics",
-      "skillCost": 3,
+      "skillCost": 1,
       "isAttempt": false,
       "leaderPortrait": null,
       "effectKey": "",
