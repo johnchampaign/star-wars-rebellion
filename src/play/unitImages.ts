@@ -79,10 +79,18 @@ export function unitImageUrl(typeId: string, base: string, style: UnitImageStyle
   return `${base}/token/${typeId}.png${UNIT_IMG_BUST}`;
 }
 
-export function groupByType<T extends { typeId: string }>(units: T[]): { typeId: string; count: number }[] {
-  const counts = new Map<string, number>();
-  for (const u of units) counts.set(u.typeId, (counts.get(u.typeId) ?? 0) + 1);
-  return [...counts.entries()].map(([typeId, count]) => ({ typeId, count }));
+export function groupByType<T extends { typeId: string; side?: string }>(
+  units: T[],
+): { typeId: string; count: number; side?: string }[] {
+  // Capture the owning side per type (a unit type only ever belongs to one
+  // faction) so the map can color rebel vs empire stacks distinctly.
+  const counts = new Map<string, { count: number; side?: string }>();
+  for (const u of units) {
+    const e = counts.get(u.typeId) ?? { count: 0, side: u.side };
+    e.count += 1;
+    counts.set(u.typeId, e);
+  }
+  return [...counts.entries()].map(([typeId, e]) => ({ typeId, count: e.count, side: e.side }));
 }
 
 export function groupTypeIds(typeIds: string[]): { typeId: string; count: number }[] {

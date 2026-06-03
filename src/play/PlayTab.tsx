@@ -5582,7 +5582,7 @@ const UNIT_ABBREV: Record<string, string> = {
 
 function UnitCluster({ centerX, centerY, groups, iconSize, maxWidth }: {
   centerX: number; centerY: number;
-  groups: { typeId: string; count: number }[];
+  groups: { typeId: string; count: number; side?: string }[];
   iconSize: number;
   maxWidth?: number;
 }) {
@@ -5631,11 +5631,17 @@ function UnitCluster({ centerX, centerY, groups, iconSize, maxWidth }: {
              *  on the strict-deploy map don't appear as just an empty
              *  square (#18). Count is the only way to distinguish "1
              *  of this type here" from "background tile noise" when the
-             *  icon image is invisible. */}
+             *  icon image is invisible. The badge is colored by side — blue
+             *  for Rebel, red for Empire — so the two factions are
+             *  distinguishable at a glance without clicking into a system
+             *  (player report #107 / MightyFaben forum feedback). */}
             <g>
               <circle
                 cx={ix + iconSize - 3} cy={iy + iconSize - 3} r={6}
-                style={{ fill: '#000', stroke: '#fff', strokeWidth: 0.5 }}
+                style={{
+                  fill: g.side === 'Rebel' ? '#2b6cb0' : g.side === 'Empire' ? '#b3322c' : '#000',
+                  stroke: '#fff', strokeWidth: 0.75,
+                }}
               />
               <text
                 x={ix + iconSize - 3} y={iy + iconSize - 1}
@@ -6262,8 +6268,19 @@ function LeaderRoster({ G, side, humanSide }: { G: GameState; side: Side; humanS
                   {l.name}
                 </div>
                 <div style={{ fontSize: 9.5, color: '#9a937f', whiteSpace: 'nowrap' }}>
-                  D{l.skills.diplomacy} I{l.skills.intel} O{l.skills.specOps} L{l.skills.logistics}
-                  {' · '}<span style={{ color: '#cbc4b0' }}>S{l.tacticValues.space}/G{l.tacticValues.ground}</span>
+                  {/* Dim letters, bright numbers — keeps the stat line legible
+                   *  even when a value is 0, where "I0 O0" used to smear into
+                   *  one grey blob (MightyFaben forum feedback). */}
+                  {([['D', l.skills.diplomacy], ['I', l.skills.intel], ['O', l.skills.specOps], ['L', l.skills.logistics]] as const).map(([k, v], i) => (
+                    <span key={k}>
+                      {i > 0 ? ' ' : ''}
+                      <span style={{ color: '#6f6a5c' }}>{k}</span>
+                      <span style={{ color: '#e0dac8', fontWeight: 700 }}>{v}</span>
+                    </span>
+                  ))}
+                  {' · '}
+                  <span style={{ color: '#6f6a5c' }}>S</span><span style={{ color: '#cbc4b0', fontWeight: 700 }}>{l.tacticValues.space}</span>
+                  <span style={{ color: '#6f6a5c' }}>/G</span><span style={{ color: '#cbc4b0', fontWeight: 700 }}>{l.tacticValues.ground}</span>
                 </div>
                 <div style={{ fontSize: 9.5, color: st.color, whiteSpace: 'nowrap',
                   overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -7112,6 +7129,12 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
                 if (ld && need) total += ld.skills[need as keyof typeof ld.skills] ?? 0;
               }
               const meets = need ? total >= card.skillCost : true;
+              // Portrait bonus: if the pictured leader is among the assigned
+              // leaders, this mission gets +2 automatic successes. It was shown
+              // during assignment but vanished at reveal time, even though it's
+              // key for deciding play order (MightyFaben forum feedback).
+              const portraitId = card.leaderPortrait ?? null;
+              const portraitActive = !!(portraitId && (am.leaderIds as string[]).includes(portraitId));
               return (
                 <button
                   key={am.missionId}
@@ -7130,6 +7153,11 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
                   <div style={{ fontSize: 10, opacity: 0.85 }}>
                     {leaderNames} · {need ? `${need} ${total}/${card.skillCost}` : '(no skill)'} {!meets && <span style={{ color: '#ff8866' }}>insufficient</span>}
                   </div>
+                  {portraitActive && (
+                    <div style={{ fontSize: 10, color: isSel ? '#5a4500' : '#ffd54a', fontWeight: 700 }}>
+                      🖼 +2 portrait ({(portraitId && G.catalog.leaders[portraitId]?.name) || portraitId})
+                    </div>
+                  )}
                 </button>
               );
             })}
@@ -9341,7 +9369,7 @@ function TacticKeyModal({ G, onClose }: { G: GameState; onClose: () => void }) {
           a <b>special (★)</b> to either draw another tactic card or play one that needs a ★. Cards aren't
           revealed to your opponent until played. <b>At the end of every combat, both players discard
           their whole hand and ALL tactic cards are shuffled back into the decks</b> — so you never keep
-          cards between combats. The only reason to hold a card is for a later round of the <i>same</i>
+          cards between combats. The only reason to hold a card is for a later round of the <i>same</i>{' '}
           fight; there's no point hoarding one for next time.
         </div>
         <Group title="Space tactic cards" cards={space} accent="#7fb0ff" />
