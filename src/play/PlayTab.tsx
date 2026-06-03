@@ -3532,12 +3532,12 @@ function TopBottomCardPickModal({ G, cardIds, color, title, blurb, topLabel, bot
   /** Map a cardId to display fields. Defaults to objective lookup so
    *  existing Infiltration / Covert callers keep working without
    *  passing this prop. Pass a different lookup for project cards. */
-  lookupCard?: (cardId: string) => { name: string; image?: string; reputation?: number };
+  lookupCard?: (cardId: string) => { name: string; image?: string; reputation?: number; text?: string };
   onConfirm: (topCardId: string, bottomCardId: string) => void;
 }) {
   const defaultLookup = (cardId: string) => {
     const o = G.catalog.objectives[cardId];
-    return { name: o?.name ?? cardId, image: o?.image, reputation: o?.reputation };
+    return { name: o?.name ?? cardId, image: o?.image, reputation: o?.reputation, text: o?.rulesText };
   };
   const lookup = lookupCard ?? defaultLookup;
   void G; // satisfy unused-locals when lookupCard is provided
@@ -3600,6 +3600,14 @@ function TopBottomCardPickModal({ G, cardIds, color, title, blurb, topLabel, bot
         {typeof info.reputation === 'number' && (
           <div style={{ fontSize: 10, color: '#ffd54a', fontWeight: 700 }}>
             +{info.reputation} reputation
+          </div>
+        )}
+        {/* Always show the card's text — in production the card art is
+         *  stripped to a placeholder, so the image alone tells the player
+         *  nothing about what the card does (player report #105). */}
+        {info.text && (
+          <div style={{ fontSize: 11, color: '#bdb8a8', textAlign: 'center', lineHeight: 1.35, maxWidth: 200 }}>
+            {info.text}
           </div>
         )}
       </div>
@@ -5681,6 +5689,12 @@ function empireSearchedSystems(G: GameState): Set<string> {
   for (const [id, ss] of Object.entries(G.map.systems)) {
     if (id === G.rebelBaseSystemId) continue;
     if (ss.subjugated || ss.loyalty === 'imperial') out.add(id);
+    // An Imperial presence rules a system out: if the base were here it would
+    // already be revealed (RAW: the base reveals when the Empire has a unit in
+    // its system). So any system the Empire occupies that ISN'T the revealed
+    // base cannot be the base (player report #106 — moved troops to Hoth,
+    // expected it to be marked).
+    if (ss.units.some((u) => u.side === 'Empire')) out.add(id);
   }
   out.delete(G.rebelBaseSystemId);
   // Red (probe) rule-out wins over yellow (searched): drop any system already

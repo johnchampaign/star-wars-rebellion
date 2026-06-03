@@ -3706,6 +3706,33 @@ function promoteNextDeployPick(G: GameState): boolean {
   while (r.pendingDeployPicks.length > 0) {
     const next = r.pendingDeployPicks[0];
     const f = faction(G, next.side);
+    // Death Star completion (RAW): the finished Death Star is placed in the
+    // system where it was being built, replacing the "under construction"
+    // marker — it is NOT a free-choice deploy. Without this the marker stayed
+    // on the board forever after completion (player report #103).
+    if (next.typeId === 'death-star') {
+      let dsucSys: SystemId | null = null;
+      let dsucIdx = -1;
+      for (const [sid, ss] of Object.entries(G.map.systems)) {
+        const idx = ss.units.findIndex(
+          (u) => u.side === 'Empire' && u.typeId === 'death-star-under-construction',
+        );
+        if (idx >= 0) { dsucSys = sid; dsucIdx = idx; break; }
+      }
+      if (dsucSys) {
+        // Remove the marker (completion, not destruction — no combat/plans
+        // side-effects) and deploy the real Death Star in its place.
+        const removed = G.map.systems[dsucSys].units.splice(dsucIdx, 1)[0];
+        log(G, { kind: 'death-star-completed', side: 'Empire', payload: {
+          systemId: dsucSys, replacedUnit: removed.instanceId,
+        }});
+        M.deployUnit(G, 'Empire', 'death-star', dsucSys);
+        r.pendingDeployPicks.shift();
+        continue;
+      }
+      // No marker found (e.g. it was destroyed mid-build) — fall through to a
+      // normal deploy so the unit isn't silently dropped.
+    }
     const candidates = applyDeployCap(G, next.side, legalDeployTargets(G, next.side));
     if (candidates.length === 0) {
       // RAW: returns to slot 1 of build queue. (Includes the case where
@@ -4346,6 +4373,19 @@ function applyAssignmentActionCardEffect(
       const projectCandidates = f.missionDeck.filter((mid) => G.catalog.missions[mid]?.isProject);
       if (projectCandidates.length === 0) {
         log(G, { kind: 'action-card-noop', side: 'Empire', payload: { cardId, reason: 'no-projects-in-deck' } });
+        // Don't fail silently (player report #104): the card searches the
+        // mission deck for PROJECT cards specifically — regular missions in
+        // the deck don't count. If every project has already been drawn into
+        // hand, there's nothing in the deck to search.
+        const inHand = f.missionHand.filter((mid) => G.catalog.missions[mid]?.isProject).length;
+        pushNotice(
+          G,
+          `proceeding-as-planned-no-projects-t${G.timeMarker}`,
+          'Proceeding As Planned — no project to search',
+          inHand > 0
+            ? `There are no project cards left in your mission deck to search — all ${inHand} project card${inHand === 1 ? ' is' : 's are'} already in your hand. The leader was still placed.`
+            : 'There are no project cards in your mission deck to search right now. The leader was still placed.',
+        );
         break;
       }
       G.pendingChoice = {
