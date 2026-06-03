@@ -72,6 +72,34 @@ function sideColor(s: Side): string {
   return s === 'Rebel' ? '#aae0ff' : '#ffaaaa';
 }
 
+/** Log the exact board image the app is rendering (resolved filename + bytes
+ *  + SHA-256 prefix), so we can confirm which VASSAL board is live without
+ *  guessing. Reference: v1.2e Map-Redux.png = 5.54 MB / sha256 4d3d404754d6a548;
+ *  v1.02d Map.png = 10.81 MB / sha256 1a1ef9aff451258d. */
+async function logBoardIdentity(): Promise<void> {
+  try {
+    const files = getCachedFilenames();
+    const resolved =
+      files.find((f) => /map-redux\.png/i.test(f)) ||
+      files.find((f) => /(^|\/)map\.png$/i.test(f)) ||
+      '(no board in cache — stripped placeholder)';
+    const url = mapImageUrl();
+    const blob = await (await fetch(url)).blob();
+    const buf = await blob.arrayBuffer();
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buf)))
+      .slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
+    const sizeMB = (blob.size / 1048576).toFixed(2);
+    const known = hash === '4d3d404754d6a548' ? ' [v1.2e Map-Redux ✓]'
+      : hash === '1a1ef9aff451258d' ? ' [v1.02d Map.png — OLD]'
+      : ' [unrecognized]';
+    // eslint-disable-next-line no-console
+    console.info(`[board-image] resolved=${resolved} size=${sizeMB}MB sha256=${hash}${known}`);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.info('[board-image] could not read board image', e);
+  }
+}
+
 /** Does the given side own the current pendingChoice? Used by runAILoop
  *  to decide whether to wake the AI when the choice fires during the
  *  HUMAN's turn (e.g. Empire reveals a mission and Rebel auto-resolves
@@ -340,6 +368,7 @@ export default function PlayTab() {
       }
       await preloadAllBlobUrls();
       if (!cancelled) { setTick((t) => t + 1); checkStaleModule(); }
+      logBoardIdentity();
     })();
     return () => { cancelled = true; };
   }, [checkStaleModule]);
