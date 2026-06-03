@@ -14,7 +14,8 @@
       "Edited via dev regions tab at 2026-05-20T00:23:29.903Z.",
       "Edited via dev resources tab at 2026-05-20T00:35:15.345Z.",
       "Edited via dev positions tab at 2026-05-20T10:59:30.654Z.",
-      "loyaltyMarkerPos: coordinates of the printed loyalty hex on the board (null for remote systems and Coruscant). Source: vmod_extracted/buildFile LoyaltyMarker* SetupStack entries."
+      "loyaltyMarkerPos: coordinates of the printed loyalty hex on the board (null for remote systems and Coruscant). Source: vmod_extracted/buildFile LoyaltyMarker* SetupStack entries.",
+      "Edited via dev positions tab at 2026-06-03T22:06:33.813Z."
     ]
   },
   "systems": [
@@ -31,13 +32,13 @@
         }
       ],
       "boardPos": {
-        "x": 1317,
-        "y": 1237
+        "x": 1328,
+        "y": 1226
       },
       "buildSlot": 1,
       "loyaltyMarkerPos": {
-        "x": 1369,
-        "y": 1285
+        "x": 1384,
+        "y": 1290
       }
     },
     {
@@ -53,13 +54,13 @@
         }
       ],
       "boardPos": {
-        "x": 2631,
-        "y": 1177
+        "x": 2600,
+        "y": 1178
       },
       "buildSlot": 1,
       "loyaltyMarkerPos": {
-        "x": 2683,
-        "y": 1229
+        "x": 2654,
+        "y": 1226
       }
     },
     {
@@ -75,12 +76,12 @@
         }
       ],
       "boardPos": {
-        "x": 1713,
-        "y": 312
+        "x": 1696,
+        "y": 300
       },
       "buildSlot": 1,
       "loyaltyMarkerPos": {
-        "x": 1771,
+        "x": 1752,
         "y": 356
       }
     },
@@ -101,13 +102,13 @@
         }
       ],
       "boardPos": {
-        "x": 1837,
-        "y": 1081
+        "x": 1814,
+        "y": 1066
       },
       "buildSlot": 2,
       "loyaltyMarkerPos": {
-        "x": 1883,
-        "y": 1114
+        "x": 1878,
+        "y": 1120
       }
     },
     {
@@ -127,13 +128,13 @@
         }
       ],
       "boardPos": {
-        "x": 2122,
-        "y": 1347
+        "x": 2090,
+        "y": 1358
       },
       "buildSlot": 3,
       "loyaltyMarkerPos": {
-        "x": 2164,
-        "y": 1434
+        "x": 2152,
+        "y": 1448
       }
     },
     {
@@ -149,8 +150,8 @@
         }
       ],
       "boardPos": {
-        "x": 1724,
-        "y": 1401
+        "x": 1704,
+        "y": 1420
       },
       "buildSlot": 1,
       "loyaltyMarkerPos": null
@@ -163,8 +164,8 @@
       "isCoruscant": false,
       "resources": [],
       "boardPos": {
-        "x": 2483,
-        "y": 857
+        "x": 2474,
+        "y": 842
       },
       "buildSlot": null,
       "loyaltyMarkerPos": null
@@ -177,8 +178,8 @@
       "isCoruscant": false,
       "resources": [],
       "boardPos": {
-        "x": 265,
-        "y": 1035
+        "x": 246,
+        "y": 1050
       },
       "buildSlot": null,
       "loyaltyMarkerPos": null
@@ -205,8 +206,8 @@
       "isCoruscant": false,
       "resources": [],
       "boardPos": {
-        "x": 2617,
-        "y": 1455
+        "x": 2600,
+        "y": 1462
       },
       "buildSlot": null,
       "loyaltyMarkerPos": null
@@ -224,13 +225,13 @@
         }
       ],
       "boardPos": {
-        "x": 641,
-        "y": 490
+        "x": 644,
+        "y": 475
       },
       "buildSlot": 1,
       "loyaltyMarkerPos": {
-        "x": 691,
-        "y": 537
+        "x": 698,
+        "y": 531
       }
     },
     {
@@ -250,13 +251,13 @@
         }
       ],
       "boardPos": {
-        "x": 2505,
+        "x": 2496,
         "y": 342
       },
       "buildSlot": 2,
       "loyaltyMarkerPos": {
-        "x": 2554,
-        "y": 386
+        "x": 2544,
+        "y": 392
       }
     },
     {
@@ -267,8 +268,8 @@
       "isCoruscant": false,
       "resources": [],
       "boardPos": {
-        "x": 2925,
-        "y": 1167
+        "x": 2928,
+        "y": 1178
       },
       "buildSlot": null,
       "loyaltyMarkerPos": null
@@ -281,8 +282,8 @@
       "isCoruscant": false,
       "resources": [],
       "boardPos": {
-        "x": 711,
-        "y": 1433
+        "x": 700,
+        "y": 1442
       },
       "buildSlot": null,
       "loyaltyMarkerPos": null
@@ -326,13 +327,13 @@
         }
       ],
       "boardPos": {
-        "x": 1029,
-        "y": 156
+        "x": 1000,
+        "y": 151
       },
       "buildSlot": 1,
       "loyaltyMarkerPos": {
-        "x": 1077,
-        "y": 206
+        "x": 1056,
+        "y": 205
       }
     },
     {
@@ -348,8 +349,8 @@
         }
       ],
       "boardPos": {
-        "x": 1745,
-        "y": 809
+        "x": 1738,
+        "y": 802
       },
       "buildSlot": 1,
       "loyaltyMarkerPos": {
@@ -374,13 +375,13 @@
         }
       ],
       "boardPos": {
-        "x": 1089,
-        "y": 1003
+        "x": 1086,
+        "y": 1010
       },
       "buildSlot": 1,
       "loyaltyMarkerPos": {
-        "x": 1139,
-        "y": 1080
+        "x": 1132,
+        "y": 1086
       }
     },
     {
@@ -400,13 +401,13 @@
         }
       ],
       "boardPos": {
-        "x": 516,
-        "y": 203
+        "x": 460,
+        "y": 121
       },
       "buildSlot": 3,
       "loyaltyMarkerPos": {
-        "x": 538,
-        "y": 217
+        "x": 516,
+        "y": 199
       }
     },
     {
@@ -426,13 +427,13 @@
         }
       ],
       "boardPos": {
-        "x": 2825,
-        "y": 881
+        "x": 2816,
+        "y": 854
       },
       "buildSlot": 2,
       "loyaltyMarkerPos": {
-        "x": 2872,
-        "y": 923
+        "x": 2866,
+        "y": 910
       }
     },
     {
@@ -452,13 +453,13 @@
         }
       ],
       "boardPos": {
-        "x": 531,
-        "y": 1193
+        "x": 510,
+        "y": 1212
       },
       "buildSlot": 2,
       "loyaltyMarkerPos": {
-        "x": 579,
-        "y": 1275
+        "x": 566,
+        "y": 1290
       }
     },
     {
@@ -478,12 +479,12 @@
         }
       ],
       "boardPos": {
-        "x": 2233,
-        "y": 633
+        "x": 2208,
+        "y": 634
       },
       "buildSlot": 1,
       "loyaltyMarkerPos": {
-        "x": 2275,
+        "x": 2264,
         "y": 704
       }
     },
@@ -504,13 +505,13 @@
         }
       ],
       "boardPos": {
-        "x": 1369,
-        "y": 140
+        "x": 1356,
+        "y": 155
       },
       "buildSlot": 1,
       "loyaltyMarkerPos": {
-        "x": 1417,
-        "y": 243
+        "x": 1398,
+        "y": 241
       }
     },
     {
@@ -535,8 +536,8 @@
       },
       "buildSlot": 2,
       "loyaltyMarkerPos": {
-        "x": 1044,
-        "y": 1344
+        "x": 1034,
+        "y": 1346
       }
     },
     {
@@ -552,13 +553,13 @@
         }
       ],
       "boardPos": {
-        "x": 1985,
-        "y": 434
+        "x": 1962,
+        "y": 420
       },
       "buildSlot": 1,
       "loyaltyMarkerPos": {
-        "x": 2037,
-        "y": 486
+        "x": 2018,
+        "y": 490
       }
     },
     {
@@ -574,13 +575,13 @@
         }
       ],
       "boardPos": {
-        "x": 2731,
-        "y": 100
+        "x": 2710,
+        "y": 98
       },
       "buildSlot": 1,
       "loyaltyMarkerPos": {
-        "x": 2787,
-        "y": 143
+        "x": 2768,
+        "y": 140
       }
     },
     {
@@ -596,13 +597,13 @@
         }
       ],
       "boardPos": {
-        "x": 943,
-        "y": 474
+        "x": 950,
+        "y": 467
       },
       "buildSlot": 1,
       "loyaltyMarkerPos": {
-        "x": 1003,
-        "y": 513
+        "x": 1014,
+        "y": 517
       }
     },
     {
@@ -622,13 +623,13 @@
         }
       ],
       "boardPos": {
-        "x": 2243,
-        "y": 1051
+        "x": 2228,
+        "y": 1030
       },
       "buildSlot": 2,
       "loyaltyMarkerPos": {
-        "x": 2292,
-        "y": 1101
+        "x": 2284,
+        "y": 1086
       }
     },
     {
@@ -639,8 +640,8 @@
       "isCoruscant": false,
       "resources": [],
       "boardPos": {
-        "x": 2165,
-        "y": 92
+        "x": 2138,
+        "y": 87
       },
       "buildSlot": null,
       "loyaltyMarkerPos": null
@@ -658,8 +659,8 @@
         }
       ],
       "boardPos": {
-        "x": 1271,
-        "y": 514
+        "x": 1260,
+        "y": 509
       },
       "buildSlot": 2,
       "loyaltyMarkerPos": {
@@ -684,13 +685,13 @@
         }
       ],
       "boardPos": {
-        "x": 2865,
-        "y": 499
+        "x": 2852,
+        "y": 468
       },
       "buildSlot": 3,
       "loyaltyMarkerPos": {
-        "x": 2910,
-        "y": 571
+        "x": 2900,
+        "y": 554
       }
     },
     {
@@ -701,8 +702,8 @@
       "isCoruscant": false,
       "resources": [],
       "boardPos": {
-        "x": 377,
-        "y": 633
+        "x": 382,
+        "y": 629
       },
       "buildSlot": null,
       "loyaltyMarkerPos": null
