@@ -648,7 +648,13 @@ export function activateSystem(
   // Cannot move units out of a system that already contains your own leader (rr p.2).
   for (const order of moveOrders) {
     const youHaveLeaderHere = (f.leadersOnBoard[order.fromSystemId] ?? []).length > 0;
-    if (youHaveLeaderHere) {
+    // Greejatus's action card ("Janus does not stop units from moving out of
+    // the system this turn") exempts the system he was placed in — without
+    // this the flag was set but ignored, so the gained Stormtroopers stayed
+    // pinned (player report: Doppeldecker).
+    const greejatusExempt = side === 'Empire'
+      && G.actionCardFlags?.greejatusFreeMoveSystemId === order.fromSystemId;
+    if (youHaveLeaderHere && !greejatusExempt) {
       return { ok: false, reason: `friendly-leader-blocks-source:${order.fromSystemId}` };
     }
     // Adjacency check (rr p.9 — units can pass region borders but not impassable).

@@ -1078,6 +1078,13 @@ export default function PlayTab() {
         onProbeHover={humanSide === 'Empire' ? setProbeHover : undefined}
       />
 
+      {/* Leader rosters sit right above the map so you can check them without
+          scrolling to the bottom of the page (request: MightyFaben). */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, margin: '8px 0' }}>
+        <LeaderRoster G={G} side="Rebel" humanSide={humanSide} />
+        <LeaderRoster G={G} side="Empire" humanSide={humanSide} />
+      </div>
+
       <Board
         G={G}
         systems={systemsRef.current}
@@ -6405,7 +6412,6 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
           );
         })()} />
       </div>
-      <LeaderRoster G={G} side={side} humanSide={humanSide} />
     </div>
   );
 }
