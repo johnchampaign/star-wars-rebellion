@@ -20,7 +20,7 @@ export function logForSide(G: GameState, side: Side, kind: string, payload?: Rec
 export function pushNotice(G: GameState, id: string, title: string, details?: string): void {
   if (!G.pendingNotices) G.pendingNotices = [];
   if (G.pendingNotices.some((n) => n.id === id)) return;
-  G.pendingNotices.push({ id, title, details });
+  G.pendingNotices.push({ id, title, details, kind: 'info' });
   log(G, { kind: 'notice', payload: { id, title } });
 }
 
@@ -36,6 +36,6 @@ export function notImplemented(G: GameState, id: string, title: string, details?
     log(G, { kind: 'not-implemented', payload: { id, title, deduped: true } });
     return;
   }
-  G.pendingNotices.push({ id, title, details });
+  G.pendingNotices.push({ id, title, details, kind: 'notImplemented' });
   log(G, { kind: 'not-implemented', payload: { id, title } });
 }

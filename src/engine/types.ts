@@ -1211,7 +1211,10 @@ export type GameState = {
   // Queue of "not yet implemented" notices. The play tab pops a modal for each
   // and clears them on acknowledgement. Lets us surface known gaps to the
   // tester immediately rather than have them logged as bugs.
-  pendingNotices?: { id: string; title: string; details?: string }[];
+  // `kind` distinguishes real game-info notices (pushNotice) from unfinished
+  // code-path notices (notImplemented) so the UI can title each correctly.
+  // Absent ⇒ treat as 'notImplemented' for back-compat with old logs.
+  pendingNotices?: { id: string; title: string; details?: string; kind?: 'info' | 'notImplemented' }[];
 
   // Persistent leader attachments ("attachment rings", RR p.3). Per the
   // rulebook, a leader can have only one ring at a time — a new ring replaces

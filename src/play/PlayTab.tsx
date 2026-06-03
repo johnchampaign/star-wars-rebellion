@@ -4922,9 +4922,14 @@ function MissionReportModal({ G, report, onDismiss }: {
 }
 
 function NotImplementedModal({ notices, onDismiss }: {
-  notices: { id: string; title: string; details?: string }[];
+  notices: { id: string; title: string; details?: string; kind?: 'info' | 'notImplemented' }[];
   onDismiss: () => void;
 }) {
+  // Real game-info notices (e.g. Local Rumors region intel) must not be framed
+  // as "not yet implemented" bugs. Absent kind ⇒ legacy not-implemented notice.
+  const infoNotices = notices.filter((n) => n.kind === 'info');
+  const gapNotices = notices.filter((n) => n.kind !== 'info');
+  const allInfo = gapNotices.length === 0;
   return (
     <div
       style={{
@@ -4943,22 +4948,38 @@ function NotImplementedModal({ notices, onDismiss }: {
         }}
       >
         <div style={{ fontSize: 13, color: '#ffd54a', fontWeight: 700, marginBottom: 8 }}>
-          Heads up — not yet implemented
+          {allInfo ? 'Heads up' : 'Heads up — not yet implemented'}
         </div>
-        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>
-          The game just hit {notices.length === 1 ? 'a code path' : `${notices.length} code paths`}
-          {' '}that isn't fully implemented yet. Skip detailing as a bug — these are known gaps:
-        </div>
-        <ul style={{ paddingLeft: 18, margin: '0 0 14px 0' }}>
-          {notices.map((n) => (
-            <li key={n.id} style={{ marginBottom: 8 }}>
-              <div style={{ color: '#e8e8ea', fontSize: 13, fontWeight: 600 }}>{n.title}</div>
-              {n.details && (
-                <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>{n.details}</div>
-              )}
-            </li>
-          ))}
-        </ul>
+        {infoNotices.length > 0 && (
+          <ul style={{ paddingLeft: 18, margin: '0 0 14px 0' }}>
+            {infoNotices.map((n) => (
+              <li key={n.id} style={{ marginBottom: 8 }}>
+                <div style={{ color: '#e8e8ea', fontSize: 13, fontWeight: 600 }}>{n.title}</div>
+                {n.details && (
+                  <div style={{ color: '#bbb', fontSize: 12, marginTop: 2 }}>{n.details}</div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {gapNotices.length > 0 && (
+          <>
+            <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>
+              The game just hit {gapNotices.length === 1 ? 'a code path' : `${gapNotices.length} code paths`}
+              {' '}that isn't fully implemented yet. Skip detailing as a bug — these are known gaps:
+            </div>
+            <ul style={{ paddingLeft: 18, margin: '0 0 14px 0' }}>
+              {gapNotices.map((n) => (
+                <li key={n.id} style={{ marginBottom: 8 }}>
+                  <div style={{ color: '#e8e8ea', fontSize: 13, fontWeight: 600 }}>{n.title}</div>
+                  {n.details && (
+                    <div style={{ color: '#888', fontSize: 11, marginTop: 2 }}>{n.details}</div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
         <div style={{ textAlign: 'right' }}>
           <button className="tab-button active" onClick={onDismiss} style={{ fontWeight: 700 }}>
             Got it
