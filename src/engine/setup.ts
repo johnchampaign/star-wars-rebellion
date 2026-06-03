@@ -157,19 +157,19 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   if (map.systems['coruscant']) map.systems['coruscant'].loyalty = 'imperial';
 
   // ----- Probe deck -----
-  // Setup step 8.I (rr p.15): reveal probes until 3 Rebel + 5 Imperial systems
-  // are found among populous, non-Coruscant systems. Then remove the 5 Imperial
-  // probes from the deck for the rest of the game.
+  // Setup (rr Advanced Setup): the starting loyalty systems are NOT drawn from
+  // the whole galaxy. Each faction has a FIXED pool of candidate systems
+  // (printed on the setup-marked probe cards); you draw 3 of the Rebel 5 and
+  // 5 of the Empire 7. Picking any populous system at random produced
+  // non-RAW, unbalanced openings (Witold G / BGG feedback).
+  //   Rebel pool (draw 3): Bothawui, Kashyyyk, Mon Calamari, Naboo, Ryloth
+  //   Empire pool (draw 5): Corellia, Mandalore, Mustafar, Mygeeto, Rodia,
+  //                         Saleucami, Sullust
+  const REBEL_SETUP_LOYALTY_POOL = ['bothawui', 'kashyyyk', 'mon-calamari', 'naboo', 'ryloth'];
+  const EMPIRE_SETUP_LOYALTY_POOL = ['corellia', 'mandalore', 'mustafar', 'mygeeto', 'rodia', 'saleucami', 'sullust'];
+
   const probePoolIds = Object.values(catalog.probes).map((p) => p.id);
   const probeDeck = shuffle(rng, [...probePoolIds]);
-
-  // Pull cards from the top until we have enough Rebel + Imperial systems.
-  // Eligible loyalty systems must be populous (not remote) and not Coruscant.
-  const eligibleForLoyalty = new Set(
-    Object.values(catalog.systems)
-      .filter((s) => !s.isRemote && !s.isCoruscant)
-      .map((s) => s.id)
-  );
 
   const rebelLoyaltySystems: string[] = [];
   const imperialLoyaltySystems: string[] = [];
@@ -179,27 +179,21 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
     rebelLoyaltySystems.push(...opts.forcedRebelLoyalty);
     imperialLoyaltySystems.push(...opts.forcedImperialLoyalty);
   } else {
-    while (
-      (rebelLoyaltySystems.length < 3 || imperialLoyaltySystems.length < 5) &&
-      probeDeck.length > 0
-    ) {
-      const probeId = probeDeck.shift()!;
-      const probe = catalog.probes[probeId];
-      if (!eligibleForLoyalty.has(probe.systemId)) continue; // skip; doesn't qualify
-      if (rebelLoyaltySystems.length < 3) {
-        rebelLoyaltySystems.push(probe.systemId);
-      } else if (imperialLoyaltySystems.length < 5) {
-        imperialLoyaltySystems.push(probe.systemId);
-        probesRemovedForSetup.push(probeId);
-      }
-    }
-    // Put the rebel-loyalty probes back into the deck and reshuffle:
-    // they ARE still possible base locations.
-    for (const sysId of rebelLoyaltySystems) {
-      const probe = Object.values(catalog.probes).find((p) => p.systemId === sysId);
-      if (probe && !probeDeck.includes(probe.id)) probeDeck.unshift(probe.id);
-    }
-    shuffle(rng, probeDeck);
+    // Draw the required count at random from each fixed pool.
+    rebelLoyaltySystems.push(...shuffle(rng, [...REBEL_SETUP_LOYALTY_POOL]).slice(0, 3));
+    imperialLoyaltySystems.push(...shuffle(rng, [...EMPIRE_SETUP_LOYALTY_POOL]).slice(0, 5));
+  }
+
+  // Remove the 5 Imperial-loyalty systems' probe cards from the deck for the
+  // rest of the game (rr p.15) — the Rebel base can't be in an Imperial-loyalty
+  // system, so those probes are no longer possible base locations. The 3 Rebel
+  // -loyalty systems STAY in the deck: they remain valid base candidates.
+  for (const sysId of imperialLoyaltySystems) {
+    const probe = Object.values(catalog.probes).find((p) => p.systemId === sysId);
+    if (!probe) continue;
+    const idx = probeDeck.indexOf(probe.id);
+    if (idx >= 0) probeDeck.splice(idx, 1);
+    if (!probesRemovedForSetup.includes(probe.id)) probesRemovedForSetup.push(probe.id);
   }
 
   // Place Rebel loyalty markers

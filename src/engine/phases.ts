@@ -478,8 +478,22 @@ export function unassignLeader(G: GameState, side: Side, missionId: string): { o
     if (!f.leaderPool.includes(lid)) f.leaderPool.push(lid);
   }
   f.leadersOnMissions.splice(idx, 1);
-  if (!f.missionHand.includes(missionId)) f.missionHand.push(missionId);
-  log(G, { kind: 'unassign-leader', side, payload: { missionId, leaderIds: entry.leaderIds } });
+  if (entry.fromDeck) {
+    // Searched from the deck (Our Most Desperate Hour / Proceeding As Planned),
+    // not assigned from hand — return it to the deck it came from and reshuffle,
+    // so you can't farm free cards into your hand by search-then-unassign (#108).
+    const isProject = !!G.catalog.missions[missionId]?.isProject;
+    if (isProject && side === 'Empire' && f.projectDeck) {
+      f.projectDeck.push(missionId);
+      shuffle(G.rng, f.projectDeck);
+    } else {
+      f.missionDeck.push(missionId);
+      shuffle(G.rng, f.missionDeck);
+    }
+  } else if (!f.missionHand.includes(missionId)) {
+    f.missionHand.push(missionId);
+  }
+  log(G, { kind: 'unassign-leader', side, payload: { missionId, leaderIds: entry.leaderIds, fromDeck: !!entry.fromDeck } });
   return { ok: true };
 }
 
@@ -2565,7 +2579,7 @@ export function resolveOurMostDesperateHourPick(
   // on it — exactly like a normally-assigned mission (which lives only in
   // leadersOnMissions, not in hand). Do NOT also add it to the hand, or it
   // shows up twice and can be "taken back" from hand (player report #89).
-  f.leadersOnMissions.push({ missionId, leaderIds: ['princess-leia'] });
+  f.leadersOnMissions.push({ missionId, leaderIds: ['princess-leia'], fromDeck: true });
   log(G, { kind: 'our-most-desperate-hour-applied', side: 'Rebel', payload: {
     missionId, leaderId: 'princess-leia',
   }});
@@ -2596,7 +2610,8 @@ export function resolveProceedingAsPlannedPick(
   if (poolIdx >= 0) f.leaderPool.splice(poolIdx, 1);
   // Assigned only (like a normal assignment) — not also added to hand, which
   // would duplicate it and let it be taken back (cf. #89 for the Rebel twin).
-  f.leadersOnMissions.push({ missionId, leaderIds: [leaderId] });
+  // fromDeck so un-assigning returns it to the project deck, not hand (#108).
+  f.leadersOnMissions.push({ missionId, leaderIds: [leaderId], fromDeck: true });
   log(G, { kind: 'proceeding-as-planned-applied', side: 'Empire', payload: {
     missionId, leaderId,
   }});

@@ -71,6 +71,12 @@ export type LeaderId = string;
 export type AssignedMission = {
   missionId: string;
   leaderIds: LeaderId[]; // 1 or 2
+  // True when the card was pulled straight from the deck by a search effect
+  // (Our Most Desperate Hour / Proceeding As Planned) rather than assigned
+  // from hand. Un-assigning such a mission returns it to the DECK, not the
+  // hand — otherwise you could search the deck, assign, un-assign, and keep
+  // any mission in hand for free (player report #108).
+  fromDeck?: boolean;
 };
 
 export type CapturedLeader = {

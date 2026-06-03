@@ -1771,6 +1771,7 @@ export default function PlayTab() {
           title="Our Most Desperate Hour — pick a mission"
           subtitle="Search your full mission deck. Leia is placed directly on the chosen mission (assigned and ready to reveal this turn)."
           color="#aae0ff"
+          assignedLeaderId="princess-leia"
           onPick={(mid) => {
             const r = phases.resolveOurMostDesperateHourPick(G, mid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
@@ -1784,8 +1785,9 @@ export default function PlayTab() {
         && G.pendingChoice.side === humanSide && (
         <MissionListPickModal G={G} choice={G.pendingChoice}
           title="Proceeding As Planned — pick a project"
-          subtitle="Search projects in your mission deck. The resolver leader will be assigned to it."
+          subtitle="Search the project deck. The resolver leader will be assigned to it."
           color="#ffaaaa"
+          assignedLeaderId={G.pendingChoice.leaderId}
           onPick={(mid) => {
             const r = phases.resolveProceedingAsPlannedPick(G, mid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
@@ -10390,7 +10392,7 @@ function ScoutingMissionTIEPickModal({
 }
 
 function MissionListPickModal({
-  G, choice, title, subtitle, color, onPick,
+  G, choice, title, subtitle, color, onPick, assignedLeaderId,
 }: {
   G: GameState;
   choice: { candidates: string[] };
@@ -10398,7 +10400,13 @@ function MissionListPickModal({
   subtitle: string;
   color: string;
   onPick: (missionId: string) => void;
+  // The leader who'll be placed on the chosen mission (Leia for Most Desperate
+  // Hour, the resolver for Proceeding As Planned). When given, we show their
+  // skills and flag missions whose skill requirement they can't meet alone, so
+  // the player isn't surprised when the mission later can't be resolved (#108).
+  assignedLeaderId?: string;
 }) {
+  const ldr = assignedLeaderId ? G.catalog.leaders[assignedLeaderId] : null;
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
@@ -10411,11 +10419,28 @@ function MissionListPickModal({
       }}>
         <h3 style={{ color, marginTop: 0 }}>{title}</h3>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>{subtitle}</div>
+        {ldr && (
+          <div style={{ fontSize: 12, color: '#cbc4b0', marginBottom: 10,
+            padding: '6px 8px', background: '#0c0d10', borderRadius: 4 }}>
+            <b style={{ color: '#fff' }}>{ldr.name}</b>{' — '}
+            <span style={{ color: '#6f6a5c' }}>Dip</span> {ldr.skills.diplomacy}{'  '}
+            <span style={{ color: '#6f6a5c' }}>Int</span> {ldr.skills.intel}{'  '}
+            <span style={{ color: '#6f6a5c' }}>Ops</span> {ldr.skills.specOps}{'  '}
+            <span style={{ color: '#6f6a5c' }}>Log</span> {ldr.skills.logistics}
+            <div style={{ fontSize: 11, color: '#8a8470', marginTop: 2 }}>
+              You can pick a mission {ldr.name} can't fulfill alone — it just won't
+              resolve unless another leader's skill covers it.
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {choice.candidates.map((mid) => {
             const m = G.catalog.missions[mid];
             const art = m?.image ? getCachedArtUrlSync(m.image) : null;
             const skillName = (s?: string) => s === 'specOps' ? 'spec-ops' : (s ?? '');
+            // Can the assigned leader meet this mission's skill requirement alone?
+            const have = ldr && m?.skill ? (ldr.skills[m.skill as keyof typeof ldr.skills] ?? 0) : 0;
+            const shortfall = !!(ldr && m?.skill && m.skillCost > 0 && have < m.skillCost);
             // A leader pictured on the card grants +2 successes if that leader
             // resolves it (the "portrait bonus") — surface it so the player can
             // line up the right leader (e.g. Chewbacca for a Kashyyyk uprising).
@@ -10439,6 +10464,11 @@ function MissionListPickModal({
                   {portrait && (
                     <div style={{ fontSize: 11, color: '#ffd54a' }}>
                       🖼 Pictures {portrait} — +2 successes if {portrait} resolves it
+                    </div>
+                  )}
+                  {shortfall && ldr && (
+                    <div style={{ fontSize: 11, color: '#ff8866', fontWeight: 600 }}>
+                      ⚠ {ldr.name} has {have} {skillName(m?.skill)} — can't fulfill {m?.skillCost} alone
                     </div>
                   )}
                   {m?.rulesText && <div style={{ fontSize: 10, opacity: 0.85 }}>{m.rulesText}</div>}
