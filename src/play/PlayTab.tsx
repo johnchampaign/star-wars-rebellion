@@ -6099,14 +6099,18 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           // Coruscant + remote systems have no loyalty hex, but a sabotage
           // badge still needs to be visible. Fall back to the planet position.
           if (!s.loyaltyMarkerPos && !state.sabotage) return null;
-          // Marker size is tied to the ACTUAL printed loyalty hex, measured
-          // from the board art (76 native px wide, consistent across systems),
-          // and scaled with the board. A fixed pixel size looked "too large"
-          // because it didn't track the board's display scale — the marker has
-          // to scale with the map, not stay constant (#109 follow-up). The disc
-          // now exactly matches the hex it sits in.
-          const HEX_NATIVE_W = 76;
-          const markerSize = HEX_NATIVE_W * BOARD_SCALE;
+          // The marker art is authored at the board's NATIVE resolution
+          // (~84x76 px on the 3180px map) — i.e. a physical token sized to sit
+          // on the printed loyalty hex. Render it at those native dimensions
+          // scaled by BOARD_SCALE: preserves the token's real size AND aspect
+          // (it's wider than tall), and tracks the board's display scale.
+          // Forcing it into a fixed square box distorted it and (via SVG's
+          // default preserveAspectRatio) shrank it too small (#109 follow-ups:
+          // "too large", then "too small / misaligned"). Width≈31.7, height≈28.7.
+          const MARKER_NATIVE_W = 84;
+          const MARKER_NATIVE_H = 76;
+          const markerW = MARKER_NATIVE_W * BOARD_SCALE;
+          const markerH = MARKER_NATIVE_H * BOARD_SCALE;
           const basePos = s.loyaltyMarkerPos ?? s.boardPos;
           const mx = basePos.x * BOARD_SCALE;
           const my = basePos.y * BOARD_SCALE;
@@ -6143,10 +6147,11 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                 <image
                   key={i}
                   href={vmodAssetUrl(m.src, MARKER_IMAGE_BASE)}
-                  x={mx + m.offsetX - markerSize / 2}
-                  y={my + m.offsetY - markerSize / 2}
-                  width={markerSize}
-                  height={markerSize}
+                  x={mx + m.offsetX - markerW / 2}
+                  y={my + m.offsetY - markerH / 2}
+                  width={markerW}
+                  height={markerH}
+                  preserveAspectRatio="none"
                   opacity={m.opacity ?? 1}
                 />
               ))}
