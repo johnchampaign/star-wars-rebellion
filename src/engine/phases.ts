@@ -2582,9 +2582,10 @@ export function resolveProceedingAsPlannedPick(
   if (!choice || choice.kind !== 'ProceedingAsPlannedPick') return { ok: false, reason: 'no-pending' };
   if (!choice.candidates.includes(missionId)) return { ok: false, reason: 'bad-mission' };
   const f = G.empire;
-  const deckIdx = f.missionDeck.indexOf(missionId);
-  if (deckIdx < 0) return { ok: false, reason: 'mission-not-in-deck-anymore' };
-  f.missionDeck.splice(deckIdx, 1);
+  // Projects are pulled from the PROJECT deck, not the mission deck (#104).
+  const deckIdx = f.projectDeck?.indexOf(missionId) ?? -1;
+  if (deckIdx < 0) return { ok: false, reason: 'project-not-in-deck-anymore' };
+  f.projectDeck!.splice(deckIdx, 1);
   const leaderId = choice.leaderId;
   // Make sure the resolver isn't already on a mission.
   for (const am of f.leadersOnMissions) {
@@ -4370,21 +4371,18 @@ function applyAssignmentActionCardEffect(
       if (!f.leaderPool.includes(resolverLeader) && !f.eliminatedLeaders.includes(resolverLeader)) {
         f.leaderPool.push(resolverLeader);
       }
-      const projectCandidates = f.missionDeck.filter((mid) => G.catalog.missions[mid]?.isProject);
+      // RAW: "Search the PROJECT DECK for 1 project." Projects live in their
+      // own deck (G.empire.projectDeck, seeded at setup) — NOT the regular
+      // mission deck. Searching missionDeck found nothing and wrongly reported
+      // "no projects" even when the project deck was full (player report #104).
+      const projectCandidates = [...(f.projectDeck ?? [])];
       if (projectCandidates.length === 0) {
-        log(G, { kind: 'action-card-noop', side: 'Empire', payload: { cardId, reason: 'no-projects-in-deck' } });
-        // Don't fail silently (player report #104): the card searches the
-        // mission deck for PROJECT cards specifically — regular missions in
-        // the deck don't count. If every project has already been drawn into
-        // hand, there's nothing in the deck to search.
-        const inHand = f.missionHand.filter((mid) => G.catalog.missions[mid]?.isProject).length;
+        log(G, { kind: 'action-card-noop', side: 'Empire', payload: { cardId, reason: 'project-deck-empty' } });
         pushNotice(
           G,
           `proceeding-as-planned-no-projects-t${G.timeMarker}`,
           'Proceeding As Planned — no project to search',
-          inHand > 0
-            ? `There are no project cards left in your mission deck to search — all ${inHand} project card${inHand === 1 ? ' is' : 's are'} already in your hand. The leader was still placed.`
-            : 'There are no project cards in your mission deck to search right now. The leader was still placed.',
+          'The project deck is empty, so there was no project to search for. The leader was still placed.',
         );
         break;
       }
