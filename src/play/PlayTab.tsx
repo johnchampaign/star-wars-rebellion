@@ -6149,14 +6149,13 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           // Coruscant + remote systems have no loyalty hex, but a sabotage
           // badge still needs to be visible. Fall back to the planet position.
           if (!s.loyaltyMarkerPos && !state.sabotage) return null;
-          // Sized to the printed loyalty hex on the v1.2e "Redux" board (the
-          // module everyone is now directed to): ~88px hexes, so a ~94x85 token
-          // covers them like the physical piece. (The older v1.02d board had
-          // ~76px hexes; we standardized on Redux and recalibrated every
-          // loyaltyMarkerPos to match.) Rendered at native dimensions *
-          // BOARD_SCALE so it keeps the token's aspect and tracks display scale.
-          const MARKER_NATIVE_W = 94;
-          const MARKER_NATIVE_H = 85;
+          // Match the VASSAL module exactly: it draws the 84x76 loyalty-token
+          // image at native size centered on each loyaltyMarkerPos (which we
+          // take verbatim from the module's buildFile). Rendered at native
+          // dimensions * BOARD_SCALE so it keeps the token's aspect and tracks
+          // the board's display scale.
+          const MARKER_NATIVE_W = 84;
+          const MARKER_NATIVE_H = 76;
           const markerW = MARKER_NATIVE_W * BOARD_SCALE;
           const markerH = MARKER_NATIVE_H * BOARD_SCALE;
           const basePos = s.loyaltyMarkerPos ?? s.boardPos;
