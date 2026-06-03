@@ -2,7 +2,8 @@
 // Same localStorage key and shape as before — any prior edits are preserved.
 
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { loadSystems, MAP_IMAGE_URL } from '../data/loadAssets';
+import { loadSystems, MAP_IMAGE_URL, mapImageUrl } from '../data/loadAssets';
+import { getVmodMeta, preloadAllBlobUrls } from '../play/vmodArtCache';
 import type { System, SystemsFile } from '../types';
 
 const NATIVE_W = 3180;
@@ -41,6 +42,10 @@ export default function PositionsTab() {
   const [dragging, setDragging] = useState<string | null>(null);
   const [hoverId, setHoverId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Prefer the loaded .vmod board (the real art the player sees, e.g. v1.2e
+  // Map-Redux) over the static stripped placeholder so this calibration tool
+  // works in production. Falls back to MAP_IMAGE_URL when no .vmod is loaded.
+  const [mapUrl, setMapUrl] = useState<string>(MAP_IMAGE_URL);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
@@ -50,6 +55,18 @@ export default function PositionsTab() {
         setEdits(loadEdits());
       })
       .catch((e) => setError(String(e)));
+  }, []);
+
+  // Load the cached .vmod art so the background is the player's real board.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const meta = await getVmodMeta();
+      if (cancelled || !meta) return;
+      await preloadAllBlobUrls();
+      if (!cancelled) setMapUrl(mapImageUrl());
+    })();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => { saveEdits(edits); }, [edits]);
@@ -247,7 +264,7 @@ export default function PositionsTab() {
           className="adjacency-canvas"
           style={{ width: DISPLAY_W, height: DISPLAY_H, userSelect: 'none', flexShrink: 0 }}
         >
-          <img src={MAP_IMAGE_URL} width={DISPLAY_W} height={DISPLAY_H} alt="Board" draggable={false} />
+          <img src={mapUrl} width={DISPLAY_W} height={DISPLAY_H} alt="Board" draggable={false} />
           <svg
             ref={svgRef}
             width={DISPLAY_W}
