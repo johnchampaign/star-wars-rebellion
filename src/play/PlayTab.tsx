@@ -310,6 +310,18 @@ export default function PlayTab() {
   );
   const artLoaded = useArtLoaded();
   const [showLoadArt, setShowLoadArt] = useState(false);
+  // True when the loaded .vmod is the OLDER board (ships Map.png, not the
+  // v1.2e "Redux" board). The app's coordinates are calibrated to the Redux
+  // board now, so an old module misaligns every marker — nudge the user to
+  // upgrade so everyone is on the same art.
+  const [staleModule, setStaleModule] = useState(false);
+  const checkStaleModule = useCallback(() => {
+    const files = getCachedFilenames();
+    if (files.length === 0) { setStaleModule(false); return; }
+    const hasRedux = files.some((f) => /map-redux\.png/i.test(f));
+    const hasOldBoard = files.some((f) => /(^|\/)map\.png$/i.test(f));
+    setStaleModule(hasOldBoard && !hasRedux);
+  }, []);
   // One-time boot: if a .vmod has been previously loaded, preload all
   // blob URLs into the in-memory cache so the synchronous URL helpers
   // (unitImageUrl, vmodAssetUrl, diceImageUrl) return blob:URLs starting
@@ -327,10 +339,10 @@ export default function PlayTab() {
         return;
       }
       await preloadAllBlobUrls();
-      if (!cancelled) setTick((t) => t + 1);
+      if (!cancelled) { setTick((t) => t + 1); checkStaleModule(); }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [checkStaleModule]);
   // Fetch unseen responses to this user's previously-filed problem reports.
   // Fires once at app load. Silently no-ops if the user has never filed a
   // report (no reporter ID in localStorage). The /api/my-responses endpoint
@@ -1152,9 +1164,47 @@ export default function PlayTab() {
         <LoadArtModal
           G={G}
           currentMeta={artLoaded.meta}
-          onClose={() => setShowLoadArt(false)}
-          onLoaded={() => { refresh(); }}
+          onClose={() => { setShowLoadArt(false); checkStaleModule(); }}
+          onLoaded={() => { refresh(); checkStaleModule(); }}
         />
+      )}
+      {staleModule && !showLoadArt && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100,
+        }} onClick={() => setStaleModule(false)}>
+          <div onClick={(e) => e.stopPropagation()} style={{
+            background: '#15171c', border: '2px solid #ffd54a', borderRadius: 6,
+            padding: 20, maxWidth: 520, width: '90%', boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+          }}>
+            <div style={{ fontSize: 14, color: '#ffd54a', fontWeight: 700, marginBottom: 8 }}>
+              Please update your board art
+            </div>
+            <div style={{ fontSize: 13, color: '#cbc4b0', marginBottom: 14, lineHeight: 1.5 }}>
+              You're using an <b>older VASSAL module</b>. The game's board positions
+              are now calibrated to the updated <b>v1.2e</b> map (the "Redux" board),
+              so on the older art the loyalty markers and other tokens will sit
+              slightly out of place. Grab the current module so everyone's on the
+              same board:
+              <div style={{ marginTop: 10 }}>
+                <a href={VASSAL_DRIVE_URL} target="_blank" rel="noopener noreferrer"
+                  style={{ color: '#4fc3f7', fontWeight: 700 }}>
+                  Download the current module (v1.2e)
+                </a>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button className="tab-button" onClick={() => setStaleModule(false)}
+                style={{ fontSize: 12 }}>
+                Keep older art for now
+              </button>
+              <button className="tab-button active" onClick={() => { setStaleModule(false); setShowLoadArt(true); }}
+                style={{ fontWeight: 700 }}>
+                Load the new module
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {showUnitKey && (
@@ -6099,16 +6149,14 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           // Coruscant + remote systems have no loyalty hex, but a sabotage
           // badge still needs to be visible. Fall back to the planet position.
           if (!s.loyaltyMarkerPos && !state.sabotage) return null;
-          // The marker art is authored at the board's NATIVE resolution
-          // (~84x76 px on the 3180px map) — i.e. a physical token sized to sit
-          // on the printed loyalty hex. Render it at those native dimensions
-          // scaled by BOARD_SCALE: preserves the token's real size AND aspect
-          // (it's wider than tall), and tracks the board's display scale.
-          // Forcing it into a fixed square box distorted it and (via SVG's
-          // default preserveAspectRatio) shrank it too small (#109 follow-ups:
-          // "too large", then "too small / misaligned"). Width≈31.7, height≈28.7.
-          const MARKER_NATIVE_W = 84;
-          const MARKER_NATIVE_H = 76;
+          // Sized to the printed loyalty hex on the v1.2e "Redux" board (the
+          // module everyone is now directed to): ~88px hexes, so a ~94x85 token
+          // covers them like the physical piece. (The older v1.02d board had
+          // ~76px hexes; we standardized on Redux and recalibrated every
+          // loyaltyMarkerPos to match.) Rendered at native dimensions *
+          // BOARD_SCALE so it keeps the token's aspect and tracks display scale.
+          const MARKER_NATIVE_W = 94;
+          const MARKER_NATIVE_H = 85;
           const markerW = MARKER_NATIVE_W * BOARD_SCALE;
           const markerH = MARKER_NATIVE_H * BOARD_SCALE;
           const basePos = s.loyaltyMarkerPos ?? s.boardPos;
