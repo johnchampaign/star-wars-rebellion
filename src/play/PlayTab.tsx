@@ -8588,6 +8588,39 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
   // .vmod-version skew without making the player click a button to find
   // out why their art looks half-loaded.
   const [showDiagnosticManual, setShowDiagnosticManual] = useState<boolean | null>(null);
+  // Board-image identity: which board file actually resolved (alias-aware),
+  // plus its dimensions, byte size, and SHA-256 prefix — so we can confirm
+  // exactly which board art the deployed app is showing (d Map.png vs the
+  // v1.2e Map-Redux.png). Reference: v1.2e Map-Redux.png = 5.54 MB, sha256
+  // 4d3d404754d6a548; v1.02d Map.png = 10.81 MB, sha256 1a1ef9aff451258d.
+  const [boardInfo, setBoardInfo] = useState<string>('checking…');
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const files = getCachedFilenames();
+      const resolved =
+        files.find((f) => /map-redux\.png/i.test(f)) ||
+        files.find((f) => /(^|\/)map\.png$/i.test(f)) ||
+        '(no board in cache — using stripped placeholder)';
+      const url = mapImageUrl();
+      try {
+        const blob = await (await fetch(url)).blob();
+        const buf = await blob.arrayBuffer();
+        const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buf)))
+          .slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
+        const dims = await new Promise<string>((res) => {
+          const im = new Image();
+          im.onload = () => res(`${im.naturalWidth}×${im.naturalHeight}`);
+          im.onerror = () => res('?×?');
+          im.src = url;
+        });
+        if (!cancelled) setBoardInfo(`${resolved} · ${dims} · ${(blob.size / 1048576).toFixed(2)} MB · sha256 ${hash}`);
+      } catch {
+        if (!cancelled) setBoardInfo(`${resolved} (couldn't read bytes)`);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Compute expected-filename vs. found diagnostic. The "expected" list
   // covers every image the runtime might ask for:
@@ -8761,6 +8794,17 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
         </div>
 
         <div style={bodyScroll}>
+          {/* Board-image identity — confirms exactly which board art is live.
+           *  v1.2e (correct): "Map-Redux.png · 3180×1590 · 5.54 MB · sha256
+           *  4d3d404754d6a548". v1.02d (old): "Map.png · ... · 10.81 MB ·
+           *  sha256 1a1ef9aff451258d". */}
+          <div style={{
+            fontSize: 11, color: '#9fb3d9', background: '#0c0d10',
+            border: '1px solid #2a2d34', borderRadius: 4, padding: '6px 8px',
+            marginBottom: 12, fontFamily: 'monospace', wordBreak: 'break-all',
+          }}>
+            <span style={{ color: '#80dc78' }}>Loaded board image:</span> {boardInfo}
+          </div>
         <div style={{ fontSize: 13, color: '#ccc', lineHeight: 1.5, marginBottom: 14 }}>
           This game uses art from the official VASSAL <strong>Star Wars: Rebellion</strong> module.
           We don't host the art — you bring your own copy. It's stored in your browser
