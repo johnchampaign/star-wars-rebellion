@@ -5753,6 +5753,11 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           }
           // Play-area rectangles: overlay a darker tint plus state-specific content.
           let title = r.label;
+          // Full detail shown only on hover (<title>). Kept separate from the
+          // short visible label so long strings (e.g. the Rebel-base secret
+          // location) don't overflow the small staging box and bleed across
+          // nearby systems on the map (#100 — overlapped Mon Calamari).
+          let hoverDetail: string | null = null;
           let content: React.ReactNode = null;
           if (r.kind === 'rebel-base') {
             const units = G.map.rebelBaseSpace.units;
@@ -5764,9 +5769,13 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
             const baseSysName = baseSys?.name ?? G.rebelBaseSystemId;
             const baseRegion = baseSys?.region;
             if (G.rebelBaseRevealed) {
-              title = `Rebel Base — ${baseSysName} (revealed)`;
+              title = 'Rebel Base';
+              hoverDetail = `Rebel Base — ${baseSysName} (revealed)`;
             } else if (humanSide === 'Rebel' && baseSys) {
-              title = `Rebel Base — secretly at ${baseSysName} (region ${baseRegion}). Only you can see this.`;
+              // Short visible label; full secret-location detail on hover so it
+              // doesn't overflow the box and overlap nearby systems (#100).
+              title = `Base: ${baseSysName}`;
+              hoverDetail = `Rebel Base — secretly at ${baseSysName} (region ${baseRegion}). Only you can see this.`;
             } else {
               title = 'Rebel Base (hidden)';
             }
@@ -5823,7 +5832,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           }
           const isBuild = r.kind.startsWith('build-');
           return (
-            <g key={r.id} pointerEvents={isBuild ? 'all' : 'none'}
+            <g key={r.id} pointerEvents={isBuild || hoverDetail ? 'all' : 'none'}
               onMouseEnter={isBuild ? () => setHoverBuildKind(r.kind) : undefined}
               onMouseLeave={isBuild ? () => setHoverBuildKind(null) : undefined}
             >
@@ -5839,6 +5848,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
               <text x={x + 6} y={y + 14} style={{ fill: '#aaa', fontSize: 10, fontWeight: 600, pointerEvents: 'none' }}>
                 {title}
               </text>
+              {hoverDetail && <title>{hoverDetail}</title>}
               <g pointerEvents="none">{content}</g>
             </g>
           );

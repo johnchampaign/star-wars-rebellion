@@ -912,6 +912,26 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
 
   if (maybePostMissionRingTrigger(G, pending)) return { ok: true };
   if (pending.stage === 'effect') {
+    // RESOLVE missions (isAttempt:false, e.g. Seek Yoda) skip the opposition
+    // step — which is where attempt missions get their report. Without this
+    // they resolved silently, so the player got no confirmation the mission
+    // succeeded (player report #101: Seek Yoda at Dagobah, Luke → Jedi, with
+    // no notification). Push a report so the same outcome modal shows. (Pushed
+    // before runMissionEffect so it queues ahead of any sub-choice the effect
+    // posts, matching the attempt-mission ordering.)
+    if (card && !card.isAttempt) {
+      (G.missionReports ??= []).push({
+        missionId: pending.missionId,
+        resolverSide: pending.resolverSide,
+        targetSystemId: pending.targetSystemId,
+        attackerLeaders: [...pending.leaderIds] as LeaderId[],
+        opposerSide: pending.resolverSide === 'Rebel' ? 'Empire' : 'Rebel',
+        opposerLeaders: [],
+        skill: card.skill,
+        result: 'auto-success',
+        interventions: pending.interventions ? [...pending.interventions] : undefined,
+      });
+    }
     runMissionEffect(G, pending.resolverSide, pending.missionId, pending.targetSystemId, pending.leaderIds as LeaderId[], pending.targetLeaderId);
     if (G.pendingChoice) return { ok: true };
     discardOrReturnMission(G, pending.resolverSide, pending.missionId);
