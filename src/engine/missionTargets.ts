@@ -52,7 +52,11 @@ export function missionLeaderTargets(
 type Pred = (id: SystemId) => boolean;
 
 function allSystems(G: GameState): SystemId[] {
-  return Object.keys(G.map.systems);
+  // Destroyed systems are removed from play (Death Star / Superlaser) — they
+  // hold no loyalty, produce nothing, and can't be sabotaged, so they're never
+  // a valid mission target. Excluding them here stops e.g. the AI playing Rule
+  // by Fear on a system the Superlaser already destroyed (player report #112).
+  return Object.keys(G.map.systems).filter((id) => !G.map.systems[id]?.destroyed);
 }
 function hasLeaderOfSide(G: GameState, sysId: SystemId, side: Side): boolean {
   const f = side === 'Rebel' ? G.rebel : G.empire;
