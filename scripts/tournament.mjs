@@ -119,6 +119,7 @@ function playOne(seed) {
   }
 
   const elapsed = performance.now() - t0;
+  const metrics = computeEmpireMetrics(G);
   return {
     seed,
     result: G.isGameOver ? (G.winner ?? 'unknown') : 'stuck',
@@ -132,7 +133,38 @@ function playOne(seed) {
     finalPhase: G.phase,
     pendingChoice: G.pendingChoice?.kind ?? null,
     logEntries: G.turnLog.length,
+    metrics,
     log: G.turnLog,
+  };
+}
+
+/** Empire-side diagnostics mined from the turn log — the signal that tells us
+ *  WHY the Empire wins/loses, not just whether it did. */
+function computeEmpireMetrics(G) {
+  const baseSys = G.rebelBaseSystemId;
+  let baseFoundTurn = null;
+  let empireActivations = 0, empireLeaderOnly = 0, empirePasses = 0, empireReveals = 0;
+  let subjugations = 0, baseInvasions = 0;
+  for (const e of G.turnLog) {
+    if (e.kind === 'reveal-base' && baseFoundTurn === null) baseFoundTurn = e.turn;
+    else if (e.kind === 'activate-system' && e.side === 'Empire') {
+      empireActivations++;
+      if ((e.payload?.orders ?? 0) === 0) empireLeaderOnly++;
+    } else if (e.kind === 'pass' && e.side === 'Empire') empirePasses++;
+    else if (e.kind === 'reveal-mission' && e.side === 'Empire') empireReveals++;
+    else if (e.kind === 'subjugated') subjugations++;
+    else if (e.kind === 'combat-begin' && e.payload?.attackerSide === 'Empire'
+             && e.payload?.systemId === baseSys) baseInvasions++;
+  }
+  return {
+    baseFound: baseFoundTurn !== null,
+    baseFoundTurn,
+    empireActivations,
+    empireLeaderOnly,
+    empirePasses,
+    empireReveals,
+    subjugations,
+    baseInvasions,
   };
 }
 
@@ -149,6 +181,16 @@ const stats = {
   winReasons: {},
   finalPhases: {},
   pendingChoiceAtEnd: {},
+  // Empire diagnostics
+  baseFoundGames: 0,
+  baseFoundTurnSum: 0,
+  empireActivations: 0,
+  empireLeaderOnly: 0,
+  empirePasses: 0,
+  empireReveals: 0,
+  subjugations: 0,
+  baseInvasions: 0,
+  baseInvasionGames: 0,
 };
 
 console.log(`Tournament: ${args.games} games, seed=${args.seed}, out=${args.out}`);
@@ -170,6 +212,15 @@ for (let i = 0; i < args.games; i++) {
   if (r.pendingChoice) {
     stats.pendingChoiceAtEnd[r.pendingChoice] = (stats.pendingChoiceAtEnd[r.pendingChoice] ?? 0) + 1;
   }
+  const m = r.metrics;
+  if (m.baseFound) { stats.baseFoundGames++; stats.baseFoundTurnSum += m.baseFoundTurn; }
+  stats.empireActivations += m.empireActivations;
+  stats.empireLeaderOnly += m.empireLeaderOnly;
+  stats.empirePasses += m.empirePasses;
+  stats.empireReveals += m.empireReveals;
+  stats.subjugations += m.subjugations;
+  stats.baseInvasions += m.baseInvasions;
+  if (m.baseInvasions > 0) stats.baseInvasionGames++;
 
   // Write per-game JSON.
   const filename = `game-${String(i + 1).padStart(4, '0')}.json`;
@@ -208,6 +259,17 @@ console.log(`Max-rounds reached:     ${stats.maxRoundsReached}`);
 console.log(`Avg rounds per game:    ${(stats.totalRounds / stats.games).toFixed(1)}`);
 console.log(`Avg steps per game:     ${(stats.totalSteps / stats.games).toFixed(0)}`);
 console.log(`Avg ms per game:        ${(stats.totalElapsedMs / stats.games).toFixed(0)}`);
+console.log('');
+console.log('=== Empire diagnostics ===');
+const g = stats.games;
+console.log(`Base found:             ${stats.baseFoundGames}/${g} (${(100 * stats.baseFoundGames / g).toFixed(1)}%)`
+  + (stats.baseFoundGames ? `, avg on round ${(stats.baseFoundTurnSum / stats.baseFoundGames).toFixed(1)}` : ''));
+console.log(`Games w/ base invasion: ${stats.baseInvasionGames}/${g} (${(100 * stats.baseInvasionGames / g).toFixed(1)}%)`);
+console.log(`Avg base invasions:     ${(stats.baseInvasions / g).toFixed(2)} per game`);
+console.log(`Avg subjugations:       ${(stats.subjugations / g).toFixed(1)} per game`);
+console.log(`Avg Empire activations: ${(stats.empireActivations / g).toFixed(1)} per game (${(stats.empireLeaderOnly / g).toFixed(1)} leader-only / no-troop)`);
+console.log(`Avg Empire missions:    ${(stats.empireReveals / g).toFixed(1)} revealed per game`);
+console.log(`Avg Empire passes:      ${(stats.empirePasses / g).toFixed(1)} per game`);
 console.log('');
 console.log('Win reasons:');
 for (const [k, v] of Object.entries(stats.winReasons).sort((a, b) => b[1] - a[1])) {
