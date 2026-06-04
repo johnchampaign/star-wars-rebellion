@@ -891,23 +891,35 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
     // (consolidation, joining a prior wave, leader+units defensive set).
     if (side === 'Empire') {
       const adj = G.catalog.adjacency[sysId] ?? [];
-      let pullable = 0;
+      // Transport-aware "can I actually bring units here?" — a ground unit or
+      // restricted fighter only moves if a capital ship at the SAME source has
+      // spare capacity to carry it (RR p.9). The old count treated every mobile
+      // unit as pullable, so the AI would activate expecting a ground stack,
+      // the move executor would find no carrier, and the leader landed alone
+      // (player report #114: "activated leaders without accompanying troops").
+      let movable = 0;
       for (const a of adj) {
         if ((G.empire.leadersOnBoard[a] ?? []).length > 0) continue;
         const ss2 = G.map.systems[a];
         if (!ss2) continue;
+        let selfMoving = 0; // capital ships: move themselves + provide capacity
+        let capacity = 0;
+        let needCarry = 0; // ground + restricted fighters: need a carrier
         for (const u of ss2.units) {
           if (u.side !== 'Empire') continue;
           const t = G.catalog.unitTypes[u.typeId];
           if (!t || t.transport.immobile) continue;
-          pullable++;
+          if (t.transport.capacity > 0) { selfMoving++; capacity += t.transport.capacity; }
+          else needCarry++;
         }
+        movable += selfMoving + Math.min(capacity, needCarry);
       }
       const ownHere = sys.units.filter((u) => u.side === 'Empire').length;
-      if (pullable === 0 && ownHere === 0) {
-        // No way to bring force, no force already there → leader sits alone.
-        // Override any prior bonus this turn with a strong negative so the
-        // AI picks a different target / mission / pass.
+      if (movable === 0 && ownHere === 0) {
+        // Nothing can actually be brought and no force already there → the
+        // leader would sit alone. Strong negative so the AI moves a different
+        // fleet, runs a mission, or passes (passing IS correct when no unit can
+        // usefully move — user's clarification).
         ts = -50;
       }
     }
@@ -917,7 +929,10 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
   for (const leaderId of f.leaderPool as LeaderId[]) {
     const l = G.catalog.leaders[leaderId];
     if (!l) continue;
-    if (l.tacticValues.space + l.tacticValues.ground === 0) continue;
+    // Any leader can activate to MOVE units (tactic value only matters once a
+    // fight starts) — so don't skip zero-tactic leaders, or they can only
+    // reveal/pass and the Empire stalls (player heuristic: a mobile leader
+    // should almost never pass).
     let bestT: SystemId | null = null;
     let bestTS = -Infinity;
     for (const sysId of allSystemIds) {
