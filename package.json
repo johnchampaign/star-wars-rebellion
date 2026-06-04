@@ -1,35 +1,14 @@
 {
   "name": "star-wars-rebellion",
-  "private": true,
-  "version": "0.0.1",
-  "type": "module",
-  "description": "Unofficial fan-made digital port of Star Wars: Rebellion (FFG 2016). Base game only.",
+  "version": "1.0.0",
+  "description": "Star Wars Rebellion board game implementation",
+  "main": "index.js",
   "scripts": {
-    "dev": "vite",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
-    "test:turn-order": "node scripts/test-turn-order.mjs",
-    "build": "node scripts/copy-dev-assets.mjs && vite build && node scripts/strip-images-from-dist.mjs",
-    "build:with-art": "vite build",
-    "preview": "vite preview",
-    "deploy": "npm run build && npx wrangler pages deploy dist --project-name star-wars-rebellion --branch master --commit-dirty=true",
-    "copy-assets": "node scripts/copy-dev-assets.mjs",
-    "composite-card-text": "node scripts/composite-card-text.mjs",
-    "composite-card-notice": "node scripts/composite-card-text.mjs --notice",
-    "verify:vmod": "node scripts/verify-vmod-loader.mjs"
+    "test": "jest",
+    "start": "node index.js"
   },
-  "dependencies": {
-    "html2canvas": "^1.4.1",
-    "jszip": "^3.10.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "@napi-rs/canvas": "^1.0.0",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "@vitejs/plugin-react": "^4.3.3",
-    "tsx": "^4.22.3",
-    "typescript": "^5.6.3",
-    "vite": "^5.4.10"
+    "jest": "^29.0.0"
   }
 }
