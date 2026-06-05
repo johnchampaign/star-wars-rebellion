@@ -746,6 +746,13 @@ export type ChoiceRequest =
       // Mission-only: snapshot of the roll's faces (for display in the
       // panel). The resolver re-reads them from pm.r2d2Pending stash.
       missionFaces?: string[];
+      // Mission-only: the FULL picture so the player decides the reroll with
+      // both sides' results visible (#121). Resolver's own successes so far,
+      // the opposer's rolled faces + successes, and whether the resolver is
+      // currently winning (successes strictly greater than the opposer's).
+      missionOwnSuccesses?: number;
+      missionOppFaces?: string[];
+      missionOppSuccesses?: number;
     }
   | {
       // RR p.5 "Combat Actions": each special die produced by an attacker's

@@ -1185,8 +1185,13 @@ function maybePostMissionYodaReroll(G: GameState, pm: MissionResolution): boolea
   if (!here.includes(yoda)) return false;
   const stash = pm.r2d2Pending;
   if (!stash) return false;
-  // Pick the Rebel-side roll's faces.
-  const rebelFaces = pm.resolverSide === 'Rebel' ? stash.attFaces : stash.oppFaces;
+  // Pick the Rebel-side roll's faces. The Rebel may be the resolver OR the
+  // opposer; "own" is whichever side the Yoda holder is on.
+  const rebelIsResolver = pm.resolverSide === 'Rebel';
+  const rebelFaces = rebelIsResolver ? stash.attFaces : stash.oppFaces;
+  const ownSuccesses = rebelIsResolver ? stash.attSuccesses : stash.oppSuccesses;
+  const oppFaces = rebelIsResolver ? stash.oppFaces : stash.attFaces;
+  const oppSuccesses = rebelIsResolver ? stash.oppSuccesses : stash.attSuccesses;
   const blanks = rebelFaces.map((f, i) => f === 'blank' ? i : -1).filter((i) => i >= 0);
   if (blanks.length === 0) return false;
   G.pendingChoice = {
@@ -1197,6 +1202,9 @@ function maybePostMissionYodaReroll(G: GameState, pm: MissionResolution): boolea
     blankIndices: blanks,
     holderLeaderId: yoda,
     missionFaces: [...rebelFaces],
+    missionOwnSuccesses: ownSuccesses,
+    missionOppFaces: [...oppFaces],
+    missionOppSuccesses: oppSuccesses,
   };
   log(G, { kind: 'choice-request', side: 'Rebel', payload: {
     kind: 'YodaReroll', context: 'mission', blanks: blanks.length,

@@ -9617,10 +9617,19 @@ function YodaMissionRerollModal({
     kind: 'YodaReroll'; side: Side; context: 'combat' | 'mission';
     systemId: string; blankIndices: number[]; holderLeaderId: string;
     missionFaces?: string[];
+    missionOwnSuccesses?: number;
+    missionOppFaces?: string[];
+    missionOppSuccesses?: number;
   };
   onPick: (rerollIndex: number | null) => void;
 }) {
   const faces = choice.missionFaces ?? [];
+  const oppFaces = choice.missionOppFaces ?? [];
+  const ownSucc = choice.missionOwnSuccesses ?? 0;
+  const oppSucc = choice.missionOppSuccesses ?? 0;
+  const winning = ownSucc > oppSucc;
+  const glyphFor = (face: string) =>
+    face === 'hit' ? '✓' : face === 'direct-hit' ? '✶' : face === 'special' ? '◈' : '·';
   const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
   const holderName = G.catalog.leaders[choice.holderLeaderId]?.name ?? choice.holderLeaderId;
   return (
@@ -9642,14 +9651,55 @@ function YodaMissionRerollModal({
         </div>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
           <b>{holderName}</b> (Yoda ring holder) is at <b>{sysName}</b>.
-          You may reroll one blank die on your mission roll. The reroll is
-          once per round, so skipping here preserves it for any combat or
-          mission later this round.
+          Both sides have now rolled. You may reroll one blank die on your
+          mission roll. The reroll is once per round, so skipping here
+          preserves it for any combat or mission later this round.
         </div>
+
+        {/* Both rolls + current standings, so the player decides the reroll
+            with full information (#121). */}
+        <div style={{
+          background: '#1b1e24', border: '1px solid #333', borderRadius: 6,
+          padding: '10px 12px', marginBottom: 12,
+        }}>
+          <div style={{
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            marginBottom: 6, fontSize: 13, fontWeight: 600,
+          }}>
+            <span style={{ color: winning ? '#80dc78' : '#e0b84f' }}>
+              Your successes: {ownSucc}
+            </span>
+            <span style={{ color: '#9aa' }}>
+              Opponent: {oppSucc}
+            </span>
+          </div>
+          <div style={{ fontSize: 12, color: winning ? '#80dc78' : '#e08a5f' }}>
+            {winning
+              ? 'You are currently winning the mission — a reroll could pad your margin.'
+              : `You need more successes than the opponent to win — you are ${ownSucc === oppSucc ? 'tied' : 'behind'}.`}
+          </div>
+          {oppFaces.length > 0 && (
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
+              <span style={{ fontSize: 11, color: '#888', alignSelf: 'center', marginRight: 4 }}>
+                Opponent rolled:
+              </span>
+              {oppFaces.map((face, i) => (
+                <span key={i} style={{
+                  width: 30, height: 30, borderRadius: 4,
+                  background: face === 'blank' ? '#222' : '#5a3a3a',
+                  color: '#fff', fontSize: 15, fontWeight: 700,
+                  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                }} title={face}>{glyphFor(face)}</span>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Your roll:</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
           {faces.map((face, i) => {
             const rerollable = choice.blankIndices.includes(i);
-            const glyph = face === 'hit' ? '✓' : face === 'direct-hit' ? '✶' : face === 'special' ? '◈' : '·';
+            const glyph = glyphFor(face);
             return (
               <button
                 key={i}
