@@ -234,12 +234,11 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
  *  left in pool with tactic dice AND no revealable missions". */
 function hasAnyCommandAction(G: GameState, side: Side): boolean {
   const f = side === 'Rebel' ? G.rebel : G.empire;
-  // Any tactic-capable leader still in pool?
-  for (const lid of f.leaderPool) {
-    const ld = G.catalog.leaders[lid];
-    if (!ld) continue;
-    if ((ld.tacticValues.space + ld.tacticValues.ground) > 0) return true;
-  }
+  // Any leader still in pool? ANY leader can activate a system to move units
+  // (tactic value is only for combat), so a non-empty pool means a command
+  // action is possible — don't require tactic dice (that wrongly let the phase
+  // treat 0-tactic leaders like Greejatus as "nothing to do"; #115).
+  if (f.leaderPool.some((lid) => !!G.catalog.leaders[lid])) return true;
   // Any revealable assigned mission?
   for (const am of f.leadersOnMissions) {
     const card = G.catalog.missions[am.missionId];
@@ -7075,11 +7074,11 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
   // moveCounts: fromSystemId -> typeId -> count to move
   const [moveCounts, setMoveCounts] = useState<Record<string, Record<string, number>>>({});
 
-  // Eligible leaders: in pool, with combat-relevant tactic values.
-  const eligibleLeaders = f.leaderPool.filter((lid) => {
-    const l = G.catalog.leaders[lid];
-    return l && (l.tacticValues.space + l.tacticValues.ground) > 0;
-  });
+  // Eligible leaders: any leader in the pool. ANY leader can activate a system
+  // to move units — tactic value only matters once combat starts — so don't
+  // filter on tactic value (it wrongly hid 0-tactic leaders like Janus
+  // Greejatus, blocking activation entirely; player report #115).
+  const eligibleLeaders = f.leaderPool.filter((lid) => !!G.catalog.leaders[lid]);
 
   // Valid sources for moves: systems adjacent to target (or the target itself —
   // pre-existing friendly units), where the human has no leader.

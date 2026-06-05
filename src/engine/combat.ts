@@ -584,7 +584,11 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
       const card = G.catalog.tactics[cid];
       if (!card) return false;
       if (card.theater !== pa.theater) return false;
-      return /special/i.test(card.rulesText ?? '');
+      // Use the card's requiresSpecial flag — NOT a rulesText keyword search.
+      // Cards like Unstoppable Assault / Onslaught / Take It Down / Brilliant
+      // Strategy need a ★ but never say "special" in their text, so the old
+      // regex hid them from the special-spend choice (player reports #116/#117).
+      return card.requiresSpecial === true;
     });
     pa.phase = 'awaitingSpecialSpend';
     G.pendingChoice = {
