@@ -21,3 +21,8 @@
 # Hashed JS/CSS assets: cache aggressively. Their URL embeds a content hash.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
+
+# Update-banner build manifest: must never be cached, or long-open tabs won't
+# learn a newer build is live. Written by versionStamp() into dist/version.json.
+/version.json
+  Cache-Control: no-store

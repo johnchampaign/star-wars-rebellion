@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import { versionStamp } from 'digital-boardgame-framework/vite';
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 
@@ -330,7 +331,7 @@ export default defineConfig(({ mode }) => {
     if (process.env[k] === undefined) process.env[k] = env[k];
   }
   return {
-    plugins: [react(), devPlugin(), redactObjectivesInProd()],
+    plugins: [react(), devPlugin(), redactObjectivesInProd(), versionStamp()],
     server: { port: 5173 },
     build: {
       rollupOptions: {
