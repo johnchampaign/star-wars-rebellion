@@ -478,21 +478,13 @@ export function unassignLeader(G: GameState, side: Side, missionId: string): { o
     if (!f.leaderPool.includes(lid)) f.leaderPool.push(lid);
   }
   f.leadersOnMissions.splice(idx, 1);
-  if (entry.fromDeck) {
-    // Searched from the deck (Our Most Desperate Hour / Proceeding As Planned),
-    // not assigned from hand — return it to the deck it came from and reshuffle,
-    // so you can't farm free cards into your hand by search-then-unassign (#108).
-    const isProject = !!G.catalog.missions[missionId]?.isProject;
-    if (isProject && side === 'Empire' && f.projectDeck) {
-      f.projectDeck.push(missionId);
-      shuffle(G.rng, f.projectDeck);
-    } else {
-      f.missionDeck.push(missionId);
-      shuffle(G.rng, f.missionDeck);
-    }
-  } else if (!f.missionHand.includes(missionId)) {
-    f.missionHand.push(missionId);
-  }
+  // An un-revealed assigned mission returns to the player's hand — including
+  // ones fetched from the deck by Our Most Desperate Hour / Proceeding As
+  // Planned. Per RR "Pass", an assigned-but-unrevealed mission goes to hand
+  // with no special exception for fetched cards (RAW review of #108). This
+  // matches the end-of-round Refresh cleanup, which also returns to hand, so
+  // both paths now agree.
+  if (!f.missionHand.includes(missionId)) f.missionHand.push(missionId);
   log(G, { kind: 'unassign-leader', side, payload: { missionId, leaderIds: entry.leaderIds, fromDeck: !!entry.fromDeck } });
   return { ok: true };
 }
