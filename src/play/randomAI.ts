@@ -929,10 +929,10 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
   for (const leaderId of f.leaderPool as LeaderId[]) {
     const l = G.catalog.leaders[leaderId];
     if (!l) continue;
-    // Any leader can activate to MOVE units (tactic value only matters once a
-    // fight starts) — so don't skip zero-tactic leaders, or they can only
-    // reveal/pass and the Empire stalls (player heuristic: a mobile leader
-    // should almost never pass).
+    // RR: "A leader that does not have tactic values cannot activate a system."
+    // Skip the three no-tactic leaders (Boba Fett, Greejatus, Mon Mothma) —
+    // they can still run missions / block enemy move-outs, just not lead a move.
+    if (l.tacticValues.space + l.tacticValues.ground === 0) continue;
     let bestT: SystemId | null = null;
     let bestTS = -Infinity;
     for (const sysId of allSystemIds) {
