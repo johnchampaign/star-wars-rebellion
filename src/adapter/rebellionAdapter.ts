@@ -15,6 +15,7 @@ import type { Side } from '../types';
 import type { RebellionAction } from './rebellionAction';
 import { assertNever } from './rebellionAction';
 import { pendingChoiceOwner } from '../engine/choiceOwner';
+import { redactStateForViewer } from './redact';
 import * as phases from '../engine/phases';
 import * as combat from '../engine/combat';
 
@@ -175,11 +176,12 @@ export const rebellionAdapter: GameAdapter<GameState, RebellionAction, Side> = {
     return false;
   },
 
-  // STUB — identity. NOT SAFE FOR NETWORK USE: this would leak the Rebel base
-  // location and both hands to the opponent's client. Real per-seat redaction
-  // is Phase 2 (#103); the server must not be wired to clients until it lands.
-  viewFor(state) {
-    return state;
+  // Per-seat redaction (Phase 2). Strips the base location, opponent hands, all
+  // decks, hidden mission ids, the RNG state, and the log before the state is
+  // sent to a client. See redact.ts. viewer === null => spectator (sees no
+  // private info for either side).
+  viewFor(state, viewer) {
+    return redactStateForViewer(state, viewer);
   },
 
   result(state): GameResult<Side> | null {
