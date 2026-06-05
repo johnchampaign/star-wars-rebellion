@@ -5719,7 +5719,12 @@ function UnitCluster({ centerX, centerY, groups, iconSize, maxWidth }: {
               <circle
                 cx={ix + iconSize - 3} cy={iy + iconSize - 3} r={6}
                 style={{
-                  fill: g.side === 'Rebel' ? '#2b6cb0' : g.side === 'Empire' ? '#b3322c' : '#000',
+                  // Death Star & Super Star Destroyer get a distinct PURPLE
+                  // badge so the game-defining capital ships stand out at a
+                  // glance (MightyFaben forum feedback).
+                  fill: (g.typeId === 'death-star' || g.typeId === 'death-star-under-construction' || g.typeId === 'super-star-destroyer')
+                    ? '#8a4fc0'
+                    : g.side === 'Rebel' ? '#2b6cb0' : g.side === 'Empire' ? '#b3322c' : '#000',
                   stroke: '#fff', strokeWidth: 0.75,
                 }}
               />
