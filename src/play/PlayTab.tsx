@@ -926,6 +926,17 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     refresh();
   };
 
+  // Dismiss the front-most report modal. Goes through the engine mutator so that
+  // online it submits an action (server-persisted) instead of shifting the local
+  // redacted view — a local shift is undone by the next poll, which locked the
+  // dialog.
+  const onAckReport = (reportType: 'mission' | 'combat' | 'objective' | 'refresh') => {
+    if (!G) return;
+    phases.acknowledgeReport(G, reportType);
+    persist();
+    refresh();
+  };
+
   const onSetupAutoFill = (side: Side) => {
     if (!G) return;
     if (canEncode(G)) setupUndoStackRef.current.push(encode(G));
@@ -1361,41 +1372,50 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         />
       )}
 
-      {G.combatReports && G.combatReports.length > 0 && (
+      {/* Report modals. Online, only the ACTING player (currentPlayer) sees the
+          blocking report — it's their action's outcome and only they can clear
+          it (the waiting player's clicks are suppressed and would have no way to
+          dismiss it, locking the dialog). Dismissal goes through onAckReport,
+          which submits a server-persisted acknowledge online. */}
+      {G.combatReports && G.combatReports.length > 0
+        && (!online || G.currentPlayer === humanSide) && (
         <CombatReportModal
           G={G}
           report={G.combatReports[0]}
-          onDismiss={() => { if (G && G.combatReports) G.combatReports.shift(); persist(); refresh(); }}
+          onDismiss={() => onAckReport('combat')}
         />
       )}
 
-      {G.missionReports && G.missionReports.length > 0 && (
+      {G.missionReports && G.missionReports.length > 0
+        && (!online || G.currentPlayer === humanSide) && (
         <MissionReportModal
           G={G}
           report={G.missionReports[0]}
-          onDismiss={() => { if (G && G.missionReports) G.missionReports.shift(); persist(); refresh(); }}
+          onDismiss={() => onAckReport('mission')}
         />
       )}
 
       {G.objectiveReports && G.objectiveReports.length > 0
         && (!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0) && (
+        && (!G.combatReports || G.combatReports.length === 0)
+        && (!online || G.currentPlayer === humanSide) && (
         <ObjectiveReportModal
           G={G}
           report={G.objectiveReports[0]}
-          onDismiss={() => { if (G && G.objectiveReports) G.objectiveReports.shift(); persist(); refresh(); }}
+          onDismiss={() => onAckReport('objective')}
         />
       )}
 
       {G.refreshReports && G.refreshReports.length > 0
         && (!G.missionReports || G.missionReports.length === 0)
         && (!G.objectiveReports || G.objectiveReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0) && (
+        && (!G.combatReports || G.combatReports.length === 0)
+        && (!online || G.currentPlayer === humanSide) && (
         <RefreshReportModal
           G={G}
           report={G.refreshReports[0]}
           humanSide={humanSide}
-          onDismiss={() => { if (G && G.refreshReports) G.refreshReports.shift(); persist(); refresh(); }}
+          onDismiss={() => onAckReport('refresh')}
         />
       )}
 

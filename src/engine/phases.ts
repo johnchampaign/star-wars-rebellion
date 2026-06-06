@@ -365,6 +365,26 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
   return { ok: true };
 }
 
+/** Dismiss (acknowledge) the front-most pending report of a given type. Reports
+ *  are queued in engine state and shown one at a time; the UI shifts them off as
+ *  the player clicks OK. Online this must be an engine mutation submitted to the
+ *  server — a local array shift on the redacted view would be undone by the next
+ *  poll, locking the dialog. The reportType makes the dismissal unambiguous when
+ *  more than one report kind is queued. */
+export function acknowledgeReport(
+  G: GameState,
+  reportType: 'mission' | 'combat' | 'objective' | 'refresh',
+): { ok: boolean; reason?: string } {
+  const arr =
+    reportType === 'mission' ? G.missionReports
+    : reportType === 'combat' ? G.combatReports
+    : reportType === 'objective' ? G.objectiveReports
+    : G.refreshReports;
+  if (!arr || arr.length === 0) return { ok: false, reason: `no-${reportType}-report` };
+  arr.shift();
+  return { ok: true };
+}
+
 function maybeAdvanceFromSetup(G: GameState): void {
   if (G.phase !== 'Setup' || !G.pendingDeployment) return;
   const empireDone = G.pendingDeployment.Empire.length === 0;

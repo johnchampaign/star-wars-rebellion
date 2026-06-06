@@ -38,6 +38,8 @@ export function makeOnlinePhases(submit: Submit): typeof phasesModule {
     pickRebelBase: (_g: any, systemId: any) => act({ kind: 'pickRebelBase', systemId }),
     setupDeployUnit: (_g: any, _s: any, typeId: any, systemId: any) => act({ kind: 'setupDeployUnit', typeId, systemId }),
     setupAutoFill: (_g: any, _s: any) => act({ kind: 'setupAutoFill' }),
+    // Reports
+    acknowledgeReport: (_g: any, reportType: any) => act({ kind: 'acknowledgeReport', reportType }),
     // Assignment
     assignLeader: (_g: any, _s: any, missionId: any, leaderIds: any) => act({ kind: 'assignLeader', missionId, leaderIds }),
     unassignLeader: (_g: any, _s: any, missionId: any) => act({ kind: 'unassignLeader', missionId }),
