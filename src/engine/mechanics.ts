@@ -354,6 +354,41 @@ export function moveUnit(G: GameState, unitInstanceId: UnitInstanceId, from: Sys
   applyInvariants(G, [from, to]);
 }
 
+/** Unit-conservation invariant. This is a board game: a physical token is moved
+ *  between locations, never copied. So at all times:
+ *   - every unit instanceId appears in exactly ONE location (a copy = bug, and a
+ *     phantom copy at the Rebel base system can even FALSE-reveal the base), and
+ *   - the in-play + queued count of a unit type never exceeds its physical supply.
+ *  (Totals do change legitimately — builds/spawns add, combat removes — but those
+ *  always use fresh ids and respect supply, so these two hold continuously.)
+ *  Returns a list of human-readable violations; empty = healthy. */
+export function findUnitInvariantViolations(G: GameState): string[] {
+  const errs: string[] = [];
+  const seen = new Map<string, string>(); // instanceId -> location
+  const typeCount = new Map<string, number>();
+  const visit = (loc: string, units: UnitInstance[] | undefined): void => {
+    for (const u of units ?? []) {
+      const prev = seen.get(u.instanceId);
+      if (prev) errs.push(`duplicate unit ${u.instanceId} (${u.typeId}) in ${prev} AND ${loc}`);
+      else seen.set(u.instanceId, loc);
+      typeCount.set(u.typeId, (typeCount.get(u.typeId) ?? 0) + 1);
+    }
+  };
+  for (const [sid, ss] of Object.entries(G.map.systems)) visit(sid, ss.units);
+  visit('rebel-base-space', G.map.rebelBaseSpace?.units);
+  // Queued units are still "from the supply", so count them toward the cap.
+  for (const side of ['rebel', 'empire'] as const) {
+    const q = G[side]?.buildQueue;
+    if (!q) continue;
+    for (const slot of [1, 2, 3] as const) for (const t of q[slot] ?? []) typeCount.set(t, (typeCount.get(t) ?? 0) + 1);
+  }
+  for (const [typeId, n] of typeCount) {
+    const cap = G.catalog?.unitTypes?.[typeId]?.supplyCount;
+    if (typeof cap === 'number' && n > cap) errs.push(`unit type ${typeId} exceeds supply: ${n} in play/queued > ${cap}`);
+  }
+  return errs;
+}
+
 /** Place a unit on a side's build queue (rr p.3). Optional `sourceSystemId`
  *  ('rebel-base' for the Rebel Base card's own resource icons) is recorded
  *  in the log so the refresh-report can show "built X from Y." */

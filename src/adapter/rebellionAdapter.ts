@@ -18,6 +18,7 @@ import { pendingChoiceOwner } from '../engine/choiceOwner';
 import { redactStateForViewer } from './redact';
 import * as phases from '../engine/phases';
 import * as combat from '../engine/combat';
+import { findUnitInvariantViolations } from '../engine/mechanics';
 
 type Result = { ok: boolean; reason?: string };
 
@@ -154,17 +155,38 @@ function currentActor(state: GameState): Side | null {
   return state.currentPlayer;
 }
 
+/** Did this action INTRODUCE a unit-conservation violation (a duplicated token,
+ *  or a type over its physical supply)? Compares before/after so a game that was
+ *  already corrupt from an earlier bug doesn't reject every subsequent move —
+ *  only the action that newly breaks the invariant is rejected. Returns the new
+ *  violation text, or null if clean. Cheap (~one pass over board units). */
+function newConservationBreak(before: GameState, after: GameState): string | null {
+  const had = new Set(findUnitInvariantViolations(before));
+  // Reject only DUPLICATE-token violations: a copied unit is never legal, and a
+  // phantom copy at the base system can false-reveal it. Supply-cap overages are
+  // surfaced by the verify scripts but not hard-rejected here (a borderline
+  // spawn shouldn't lock a live game).
+  const fresh = findUnitInvariantViolations(after).filter((v) => v.startsWith('duplicate') && !had.has(v));
+  return fresh.length ? fresh.join('; ') : null;
+}
+
 export const rebellionAdapter: GameAdapter<GameState, RebellionAction, Side> = {
   applyAction(state, action, actor) {
     const G = clone(state);
     const r = dispatch(G, action, actor);
     if (!r.ok) throw new Error(r.reason ?? `Illegal action: ${action.kind}`);
+    const broke = newConservationBreak(state, G);
+    if (broke) throw new Error(`action ${action.kind} broke unit conservation: ${broke}`);
     return G;
   },
 
   tryApplyAction(state, action, actor) {
     const G = clone(state);
     const r = dispatch(G, action, actor);
+    if (r.ok) {
+      const broke = newConservationBreak(state, G);
+      if (broke) return { state, ok: false, reason: `unit-conservation: ${broke}` };
+    }
     return { state: r.ok ? G : state, ok: r.ok, reason: r.reason };
   },
 
