@@ -281,6 +281,11 @@ export function runCombat(G: GameState): void {
         if (c.retreatDecidedThisRound.includes(side)) continue; // already decided this round (declined or retreated)
         if (c.flags?.cannotRetreatThisRound?.[side]) continue; // No Escape (single-round)
         if (c.flags?.opponentCannotRetreat?.includes(side)) continue; // Keep Them From Escaping (whole combat)
+        // RR p.6: the Imperial player cannot retreat ANY units if a Death Star or
+        // Death Star Under Construction is in the combat (player report: Death
+        // Star retreated before the Rebel could play Death Star Plans).
+        if (side === 'Empire' && unitsOf(G, 'Empire', c.systemId).some((u) =>
+          u.typeId === 'death-star' || u.typeId === 'death-star-under-construction')) continue;
         const dests = legalRetreatDestinations(G, c, side);
         const here = unitsOf(G, side, c.systemId);
         const hasUnits = here.length > 0;

@@ -65,6 +65,16 @@ export function recomputeSubjugation(G: GameState, affected?: SystemId[]): void 
     if (!ss) continue;
     if (G.catalog.systems[id]?.isCoruscant) continue;
     if (G.catalog.systems[id]?.isRemote) continue; // remote systems can't be subjugated (rr p.12)
+    // Destroyed systems have no loyalty and cannot be subjugated (rr p.7). A
+    // ground unit sitting in a Superlaser'd planet must NOT plant a subjugation
+    // marker (player report: AT-ST subjugated a destroyed Sullust).
+    if (ss.destroyed) {
+      if (ss.subjugated) {
+        ss.subjugated = false;
+        log(G, { kind: 'subjugation-cleared', payload: { systemId: id, reason: 'destroyed' } });
+      }
+      continue;
+    }
     const empireGround = hasGroundOf(G, 'Empire', id);
     // Per rr p.8 (and forum clarifications): subjugation ONLY ever sits on
     // neutral or Rebel-loyalty systems. Imperial-loyalty systems are already
