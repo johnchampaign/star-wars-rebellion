@@ -24,13 +24,22 @@ type Ok = { ok: true; reason?: string };
 // overlays, hover-enlarge, info panels — work regardless of turn); only ACTIONS
 // are held back. A stray board-action click during the opponent's turn no-ops
 // silently here instead of firing a server-rejected move.
+// One action is submitted at a time. Online a board/modal doesn't update until
+// the server round-trip completes, so a click can land on stale UI; without this
+// guard an impatient second click (or a modal that hasn't closed yet) re-submits
+// the SAME action, which duplicates moves / re-fires a notification. While a
+// submit is in flight we drop further submits until it settles.
+let inFlight = false;
 function makeAct(submit: Submit, canSubmit: () => boolean) {
   return (action: RebellionAction): Ok => {
-    if (!canSubmit()) return { ok: true };
-    void submit(action).catch((err: unknown) => {
-      const msg = err instanceof Error ? err.message : String(err);
-      try { alert(`Move rejected: ${msg}`); } catch { /* non-browser */ }
-    });
+    if (!canSubmit() || inFlight) return { ok: true };
+    inFlight = true;
+    void submit(action)
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        try { alert(`Move rejected: ${msg}`); } catch { /* non-browser */ }
+      })
+      .finally(() => { inFlight = false; });
     return { ok: true };
   };
 }
