@@ -39,7 +39,7 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
   if (view.phase === 'Command') quick.push({ kind: 'pass' });
 
   return (
-    <div style={{ ...pad, maxWidth: 900, margin: '0 auto', fontFamily: 'system-ui, sans-serif', color: '#e8e6f2' }}>
+    <div style={{ ...pad, maxWidth: 1280, margin: '0 auto', fontFamily: 'system-ui, sans-serif', color: '#e8e6f2' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: '8px 0' }}>Online game <span style={{ color: '#8a7', fontSize: 14 }}>(preview)</span></h2>
         <button onClick={() => void refresh()} className="tab-button">Refresh</button>
@@ -73,7 +73,7 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
       {/* The real board, rendered from the redacted server view. Read-only for
           now (pointer-events disabled); moves go through the action panel above.
           Per-control submit wiring is the next step (#110). */}
-      <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+      <div style={{ ...card, padding: 0, overflow: 'auto' }}>
         <div style={{ padding: '8px 12px', color: '#aab', fontSize: 12, borderBottom: '1px solid #333' }}>
           {yourTurn ? 'Your turn — play directly on the board below.' : 'Opponent’s turn — board is read-only until they move.'}
         </div>
