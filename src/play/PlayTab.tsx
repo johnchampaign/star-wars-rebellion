@@ -42,6 +42,9 @@ const MARKER_R = 16;
 
 const LS_CURRENT = 'rebellion-game-current';
 const LS_HISTORY = 'rebellion-games-history';
+// encodedAt ids of completed games already uploaded, so we don't re-send them
+// (player report #125 — uploads kept re-submitting old, already-stored logs).
+const LS_UPLOADED = 'rebellion-uploaded-logs';
 // Stable per-device reporter ID. Generated once on first problem-report
 // submission, persisted forever. Lets us tie GitHub issues back to the
 // reporter so we can surface our resolution comment to them on next visit
@@ -9123,13 +9126,21 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
 }
 
 function UploadLogsDialog({ onClose }: { onClose: () => void }) {
-  // Read archived games out of localStorage so we can show the count up-front.
-  const games = (() => {
+  // Games we've already uploaded (by their unique encodedAt) — so we never
+  // re-send them and the player isn't told a pile of logs were "redundant"
+  // (player report #125).
+  const uploadedIds = (() => {
+    try { return new Set(JSON.parse(localStorage.getItem(LS_UPLOADED) || '[]') as string[]); }
+    catch { return new Set<string>(); }
+  })();
+  // Read archived games out of localStorage; only offer the ones not yet sent.
+  const allGames = (() => {
     try {
       const raw = localStorage.getItem(LS_HISTORY);
       return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string }>) : [];
     } catch { return []; }
   })();
+  const games = allGames.filter((g) => !uploadedIds.has(g.encodedAt));
   // Also offer to include the in-progress game (the current save) if it
   // exists, so a player who hasn't finished a game can still contribute.
   const inProgressCodec = (() => {
@@ -9179,6 +9190,12 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
       }
       const body = await res.json() as { uploaded: number; deduped: number; failed: number };
       setStatus({ kind: 'done', uploaded: body.uploaded, deduped: body.deduped, failed: body.failed });
+      // Remember every completed game we just sent so we don't offer it again.
+      try {
+        const next = new Set(uploadedIds);
+        for (const g of games) next.add(g.encodedAt);
+        localStorage.setItem(LS_UPLOADED, JSON.stringify([...next]));
+      } catch { /* ignore */ }
     } catch (e) {
       setStatus({ kind: 'error', message: String(e) });
     }
@@ -9240,7 +9257,9 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
         )}
         {status.kind === 'done' && (
           <p style={{ color: '#80dc78' }}>
-            Done. Uploaded <b>{status.uploaded}</b>, deduped <b>{status.deduped}</b>, failed <b>{status.failed}</b>.
+            Thanks! Uploaded <b>{status.uploaded}</b> new game{status.uploaded === 1 ? '' : 's'}.
+            {status.deduped > 0 && <span style={{ color: '#aab' }}> ({status.deduped} already on file, skipped.)</span>}
+            {status.failed > 0 && <span style={{ color: '#ff8a80' }}> {status.failed} couldn't be saved.</span>}
           </p>
         )}
         {status.kind === 'error' && (
