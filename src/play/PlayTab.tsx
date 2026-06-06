@@ -31,6 +31,7 @@ import * as combat from '../engine/combat';
 import { CombatBoardLive } from './CombatBoardLive';
 import { encode, decode, canEncode } from '../engine/codec';
 import type { GameState, Side } from '../engine/types';
+import type { RebellionAction } from '../adapter/rebellionAction';
 import type { System, MaskRect } from '../types';
 
 const NATIVE_W = 3180;
@@ -256,7 +257,19 @@ function hasAnyCommandAction(G: GameState, side: Side): boolean {
   return false;
 }
 
-export default function PlayTab() {
+/** Online mode (Phase 4b): when provided, PlayTab renders the redacted server
+ *  view instead of owning a local engine. Read-only for now (the OnlinePlay
+ *  wrapper disables pointer events and supplies the action panel); per-control
+ *  submit wiring is the next step. When `online` is undefined, PlayTab behaves
+ *  exactly as the single-player app — every online code path below is gated. */
+export type PlayTabOnlineMode = {
+  view: GameState;
+  you: Side | null;
+  yourTurn: boolean;
+  submit: (action: RebellionAction) => Promise<void>;
+};
+
+export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {}) {
   const gameRef = useRef<GameState | null>(null);
   // Undo stack for the interactive Setup phase. Each entry is an encoded
   // snapshot (codec string) of G taken just BEFORE a human placement /
@@ -446,6 +459,7 @@ export default function PlayTab() {
    *  render covering all AI actions in the burst — simpler than per-step
    *  timeouts and immune to Strict Mode timer cancellation races. */
   const runAILoop = useCallback(() => {
+    if (online) return; // online games are server-authoritative — no local AI.
     const G0 = gameRef.current;
     if (!G0 || G0.isGameOver) return;
     const human = (localStorage.getItem(LS_HUMAN_SIDE) === 'Empire') ? 'Empire' : 'Rebel';
@@ -717,6 +731,12 @@ export default function PlayTab() {
       alert(`That doesn't look like a valid game code: ${String(e)}`);
     }
   }, [resumeSaved]);
+
+  // Online mode: render the redacted server view directly (no local engine).
+  // Done at render so there's no first-paint flash; OnlinePlay always mounts us
+  // with a view in hand. Keep the seat (humanSide) in sync with our server seat.
+  if (online) gameRef.current = online.view;
+  useEffect(() => { if (online?.you) setHumanSide(online.you); }, [online?.you]);
 
   const G = gameRef.current;
 

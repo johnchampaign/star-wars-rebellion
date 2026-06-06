@@ -8,8 +8,10 @@
 import { useMemo, useState } from 'react';
 import { useGame } from 'digital-boardgame-framework/client';
 import { makeGameClient } from './gameClient';
+import PlayTab from '../play/PlayTab';
 import type { GameState } from '../engine/types';
 import type { RebellionAction } from '../adapter/rebellionAction';
+import type { Side } from '../types';
 
 export default function OnlinePlay({ gameId, token }: { gameId: string; token: string }) {
   const client = useMemo(() => makeGameClient(gameId, token), [gameId, token]);
@@ -67,6 +69,18 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
           {actErr && <pre style={errBox}>{actErr}</pre>}
         </div>
       )}
+
+      {/* The real board, rendered from the redacted server view. Read-only for
+          now (pointer-events disabled); moves go through the action panel above.
+          Per-control submit wiring is the next step (#110). */}
+      <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '8px 12px', color: '#aab', fontSize: 12, borderBottom: '1px solid #333' }}>
+          Board (view-only preview — interact via the buttons above for now)
+        </div>
+        <div style={{ pointerEvents: 'none' }}>
+          <PlayTab online={{ view, you: you as Side | null, yourTurn, submit }} />
+        </div>
+      </div>
 
       <details style={{ ...card, marginTop: 16 }}>
         <summary style={{ cursor: 'pointer', color: '#aab' }}>Redacted game state (debug)</summary>
