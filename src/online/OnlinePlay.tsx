@@ -75,9 +75,12 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
           Per-control submit wiring is the next step (#110). */}
       <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '8px 12px', color: '#aab', fontSize: 12, borderBottom: '1px solid #333' }}>
-          Board (view-only preview — interact via the buttons above for now)
+          {yourTurn ? 'Your turn — play directly on the board below.' : 'Opponent’s turn — board is read-only until they move.'}
         </div>
-        <div style={{ pointerEvents: 'none' }}>
+        {/* Interactive only on your turn; otherwise read-only so stray clicks
+            don't fire server-rejected moves. Each board action submits to the
+            server via the online engine shim. */}
+        <div style={{ pointerEvents: yourTurn ? 'auto' : 'none' }}>
           <PlayTab online={{ view, you: you as Side | null, yourTurn, submit }} />
         </div>
       </div>

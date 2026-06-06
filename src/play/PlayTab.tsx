@@ -25,14 +25,25 @@ function otherSide(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 const UnitStyleContext = createContext<UnitImageStyle>('vmod');
 const useUnitStyle = () => useContext(UnitStyleContext);
 import { createGame } from '../engine/setup';
-import * as phases from '../engine/phases';
+import * as _phases from '../engine/phases';
+import type { MoveOrder } from '../engine/phases';
 import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
-import * as combat from '../engine/combat';
+import * as _combat from '../engine/combat';
 import { CombatBoardLive } from './CombatBoardLive';
 import { encode, decode, canEncode } from '../engine/codec';
 import type { GameState, Side } from '../engine/types';
 import type { RebellionAction } from '../adapter/rebellionAction';
+import { makeOnlinePhases, makeOnlineCombat } from '../online/onlineEngine';
 import type { System, MaskRect } from '../types';
+
+// Active engine handles. Module-level so PlayTab AND its module-scope
+// sub-components/helpers all call the same `phases.*`/`combat.*`. The PlayTab
+// component reassigns these each render: the real engine in single-player, or
+// the online shim (submits actions to the server) in online mode. Safe because
+// only one PlayTab instance is mounted at a time, and the reassignment runs
+// before any child renders within the same render pass.
+let phases = _phases;
+let combat = _combat;
 
 const NATIVE_W = 3180;
 const NATIVE_H = 1590;
@@ -271,6 +282,11 @@ export type PlayTabOnlineMode = {
 
 export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {}) {
   const gameRef = useRef<GameState | null>(null);
+  // Point the module-level engine handles at the online shim (mutators submit
+  // RebellionActions to the server) or the real modules (single-player). See
+  // the `let phases/combat` declaration above and onlineEngine.ts.
+  phases = online ? makeOnlinePhases(online.submit) : _phases;
+  combat = online ? makeOnlineCombat(online.submit) : _combat;
   // Undo stack for the interactive Setup phase. Each entry is an encoded
   // snapshot (codec string) of G taken just BEFORE a human placement /
   // auto-fill. Undo pops the latest; Reset restores entry[0] (the state
@@ -595,6 +611,8 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
 
   // Persist current game state after every action.
   const persist = useCallback(() => {
+    if (online) return; // online games live on the server; never write the
+    // redacted view to single-player localStorage (it would corrupt resume).
     const G = gameRef.current;
     if (!G) return;
     try {
@@ -843,7 +861,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   };
 
   const onActivateSystem = (
-    leaderId: string, targetSystemId: string, moveOrders: phases.MoveOrder[],
+    leaderId: string, targetSystemId: string, moveOrders: MoveOrder[],
   ) => {
     if (!G) return;
     const r = phases.activateSystem(G, G.currentPlayer, leaderId, targetSystemId, moveOrders);
@@ -7098,7 +7116,7 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onReset, undoCount 
 function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
   G: GameState;
   side: Side;
-  onActivate: (leaderId: string, targetSystemId: string, moveOrders: phases.MoveOrder[]) => boolean | void;
+  onActivate: (leaderId: string, targetSystemId: string, moveOrders: MoveOrder[]) => boolean | void;
   onReveal: (missionId: string, targetSystemId: string, targetLeaderId?: string) => boolean | void;
   onPass: () => void;
 }) {
@@ -7182,7 +7200,7 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
   const handleActivate = () => {
     if (!leaderId || !targetSystemId) return;
     // Build moveOrders: convert (sysId × typeId × count) → unit instance IDs.
-    const orders: phases.MoveOrder[] = [];
+    const orders: MoveOrder[] = [];
     for (const sysId of Object.keys(moveCounts)) {
       const sub = moveCounts[sysId];
       const src = sysId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[sysId];
