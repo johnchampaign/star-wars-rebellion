@@ -1177,6 +1177,19 @@ export default function PlayTab() {
       {/* All modal/overlay layers live in this wrapper. "Peek board" sets
           display:none on it so the map behind shows through; display:contents
           keeps the fixed-position children laying out normally otherwise. */}
+      {/* Reference-key overlays render OUTSIDE the peek wrapper, so they stay
+          usable while peeking at the board during a choice (player report #126:
+          couldn't open the unit key while peeking). */}
+      {showUnitKey && (
+        <UnitKeyModal G={G} unitStyle={unitStyle} onClose={() => setShowUnitKey(false)} />
+      )}
+      {showDiceKey && (
+        <DiceKeyModal onClose={() => setShowDiceKey(false)} />
+      )}
+      {showTacticKey && (
+        <TacticKeyModal G={G} onClose={() => setShowTacticKey(false)} />
+      )}
+
       <div style={{ display: peekBoard ? 'none' : 'contents' }}>
       {showReport && (
         <ReportProblemModal
@@ -1235,16 +1248,6 @@ export default function PlayTab() {
             </div>
           </div>
         </div>
-      )}
-
-      {showUnitKey && (
-        <UnitKeyModal G={G} unitStyle={unitStyle} onClose={() => setShowUnitKey(false)} />
-      )}
-      {showDiceKey && (
-        <DiceKeyModal onClose={() => setShowDiceKey(false)} />
-      )}
-      {showTacticKey && (
-        <TacticKeyModal G={G} onClose={() => setShowTacticKey(false)} />
       )}
 
       {G.pendingNotices && G.pendingNotices.length > 0 && (
@@ -5212,7 +5215,11 @@ function EnlargedSector({ G, system }: { G: GameState; system: System }) {
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                       width: 30, height: 30, borderRadius: 4,
                       background: r.type === 'space' ? 'rgba(79,195,247,0.85)' : 'rgba(255,183,77,0.85)',
-                      color: '#000', fontSize: 20, fontWeight: 700,
+                      // The ● glyph is visually smaller than ▲/■ at the same size,
+                      // so bump it up so all three resource tiers read equally
+                      // (player feedback — MightyFaben).
+                      color: '#000', fontSize: r.shape === 'circle' ? 27 : 20, fontWeight: 700,
+                      lineHeight: 1,
                       border: i === 0 && system.resources.length > 1 ? '2px solid #fff' : 'none',
                       // Desaturate sabotaged icons so the red strike-through reads as "disabled."
                       opacity: state.sabotage ? 0.45 : 1,
@@ -9568,6 +9575,9 @@ function UnitKeyModal({ G, unitStyle, onClose }: {
                     {shapeGlyph(t.tier)} {t.tier ?? '?'} · {t.theater}
                     {' · '}HP {t.health.value}{t.health.color ? ` (${t.health.color})` : ''}
                     {' · atk '}{t.attack.red}R+{t.attack.black}B
+                    {/* Carry capacity / needs-a-lift (player request — MightyFaben). */}
+                    {t.transport.capacity > 0 && ` · carries ${t.transport.capacity}`}
+                    {t.transport.restriction && ' · needs a lift'}
                   </div>
                 </div>
               </div>
