@@ -43,6 +43,12 @@ export interface Env {
   // Abandonment grace (ms) before the present player may take over / claim.
   // Default 3 days; lower it for testing.
   ABANDON_GRACE_MS?: string;
+  // Optional shared token gating the /api/cron/sweep-reminders endpoint. When
+  // unset the endpoint is open (a sweep is idempotent and only sends already-
+  // due reminders — "we send an email at most"). When set, callers must send
+  // a matching `x-cron-key` header. Set the SAME value on the cron Worker if
+  // you enable it.
+  CRON_SECRET?: string;
 }
 
 /** Resend turn-alert emails when configured, else a no-op. The framework's
@@ -172,10 +178,10 @@ export async function makeServer(request: Request, env: Env): Promise<{
  *  sweepTurnReminders fires `notifier.notifyYourTurn` itself. Needs
  *  PUBLIC_BASE_URL set (used both to load the asset bundle and to mint the
  *  seat links in the email). */
-export async function makeCronServer(env: Env): Promise<{ server: Server }> {
-  const base = env.PUBLIC_BASE_URL;
+export async function makeCronServer(env: Env, originFallback?: string): Promise<{ server: Server }> {
+  const base = env.PUBLIC_BASE_URL || originFallback;
   if (!base) {
-    throw new Error('PUBLIC_BASE_URL is required for the reminder cron (no request origin to fall back to).');
+    throw new Error('PUBLIC_BASE_URL (or a request origin) is required for the reminder sweep.');
   }
   const dataBundle = await getDataBundleFromOrigin(base);
   const catalog = _catalog ?? (_catalog = buildCatalog(dataBundle));

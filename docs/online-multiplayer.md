@@ -114,18 +114,27 @@ Identity is Supabase magic-link auth; the turn email is an
 ### Scheduled reminder cron (covers vs-AI / both-clients-closed)
 
 The poll-driven path can't fire when **no client is open** — most importantly
-in **vs-AI** games (the AI has no browser to poll). So `workers/reminder-cron/`
-is a standalone Worker (Pages Functions can't run cron) that calls
-`server.sweepTurnReminders({ olderThanMs: 24h })` hourly via
-`makeCronServer(env)` — the same GameServer/Supabase/Resend wiring as the API,
-but built with the **real** Resend notifier (the sweep emails directly). The
-framework keeps a per-game inactivity clock in `dbf_games.reminder` (jsonb) and
-sends at most one nudge per turn.
+in **vs-AI** games (the AI has no browser to poll). The fix is a sweep that
+runs server-side on a schedule.
 
-- Deploy: `npx wrangler deploy --config workers/reminder-cron/wrangler.toml`
-- Worker secrets are **separate** from the Pages project's: set
-  `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `RESEND_FROM`
-  with `wrangler secret put … --config workers/reminder-cron/wrangler.toml`.
+**Split design (no duplicated secrets):**
+- The sweep itself is a **Pages Function**, `/api/cron/sweep-reminders`, which
+  builds the server via `makeCronServer(env, origin)` — same wiring as the API
+  but with the **real** Resend notifier — and calls
+  `server.sweepTurnReminders({ olderThanMs: 24h })`. Because it's a Pages
+  Function it already has the project's `SUPABASE_*` / `RESEND_*` secrets.
+- `workers/reminder-cron/` is a **tiny standalone Worker** (Pages Functions
+  can't run cron) that just **pings** that endpoint hourly. It holds **no
+  credentials** — only a `SWEEP_URL` var.
+
+The framework keeps a per-game inactivity clock in `dbf_games.reminder`
+(jsonb) and sends at most one nudge per turn.
+
+- Deploy the cron Worker: `npx wrangler deploy --config workers/reminder-cron/wrangler.toml`
+- Auth (trust-tier): the endpoint is **open** by default — a sweep is
+  idempotent and only sends already-due reminders. Set `CRON_SECRET` on the
+  Pages project (and the matching `CRON_KEY` var on the Worker) to lock it
+  down via an `x-cron-key` header.
 - The 15-min `syncTurnNotify` path is intentionally kept for prompt nudges in
   active human-vs-human play; the two use independent dedupe state.
 
