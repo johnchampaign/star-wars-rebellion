@@ -143,18 +143,18 @@ export const UNIT_TYPES: UnitType[] = [
     buildResource: 2, supplyCount: 6,
   }),
   R({
-    id: 'shield-generator', name: 'Shield Generator', theater: 'ground', class: 'structure', tier: 'circle',
+    id: 'shield-generator', name: 'Shield Generator', theater: 'ground', class: 'structure', tier: 'square',
     health: { color: 'red', value: 3 }, // structure, special rules
     attack: { red: 0, black: 0 },
     transport: { capacity: 0, restriction: false, immobile: true },
-    buildResource: 2, supplyCount: 3,
+    buildResource: 3, supplyCount: 3, // orange (ground) SQUARE per printed components (#129)
   }),
   R({
-    id: 'ion-cannon', name: 'Ion Cannon', theater: 'ground', class: 'structure', tier: 'circle',
+    id: 'ion-cannon', name: 'Ion Cannon', theater: 'ground', class: 'structure', tier: 'square',
     health: { color: 'red', value: 3 }, // structure, special rules
     attack: { red: 0, black: 0 },
     transport: { capacity: 0, restriction: false, immobile: true },
-    buildResource: 2, supplyCount: 3,
+    buildResource: 3, supplyCount: 3, // orange (ground) SQUARE per printed components (#129)
   }),
 ];
 
