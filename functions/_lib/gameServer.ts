@@ -22,13 +22,15 @@
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { GameServer, SupabaseStore, NoopNotifier, ResendNotifier } from 'digital-boardgame-framework/server';
-import type { Notifier } from 'digital-boardgame-framework/server';
+import type { Notifier, SnapshotStore } from 'digital-boardgame-framework/server';
+import type { Codec } from 'digital-boardgame-framework';
 import type { GameState, GameCatalog } from '../../src/engine/types';
 import type { Side } from '../../src/types';
 import type { RebellionAction } from '../../src/adapter/rebellionAction';
 import { rebellionAdapter } from '../../src/adapter/rebellionAdapter';
 import { makeRebellionCodec } from '../../src/adapter/codec';
 import { buildCatalog, createGame, type DataBundle } from '../../src/engine/setup';
+import { stepOnce } from '../../src/play/randomAI';
 
 export interface Env {
   SUPABASE_URL?: string;
@@ -101,25 +103,80 @@ async function getCatalog(request: Request): Promise<GameCatalog> {
 
 /** Build a GameServer for this request, plus the DataBundle (needed to mint a
  *  fresh initial state when creating a game). */
-export async function makeServer(request: Request, env: Env): Promise<{ server: Server; dataBundle: DataBundle }> {
+export async function makeServer(request: Request, env: Env): Promise<{
+  server: Server; store: SnapshotStore; codec: Codec<GameState>; dataBundle: DataBundle;
+}> {
   const catalog = await getCatalog(request);
   const dataBundle = await getDataBundle(request);
   const base = env.PUBLIC_BASE_URL || new URL(request.url).origin;
+  const codec = makeRebellionCodec(catalog);
+  const store: SnapshotStore = new SupabaseStore(getSupabase(env));
   const server = new GameServer<GameState, RebellionAction, Side>({
     adapter: rebellionAdapter,
-    codec: makeRebellionCodec(catalog),
-    store: new SupabaseStore(getSupabase(env)),
+    codec,
+    store,
     notifier: makeNotifier(env), // Resend turn emails when configured, else no-op.
     gameUrl: (gameId, token) => `${base}/?g=${encodeURIComponent(gameId)}&t=${encodeURIComponent(token)}`,
   });
-  return { server, dataBundle };
+  return { server, store, codec, dataBundle };
 }
 
 /** A fresh two-player initial state. autoSetupUnits=true keeps the first online
- *  MVP simple (no manual setup-phase UI yet); revisit for a full setup flow. */
-export function newInitialState(dataBundle: DataBundle): GameState {
+ *  MVP simple (no manual setup-phase UI yet). `aiSide`, when set, marks that
+ *  seat as server-AI-controlled (online vs AI). */
+export function newInitialState(dataBundle: DataBundle, aiSide?: Side): GameState {
   const seed = Math.floor(Math.random() * 2 ** 31);
-  return createGame(dataBundle, { seed, autoSetupUnits: true });
+  const state = createGame(dataBundle, { seed, autoSetupUnits: true });
+  if (aiSide) state.aiSides = [aiSide];
+  return state;
+}
+
+/** Step the server-side heuristic AI — the SAME stepOnce() that drives the
+ *  single-player hotseat — while it's an AI seat's turn. Mutates `state`;
+ *  returns whether it advanced the game. Bounded to avoid any spin. */
+export function runServerAI(state: GameState): boolean {
+  const ai = state.aiSides;
+  if (!ai || ai.length === 0) return false;
+  let advanced = false;
+  for (let i = 0; i < 4000; i++) {
+    if (state.isGameOver) break;
+    const actor = rebellionAdapter.currentActor(state);
+    if (!actor || !ai.includes(actor)) break; // human's turn (or no actor) — stop.
+    let did = false;
+    try { did = stepOnce(state, actor); } catch { break; }
+    if (!did) break; // AI couldn't resolve its own step — stop rather than spin.
+    advanced = true;
+  }
+  return advanced;
+}
+
+/** After a human move (or at game creation), let the AI take its turn(s) and
+ *  persist the result as the next snapshot. Returns true if it advanced (caller
+ *  should re-fetch the human's view). Operates at the state/store level —
+ *  deliberately bypassing the token-gated server.submit, since the AI has no
+ *  client token. */
+// The framework wraps each stored snapshot as `v<schemaVersion>:` + codec
+// output (GameServer.encode/decodeSnapshot). We must match that format when we
+// read/write snapshots directly for AI moves, or the framework can't decode our
+// writes (and we can't decode its reads).
+function snapshotPrefix(): string {
+  return `v${rebellionAdapter.schemaVersion ?? 1}:`;
+}
+function decodeSnapshot(codec: Codec<GameState>, raw: string): GameState {
+  const m = /^v\d+:/.exec(raw);
+  return codec.decode(m ? raw.slice(m[0].length) : raw);
+}
+function encodeSnapshot(codec: Codec<GameState>, state: GameState): string {
+  return snapshotPrefix() + codec.encode(state);
+}
+
+export async function advanceAIAndStore(store: SnapshotStore, codec: Codec<GameState>, gameId: string): Promise<boolean> {
+  const latest = await store.getLatest(gameId);
+  if (!latest) return false;
+  const state = decodeSnapshot(codec, latest.state);
+  if (!runServerAI(state)) return false;
+  await store.putSnapshot(gameId, { turn: latest.turn + 1, state: encodeSnapshot(codec, state) });
+  return true;
 }
 
 export function json(data: unknown, status = 200): Response {

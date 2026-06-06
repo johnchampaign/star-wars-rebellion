@@ -15,6 +15,8 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [rebelEmail, setRebelEmail] = useState('');
   const [empireEmail, setEmpireEmail] = useState('');
+  // 'pvp' = two humans; otherwise the AI plays the opposite side to the human.
+  const [mode, setMode] = useState<'pvp' | 'human-rebel' | 'human-empire'>('pvp');
 
   async function createGame() {
     setCreating(true);
@@ -23,10 +25,11 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
       const emails: Record<string, string> = {};
       if (rebelEmail.trim()) emails.Rebel = rebelEmail.trim();
       if (empireEmail.trim()) emails.Empire = empireEmail.trim();
+      const aiSide = mode === 'human-rebel' ? 'Empire' : mode === 'human-empire' ? 'Rebel' : undefined;
       const r = await fetch('/api/games', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ emails }),
+        body: JSON.stringify({ emails, aiSide }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
@@ -49,6 +52,28 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
         right player. Whoever opens a link first claims that side. Bookmark the links — with no
         accounts yet, they're the only way back into the game.
       </p>
+
+      {!result && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ color: '#aab', fontSize: 13, marginBottom: 8 }}>Opponent</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {([
+              ['pvp', 'Two players'],
+              ['human-rebel', 'vs AI — I play Rebel'],
+              ['human-empire', 'vs AI — I play Empire'],
+            ] as const).map(([m, label]) => (
+              <button key={m} onClick={() => setMode(m)}
+                className={`tab-button ${mode === m ? 'active' : ''}`}
+                style={{ fontSize: 13 }}>{label}</button>
+            ))}
+          </div>
+          {mode !== 'pvp' && (
+            <div style={{ color: '#778', fontSize: 12, marginTop: 6 }}>
+              The AI plays the other side automatically on the server — open your own seat link and play.
+            </div>
+          )}
+        </div>
+      )}
 
       {!result && (
         <div style={{ marginBottom: 16, maxWidth: 460 }}>

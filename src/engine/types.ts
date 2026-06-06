@@ -1332,6 +1332,12 @@ export type GameState = {
   winner?: Side;
   winReason?: string;
 
+  // Online "vs AI": sides controlled by the server-side heuristic AI. Set at
+  // game creation for online-vs-AI games; the engine ignores it (it's metadata
+  // the online server reads to auto-play those seats). Absent/empty = all
+  // seats are human.
+  aiSides?: Side[];
+
   // Determinism
   rng: SeededRngState;
   controllerSeeds: { rebel: number; empire: number };
