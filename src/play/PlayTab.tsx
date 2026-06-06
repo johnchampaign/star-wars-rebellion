@@ -1372,13 +1372,15 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         />
       )}
 
-      {/* Report modals. Online, only the ACTING player (currentPlayer) sees the
-          blocking report — it's their action's outcome and only they can clear
-          it (the waiting player's clicks are suppressed and would have no way to
-          dismiss it, locking the dialog). Dismissal goes through onAckReport,
-          which submits a server-persisted acknowledge online. */}
+      {/* Report modals. Online, show a blocking report only when it's the
+          viewer's turn (online.yourTurn) — the SAME signal that enables clicks.
+          Gating on yourTurn (rather than currentPlayer) guarantees a visible
+          report modal is always interactive: if clicks are suppressed because
+          it's not your turn, the modal isn't shown, so it can never lock. The
+          report is cleared by whoever currently holds the turn, via onAckReport
+          (server-persisted acknowledge online). */}
       {G.combatReports && G.combatReports.length > 0
-        && (!online || G.currentPlayer === humanSide) && (
+        && (!online || online.yourTurn) && (
         <CombatReportModal
           G={G}
           report={G.combatReports[0]}
@@ -1387,7 +1389,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       )}
 
       {G.missionReports && G.missionReports.length > 0
-        && (!online || G.currentPlayer === humanSide) && (
+        && (!online || online.yourTurn) && (
         <MissionReportModal
           G={G}
           report={G.missionReports[0]}
@@ -1398,7 +1400,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       {G.objectiveReports && G.objectiveReports.length > 0
         && (!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
-        && (!online || G.currentPlayer === humanSide) && (
+        && (!online || online.yourTurn) && (
         <ObjectiveReportModal
           G={G}
           report={G.objectiveReports[0]}
@@ -1410,7 +1412,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         && (!G.missionReports || G.missionReports.length === 0)
         && (!G.objectiveReports || G.objectiveReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
-        && (!online || G.currentPlayer === humanSide) && (
+        && (!online || online.yourTurn) && (
         <RefreshReportModal
           G={G}
           report={G.refreshReports[0]}
