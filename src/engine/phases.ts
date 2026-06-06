@@ -2508,12 +2508,20 @@ export function resolveCatchThemBySurpriseMovePick(
     });
     if (!v.ok) return { ok: false, reason: v.reason };
   }
-  for (const uid of unitInstanceIds) M.moveUnit(G, uid, sourceSystemId, choice.targetSystemId);
+  const targetSystemId = choice.targetSystemId;
+  for (const uid of unitInstanceIds) M.moveUnit(G, uid, sourceSystemId, targetSystemId);
   log(G, { kind: 'catch-them-by-surprise-move', side: 'Empire', payload: {
-    fromSystemId: sourceSystemId, toSystemId: choice.targetSystemId,
+    fromSystemId: sourceSystemId, toSystemId: targetSystemId,
     moved: unitInstanceIds.length, movedIds: unitInstanceIds,
   }});
   G.pendingChoice = undefined;
+  // Moving a fleet into an enemy-occupied system initiates combat (RAW general
+  // movement rule — the card's whole point is the surprise attack). beginCombat
+  // self-guards on both sides being present, so this is a no-op if no Rebels are
+  // at the destination. Previously this resolver moved the fleet but never
+  // offered battle (player report — Brad Miller / BGG).
+  beginCombat(G, 'Empire', sourceSystemId, targetSystemId);
+  if (G.pendingCombat) runCombat(G);
   return { ok: true };
 }
 
