@@ -2183,6 +2183,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <CombatBoardLive
           G={G}
           humanSide={humanSide}
+          online={online ? { submit: online.submit } : undefined}
           onPersist={() => { persist(); refresh(); }}
           onShowDiceKey={() => setShowDiceKey(true)}
           onShowTacticKey={() => setShowTacticKey(true)}

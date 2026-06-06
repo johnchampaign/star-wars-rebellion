@@ -115,10 +115,24 @@ export function makeOnlineCombat(submit: Submit): typeof combatModule {
   const act = makeAct(submit);
   return {
     ...combatModule,
-    // Only these two combat resolvers are called from PlayTab; the rest of the
-    // combat sub-machine lives in CombatBoardLive (online wiring = step 2b).
+    // Called from PlayTab.
     resolveCombatObjectivePick: (_g: any, objectiveId: any) => act({ kind: 'resolveCombatObjectivePick', objectiveId }),
     resolveDeathStarPlansAttempt: (_g: any, attempt: any, deathStarInstanceId?: any) => act({ kind: 'resolveDeathStarPlansAttempt', attempt, deathStarInstanceId }),
+    // The combat sub-machine — called from CombatBoardLive (step 2b).
+    resolveCombatStartActionCards: (_g: any, cardIds: any) => act({ kind: 'resolveCombatStartActionCards', cardIds }),
+    resolveCombatAddLeaderPick: (_g: any, leaderId: any) => act({ kind: 'resolveCombatAddLeaderPick', leaderId }),
+    resolveCombatAttackerTactics: (_g: any, plays: any) => act({ kind: 'resolveCombatAttackerTactics', plays }),
+    resolveCombatDefenderTactics: (_g: any, plays: any) => act({ kind: 'resolveCombatDefenderTactics', plays }),
+    resolveYodaReroll: (_g: any, rerollIndex: any) => act({ kind: 'resolveYodaReroll', rerollIndex }),
+    resolveR2D2Flip: (_g: any, flipIndex: any) => act({ kind: 'resolveR2D2Flip', flipIndex }),
+    resolveSpecialDieSpend: (_g: any, plays: any) => act({ kind: 'resolveSpecialDieSpend', plays }),
+    resolveCombatAssignDamage: (_g: any, assignments: any) => act({ kind: 'resolveCombatAssignDamage', assignments }),
+    resolveOneInAMillionCombat: (_g: any, picks: any) => act({ kind: 'resolveOneInAMillionCombat', picks }),
+    resolveMoreDangerousTheaterPick: (_g: any, theater: any) => act({ kind: 'resolveMoreDangerousTheaterPick', theater }),
+    resolveFullyOperationalTargetPick: (_g: any, instanceId: any) => act({ kind: 'resolveFullyOperationalTargetPick', instanceId }),
+    resolveTargetTheGeneratorPick: (_g: any, instanceId: any) => act({ kind: 'resolveTargetTheGeneratorPick', instanceId }),
+    resolveReadyForActionLeaderPick: (_g: any, leaderId: any) => act({ kind: 'resolveReadyForActionLeaderPick', leaderId }),
+    resolveRetreatDecision: (_g: any, destSystemId: any, unitInstanceIds: any, leaderId?: any) => act({ kind: 'resolveRetreatDecision', destSystemId, unitInstanceIds, leaderId }),
   } as typeof combatModule;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

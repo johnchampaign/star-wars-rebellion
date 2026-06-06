@@ -9,10 +9,17 @@
 
 import { useEffect, useRef, useState } from 'react';
 import type { GameState, Side, UnitInstance, Theater, DieResult } from '../engine/types';
-import * as combat from '../engine/combat';
+import * as _combat from '../engine/combat';
+import { makeOnlineCombat } from '../online/onlineEngine';
+import type { RebellionAction } from '../adapter/rebellionAction';
 import { stepOnce as aiStepOnce } from './randomAI';
 import { vmodAssetUrl, CARD_IMAGE_BASE, UNIT_IMAGE_BASE } from '../data/loadAssets';
 import { unitImageUrl, getUnitStyle } from './unitImages';
+
+// Active combat engine handle. Module-level so the component + any helpers
+// resolve to the same one; reassigned per render to the online shim (submits to
+// the server) or the real module (single-player). See onlineEngine.ts / PlayTab.
+let combat = _combat;
 
 const SIDE_COLOR = { Rebel: '#4fc3f7', Empire: '#ff8a80' } as const;
 
@@ -107,10 +114,14 @@ function CardHover({ G, cardId, children }: {
   );
 }
 
-export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onShowDiceKey, onShowTacticKey }: {
+export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onShowDiceKey, onShowTacticKey, online }: {
   G: GameState;
   humanSide: Side;
   onPersist: () => void;
+  /** Online mode: when set, combat resolvers submit a RebellionAction to the
+   *  server instead of mutating local state, and the local AI combat-stepper is
+   *  disabled (the opponent is a remote human). */
+  online?: { submit: (a: RebellionAction) => Promise<void> } | null;
   /** Open the dice / tactic reference modals from inside combat — that's
    *  exactly when you need them (player request: MightyFaben). */
   onShowDiceKey?: () => void;
@@ -122,6 +133,8 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
    *  in conversation, not as a GH issue). */
   onReportProblem?: () => void;
 }) {
+  // Point the combat handle at the online shim (submits) or the real module.
+  combat = online ? makeOnlineCombat(online.submit) : _combat;
   const c = G.pendingCombat;
   if (!c) return null;
 
@@ -227,6 +240,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
   const lastStepRef = useRef<string>('');
   const [aiFailure, setAiFailure] = useState<string | null>(null);
   useEffect(() => {
+    if (online) return; // online: the opponent is a remote human, not local AI.
     if (!waitingForAI || decisionSide !== aiSide) return;
     if (G.missionReports && G.missionReports.length > 0) return;
     if (lastStepRef.current === fp) return;
