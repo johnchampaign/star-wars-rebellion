@@ -1193,6 +1193,13 @@ export type GameState = {
   // the base relocates. Not secret (these are systems ruled OUT).
   empireSearchedRuledOut?: SystemId[];
 
+  // Online-only: the probe-deck-derived ruled-out systems, computed server-side
+  // and attached to the EMPIRE's redacted view. The deck itself is hidden online
+  // (it would leak the base — the base's probe is absent from it), so the UI
+  // can't derive rule-outs from the deck and reads this instead. Excludes the
+  // base, so it's safe to send. Absent in hotseat (UI computes from the deck).
+  empireProbeRuledOut?: SystemId[];
+
   // Shared decks
   probeDeck: string[];
   spaceTacticDeck: string[];

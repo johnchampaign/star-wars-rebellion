@@ -10,10 +10,13 @@
 //   - Per-resolver variants are fully typed so TS catches payload-shape
 //     mismatches in the adapter's applyAction switch, and legalActions returns
 //     precisely-typed values for the UI.
-//   - UI-only helpers (requestAssignmentActionCardPlay / cancel* / undo*) are
-//     intentionally NOT in this union — only final, committing actions cross the
-//     wire. A take-back during the Assignment phase IS allowed (unassignLeader),
-//     because nothing is revealed until the Command phase.
+//   - Most steps that MUTATE engine state must cross the wire, including the
+//     ones that open/cancel a sub-choice: requestAssignmentActionCardPlay sets
+//     G.pendingChoice server-side, so the following playAssignmentActionCard has
+//     something to resolve (otherwise the server rejects it "no-pending"); its
+//     cancel must likewise clear that server-side choice. A take-back during the
+//     Assignment phase IS allowed (unassignLeader), because nothing is revealed
+//     until the Command phase. Pure-local UI (undo stacks, hover) stays local.
 //   - The framework's PlayerId is Rebellion's `Side` ('Rebel' | 'Empire').
 //     `actor` is supplied by the framework on submit, never packed into the
 //     Action payload.
@@ -35,6 +38,8 @@ export type RebellionAction =
   | { kind: 'assignLeader'; missionId: string; leaderIds: LeaderId[] }
   | { kind: 'unassignLeader'; missionId: string }
   | { kind: 'skipAssignment' }
+  | { kind: 'requestAssignmentActionCardPlay' }
+  | { kind: 'cancelAssignmentActionCardPlay' }
   | { kind: 'playAssignmentActionCard'; cardId: string }
 
   // ---------- Command (top-level) ----------

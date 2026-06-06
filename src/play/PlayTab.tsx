@@ -5842,6 +5842,11 @@ function UnitCluster({ centerX, centerY, groups, iconSize, maxWidth }: {
  *  old version only marked the current probeHand, badly under-counting
  *  (reporter: "only 4 in deck but far more than 4 unmarked"). */
 function empireRuledOutSystems(G: GameState): Set<string> {
+  // Online: the probe deck is hidden, so the server precomputes the rule-outs
+  // (from the real deck) into empireProbeRuledOut. Prefer it when present —
+  // deriving from the redacted (all-hidden) deck would mark EVERY system ruled
+  // out. Hotseat falls through to the deck-based computation below.
+  if (G.empireProbeRuledOut) return new Set(G.empireProbeRuledOut);
   const inDeck = new Set(
     (G.probeDeck ?? []).map((pid) => G.catalog.probes[pid]?.systemId).filter(Boolean) as string[],
   );

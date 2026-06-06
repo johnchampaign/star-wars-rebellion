@@ -126,10 +126,17 @@ check('input rebel hand unchanged', fixture.rebel.missionHand[0] === 'REBELSECRE
   // would single it out (base defenders live in the location-agnostic base space).
   const baseSysForEmpire = (eView as never as { map: { systems: Record<string, { units: unknown[] }> } }).map.systems[trueBase];
   check('Setup: base system shows no Rebel units to Empire', baseSysForEmpire.units.length === 0);
+  // Empire probe rule-outs are precomputed server-side (deck is hidden) and must
+  // never include the actual base.
+  const ruled = (eView as never as { empireProbeRuledOut?: string[] }).empireProbeRuledOut;
+  check('Setup: Empire gets a probe-ruled-out list', Array.isArray(ruled));
+  check('Setup: probe-ruled-out never includes the base', !ruled?.includes(trueBase));
 
   const rView = redactStateForViewer(g, 'Rebel');
   check('Setup: Rebel sees the true base', rView.rebelBaseSystemId === trueBase);
   check('Setup: Rebel sees the candidates', (rView.pendingRebelBasePick?.length ?? 0) > 0);
+  const rRuled = (rView as never as { empireProbeRuledOut?: string[] }).empireProbeRuledOut;
+  check('Setup: Rebel view gets NO empire probe rule-outs', rRuled === undefined);
 }
 
 console.log('');

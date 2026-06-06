@@ -50,6 +50,8 @@ export function makeOnlinePhases(submit: Submit, canSubmit: () => boolean): type
     assignLeader: (_g: any, _s: any, missionId: any, leaderIds: any) => act({ kind: 'assignLeader', missionId, leaderIds }),
     unassignLeader: (_g: any, _s: any, missionId: any) => act({ kind: 'unassignLeader', missionId }),
     skipAssignment: (_g: any, _s: any) => act({ kind: 'skipAssignment' }),
+    requestAssignmentActionCardPlay: (_g: any, _s: any) => act({ kind: 'requestAssignmentActionCardPlay' }),
+    cancelAssignmentActionCardPlay: (_g: any) => act({ kind: 'cancelAssignmentActionCardPlay' }),
     playAssignmentActionCard: (_g: any, cardId: any) => act({ kind: 'playAssignmentActionCard', cardId }),
     // Command
     pass: (_g: any, _s: any) => act({ kind: 'pass' }),

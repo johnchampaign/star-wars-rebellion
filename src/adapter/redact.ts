@@ -61,16 +61,42 @@ function redactFaction(f: FactionState, own: boolean): FactionState {
 
 /** Produce the redacted GameState a given seat (or a null spectator) is allowed
  *  to see. Pure — never mutates the input. */
+/** Probe-derived ruled-out systems for the Empire, computed from the FULL deck
+ *  (the deck is hidden in the view, so the UI can't derive this itself). A system
+ *  is ruled out once its probe is no longer in the deck (the Empire drew it),
+ *  EXCLUDING the actual base — so this never leaks the base. Mirrors the UI's
+ *  empireRuledOutSystems(); keep them in sync. */
+function computeEmpireProbeRuledOut(state: GameState): SystemId[] {
+  const cat = state.catalog;
+  if (!cat?.probes || !cat.systems) return [];
+  const inDeck = new Set(
+    (state.probeDeck ?? []).map((pid) => cat.probes[pid]?.systemId).filter(Boolean) as string[],
+  );
+  const out = new Set<string>();
+  for (const p of Object.values(cat.probes)) {
+    if (!p.systemId || inDeck.has(p.systemId) || p.systemId === state.rebelBaseSystemId) continue;
+    out.add(p.systemId);
+  }
+  for (const s of Object.values(cat.systems)) {
+    if (s.isCoruscant && s.id !== state.rebelBaseSystemId) out.add(s.id);
+  }
+  return [...out] as SystemId[];
+}
+
 export function redactStateForViewer(state: GameState, viewer: Side | null): GameState {
   const G = structuredClone(state);
   const baseHiddenToViewer = viewer !== 'Rebel' && !G.rebelBaseRevealed;
+  // The Empire's probe rule-outs must be computed from the real (pre-hide) deck.
+  const empireProbeRuledOut = viewer === 'Empire' ? computeEmpireProbeRuledOut(state) : undefined;
   return {
     ...G,
     // RNG / seeds: zero them so a client cannot predict rolls.
     rng: { state: 0 },
     controllerSeeds: { rebel: 0, empire: 0 },
-    // Probe deck is face-down.
+    // Probe deck is face-down. The Empire's deck-derived rule-outs are computed
+    // from the real deck above (the hidden deck can't yield them client-side).
     probeDeck: hide(G.probeDeck),
+    empireProbeRuledOut,
     // The base location, until it is revealed to all.
     rebelBaseSystemId: baseHiddenToViewer ? (HIDDEN as SystemId) : G.rebelBaseSystemId,
     // The 5 Setup base candidates are shown to the Rebel only.

@@ -45,6 +45,8 @@ function dispatch(G: GameState, a: RebellionAction, actor: Side): Result {
     case 'assignLeader':       return phases.assignLeader(G, actor, a.missionId, a.leaderIds);
     case 'unassignLeader':     return phases.unassignLeader(G, actor, a.missionId);
     case 'skipAssignment':     return phases.skipAssignment(G, actor);
+    case 'requestAssignmentActionCardPlay': return phases.requestAssignmentActionCardPlay(G, actor);
+    case 'cancelAssignmentActionCardPlay': return phases.cancelAssignmentActionCardPlay(G);
     case 'playAssignmentActionCard': return phases.playAssignmentActionCard(G, a.cardId);
 
     // ---------- Command (top-level) ----------
