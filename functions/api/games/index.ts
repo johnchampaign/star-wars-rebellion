@@ -7,7 +7,7 @@
 // gameUrl) with that player. GET (list games for a player) is deferred to the
 // auth phase — it needs the caller's identity to filter dbf_games.
 
-import { makeServer, newInitialState, runServerAI, json, fail, type Env } from '../../_lib/gameServer';
+import { makeServer, newInitialState, runServerAI, sendInviteEmail, json, fail, type Env } from '../../_lib/gameServer';
 
 interface CreateBody {
   emails?: Partial<Record<'Rebel' | 'Empire', string>>;
@@ -19,7 +19,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   try {
     const { request, env } = ctx;
     const body = (await request.json().catch(() => ({}))) as CreateBody;
-    const { server, dataBundle } = await makeServer(request, env);
+    const { server, dataBundle, gameUrl } = await makeServer(request, env);
     const initialState = newInitialState(dataBundle, body.aiSide);
     // If the AI moves first (e.g. it's the Rebel and acts first in Assignment),
     // play its opening now so the human's first fetch shows their own turn.
@@ -29,6 +29,14 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
       players: ['Rebel', 'Empire'],
       emails: body.emails,
     });
+    // Email each seat that has an address on file its private invite link — but
+    // not the AI seat. Best-effort, off the response path.
+    for (const side of ['Rebel', 'Empire'] as const) {
+      const to = body.emails?.[side];
+      if (!to || side === body.aiSide) continue;
+      const url = gameUrl(result.gameId, result.invites[side]);
+      ctx.waitUntil(sendInviteEmail(env, { to, gameUrl: url, side }).catch(() => {}));
+    }
     return json(result, 201);
   } catch (e) {
     return fail(e);

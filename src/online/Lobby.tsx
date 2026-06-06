@@ -78,8 +78,9 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
       {!result && (
         <div style={{ marginBottom: 16, maxWidth: 460 }}>
           <div style={{ color: '#aab', fontSize: 13, marginBottom: 8 }}>
-            Optional — add each player's email to get a <b>"your turn"</b> notification when it's
-            their move (great for games played over days). Leave blank to just share links.
+            Optional — add a player's email and we'll <b>email them their invite link</b> right away,
+            plus a <b>"your turn"</b> nudge if they're away when it's their move (great for games
+            played over days). Leave blank to just copy and share the links yourself.
           </div>
           <label style={emailRow}>
             <span style={{ width: 64, color: '#4fc3f7' }}>Rebel</span>

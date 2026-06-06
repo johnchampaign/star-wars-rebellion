@@ -61,6 +61,33 @@ function makeNotifier(env: Env): Notifier {
   });
 }
 
+/** Invite email, sent once at game creation to each seat that has an email on
+ *  file. Distinct from the turn nudge: this is "here's your private link, come
+ *  play". Best-effort — no-ops if Resend isn't configured. */
+export async function sendInviteEmail(
+  env: Env,
+  args: { to: string; gameUrl: string; side: Side },
+): Promise<void> {
+  if (!env.RESEND_API_KEY || !env.RESEND_FROM) return;
+  const { to, gameUrl, side } = args;
+  const html =
+    `<p>You've been invited to play <b>Star Wars: Rebellion</b> as the <b>${side}</b>.</p>` +
+    `<p><a href="${gameUrl}">Open your game</a> and take your first turn.</p>` +
+    `<p>It's a play-by-cloud game: take your turn whenever you like, then it's your opponent's move. ` +
+    `If it becomes your turn and you've been away a while, we'll email you a nudge.</p>` +
+    `<p style="color:#888;font-size:12px">The link above is your private seat — don't share it.</p>`;
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: env.RESEND_FROM, to,
+      subject: `You're invited to a game of Star Wars: Rebellion (${side})`,
+      html,
+    }),
+  });
+  if (!res.ok) throw new Error(`Resend invite failed: ${res.status} ${await res.text()}`);
+}
+
 type Server = GameServer<GameState, RebellionAction, Side>;
 
 let _supabase: SupabaseClient | null = null;
