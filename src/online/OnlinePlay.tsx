@@ -16,18 +16,11 @@ import type { Side } from '../types';
 export default function OnlinePlay({ gameId, token }: { gameId: string; token: string }) {
   const client = useMemo(() => makeGameClient(gameId, token), [gameId, token]);
   // Poll every 8s — quick enough to feel live, gentle on the Supabase free tier.
-  const { view, yourTurn, turn, gameOver, you, legalActions, submit, loading, error, refresh } =
+  const { view, yourTurn, turn, gameOver, you, submit, loading, error, refresh } =
     useGame<GameState, RebellionAction>(client, { pollMs: 8000 });
   const [busy, setBusy] = useState(false);
   const [actErr, setActErr] = useState<string | null>(null);
   const [oppAbandoned, setOppAbandoned] = useState(false);
-
-  async function send(action: RebellionAction) {
-    setBusy(true); setActErr(null);
-    try { await submit(action); }
-    catch (e) { setActErr(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); }
-  }
 
   // While waiting on the opponent, poll for abandonment (the server returns
   // opponentAbandoned once they've been away past the grace period).
@@ -61,12 +54,6 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
   if (error && !view) return <div style={pad}><b>Couldn't load this game.</b><pre style={errBox}>{String(error.message)}</pre></div>;
   if (!view) return <div style={pad}>No game data.</div>;
 
-  // Phase-appropriate always-available actions, so the loop is playable before
-  // the full board lands. The server validates every submit regardless.
-  const quick: RebellionAction[] = [];
-  if (view.phase === 'Assignment') quick.push({ kind: 'skipAssignment' });
-  if (view.phase === 'Command') quick.push({ kind: 'pass' });
-
   return (
     <div style={{ ...pad, maxWidth: 1280, margin: '0 auto', fontFamily: 'system-ui, sans-serif', color: '#e8e6f2' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -95,23 +82,10 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
         </div>
       )}
 
-      {yourTurn && !gameOver && (
-        <div style={card}>
-          <div style={{ fontWeight: 600, marginBottom: 8 }}>Your move</div>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {quick.map((a, i) => (
-              <button key={`q${i}`} disabled={busy} onClick={() => void send(a)}>{labelFor(a)}</button>
-            ))}
-            {legalActions.map((a, i) => (
-              <button key={`l${i}`} disabled={busy} onClick={() => void send(a)}>{labelFor(a)}</button>
-            ))}
-            {quick.length === 0 && legalActions.length === 0 && (
-              <span style={{ color: '#aab' }}>No quick actions wired for this step yet — full board coming. (The server still accepts any valid move.)</span>
-            )}
-          </div>
-          {actErr && <pre style={errBox}>{actErr}</pre>}
-        </div>
-      )}
+      {/* The board below is the input surface (its own pass/done/assign
+          controls submit to the server). The old quick-action panel that lived
+          here was redundant and showed duplicate buttons (e.g. two "Pass"). */}
+      {actErr && !oppAbandoned && <div style={card}><pre style={errBox}>{actErr}</pre></div>}
 
       {/* The real board, rendered from the redacted server view. Read-only for
           now (pointer-events disabled); moves go through the action panel above.
@@ -138,13 +112,6 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
   );
 }
 
-function labelFor(a: RebellionAction): string {
-  switch (a.kind) {
-    case 'skipAssignment': return 'Done assigning';
-    case 'pass': return 'Pass';
-    default: return a.kind;
-  }
-}
 
 const pad: React.CSSProperties = { padding: 20 };
 const card: React.CSSProperties = { background: '#1b1e24', border: '1px solid #333', borderRadius: 8, padding: 14, margin: '12px 0' };

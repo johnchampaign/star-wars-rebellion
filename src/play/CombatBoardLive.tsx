@@ -222,7 +222,11 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
     pc?.kind === 'CombatAddLeaderPick'   ? pc.side :
     pc?.kind === 'RetreatDecision'       ? pc.side : null;
   const isHumanDecision = decisionSide === humanSide;
-  const waitingForAI = decisionSide !== null && !isHumanDecision;
+  // Online, the opponent is a remote human (or a SERVER-driven AI seat) — either
+  // way the client doesn't run the AI, so the "resume AI" affordance is
+  // single-player-only. Online we just show a neutral "waiting for opponent".
+  const waitingForOpponent = decisionSide !== null && !isHumanDecision;
+  const waitingForAI = !online && waitingForOpponent;
 
   // Self-healing AI driver: any time this component renders and the AI owes
   // a combat decision, step the AI synchronously and notify the parent to
@@ -553,6 +557,11 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
                 ⚠ {aiFailure}
               </div>
             )}
+          </div>
+        )}
+        {online && waitingForOpponent && (
+          <div style={{ color: '#e0b84f', fontStyle: 'italic' }}>
+            Waiting for {decisionSide} to resolve their combat decision…
           </div>
         )}
         {pc?.kind === 'CombatAttackerTactics' && isHumanDecision && (
