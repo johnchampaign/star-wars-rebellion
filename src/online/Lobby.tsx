@@ -41,6 +41,13 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
     }
   }
 
+  // Which sides a HUMAN plays — the AI seat needs no email and no invite link.
+  const aiSide: 'Rebel' | 'Empire' | null =
+    mode === 'human-rebel' ? 'Empire' : mode === 'human-empire' ? 'Rebel' : null;
+  const humanSides: ('Rebel' | 'Empire')[] = aiSide
+    ? [aiSide === 'Rebel' ? 'Empire' : 'Rebel']
+    : ['Rebel', 'Empire'];
+
   return (
     <div style={{ maxWidth: 760, margin: '40px auto', padding: 24, fontFamily: 'system-ui, sans-serif', color: '#e8e6f2' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -78,20 +85,25 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
       {!result && (
         <div style={{ marginBottom: 16, maxWidth: 460 }}>
           <div style={{ color: '#aab', fontSize: 13, marginBottom: 8 }}>
-            Optional — add a player's email and we'll <b>email them their invite link</b> right away,
-            plus a <b>"your turn"</b> nudge if they're away when it's their move (great for games
-            played over days). Leave blank to just copy and share the links yourself.
+            Optional — add {aiSide ? 'your' : "a player's"} email and we'll <b>email the invite link</b> right
+            away, plus a <b>"your turn"</b> nudge when it's that player's move (great for games played over
+            days). Leave blank to just copy and share the link{aiSide ? '' : 's'} yourself.
+            {aiSide && <> The {aiSide} side is the computer — no email needed.</>}
           </div>
-          <label style={emailRow}>
-            <span style={{ width: 64, color: '#4fc3f7' }}>Rebel</span>
-            <input type="email" placeholder="rebel@example.com" value={rebelEmail}
-              onChange={(e) => setRebelEmail(e.target.value)} style={emailInput} />
-          </label>
-          <label style={emailRow}>
-            <span style={{ width: 64, color: '#ff8a80' }}>Empire</span>
-            <input type="email" placeholder="empire@example.com" value={empireEmail}
-              onChange={(e) => setEmpireEmail(e.target.value)} style={emailInput} />
-          </label>
+          {humanSides.includes('Rebel') && (
+            <label style={emailRow}>
+              <span style={{ width: 64, color: '#4fc3f7' }}>Rebel</span>
+              <input type="email" placeholder="rebel@example.com" value={rebelEmail}
+                onChange={(e) => setRebelEmail(e.target.value)} style={emailInput} />
+            </label>
+          )}
+          {humanSides.includes('Empire') && (
+            <label style={emailRow}>
+              <span style={{ width: 64, color: '#ff8a80' }}>Empire</span>
+              <input type="email" placeholder="empire@example.com" value={empireEmail}
+                onChange={(e) => setEmpireEmail(e.target.value)} style={emailInput} />
+            </label>
+          )}
         </div>
       )}
 
@@ -106,10 +118,16 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
         <div style={{ marginTop: 24 }}>
           <h3>Game created</h3>
           <p style={{ color: '#aab' }}>Game ID: <code>{result.gameId}</code></p>
-          <Invite label="Rebel invite — send to the Rebel player" url={result.invites.Rebel} />
-          <Invite label="Empire invite — send to the Empire player" url={result.invites.Empire} />
+          {humanSides.includes('Rebel') && (
+            <Invite label={aiSide ? 'Your link — open to play as the Rebels (the AI plays the Empire)' : 'Rebel invite — send to the Rebel player'} url={result.invites.Rebel} />
+          )}
+          {humanSides.includes('Empire') && (
+            <Invite label={aiSide ? 'Your link — open to play as the Empire (the AI plays the Rebels)' : 'Empire invite — send to the Empire player'} url={result.invites.Empire} />
+          )}
           <p style={{ marginTop: 8, color: '#778' }}>
-            To try it solo, open one link in this tab and the other in a separate browser/incognito window.
+            {aiSide
+              ? 'Open your link above to start playing — the computer takes its turns automatically.'
+              : 'To try it solo, open one link in this tab and the other in a separate browser/incognito window.'}
           </p>
         </div>
       )}
