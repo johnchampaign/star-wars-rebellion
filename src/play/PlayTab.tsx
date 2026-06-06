@@ -6458,7 +6458,13 @@ function leaderStatusFor(
 
 function LeaderRoster({ G, side, humanSide }: { G: GameState; side: Side; humanSide: Side }) {
   const color = sideColor(side);
-  const leaders = Object.values(G.catalog.leaders).filter((l) => l.side === side);
+  // A leader lured to the dark side becomes an Imperial leader for the rest of
+  // the game — so list them under the side that CONTROLS them now, not their
+  // printed side (player report #132: Empire lured Luke but he never showed up
+  // in the Empire's roster because we filtered on catalog side).
+  const effectiveSide = (l: { id: string; side: Side }): Side =>
+    G.leaderAttachments?.[l.id]?.includes('dark-side') ? 'Empire' : l.side;
+  const leaders = Object.values(G.catalog.leaders).filter((l) => effectiveSide(l) === side);
   if (leaders.length === 0) return null;
   return (
     <details style={{ marginTop: 8 }}>
