@@ -167,6 +167,17 @@ export const rebellionAdapter: GameAdapter<GameState, RebellionAction, Side> = {
   currentActor,
 
   canAct(state, actor) {
+    // Setup is concurrent: each side places ITS OWN starting forces (and the
+    // Rebel secretly picks the base) independently — they don't interact, and
+    // RAW has no real cross-dependency. For async online play, blocking one
+    // player until the other finishes setup would mean sitting idle for hours/
+    // days, so a side "may act" during Setup whenever it still has its own setup
+    // work pending. Normal turn order resumes once Setup completes.
+    if (state.phase === 'Setup') {
+      const deployLeft = state.pendingDeployment?.[actor]?.length ?? 0;
+      const basePickLeft = actor === 'Rebel' && (state.pendingRebelBasePick?.length ?? 0) > 0;
+      return deployLeft > 0 || basePickLeft;
+    }
     return currentActor(state) === actor;
   },
 
