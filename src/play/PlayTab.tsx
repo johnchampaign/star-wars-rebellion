@@ -8617,7 +8617,7 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
 // is just a suggested source; players who have their own copy can use that
 // instead.
 
-const VASSAL_DRIVE_URL = 'https://drive.google.com/file/d/1l0Tdrl_B5ceY_hAbjbqBClFg1ZToO0O0/view?usp=sharing';
+const VASSAL_DRIVE_URL = 'https://drive.google.com/file/d/1KRvMB2MHiXkNgd5wpKTD0O_Jo_s3QHX2/view?usp=sharing';
 
 function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
   G: GameState;
