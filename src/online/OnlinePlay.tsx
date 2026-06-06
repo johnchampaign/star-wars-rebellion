@@ -62,7 +62,22 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
       </div>
 
       <div style={card}>
-        <div><b>You are:</b> {you ?? '—'}</div>
+        <div>
+          <b>You are:</b> {you ?? '—'}
+          {(() => {
+            const opp = you === 'Rebel' ? 'Empire' : you === 'Empire' ? 'Rebel' : null;
+            if (!opp) return null;
+            const oppIsAI = view.aiSides?.includes(opp);
+            return (
+              <span style={{ marginLeft: 14 }}>
+                <b>Opponent ({opp}):</b>{' '}
+                {oppIsAI
+                  ? <span style={{ color: '#e0b84f' }}>AI — its turns play automatically. To hand this seat to a person, have them open the {opp} invite link.</span>
+                  : <span style={{ color: '#8a7' }}>human</span>}
+              </span>
+            );
+          })()}
+        </div>
         <div><b>Phase:</b> {view.phase} &nbsp; <b>Turn marker:</b> {view.timeMarker}/{view.trackLength} &nbsp; <b>Reputation:</b> {view.reputationMarker}</div>
         <div><b>Move #:</b> {turn} &nbsp; {gameOver ? <span style={{ color: '#f88' }}>Game over{view.winner ? ` — ${view.winner} wins` : ''}</span>
           : <b style={{ color: yourTurn ? '#80dc78' : '#e0b84f' }}>{yourTurn ? 'Your turn' : 'Waiting for opponent…'}</b>}</div>
