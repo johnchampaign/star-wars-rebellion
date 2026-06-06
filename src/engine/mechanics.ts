@@ -434,6 +434,32 @@ export function findUnitInvariantViolations(G: GameState): string[] {
   return errs;
 }
 
+/** Units of `typeId` currently committed (NOT in the holding pool): on the
+ *  board, in the Rebel base space, or sitting in either side's build queue.
+ *  Unit type ids are unique per side (e.g. 'x-wing' is Rebel-only), so no
+ *  side filter is needed — counting by typeId is exact. */
+export function unitsCommitted(G: GameState, typeId: UnitTypeId): number {
+  let n = 0;
+  for (const ss of Object.values(G.map.systems)) for (const u of ss.units) if (u.typeId === typeId) n++;
+  for (const u of G.map.rebelBaseSpace?.units ?? []) if (u.typeId === typeId) n++;
+  for (const side of ['rebel', 'empire'] as const) {
+    const q = G[side]?.buildQueue;
+    if (!q) continue;
+    for (const slot of [1, 2, 3] as const) for (const t of q[slot] ?? []) if (t === typeId) n++;
+  }
+  return n;
+}
+
+/** How many units of `typeId` remain in the holding pool (the physical
+ *  supply minus everything committed). RAW: the supply IS the limit — you
+ *  cannot build/deploy a unit you don't have a token for (the resource is
+ *  simply wasted). Returns Infinity for types with no printed supplyCount. */
+export function unitsAvailableInSupply(G: GameState, typeId: UnitTypeId): number {
+  const cap = G.catalog?.unitTypes?.[typeId]?.supplyCount;
+  if (typeof cap !== 'number') return Infinity;
+  return Math.max(0, cap - unitsCommitted(G, typeId));
+}
+
 /** Place a unit on a side's build queue (rr p.3). Optional `sourceSystemId`
  *  ('rebel-base' for the Rebel Base card's own resource icons) is recorded
  *  in the log so the refresh-report can show "built X from Y." */

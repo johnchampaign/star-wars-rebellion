@@ -15,7 +15,7 @@ import * as Handlers from './handlers/registry';
 import { missionTargets } from './missionTargets';
 import { PROJECT_ONLY_UNIT_IDS } from './units';
 import { rollDie, shuffle } from './rng';
-import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck, postPlayObjectiveChoice } from './objectives';
+import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck, objectiveReturnsToHand, postPlayObjectiveChoice } from './objectives';
 
 /** Time-track turns on which the Rebel recruits a new leader, per the printed
  *  16-space board (turns 2-5). Single source of truth shared by the engine's
@@ -2021,6 +2021,14 @@ export function resolveRapidMobilizationMove(
   if (unitInstanceIds.length > 5) return { ok: false, reason: 'too-many-units' };
   const src = G.map.systems[sourceSystemId];
   if (!src) return { ok: false, reason: 'unknown-source' };
+  // RAW: Rapid Mobilization ignores adjacency, but it does NOT lift the
+  // general "cannot move units out of a system that contains your own leader"
+  // restriction (rr p.2). This is the BGG-confirmed edge case: after an RM
+  // base-move places a Rebel leader in the old base system, a second RM
+  // cannot evacuate that system's units. (Threads 1718633 / 1773892.)
+  if (unitInstanceIds.length > 0 && (G.rebel.leadersOnBoard[sourceSystemId] ?? []).length > 0) {
+    return { ok: false, reason: `friendly-leader-blocks-source:${sourceSystemId}` };
+  }
   const picks = unitInstanceIds.filter((uid) => {
     const u = src.units.find((x) => x.instanceId === uid);
     return u && u.side === 'Rebel';
@@ -3141,7 +3149,11 @@ function playRefreshObjective(G: GameState, objectiveId: string, rep: number): v
   const handIdx = hand.indexOf(objectiveId);
   if (handIdx < 0) return;
   hand.splice(handIdx, 1);
-  if (objectiveReturnsToDeck(G, objectiveId)) {
+  if (objectiveReturnsToHand(G, objectiveId)) {
+    // Card explicitly returns to hand (Heart of the Empire) — re-scorable
+    // next turn while Coruscant stays Rebel-held. Put it straight back.
+    hand.push(objectiveId);
+  } else if (objectiveReturnsToDeck(G, objectiveId)) {
     if (!G.rebel.objectiveDeck) G.rebel.objectiveDeck = [];
     G.rebel.objectiveDeck.push(objectiveId);
   }
@@ -3541,7 +3553,19 @@ type BuildPickEntry = {
   iconType: 'space' | 'ground';
   iconShape: 'triangle' | 'circle' | 'square';
   legalUnitTypes: string[];
+  available?: Record<string, number>;
 };
+
+/** Snapshot holding-pool supply remaining for each legal unit type. Single-
+ *  type auto-applies are pushed to the queue immediately, so unitsCommitted
+ *  already reflects them; the only thing this snapshot can't foresee is which
+ *  type an as-yet-undecided multi-option pick will consume — that within-batch
+ *  race is settled by the hard supply check in resolveBuildPicks. */
+function availabilityFor(G: GameState, legal: string[]): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const t of legal) out[t] = M.unitsAvailableInSupply(G, t);
+  return out;
+}
 
 /** Collect all this turn's build entries. Icons with only one legal unit
  *  type auto-apply immediately; icons with multiple legal types are queued
@@ -3584,14 +3608,29 @@ function refreshBuildIfApplicable(G: GameState, logStart: number): boolean {
       for (const icon of icons) {
         const legal = legalUnitsForIcon(side, icon.type, icon.shape);
         if (legal.length === 0) continue;
-        if (legal.length === 1) {
-          M.buildToQueue(G, side, legal[0], slot, sysId);
-          sideAutoApplied.push({ sourceSystemId: sysId, slot, unitTypeId: legal[0] });
+        // RAW: you can only build a unit you still have a token for in the
+        // holding pool. Drop types that are exhausted so the player isn't
+        // offered (and can't waste the pick on) something with 0 supply.
+        const buildable = legal.filter((t) => M.unitsAvailableInSupply(G, t) > 0);
+        if (buildable.length === 0) {
+          // No supply for ANY unit this icon could make → the build is
+          // wasted. Surface it so the player understands why nothing was
+          // produced, rather than silently dropping the icon.
+          log(G, { kind: 'build-wasted-no-supply', side, payload: {
+            sourceSystemId: sysId, slot, iconType: icon.type, iconShape: icon.shape,
+            legalUnitTypes: legal,
+          }});
+          continue;
+        }
+        if (buildable.length === 1) {
+          M.buildToQueue(G, side, buildable[0], slot, sysId);
+          sideAutoApplied.push({ sourceSystemId: sysId, slot, unitTypeId: buildable[0] });
         } else {
           sidePicks.push({
             sourceSystemId: sysId, slot,
             iconType: icon.type, iconShape: icon.shape,
-            legalUnitTypes: legal,
+            legalUnitTypes: buildable,
+            available: availabilityFor(G, buildable),
           });
         }
       }
@@ -3608,18 +3647,39 @@ function refreshBuildIfApplicable(G: GameState, logStart: number): boolean {
         if (empireUnit || empireLoyal) baseProduces = false;
       }
       if (baseProduces) {
-        // Ground triangle has only one legal type — auto-apply.
-        M.buildToQueue(G, 'Rebel', 'rebel-trooper', 1, 'rebel-base');
-        sideAutoApplied.push({ sourceSystemId: 'rebel-base', slot: 1, unitTypeId: 'rebel-trooper' });
+        // Ground triangle has only one legal type — auto-apply (if any Rebel
+        // Troopers remain in the holding pool; otherwise the icon is wasted).
+        if (M.unitsAvailableInSupply(G, 'rebel-trooper') > 0) {
+          M.buildToQueue(G, 'Rebel', 'rebel-trooper', 1, 'rebel-base');
+          sideAutoApplied.push({ sourceSystemId: 'rebel-base', slot: 1, unitTypeId: 'rebel-trooper' });
+        } else {
+          log(G, { kind: 'build-wasted-no-supply', side: 'Rebel', payload: {
+            sourceSystemId: 'rebel-base', slot: 1, iconType: 'ground', iconShape: 'triangle',
+            legalUnitTypes: ['rebel-trooper'],
+          }});
+        }
         // Space triangle — use the shared icon→units map so the Rebel Base
         // offers the same space-triangle options as any other system
         // (X-Wing / Y-Wing / Rebel Transport), instead of a hardcoded list
         // that drifted out of sync (issue #50).
-        sidePicks.push({
-          sourceSystemId: 'rebel-base', slot: 1,
-          iconType: 'space', iconShape: 'triangle',
-          legalUnitTypes: legalUnitsForIcon('Rebel', 'space', 'triangle'),
-        });
+        const baseSpace = legalUnitsForIcon('Rebel', 'space', 'triangle')
+          .filter((t) => M.unitsAvailableInSupply(G, t) > 0);
+        if (baseSpace.length === 0) {
+          log(G, { kind: 'build-wasted-no-supply', side: 'Rebel', payload: {
+            sourceSystemId: 'rebel-base', slot: 1, iconType: 'space', iconShape: 'triangle',
+            legalUnitTypes: legalUnitsForIcon('Rebel', 'space', 'triangle'),
+          }});
+        } else if (baseSpace.length === 1) {
+          M.buildToQueue(G, 'Rebel', baseSpace[0], 1, 'rebel-base');
+          sideAutoApplied.push({ sourceSystemId: 'rebel-base', slot: 1, unitTypeId: baseSpace[0] });
+        } else {
+          sidePicks.push({
+            sourceSystemId: 'rebel-base', slot: 1,
+            iconType: 'space', iconShape: 'triangle',
+            legalUnitTypes: baseSpace,
+            available: availabilityFor(G, baseSpace),
+          });
+        }
       }
     }
 
@@ -3663,6 +3723,12 @@ export function resolveBuildPicks(G: GameState, choices: string[]): { ok: boolea
     const c = choices[i];
     if (!p.legalUnitTypes.includes(c)) {
       return { ok: false, reason: `illegal-pick:${c}` };
+    }
+    // Hard supply gate (RAW holding pool). Checked live so two same-shape
+    // icons in one batch can't both spend the last token — each buildToQueue
+    // above decrements the pool that this read sees.
+    if (M.unitsAvailableInSupply(G, c) <= 0) {
+      return { ok: false, reason: `no-supply:${c}` };
     }
     M.buildToQueue(G, cur.side, c, p.slot, p.sourceSystemId);
   }

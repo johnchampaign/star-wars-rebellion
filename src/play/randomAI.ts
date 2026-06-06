@@ -1566,6 +1566,9 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     let srcSys: string | null = null;
     let picks: string[] = [];
     for (const sysId of Object.keys(G.map.systems)) {
+      // Skip systems with a friendly leader — RM can't move units out of them
+      // (rr p.2), and the engine now rejects such a move.
+      if ((G.rebel.leadersOnBoard[sysId] ?? []).length > 0) continue;
       const rebels = G.map.systems[sysId].units.filter((u) => u.side === 'Rebel');
       if (rebels.length > 0) { srcSys = sysId; picks = rebels.slice(0, 5).map((u) => u.instanceId); break; }
     }
@@ -2118,12 +2121,24 @@ function handleBuildPick(G: GameState): boolean {
   const enforceFloor = side === 'Empire' && G.timeMarker >= 3;
   const sdFloor = enforceFloor && countOnBoardAndQueue('star-destroyer') < 2;
   const atatFloor = enforceFloor && countOnBoardAndQueue('at-at') < 2;
+  // Track within-batch consumption so the AI doesn't pick the same exhausted
+  // type twice (the engine hard-rejects 0-supply picks now). `available` is
+  // the engine's snapshot; fall back to a live count if it's absent.
+  const consumed = new Map<string, number>();
+  const supplyLeft = (t: string): number => {
+    const cap = G.catalog?.unitTypes?.[t]?.supplyCount;
+    if (typeof cap !== 'number') return Infinity;
+    return cap - countOnBoardAndQueue(t) - (consumed.get(t) ?? 0);
+  };
   const choices = c.picks.map((p) => {
-    if (sdFloor && p.iconShape === 'square' && p.iconType === 'space'
-        && p.legalUnitTypes.includes('star-destroyer')) return 'star-destroyer';
-    if (atatFloor && p.iconShape === 'square' && p.iconType === 'ground'
-        && p.legalUnitTypes.includes('at-at')) return 'at-at';
-    return p.legalUnitTypes[0];
+    const ok = (t: string) => p.legalUnitTypes.includes(t) && supplyLeft(t) > 0;
+    let choice: string | undefined;
+    if (sdFloor && p.iconShape === 'square' && p.iconType === 'space' && ok('star-destroyer')) choice = 'star-destroyer';
+    else if (atatFloor && p.iconShape === 'square' && p.iconType === 'ground' && ok('at-at')) choice = 'at-at';
+    if (!choice) choice = p.legalUnitTypes.find((t) => supplyLeft(t) > 0);
+    if (!choice) choice = p.legalUnitTypes[0]; // all exhausted — engine will reject; harmless
+    consumed.set(choice, (consumed.get(choice) ?? 0) + 1);
+    return choice;
   });
   const r = phases.resolveBuildPicks(G, choices);
   return r.ok;

@@ -249,8 +249,16 @@ export function objectiveReputationGain(G: GameState, objectiveId: string): numb
   return card.reputation;
 }
 
-/** Some objectives return to the deck instead of the box on resolution. */
-export function objectiveReturnsToDeck(_G: GameState, objectiveId: string): boolean {
-  // Heart of the Empire explicitly says "Then return this card to the deck."
+/** Some objectives return to the deck instead of the box on resolution.
+ *  (No base-game objective does this — kept for expansion cards.) */
+export function objectiveReturnsToDeck(_G: GameState, _objectiveId: string): boolean {
+  return false;
+}
+
+/** Some objectives return to the Rebel's HAND instead of the box, so they can
+ *  be scored again on a later turn while the condition still holds. Verified
+ *  against the printed card art (text-bearing _Clear scans):
+ *    - Heart of the Empire: "...Then return this card to your hand." */
+export function objectiveReturnsToHand(_G: GameState, objectiveId: string): boolean {
   return objectiveId === 'heart-of-the-empire-2';
 }

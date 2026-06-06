@@ -111,6 +111,24 @@ your opponent has genuinely stepped away.
 Identity is Supabase magic-link auth; the turn email is an
 `it's-your-move` nudge with a link back to the game.
 
+### Scheduled reminder cron (covers vs-AI / both-clients-closed)
+
+The poll-driven path can't fire when **no client is open** — most importantly
+in **vs-AI** games (the AI has no browser to poll). So `workers/reminder-cron/`
+is a standalone Worker (Pages Functions can't run cron) that calls
+`server.sweepTurnReminders({ olderThanMs: 24h })` hourly via
+`makeCronServer(env)` — the same GameServer/Supabase/Resend wiring as the API,
+but built with the **real** Resend notifier (the sweep emails directly). The
+framework keeps a per-game inactivity clock in `dbf_games.reminder` (jsonb) and
+sends at most one nudge per turn.
+
+- Deploy: `npx wrangler deploy --config workers/reminder-cron/wrangler.toml`
+- Worker secrets are **separate** from the Pages project's: set
+  `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `RESEND_FROM`
+  with `wrangler secret put … --config workers/reminder-cron/wrangler.toml`.
+- The 15-min `syncTurnNotify` path is intentionally kept for prompt nudges in
+  active human-vs-human play; the two use independent dedupe state.
+
 ## Secrets & deploy model
 
 Secrets are set by the **user** in the Cloudflare dashboard — Claude never
@@ -124,6 +142,13 @@ scopes are separate (no inheritance).** Required, per scope:
 Supabase tables are fixed-named and idempotently created by the framework
 (`dbf_games`, `dbf_snapshots`, `dbf_reports`); the turn-timing table
 `swr_turn_notify` is ours (`supabase/swr_turn_notify.sql`, already applied).
+
+**0.7.0 migration (one-time, existing DB):** the reminder cron needs a new
+column on the framework table —
+`alter table dbf_games add column if not exists reminder jsonb;`
+(Fresh DBs get it from the framework's shipped `schema.sql`.) Run this in the
+Supabase SQL editor before the cron's first sweep, or the snapshot upsert will
+fail on the missing column.
 
 Server code imports the framework server barrel `./server` (Workers-safe).
 The Node-only `FsStore` lives in `./server/node` — never import it from a

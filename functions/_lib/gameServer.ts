@@ -112,8 +112,13 @@ function getSupabase(env: Env): SupabaseClient {
  *  deploy under /dev-assets/ (vite copies assets/ → dist/dev-assets/, and the
  *  strip-images step keeps the .json files). Cached per isolate. */
 async function getDataBundle(request: Request): Promise<DataBundle> {
+  return getDataBundleFromOrigin(new URL(request.url).origin);
+}
+
+/** Origin-based DataBundle loader (no Request needed) — used by the cron
+ *  Worker, which has no incoming request to derive an origin from. */
+async function getDataBundleFromOrigin(origin: string): Promise<DataBundle> {
   if (_dataBundle) return _dataBundle;
-  const origin = new URL(request.url).origin;
   const files = ['systems', 'adjacency', 'leaders', 'actions', 'missions', 'objectives', 'tactics', 'probes'] as const;
   const responses = await Promise.all(files.map((f) => fetch(`${origin}/dev-assets/${f}.json`)));
   responses.forEach((r, i) => {
@@ -159,6 +164,32 @@ export async function makeServer(request: Request, env: Env): Promise<{
     gameUrl,
   });
   return { server, store, codec, dataBundle, supabase, notifier, gameUrl };
+}
+
+/** Request-free GameServer for the scheduled stale-turn-reminder cron. Unlike
+ *  makeServer (per-request, NoopNotifier because the request path emails via
+ *  syncTurnNotify), the cron's server is given the REAL Resend notifier —
+ *  sweepTurnReminders fires `notifier.notifyYourTurn` itself. Needs
+ *  PUBLIC_BASE_URL set (used both to load the asset bundle and to mint the
+ *  seat links in the email). */
+export async function makeCronServer(env: Env): Promise<{ server: Server }> {
+  const base = env.PUBLIC_BASE_URL;
+  if (!base) {
+    throw new Error('PUBLIC_BASE_URL is required for the reminder cron (no request origin to fall back to).');
+  }
+  const dataBundle = await getDataBundleFromOrigin(base);
+  const catalog = _catalog ?? (_catalog = buildCatalog(dataBundle));
+  const codec = makeRebellionCodec(catalog);
+  const store: SnapshotStore = new SupabaseStore(getSupabase(env));
+  const gameUrl: GameUrl = (gameId, token) => `${base}/?g=${encodeURIComponent(gameId)}&t=${encodeURIComponent(token)}`;
+  const server = new GameServer<GameState, RebellionAction, Side>({
+    adapter: rebellionAdapter,
+    codec,
+    store,
+    notifier: makeNotifier(env), // REAL Resend — the sweep sends directly
+    gameUrl,
+  });
+  return { server };
 }
 
 const TURN_EMAIL_DELAY_MS = 15 * 60 * 1000; // 15 minutes

@@ -1,0 +1,23 @@
+# Stale-turn-reminder cron Worker. Deployed SEPARATELY from the Pages site:
+#   npx wrangler deploy --config workers/reminder-cron/wrangler.toml
+#
+# Secrets (set once, per Worker — distinct from the Pages project secrets):
+#   npx wrangler secret put SUPABASE_URL              --config workers/reminder-cron/wrangler.toml
+#   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY --config workers/reminder-cron/wrangler.toml
+#   npx wrangler secret put RESEND_API_KEY            --config workers/reminder-cron/wrangler.toml
+#   npx wrangler secret put RESEND_FROM               --config workers/reminder-cron/wrangler.toml
+name = "swr-reminder-cron"
+main = "index.ts"
+compatibility_date = "2024-09-23"
+# @supabase/supabase-js needs a few Node built-ins.
+compatibility_flags = ["nodejs_compat"]
+
+# Hourly. The reminder fires once a turn has been idle >= OLDER_THAN_MS (24h);
+# the hourly cadence just bounds how late the nudge can be.
+[triggers]
+crons = ["0 * * * *"]
+
+[vars]
+# Absolute origin used both to load the asset bundle (/dev-assets/*.json) and
+# to build the seat link in the email. Production site:
+PUBLIC_BASE_URL = "https://star-wars-rebellion.pages.dev"

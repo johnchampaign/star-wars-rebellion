@@ -699,6 +699,11 @@ export type ChoiceRequest =
         iconType: Theater;
         iconShape: 'triangle' | 'circle' | 'square';
         legalUnitTypes: UnitTypeId[];
+        /** Holding-pool supply remaining per legal type at the moment this
+         *  pick was enumerated. The UI greys out / warns on any type at 0 so
+         *  the player doesn't waste the icon; the engine also hard-rejects a
+         *  pick with no supply left. */
+        available?: Record<UnitTypeId, number>;
       }[];
       /** Builds already auto-applied to this side's queue earlier in
        *  the same refresh (icons with only one legal unit type). Shown
@@ -1295,6 +1300,7 @@ export type GameState = {
         iconType: Theater;
         iconShape: 'triangle' | 'circle' | 'square';
         legalUnitTypes: UnitTypeId[];
+        available?: Record<UnitTypeId, number>;
       }[];
       // Single-choice icon builds already applied this refresh — shown
       // in the BuildPick modal as context.

@@ -3286,6 +3286,7 @@ function BuildPickModal({ G, choice, onSubmit }: {
       iconType: 'space' | 'ground';
       iconShape: 'triangle' | 'circle' | 'square';
       legalUnitTypes: string[];
+      available?: Record<string, number>;
     }[];
     autoApplied: {
       sourceSystemId: string;
@@ -3310,6 +3311,20 @@ function BuildPickModal({ G, choice, onSubmit }: {
       return next;
     });
   };
+
+  // Holding-pool supply remaining per type at enumeration time. The engine
+  // already pruned fully-exhausted types from legalUnitTypes; this lets us
+  // also prevent the player spending the SAME last token on two icons in this
+  // one batch (the engine hard-rejects that, but warn before they submit).
+  const supplyOf = (tid: string): number =>
+    choice.picks.find((p) => p.available && tid in p.available)?.available?.[tid] ?? Infinity;
+  // How many of `tid` the current selections (excluding pick index `exclude`)
+  // already claim.
+  const claimedByOthers = (tid: string, exclude: number): number =>
+    selections.reduce((n, s, j) => n + (j !== exclude && s === tid ? 1 : 0), 0);
+  const remainingFor = (tid: string, exclude: number): number =>
+    supplyOf(tid) - claimedByOthers(tid, exclude);
+  const overdraw = choice.picks.some((p, i) => remainingFor(selections[i], i) <= 0 && supplyOf(selections[i]) !== Infinity);
 
   return (
     <div style={{
@@ -3362,29 +3377,50 @@ function BuildPickModal({ G, choice, onSubmit }: {
                 {p.iconType} {p.iconShape} → slot {p.slot}
               </span>
             </div>
-            {p.legalUnitTypes.map((tid) => (
-              <label
-                key={tid}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0', cursor: 'pointer' }}
-              >
-                <input
-                  type="radio"
-                  name={`pick-${i}`}
-                  checked={selections[i] === tid}
-                  onChange={() => setPick(i, tid)}
-                />
-                <span style={{ color: '#fff', fontSize: 13, minWidth: 120 }}>{unitName(tid)}</span>
-                <UnitStatLine G={G} typeId={tid} />
-              </label>
-            ))}
+            {p.legalUnitTypes.map((tid) => {
+              const rem = remainingFor(tid, i);
+              const finite = supplyOf(tid) !== Infinity;
+              const exhausted = finite && rem <= 0 && selections[i] !== tid;
+              return (
+                <label
+                  key={tid}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '3px 0',
+                    cursor: exhausted ? 'not-allowed' : 'pointer', opacity: exhausted ? 0.45 : 1 }}
+                >
+                  <input
+                    type="radio"
+                    name={`pick-${i}`}
+                    checked={selections[i] === tid}
+                    disabled={exhausted}
+                    onChange={() => setPick(i, tid)}
+                  />
+                  <span style={{ color: '#fff', fontSize: 13, minWidth: 120 }}>{unitName(tid)}</span>
+                  <UnitStatLine G={G} typeId={tid} />
+                  {finite && (
+                    <span style={{ fontSize: 11, color: rem <= 0 ? '#e57373' : '#888', marginLeft: 'auto' }}>
+                      {rem <= 0 ? 'none left in supply' : `${rem} in supply`}
+                    </span>
+                  )}
+                </label>
+              );
+            })}
           </div>
         ))}
+
+        {overdraw && (
+          <div style={{ fontSize: 12, color: '#e57373', margin: '8px 0', lineHeight: 1.4 }}>
+            One of your picks would build a unit you have no token left for in
+            the holding pool. Choose a different unit for the highlighted icon —
+            the build can't exceed your physical supply.
+          </div>
+        )}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
           <button
             onClick={() => onSubmit(selections)}
-            style={{ padding: '8px 24px', background: color, color: '#000',
-              border: 'none', borderRadius: 4, cursor: 'pointer', fontWeight: 700, fontSize: 14 }}
+            disabled={overdraw}
+            style={{ padding: '8px 24px', background: overdraw ? '#444' : color, color: overdraw ? '#999' : '#000',
+              border: 'none', borderRadius: 4, cursor: overdraw ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14 }}
           >
             Confirm builds
           </button>
@@ -11296,8 +11332,12 @@ function RapidMobilizationMovePickModal({
 }) {
   const [sysId, setSysId] = useState<string | null>(null);
   const [picks, setPicks] = useState<Set<string>>(new Set());
+  // RAW (rr p.2): you cannot move units out of a system that contains your
+  // own leader — and Rapid Mobilization does NOT lift that. So a system with
+  // a Rebel leader in it can't be a source, even though it has Rebel units.
   const rebelSystems = Object.keys(G.map.systems).filter(
     (sid) => G.map.systems[sid].units.some((u) => u.side === 'Rebel')
+      && (G.rebel.leadersOnBoard[sid] ?? []).length === 0
   );
   const units = sysId
     ? G.map.systems[sysId].units.filter((u) => u.side === 'Rebel')
@@ -11321,6 +11361,7 @@ function RapidMobilizationMovePickModal({
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Rapid Mobilization — move units</h3>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 8 }}>
           Pick a source system and up to 5 Rebel units to move into the Rebel Base space (ignores adjacency).
+          Systems containing one of your own leaders can't be a source — a friendly leader locks its units in place (rr p.2).
         </div>
         <div style={{ marginBottom: 10 }}>
           <select value={sysId ?? ''}
