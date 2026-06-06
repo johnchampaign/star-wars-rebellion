@@ -54,6 +54,9 @@ const MARKER_R = 16;
 
 const LS_CURRENT = 'rebellion-game-current';
 const LS_HISTORY = 'rebellion-games-history';
+// encodedAt ids of completed games already uploaded, so we don't re-send them
+// (player report #125 — uploads kept re-submitting old, already-stored logs).
+const LS_UPLOADED = 'rebellion-uploaded-logs';
 // Stable per-device reporter ID. Generated once on first problem-report
 // submission, persisted forever. Lets us tie GitHub issues back to the
 // reporter so we can surface our resolution comment to them on next visit
@@ -1215,6 +1218,19 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       {/* All modal/overlay layers live in this wrapper. "Peek board" sets
           display:none on it so the map behind shows through; display:contents
           keeps the fixed-position children laying out normally otherwise. */}
+      {/* Reference-key overlays render OUTSIDE the peek wrapper, so they stay
+          usable while peeking at the board during a choice (player report #126:
+          couldn't open the unit key while peeking). */}
+      {showUnitKey && (
+        <UnitKeyModal G={G} unitStyle={unitStyle} onClose={() => setShowUnitKey(false)} />
+      )}
+      {showDiceKey && (
+        <DiceKeyModal onClose={() => setShowDiceKey(false)} />
+      )}
+      {showTacticKey && (
+        <TacticKeyModal G={G} onClose={() => setShowTacticKey(false)} />
+      )}
+
       <div style={{ display: peekBoard ? 'none' : 'contents' }}>
       {showReport && (
         <ReportProblemModal
@@ -1273,16 +1289,6 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             </div>
           </div>
         </div>
-      )}
-
-      {showUnitKey && (
-        <UnitKeyModal G={G} unitStyle={unitStyle} onClose={() => setShowUnitKey(false)} />
-      )}
-      {showDiceKey && (
-        <DiceKeyModal onClose={() => setShowDiceKey(false)} />
-      )}
-      {showTacticKey && (
-        <TacticKeyModal G={G} onClose={() => setShowTacticKey(false)} />
       )}
 
       {G.pendingNotices && G.pendingNotices.length > 0 && (
@@ -5251,7 +5257,11 @@ function EnlargedSector({ G, system }: { G: GameState; system: System }) {
                       display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
                       width: 30, height: 30, borderRadius: 4,
                       background: r.type === 'space' ? 'rgba(79,195,247,0.85)' : 'rgba(255,183,77,0.85)',
-                      color: '#000', fontSize: 20, fontWeight: 700,
+                      // The ● glyph is visually smaller than ▲/■ at the same size,
+                      // so bump it up so all three resource tiers read equally
+                      // (player feedback — MightyFaben).
+                      color: '#000', fontSize: r.shape === 'circle' ? 27 : 20, fontWeight: 700,
+                      lineHeight: 1,
                       border: i === 0 && system.resources.length > 1 ? '2px solid #fff' : 'none',
                       // Desaturate sabotaged icons so the red strike-through reads as "disabled."
                       opacity: state.sabotage ? 0.45 : 1,
@@ -8656,7 +8666,7 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
 // is just a suggested source; players who have their own copy can use that
 // instead.
 
-const VASSAL_DRIVE_URL = 'https://drive.google.com/file/d/1l0Tdrl_B5ceY_hAbjbqBClFg1ZToO0O0/view?usp=sharing';
+const VASSAL_DRIVE_URL = 'https://drive.google.com/file/d/1KRvMB2MHiXkNgd5wpKTD0O_Jo_s3QHX2/view?usp=sharing';
 
 function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
   G: GameState;
@@ -9155,13 +9165,21 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
 }
 
 function UploadLogsDialog({ onClose }: { onClose: () => void }) {
-  // Read archived games out of localStorage so we can show the count up-front.
-  const games = (() => {
+  // Games we've already uploaded (by their unique encodedAt) — so we never
+  // re-send them and the player isn't told a pile of logs were "redundant"
+  // (player report #125).
+  const uploadedIds = (() => {
+    try { return new Set(JSON.parse(localStorage.getItem(LS_UPLOADED) || '[]') as string[]); }
+    catch { return new Set<string>(); }
+  })();
+  // Read archived games out of localStorage; only offer the ones not yet sent.
+  const allGames = (() => {
     try {
       const raw = localStorage.getItem(LS_HISTORY);
       return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string }>) : [];
     } catch { return []; }
   })();
+  const games = allGames.filter((g) => !uploadedIds.has(g.encodedAt));
   // Also offer to include the in-progress game (the current save) if it
   // exists, so a player who hasn't finished a game can still contribute.
   const inProgressCodec = (() => {
@@ -9211,6 +9229,12 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
       }
       const body = await res.json() as { uploaded: number; deduped: number; failed: number };
       setStatus({ kind: 'done', uploaded: body.uploaded, deduped: body.deduped, failed: body.failed });
+      // Remember every completed game we just sent so we don't offer it again.
+      try {
+        const next = new Set(uploadedIds);
+        for (const g of games) next.add(g.encodedAt);
+        localStorage.setItem(LS_UPLOADED, JSON.stringify([...next]));
+      } catch { /* ignore */ }
     } catch (e) {
       setStatus({ kind: 'error', message: String(e) });
     }
@@ -9272,7 +9296,9 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
         )}
         {status.kind === 'done' && (
           <p style={{ color: '#80dc78' }}>
-            Done. Uploaded <b>{status.uploaded}</b>, deduped <b>{status.deduped}</b>, failed <b>{status.failed}</b>.
+            Thanks! Uploaded <b>{status.uploaded}</b> new game{status.uploaded === 1 ? '' : 's'}.
+            {status.deduped > 0 && <span style={{ color: '#aab' }}> ({status.deduped} already on file, skipped.)</span>}
+            {status.failed > 0 && <span style={{ color: '#ff8a80' }}> {status.failed} couldn't be saved.</span>}
           </p>
         )}
         {status.kind === 'error' && (
@@ -9607,6 +9633,9 @@ function UnitKeyModal({ G, unitStyle, onClose }: {
                     {shapeGlyph(t.tier)} {t.tier ?? '?'} · {t.theater}
                     {' · '}HP {t.health.value}{t.health.color ? ` (${t.health.color})` : ''}
                     {' · atk '}{t.attack.red}R+{t.attack.black}B
+                    {/* Carry capacity / needs-a-lift (player request — MightyFaben). */}
+                    {t.transport.capacity > 0 && ` · carries ${t.transport.capacity}`}
+                    {t.transport.restriction && ' · needs a lift'}
                   </div>
                 </div>
               </div>
