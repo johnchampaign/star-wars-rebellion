@@ -57,7 +57,10 @@ function byId<T extends { id: string }>(arr: readonly T[]): Record<string, T> {
   return Object.fromEntries(arr.map((x) => [x.id, x]));
 }
 
-function buildCatalog(data: DataBundle): GameCatalog {
+/** Build the static catalog (systems/leaders/cards) from raw asset data.
+ *  Exported so the online server can build the catalog the multiplayer codec
+ *  needs to rehydrate snapshots (decode requires it). */
+export function buildCatalog(data: DataBundle): GameCatalog {
   const systems: Record<string, SystemDef> = {};
   for (const s of data.systems.systems) {
     systems[s.id] = {

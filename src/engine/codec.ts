@@ -27,6 +27,23 @@ export function encode(G: GameState): string {
   return JSON.stringify(payload);
 }
 
+/** Full-fidelity encode for ONLINE/MULTIPLAYER snapshots. Unlike encode(),
+ *  which strips the transient pendingMission/pendingCombat/pendingChoice/
+ *  refreshPaused fields (single-player only ever saves at turn boundaries —
+ *  see canEncode), this preserves them so an async game can be stored and
+ *  reloaded mid-choice/mid-combat days later without losing in-progress state.
+ *  Only the catalog (static reference data, re-attached on decode) is dropped.
+ *  Reads back via the same decode(). */
+export function encodeFull(G: GameState): string {
+  const { catalog: _catalog, ...rest } = G;
+  void _catalog;
+  return JSON.stringify({
+    schema: SCHEMA,
+    encodedAt: new Date().toISOString(),
+    state: rest,
+  });
+}
+
 export function decode(s: string, catalog: GameCatalog): GameState {
   const payload = JSON.parse(s) as CodecPayload;
   if (payload.schema !== SCHEMA) {
