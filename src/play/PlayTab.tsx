@@ -10059,11 +10059,28 @@ function PlayObjectiveModal({
   const cards = [...choice.legal].sort(
     (a, b) => (G.catalog.objectives[b]?.reputation ?? 0) - (G.catalog.objectives[a]?.reputation ?? 0)
   );
+  // Hover/focus an option to preview the actual card art — the objective cards
+  // carry no rules text in our data, so seeing the card is the only way to read
+  // what it does (player request).
+  const [hoverOid, setHoverOid] = useState<string | null>(null);
+  const hoverCard = hoverOid ? G.catalog.objectives[hoverOid] : null;
+  const hoverArt = hoverCard?.image ? getCachedArtUrlSync(hoverCard.image) : null;
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2600,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, zIndex: 2600,
     }}>
+      {/* Card-art preview for the hovered option (to the left of the modal). */}
+      {hoverCard && (
+        <div style={{ width: 260, flex: '0 0 auto', textAlign: 'center' }}>
+          {hoverArt
+            ? <img src={hoverArt} alt={hoverCard.name}
+                style={{ width: 260, borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.6)' }} />
+            : <div style={{ color: '#9a937f', fontSize: 12, padding: 16, border: '1px dashed #3a3d44', borderRadius: 8 }}>
+                {hoverCard.name}<br /><span style={{ fontSize: 11 }}>(load the VASSAL module to see the card image)</span>
+              </div>}
+        </div>
+      )}
       <div style={{
         background: '#15171c', border: '2px solid #aed581', borderRadius: 8,
         padding: 24, maxWidth: 680, width: '92%', maxHeight: '88vh', overflowY: 'auto',
@@ -10085,6 +10102,9 @@ function PlayObjectiveModal({
                 key={oid}
                 className="tab-button"
                 onClick={() => onPick(oid)}
+                onMouseEnter={() => setHoverOid(oid)}
+                onMouseLeave={() => setHoverOid((cur) => (cur === oid ? null : cur))}
+                onFocus={() => setHoverOid(oid)}
                 style={{
                   textAlign: 'left', padding: '10px 14px', display: 'flex',
                   alignItems: 'center', gap: 12, borderColor: '#aed581',
