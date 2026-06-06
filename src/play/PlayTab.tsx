@@ -564,21 +564,15 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       const humanSidePref = (() => {
         try { return localStorage.getItem(LS_HUMAN_SIDE) || 'Rebel'; } catch { return 'Rebel'; }
       })();
-      const additions: { objectiveId: string; reputation: number; turn: number }[] = [];
+      // NB: "objective scored" notices come from the engine's G.objectiveReports
+      // (→ ObjectiveReportModal), which fires for every scoring path (combat,
+      // death-star, refresh). We deliberately DON'T also scan play-objective here
+      // — doing both produced a double popup ("Objective scored" then "+1
+      // reputation") for the same score (player report #120).
       const draws: { objectiveId: string; turn: number }[] = [];
       const rescues: { leaderId: string; reason: string; turn: number }[] = [];
       for (let i = seenObjectiveLogIdxRef.current; i < G.turnLog.length; i++) {
         const e = G.turnLog[i];
-        if (e.kind === 'play-objective' && e.side === humanSidePref) {
-          const p = e.payload as { objectiveId?: string; reputation?: number } | undefined;
-          if (p?.objectiveId) {
-            additions.push({
-              objectiveId: p.objectiveId,
-              reputation: p.reputation ?? 0,
-              turn: e.turn ?? 0,
-            });
-          }
-        }
         // draw-objective is only logged for the Rebel side (objectives are
         // a Rebel-only mechanic). Show the modal for whichever side the
         // human is playing — if Empire, they probably don't want spoilers
@@ -611,9 +605,6 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       }
       if (rescues.length > 0) {
         setLeaderRescuedQueue((q) => [...q, ...rescues]);
-      }
-      if (additions.length > 0) {
-        setObjectiveNoticeQueue((q) => [...q, ...additions]);
       }
     }
   }, [runAILoop]);
