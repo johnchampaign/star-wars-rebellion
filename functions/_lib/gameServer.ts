@@ -21,7 +21,8 @@
 // node-only FsStore lives in './server/node', so the barrel is Workers-safe.
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { GameServer, SupabaseStore, NoopNotifier } from 'digital-boardgame-framework/server';
+import { GameServer, SupabaseStore, NoopNotifier, ResendNotifier } from 'digital-boardgame-framework/server';
+import type { Notifier } from 'digital-boardgame-framework/server';
 import type { GameState, GameCatalog } from '../../src/engine/types';
 import type { Side } from '../../src/types';
 import type { RebellionAction } from '../../src/adapter/rebellionAction';
@@ -33,6 +34,26 @@ export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
   PUBLIC_BASE_URL?: string;
+  // Optional — when both are set, players get a "your turn" email (Phase 5).
+  // Until then we use NoopNotifier and nothing is sent.
+  RESEND_API_KEY?: string;
+  RESEND_FROM?: string; // a verified Resend sender, e.g. "Rebellion <play@yourdomain>"
+}
+
+/** Resend turn-alert emails when configured, else a no-op. The framework's
+ *  GameServer fires notifier.notifyYourTurn whenever a submit hands the turn to
+ *  a new actor that has an email on file. */
+function makeNotifier(env: Env): Notifier {
+  if (!env.RESEND_API_KEY || !env.RESEND_FROM) return new NoopNotifier();
+  return new ResendNotifier({
+    apiKey: env.RESEND_API_KEY,
+    from: env.RESEND_FROM,
+    subject: () => "It's your turn — Star Wars: Rebellion",
+    htmlBody: (a) =>
+      `<p>Your move is ready in your game of <b>Star Wars: Rebellion</b> (turn ${a.turn}).</p>` +
+      `<p><a href="${a.gameUrl}">Open the game</a> and take your turn.</p>` +
+      `<p style="color:#888;font-size:12px">You're receiving this because someone created an async game with your email. The link above is your private seat — don't share it.</p>`,
+  });
 }
 
 type Server = GameServer<GameState, RebellionAction, Side>;
@@ -88,7 +109,7 @@ export async function makeServer(request: Request, env: Env): Promise<{ server: 
     adapter: rebellionAdapter,
     codec: makeRebellionCodec(catalog),
     store: new SupabaseStore(getSupabase(env)),
-    notifier: new NoopNotifier(), // Phase 5 swaps in ResendNotifier for turn emails.
+    notifier: makeNotifier(env), // Resend turn emails when configured, else no-op.
     gameUrl: (gameId, token) => `${base}/?g=${encodeURIComponent(gameId)}&t=${encodeURIComponent(token)}`,
   });
   return { server, dataBundle };

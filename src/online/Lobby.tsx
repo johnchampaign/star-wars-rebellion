@@ -13,15 +13,20 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
   const [creating, setCreating] = useState(false);
   const [result, setResult] = useState<CreateResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rebelEmail, setRebelEmail] = useState('');
+  const [empireEmail, setEmpireEmail] = useState('');
 
   async function createGame() {
     setCreating(true);
     setError(null);
     try {
+      const emails: Record<string, string> = {};
+      if (rebelEmail.trim()) emails.Rebel = rebelEmail.trim();
+      if (empireEmail.trim()) emails.Empire = empireEmail.trim();
       const r = await fetch('/api/games', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify({ emails }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
@@ -44,6 +49,25 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
         right player. Whoever opens a link first claims that side. Bookmark the links — with no
         accounts yet, they're the only way back into the game.
       </p>
+
+      {!result && (
+        <div style={{ marginBottom: 16, maxWidth: 460 }}>
+          <div style={{ color: '#aab', fontSize: 13, marginBottom: 8 }}>
+            Optional — add each player's email to get a <b>"your turn"</b> notification when it's
+            their move (great for games played over days). Leave blank to just share links.
+          </div>
+          <label style={emailRow}>
+            <span style={{ width: 64, color: '#4fc3f7' }}>Rebel</span>
+            <input type="email" placeholder="rebel@example.com" value={rebelEmail}
+              onChange={(e) => setRebelEmail(e.target.value)} style={emailInput} />
+          </label>
+          <label style={emailRow}>
+            <span style={{ width: 64, color: '#ff8a80' }}>Empire</span>
+            <input type="email" placeholder="empire@example.com" value={empireEmail}
+              onChange={(e) => setEmpireEmail(e.target.value)} style={emailInput} />
+          </label>
+        </div>
+      )}
 
       {!result && (
         <button onClick={createGame} disabled={creating} style={{ padding: '10px 18px', fontSize: 16 }}>
@@ -83,3 +107,6 @@ function Invite({ label, url }: { label: string; url: string }) {
     </div>
   );
 }
+
+const emailRow: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, margin: '6px 0' };
+const emailInput: React.CSSProperties = { flex: 1, padding: 7, borderRadius: 4, border: '1px solid #444', background: '#11131a', color: '#e8e6f2' };
