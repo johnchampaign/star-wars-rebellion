@@ -40,6 +40,7 @@ function dispatch(G: GameState, a: RebellionAction, actor: Side): Result {
     case 'setupDeployUnit':    return phases.setupDeployUnit(G, actor, a.typeId, a.systemId);
     case 'setupAutoFill':      return phases.setupAutoFill(G, actor);
     case 'acknowledgeReport':  return phases.acknowledgeReport(G, a.reportType);
+    case 'acknowledgeNotices': return phases.acknowledgeNotices(G);
 
     // ---------- Assignment ----------
     case 'assignLeader':       return phases.assignLeader(G, actor, a.missionId, a.leaderIds);

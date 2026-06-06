@@ -55,6 +55,7 @@ export function makeOnlinePhases(submit: Submit, canSubmit: () => boolean): type
     setupAutoFill: (_g: any, _s: any) => act({ kind: 'setupAutoFill' }),
     // Reports
     acknowledgeReport: (_g: any, reportType: any) => act({ kind: 'acknowledgeReport', reportType }),
+    acknowledgeNotices: (_g: any) => act({ kind: 'acknowledgeNotices' }),
     // Assignment
     assignLeader: (_g: any, _s: any, missionId: any, leaderIds: any) => act({ kind: 'assignLeader', missionId, leaderIds }),
     unassignLeader: (_g: any, _s: any, missionId: any) => act({ kind: 'unassignLeader', missionId }),

@@ -31,8 +31,9 @@ export type RebellionAction =
   | { kind: 'setupDeployUnit'; typeId: UnitTypeId; systemId: SystemId }
   | { kind: 'setupAutoFill' }
 
-  // ---------- Reports (dismiss a queued report modal) ----------
+  // ---------- Reports / notices (dismiss a queued modal) ----------
   | { kind: 'acknowledgeReport'; reportType: 'mission' | 'combat' | 'objective' | 'refresh' }
+  | { kind: 'acknowledgeNotices' }
 
   // ---------- Assignment ----------
   | { kind: 'assignLeader'; missionId: string; leaderIds: LeaderId[] }

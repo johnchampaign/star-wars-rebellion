@@ -385,6 +385,16 @@ export function acknowledgeReport(
   return { ok: true };
 }
 
+/** Dismiss all queued info/notImplemented notices. Like acknowledgeReport, this
+ *  is an engine mutation so online it can be submitted (clearing them on the
+ *  server) — a local `G.pendingNotices = []` on the redacted view is undone by
+ *  the next poll, re-showing the notice over and over. */
+export function acknowledgeNotices(G: GameState): { ok: boolean; reason?: string } {
+  if (!G.pendingNotices || G.pendingNotices.length === 0) return { ok: false, reason: 'no-notices' };
+  G.pendingNotices = [];
+  return { ok: true };
+}
+
 function maybeAdvanceFromSetup(G: GameState): void {
   if (G.phase !== 'Setup' || !G.pendingDeployment) return;
   const empireDone = G.pendingDeployment.Empire.length === 0;

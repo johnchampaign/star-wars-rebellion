@@ -1333,10 +1333,15 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         </div>
       )}
 
-      {G.pendingNotices && G.pendingNotices.length > 0 && (
+      {/* Notices live in shared engine state. Online, only the acting player
+          (yourTurn) sees + clears them — clearing goes through the engine mutator
+          so it persists server-side (a local G.pendingNotices=[] on the redacted
+          view is undone by the next poll, re-showing the notice forever, for both
+          players). */}
+      {G.pendingNotices && G.pendingNotices.length > 0 && (!online || online.yourTurn) && (
         <NotImplementedModal
           notices={G.pendingNotices}
-          onDismiss={() => { if (G) G.pendingNotices = []; persist(); refresh(); }}
+          onDismiss={() => { phases.acknowledgeNotices(G); persist(); refresh(); }}
         />
       )}
 
