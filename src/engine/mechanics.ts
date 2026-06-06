@@ -182,8 +182,43 @@ export function resetEmpireSearchedForBaseMove(G: GameState): void {
   recordEmpireSearched(G);
 }
 
+/** RR p.7: ground units in a system require transport from ships present; if
+ *  there's more ground than the side's in-system ship transport capacity, the
+ *  excess is destroyed. This bites in DESTROYED systems (the planet is gone, so
+ *  ground can only be there if a ship is carrying it) — e.g. a lone AT-ST moved
+ *  into a Superlaser'd planet with no carrier must be destroyed (player report).
+ *  Auto-culls the cheapest ground first (a simplification; RAW lets the owner
+ *  pick which excess to lose). Splices directly to avoid re-entering invariants. */
+const GROUND_TIER_RANK: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+function cullOverTransportInDestroyed(G: GameState, affected?: SystemId[]): void {
+  const ids = affected ?? Object.keys(G.map.systems);
+  for (const id of ids) {
+    const ss = G.map.systems[id];
+    if (!ss || !ss.destroyed) continue;
+    for (const side of ['Rebel', 'Empire'] as const) {
+      const ground = ss.units.filter((u) => u.side === side && G.catalog.unitTypes[u.typeId]?.theater === 'ground');
+      const capacity = ss.units
+        .filter((u) => u.side === side && G.catalog.unitTypes[u.typeId]?.theater === 'space')
+        .reduce((s, u) => s + (G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0), 0);
+      const excess = ground.length - capacity;
+      if (excess <= 0) continue;
+      const order = [...ground].sort((a, b) =>
+        (GROUND_TIER_RANK[G.catalog.unitTypes[a.typeId]?.tier ?? 'triangle'] ?? 0)
+        - (GROUND_TIER_RANK[G.catalog.unitTypes[b.typeId]?.tier ?? 'triangle'] ?? 0));
+      for (let k = 0; k < excess; k++) {
+        const u = order[k];
+        const i = ss.units.indexOf(u);
+        if (i < 0) continue;
+        ss.units.splice(i, 1);
+        log(G, { kind: 'destroyed-system-overflow', side, payload: { systemId: id, typeId: u.typeId, unit: u.instanceId } });
+      }
+    }
+  }
+}
+
 function applyInvariants(G: GameState, affected?: SystemId[]): void {
   recomputeSubjugation(G, affected);
+  cullOverTransportInDestroyed(G, affected);
   recomputeRebelBaseReveal(G);
   recordEmpireSearched(G, affected);
   // If a captured leader's system no longer has Imperial units, auto-rescue
