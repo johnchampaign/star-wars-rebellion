@@ -1,10 +1,11 @@
 // Cloudflare Pages Function — POST /api/games  (create a new online game)
 //
 // Body (optional): { emails?: { Rebel?: string, Empire?: string } }
-// Response: { gameId, invites: { Rebel: <token>, Empire: <token> } }
+// Response: { gameId, invites: { Rebel: <seat URL>, Empire: <seat URL> } }
 //
-// Each invite token authenticates its seat; share the per-seat link (built via
-// gameUrl) with that player. GET (list games for a player) is deferred to the
+// Each invite value is already a full per-seat URL (the framework builds it via
+// gameUrl from the seat token) — share it as-is; don't re-wrap it. GET (list
+// games for a player) is deferred to the
 // auth phase — it needs the caller's identity to filter dbf_games.
 
 import { makeServer, newInitialState, runServerAI, sendInviteEmail, json, fail, type Env } from '../../_lib/gameServer';
@@ -19,7 +20,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   try {
     const { request, env } = ctx;
     const body = (await request.json().catch(() => ({}))) as CreateBody;
-    const { server, dataBundle, gameUrl } = await makeServer(request, env);
+    const { server, dataBundle } = await makeServer(request, env);
     const initialState = newInitialState(dataBundle, body.aiSide);
     // If the AI moves first (e.g. it's the Rebel and acts first in Assignment),
     // play its opening now so the human's first fetch shows their own turn.
@@ -34,8 +35,8 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     for (const side of ['Rebel', 'Empire'] as const) {
       const to = body.emails?.[side];
       if (!to || side === body.aiSide) continue;
-      const url = gameUrl(result.gameId, result.invites[side]);
-      ctx.waitUntil(sendInviteEmail(env, { to, gameUrl: url, side }).catch(() => {}));
+      // result.invites[side] is already a full seat URL (not a raw token).
+      ctx.waitUntil(sendInviteEmail(env, { to, gameUrl: result.invites[side], side }).catch(() => {}));
     }
     return json(result, 201);
   } catch (e) {
