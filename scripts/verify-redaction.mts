@@ -95,6 +95,43 @@ check('input rng unchanged', fixture.rng.state === 999_999);
 check('input base unchanged', fixture.rebelBaseSystemId === BASE);
 check('input rebel hand unchanged', fixture.rebel.missionHand[0] === 'REBELSECRET-mission-hand');
 
+// ---- Real interactive-Setup state: the shape now exposed to online games ----
+// (autoSetupUnits=false). Proves the live engine's Setup state doesn't leak the
+// hidden base or its candidates to the Empire.
+{
+  const { readFile } = await import('node:fs/promises');
+  const { createGame } = await import('../src/engine/setup');
+  const names = ['systems','adjacency','leaders','actions','missions','objectives','tactics','probes'] as const;
+  const parsed = await Promise.all(names.map(async (n) => JSON.parse(await readFile(`assets/${n}.json`, 'utf8'))));
+  const [systems,adjacency,leaders,actions,missions,objectives,tactics,probes] = parsed;
+  const data = { systems,adjacency,leaders,actions,missions,objectives,tactics,probes } as never;
+  const g = createGame(data, { seed: 4242, autoSetupUnits: false });
+
+  console.log('Real interactive-Setup state:');
+  check('game starts in Setup phase', g.phase === 'Setup');
+  check('Empire deploys first', g.currentPlayer === 'Empire');
+  check('a real base + candidates exist', !!g.rebelBaseSystemId && (g.pendingRebelBasePick?.length ?? 0) > 0);
+
+  const trueBase = g.rebelBaseSystemId as string;
+  const eView = redactStateForViewer(g, 'Empire');
+  check('Setup: base masked from Empire', eView.rebelBaseSystemId === HIDDEN);
+  check('Setup: candidates stripped from Empire', eView.pendingRebelBasePick === undefined);
+  // The base id legitimately appears as a board-map key and in the static
+  // catalog (every system does — the base system is an ordinary empty neutral
+  // there, indistinguishable from any other). A LEAK is the id appearing in any
+  // OTHER field. Strip the two universal structures, then it must be absent.
+  const eStripped = { ...(eView as Record<string, unknown>), map: undefined, catalog: undefined };
+  check('Setup: base id appears in no leak-vector field for Empire', !JSON.stringify(eStripped).includes(trueBase));
+  // And the base system, as the Empire sees it, carries no Rebel units that
+  // would single it out (base defenders live in the location-agnostic base space).
+  const baseSysForEmpire = (eView as never as { map: { systems: Record<string, { units: unknown[] }> } }).map.systems[trueBase];
+  check('Setup: base system shows no Rebel units to Empire', baseSysForEmpire.units.length === 0);
+
+  const rView = redactStateForViewer(g, 'Rebel');
+  check('Setup: Rebel sees the true base', rView.rebelBaseSystemId === trueBase);
+  check('Setup: Rebel sees the candidates', (rView.pendingRebelBasePick?.length ?? 0) > 0);
+}
+
 console.log('');
 if (failures > 0) { console.error(`REDACTION CHECK FAILED: ${failures} failure(s)`); process.exit(1); }
 console.log('REDACTION CHECK PASSED — no leaks across Empire / Rebel / spectator views.');

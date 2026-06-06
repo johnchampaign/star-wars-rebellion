@@ -200,12 +200,15 @@ export async function syncTurnNotify(
   }
 }
 
-/** A fresh two-player initial state. autoSetupUnits=true keeps the first online
- *  MVP simple (no manual setup-phase UI yet). `aiSide`, when set, marks that
- *  seat as server-AI-controlled (online vs AI). */
+/** A fresh two-player initial state. autoSetupUnits=false runs the real
+ *  interactive Setup phase online: the Empire deploys first, then the Rebel
+ *  deploys and secretly picks the hidden base (the base location and the 5
+ *  candidates are redacted from the Empire). The same setup actions, adapter
+ *  dispatch, online shim, UI, and AI all support this. `aiSide`, when set,
+ *  marks that seat as server-AI-controlled (the AI handles its own setup). */
 export function newInitialState(dataBundle: DataBundle, aiSide?: Side): GameState {
   const seed = Math.floor(Math.random() * 2 ** 31);
-  const state = createGame(dataBundle, { seed, autoSetupUnits: true });
+  const state = createGame(dataBundle, { seed, autoSetupUnits: false });
   if (aiSide) state.aiSides = [aiSide];
   return state;
 }
