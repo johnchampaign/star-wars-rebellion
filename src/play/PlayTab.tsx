@@ -288,8 +288,8 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // Point the module-level engine handles at the online shim (mutators submit
   // RebellionActions to the server) or the real modules (single-player). See
   // the `let phases/combat` declaration above and onlineEngine.ts.
-  phases = online ? makeOnlinePhases(online.submit) : _phases;
-  combat = online ? makeOnlineCombat(online.submit) : _combat;
+  phases = online ? makeOnlinePhases(online.submit, () => online.yourTurn) : _phases;
+  combat = online ? makeOnlineCombat(online.submit, () => online.yourTurn) : _combat;
   // Undo stack for the interactive Setup phase. Each entry is an encoded
   // snapshot (codec string) of G taken just BEFORE a human placement /
   // auto-fill. Undo pops the latest; Reset restores entry[0] (the state
@@ -2224,7 +2224,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <CombatBoardLive
           G={G}
           humanSide={humanSide}
-          online={online ? { submit: online.submit } : undefined}
+          online={online ? { submit: online.submit, yourTurn: online.yourTurn } : undefined}
           onPersist={() => { persist(); refresh(); }}
           onShowDiceKey={() => setShowDiceKey(true)}
           onShowTacticKey={() => setShowTacticKey(true)}

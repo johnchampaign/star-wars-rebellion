@@ -19,8 +19,14 @@ import type { RebellionAction } from '../adapter/rebellionAction';
 type Submit = (a: RebellionAction) => Promise<void>;
 type Ok = { ok: true; reason?: string };
 
-function makeAct(submit: Submit) {
+// `canSubmit` gates the actual network submit on whether it's the player's turn.
+// The board is fully interactive at the DOM level (so read-only features — probe
+// overlays, hover-enlarge, info panels — work regardless of turn); only ACTIONS
+// are held back. A stray board-action click during the opponent's turn no-ops
+// silently here instead of firing a server-rejected move.
+function makeAct(submit: Submit, canSubmit: () => boolean) {
   return (action: RebellionAction): Ok => {
+    if (!canSubmit()) return { ok: true };
     void submit(action).catch((err: unknown) => {
       const msg = err instanceof Error ? err.message : String(err);
       try { alert(`Move rejected: ${msg}`); } catch { /* non-browser */ }
@@ -30,8 +36,8 @@ function makeAct(submit: Submit) {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-export function makeOnlinePhases(submit: Submit): typeof phasesModule {
-  const act = makeAct(submit);
+export function makeOnlinePhases(submit: Submit, canSubmit: () => boolean): typeof phasesModule {
+  const act = makeAct(submit, canSubmit);
   return {
     ...phasesModule,
     // Setup
@@ -113,8 +119,8 @@ export function makeOnlinePhases(submit: Submit): typeof phasesModule {
   } as typeof phasesModule;
 }
 
-export function makeOnlineCombat(submit: Submit): typeof combatModule {
-  const act = makeAct(submit);
+export function makeOnlineCombat(submit: Submit, canSubmit: () => boolean): typeof combatModule {
+  const act = makeAct(submit, canSubmit);
   return {
     ...combatModule,
     // Called from PlayTab.

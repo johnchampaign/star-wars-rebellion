@@ -121,7 +121,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
   /** Online mode: when set, combat resolvers submit a RebellionAction to the
    *  server instead of mutating local state, and the local AI combat-stepper is
    *  disabled (the opponent is a remote human). */
-  online?: { submit: (a: RebellionAction) => Promise<void> } | null;
+  online?: { submit: (a: RebellionAction) => Promise<void>; yourTurn: boolean } | null;
   /** Open the dice / tactic reference modals from inside combat — that's
    *  exactly when you need them (player request: MightyFaben). */
   onShowDiceKey?: () => void;
@@ -134,7 +134,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
   onReportProblem?: () => void;
 }) {
   // Point the combat handle at the online shim (submits) or the real module.
-  combat = online ? makeOnlineCombat(online.submit) : _combat;
+  combat = online ? makeOnlineCombat(online.submit, () => online.yourTurn) : _combat;
   const c = G.pendingCombat;
   if (!c) return null;
 

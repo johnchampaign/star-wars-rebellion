@@ -120,16 +120,12 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
         <div style={{ padding: '8px 12px', color: '#aab', fontSize: 12, borderBottom: '1px solid #333' }}>
           {yourTurn ? 'Your turn — play directly on the board below.' : 'Opponent’s turn — board is read-only until they move.'}
         </div>
-        {/* Hover/tooltips work regardless of turn (read-only, harmless), but on
-            the opponent's turn we swallow clicks/taps in the capture phase so no
-            stray board action submits a server-rejected move. NOT pointer-events:
-            none — that would also kill mouseover. Each board action otherwise
-            submits to the server via the online engine shim. */}
-        <div
-          onClickCapture={(e) => { if (!yourTurn) { e.preventDefault(); e.stopPropagation(); } }}
-          onMouseDownCapture={(e) => { if (!yourTurn) { e.preventDefault(); e.stopPropagation(); } }}
-          style={{ cursor: yourTurn ? undefined : 'default' }}
-        >
+        {/* Fully interactive at the DOM level so read-only features (probe
+            overlays, hover-enlarge, info panels, tooltips) work whether or not
+            it's your turn. Turn enforcement lives in the online shim: it only
+            SUBMITS an action when it's your turn, so stray board-action clicks on
+            the opponent's turn no-op silently instead of being server-rejected. */}
+        <div>
           <PlayTab online={{ view, you: you as Side | null, yourTurn, submit }} />
         </div>
       </div>
