@@ -5,7 +5,7 @@
 // server view (instead of OWNING a local engine) is the larger follow-on
 // (PlayTab currently constructs its own engine state).
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useGame } from 'digital-boardgame-framework/client';
 import { makeGameClient } from './gameClient';
 import PlayTab from '../play/PlayTab';
@@ -20,11 +20,40 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
     useGame<GameState, RebellionAction>(client, { pollMs: 8000 });
   const [busy, setBusy] = useState(false);
   const [actErr, setActErr] = useState<string | null>(null);
+  const [oppAbandoned, setOppAbandoned] = useState(false);
 
   async function send(action: RebellionAction) {
     setBusy(true); setActErr(null);
     try { await submit(action); }
     catch (e) { setActErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+
+  // While waiting on the opponent, poll for abandonment (the server returns
+  // opponentAbandoned once they've been away past the grace period).
+  useEffect(() => {
+    if (yourTurn || gameOver) { setOppAbandoned(false); return; }
+    let cancelled = false;
+    const check = async () => {
+      try {
+        const r = await fetch(`/api/games/${encodeURIComponent(gameId)}?t=${encodeURIComponent(token)}`);
+        const j = await r.json();
+        if (!cancelled) setOppAbandoned(!!j.opponentAbandoned);
+      } catch { /* ignore */ }
+    };
+    void check();
+    const iv = setInterval(check, 30000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, [yourTurn, gameOver, gameId, token]);
+
+  async function abandonAction(kind: 'takeover' | 'claim') {
+    setBusy(true); setActErr(null);
+    try {
+      const r = await fetch(`/api/games/${encodeURIComponent(gameId)}/${kind}?t=${encodeURIComponent(token)}`, { method: 'POST' });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      await refresh();
+    } catch (e) { setActErr(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
 
@@ -51,6 +80,20 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
         <div><b>Move #:</b> {turn} &nbsp; {gameOver ? <span style={{ color: '#f88' }}>Game over{view.winner ? ` — ${view.winner} wins` : ''}</span>
           : <b style={{ color: yourTurn ? '#80dc78' : '#e0b84f' }}>{yourTurn ? 'Your turn' : 'Waiting for opponent…'}</b>}</div>
       </div>
+
+      {oppAbandoned && !gameOver && (
+        <div style={{ ...card, borderColor: '#7a5', background: '#1f2a1c' }}>
+          <div style={{ fontWeight: 600, marginBottom: 6 }}>Your opponent has been away a while.</div>
+          <div style={{ color: '#aab', fontSize: 13, marginBottom: 10 }}>
+            You can let the AI finish their side, or claim the win. (If they come back, they get their seat back automatically.)
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button disabled={busy} onClick={() => void abandonAction('takeover')}>Let the AI take over</button>
+            <button disabled={busy} onClick={() => void abandonAction('claim')}>Claim victory</button>
+          </div>
+          {actErr && <pre style={errBox}>{actErr}</pre>}
+        </div>
+      )}
 
       {yourTurn && !gameOver && (
         <div style={card}>

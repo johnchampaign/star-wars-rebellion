@@ -40,6 +40,9 @@ export interface Env {
   // Until then we use NoopNotifier and nothing is sent.
   RESEND_API_KEY?: string;
   RESEND_FROM?: string; // a verified Resend sender, e.g. "Rebellion <play@yourdomain>"
+  // Abandonment grace (ms) before the present player may take over / claim.
+  // Default 3 days; lower it for testing.
+  ABANDON_GRACE_MS?: string;
 }
 
 /** Resend turn-alert emails when configured, else a no-op. The framework's
@@ -226,6 +229,69 @@ export async function advanceAIAndStore(store: SnapshotStore, codec: Codec<GameS
   if (!runServerAI(state)) return false;
   await store.putSnapshot(gameId, { turn: latest.turn + 1, state: encodeSnapshot(codec, state) });
   return true;
+}
+
+// ----- Abandonment handling (Part 2) -----
+
+const DEFAULT_GRACE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+
+export function otherSide(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
+
+/** When did the current turn start? (from swr_turn_notify). null if unknown. */
+export async function turnStartedAt(supabase: SupabaseClient, gameId: string): Promise<string | null> {
+  const { data } = await supabase.from('swr_turn_notify').select('started_at').eq('game_id', gameId).maybeSingle();
+  return data?.started_at ?? null;
+}
+
+/** True if `side` is the current actor AND has been on the clock past the grace
+ *  period — i.e. the opponent may take over or claim the win. */
+export async function isSideAbandoned(supabase: SupabaseClient, gameId: string, side: Side, env: Env): Promise<boolean> {
+  const grace = Number(env.ABANDON_GRACE_MS) || DEFAULT_GRACE_MS;
+  const { data } = await supabase.from('swr_turn_notify').select('*').eq('game_id', gameId).maybeSingle();
+  if (!data || data.actor !== side) return false;
+  return Date.now() - new Date(data.started_at).getTime() >= grace;
+}
+
+async function mutateStored(
+  store: SnapshotStore, codec: Codec<GameState>, gameId: string, fn: (s: GameState) => boolean,
+): Promise<boolean> {
+  const latest = await store.getLatest(gameId);
+  if (!latest) return false;
+  const state = decodeSnapshot(codec, latest.state);
+  if (!fn(state)) return false;
+  await store.putSnapshot(gameId, { turn: latest.turn + 1, state: encodeSnapshot(codec, state) });
+  return true;
+}
+
+/** Hand a seat to the server AI (abandonment takeover); play its turn at once. */
+export function setSeatAI(store: SnapshotStore, codec: Codec<GameState>, gameId: string, side: Side): Promise<boolean> {
+  return mutateStored(store, codec, gameId, (s) => {
+    const set = new Set<Side>(s.aiSides ?? []);
+    set.add(side);
+    s.aiSides = [...set];
+    runServerAI(s);
+    return true;
+  });
+}
+
+/** Return an AI-held seat to its human (they came back). */
+export function reclaimSeat(store: SnapshotStore, codec: Codec<GameState>, gameId: string, side: Side): Promise<boolean> {
+  return mutateStored(store, codec, gameId, (s) => {
+    if (!s.aiSides?.includes(side)) return false;
+    s.aiSides = s.aiSides.filter((x) => x !== side);
+    return true;
+  });
+}
+
+/** End the game in `winner`'s favour (abandonment claim). */
+export function claimVictory(store: SnapshotStore, codec: Codec<GameState>, gameId: string, winner: Side): Promise<boolean> {
+  return mutateStored(store, codec, gameId, (s) => {
+    if (s.isGameOver) return false;
+    s.isGameOver = true;
+    s.winner = winner;
+    s.winReason = 'Opponent abandoned the game';
+    return true;
+  });
 }
 
 /** Whose turn it is, derived from a ViewResult (2-player). */
