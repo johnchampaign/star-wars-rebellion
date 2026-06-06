@@ -864,6 +864,20 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
 
   const onPass = () => {
     if (!G) return;
+    // Guard: passing ENDS your Command phase for the round — any missions you
+    // assigned but haven't revealed won't happen. A common mistake (esp. online)
+    // is to pass over your own mission reveals, which looks like "the opponent
+    // did everything". Warn if the passing side still has assigned missions.
+    const f = G.currentPlayer === 'Rebel' ? G.rebel : G.empire;
+    const pending = f.leadersOnMissions.length;
+    if (pending > 0) {
+      const ok = window.confirm(
+        `You still have ${pending} assigned mission${pending === 1 ? '' : 's'} you haven't revealed.\n\n` +
+        `Passing ends your Command phase for this round — those missions will NOT be carried out ` +
+        `(their leaders just return at the end of the round). Pass anyway?`,
+      );
+      if (!ok) return;
+    }
     phases.pass(G, G.currentPlayer);
     persist();
     refresh();
