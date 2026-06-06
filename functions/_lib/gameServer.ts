@@ -103,22 +103,71 @@ async function getCatalog(request: Request): Promise<GameCatalog> {
 
 /** Build a GameServer for this request, plus the DataBundle (needed to mint a
  *  fresh initial state when creating a game). */
+type GameUrl = (gameId: string, token: string) => string;
+
 export async function makeServer(request: Request, env: Env): Promise<{
   server: Server; store: SnapshotStore; codec: Codec<GameState>; dataBundle: DataBundle;
+  supabase: SupabaseClient; notifier: Notifier; gameUrl: GameUrl;
 }> {
   const catalog = await getCatalog(request);
   const dataBundle = await getDataBundle(request);
   const base = env.PUBLIC_BASE_URL || new URL(request.url).origin;
   const codec = makeRebellionCodec(catalog);
-  const store: SnapshotStore = new SupabaseStore(getSupabase(env));
+  const supabase = getSupabase(env);
+  const store: SnapshotStore = new SupabaseStore(supabase);
+  const gameUrl: GameUrl = (gameId, token) => `${base}/?g=${encodeURIComponent(gameId)}&t=${encodeURIComponent(token)}`;
+  // Deferred-notification model: the framework would email on EVERY turn handoff
+  // (spammy during an active game). We give the framework a NoopNotifier and send
+  // "your turn" ourselves only when a player has been on the clock >15 min and
+  // hasn't moved (see syncTurnNotify). `notifier` here is the real Resend sender.
+  const notifier = makeNotifier(env);
   const server = new GameServer<GameState, RebellionAction, Side>({
     adapter: rebellionAdapter,
     codec,
     store,
-    notifier: makeNotifier(env), // Resend turn emails when configured, else no-op.
-    gameUrl: (gameId, token) => `${base}/?g=${encodeURIComponent(gameId)}&t=${encodeURIComponent(token)}`,
+    notifier: new NoopNotifier(),
+    gameUrl,
   });
-  return { server, store, codec, dataBundle };
+  return { server, store, codec, dataBundle, supabase, notifier, gameUrl };
+}
+
+const TURN_EMAIL_DELAY_MS = 15 * 60 * 1000; // 15 minutes
+
+/** Deferred "your turn" email (Option A — poll-driven). Called on every fetch
+ *  and submit. Tracks, per game, who is on the clock and since when (table
+ *  swr_turn_notify). When the actor changes, the clock restarts. When the same
+ *  actor has been on the clock >15 min and hasn't moved, email them once. The
+ *  trigger is whoever next pings the game (typically the waiting opponent's
+ *  poll), so an active back-and-forth produces zero emails. Best-effort. */
+export async function syncTurnNotify(
+  deps: { supabase: SupabaseClient; store: SnapshotStore; notifier: Notifier; gameUrl: GameUrl },
+  gameId: string,
+  currentActor: Side | null,
+  turn: number,
+): Promise<void> {
+  try {
+    const { data: row } = await deps.supabase
+      .from('swr_turn_notify').select('*').eq('game_id', gameId).maybeSingle();
+    if (!currentActor) return; // game over / nobody to nudge
+    if (!row || row.actor !== currentActor) {
+      // New player on the clock — (re)start it, no email yet.
+      await deps.supabase.from('swr_turn_notify').upsert({
+        game_id: gameId, actor: currentActor, started_at: new Date().toISOString(), emailed: false,
+      });
+      return;
+    }
+    if (row.emailed) return;
+    if (Date.now() - new Date(row.started_at).getTime() < TURN_EMAIL_DELAY_MS) return;
+    const meta = await deps.store.getGameMeta(gameId);
+    const email = meta?.emails?.[currentActor];
+    if (meta && email) {
+      await deps.notifier.notifyYourTurn({ email, gameUrl: deps.gameUrl(gameId, meta.tokens[currentActor]), gameId, turn });
+    }
+    // Mark emailed regardless (no email on file => nothing to retry; avoids spin).
+    await deps.supabase.from('swr_turn_notify').update({ emailed: true }).eq('game_id', gameId);
+  } catch {
+    /* best-effort — never fail the request over a notification */
+  }
 }
 
 /** A fresh two-player initial state. autoSetupUnits=true keeps the first online
@@ -177,6 +226,13 @@ export async function advanceAIAndStore(store: SnapshotStore, codec: Codec<GameS
   if (!runServerAI(state)) return false;
   await store.putSnapshot(gameId, { turn: latest.turn + 1, state: encodeSnapshot(codec, state) });
   return true;
+}
+
+/** Whose turn it is, derived from a ViewResult (2-player). */
+export function currentActorOf(v: { you?: string; yourTurn: boolean; gameOver: boolean }): Side | null {
+  if (v.gameOver || !v.you) return null;
+  const you = v.you as Side;
+  return v.yourTurn ? you : you === 'Rebel' ? 'Empire' : 'Rebel';
 }
 
 export function json(data: unknown, status = 200): Response {
