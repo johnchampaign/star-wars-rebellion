@@ -1218,8 +1218,12 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         />
       )}
 
-      {G.phase === 'Assignment' && !G.isGameOver && (
-        <AssignmentPanel G={G} side={G.currentPlayer} humanSide={humanSide} onChange={() => { persist(); refresh(); }} />
+      {/* Online: only show the human their OWN assignment, on their OWN turn —
+          otherwise the opponent sees this side's panel (with an undo button on
+          their assigned leaders, and the mission redacted to __hidden__). Hotseat
+          shows the engine's active side. */}
+      {G.phase === 'Assignment' && !G.isGameOver && (!online || G.currentPlayer === humanSide) && (
+        <AssignmentPanel G={G} side={online ? humanSide : G.currentPlayer} humanSide={humanSide} onChange={() => { persist(); refresh(); }} />
       )}
 
       {G.phase === 'Command' && !G.isGameOver && G.currentPlayer === humanSide && (
