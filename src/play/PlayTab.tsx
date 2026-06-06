@@ -1184,11 +1184,17 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         }
       />
 
-      {G.phase === 'Setup' && !G.isGameOver && G.pendingRebelBasePick && humanSide === 'Rebel' && (
+      {/* Setup panels. In hotseat one human runs both sides, so show whichever
+          side is active. Online, a player must only see their OWN setup on their
+          OWN turn — otherwise the Rebel gets shown the Empire's deployment (and
+          vice-versa). The base pick belongs to the Rebel's own setup turn. */}
+      {G.phase === 'Setup' && !G.isGameOver && G.pendingRebelBasePick && humanSide === 'Rebel'
+        && (!online || G.currentPlayer === 'Rebel') && (
         <RebelBasePickPanel G={G} onPick={onPickRebelBase} />
       )}
 
-      {G.phase === 'Setup' && !G.isGameOver && G.pendingDeployment && (
+      {G.phase === 'Setup' && !G.isGameOver && G.pendingDeployment
+        && (!online || G.currentPlayer === humanSide) && (
         <SetupPanel
           G={G}
           side={G.currentPlayer}
