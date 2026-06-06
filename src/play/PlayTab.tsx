@@ -7272,10 +7272,19 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
   const [revealTargetLeaderId, setRevealTargetLeaderId] = useState<string | null>(null);
 
   const assignedMissions = f.leadersOnMissions;
+  // Missions that resolve WITHOUT targeting a system (Contingency Plan just
+  // re-assigns a leader). The reveal UI shouldn't force a planet pick for these
+  // (player report #133: had to type a random planet to activate it). The engine
+  // ignores the target for them, so we pass a throwaway system on reveal.
+  const TARGETLESS_REVEAL = new Set(['contingency-plan']);
+  const revealNeedsTarget = !!revealMissionId && !TARGETLESS_REVEAL.has(revealMissionId);
 
   const handleReveal = () => {
-    if (!revealMissionId || !revealTargetSysId) return;
-    const ok = onReveal(revealMissionId, revealTargetSysId, revealTargetLeaderId ?? undefined);
+    if (!revealMissionId) return;
+    // Target-less missions: the engine ignores the system, so pass any valid one.
+    const target = revealNeedsTarget ? revealTargetSysId : (revealTargetSysId ?? Object.keys(G.map.systems)[0]);
+    if (!target) return;
+    const ok = onReveal(revealMissionId, target, revealTargetLeaderId ?? undefined);
     if (ok !== false) {
       setRevealMissionId(null);
       setRevealTargetSysId(null);
@@ -7405,7 +7414,7 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
             const targets = missionTargets(G, side, revealMissionId);
             const leaderTargets = missionLeaderTargets(G, side, revealMissionId);
             const isLeaderPick = leaderTargets !== null;
-            return (
+            return revealNeedsTarget ? (
             <>
               <div style={{ fontSize: 12, color: '#aaa', marginBottom: 4 }}>
                 Step 2 — pick the target {isLeaderPick ? 'leader' : 'system'}
@@ -7501,6 +7510,20 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
                   Reveal mission
                 </button>
               </div>
+            </>
+            ) : (
+            <>
+              <div style={{ fontSize: 12, color: '#80dc78', marginBottom: 8 }}>
+                This mission resolves with no target — just reveal it.
+              </div>
+              <button
+                className="tab-button active"
+                onClick={handleReveal}
+                disabled={!revealMissionId}
+                style={{ fontWeight: 700 }}
+              >
+                Reveal mission
+              </button>
             </>
             );
           })()}
