@@ -17,10 +17,10 @@ export function logForSide(G: GameState, side: Side, kind: string, payload?: Rec
 /** Queue a player-facing modal notice (deduped by id). For real game info the
  *  player must see — e.g. a Long Range Probe result. (notImplemented() is for
  *  unfinished code paths and logs differently; don't use it for this.) */
-export function pushNotice(G: GameState, id: string, title: string, details?: string): void {
+export function pushNotice(G: GameState, id: string, title: string, details?: string, side?: Side): void {
   if (!G.pendingNotices) G.pendingNotices = [];
   if (G.pendingNotices.some((n) => n.id === id)) return;
-  G.pendingNotices.push({ id, title, details, kind: 'info' });
+  G.pendingNotices.push({ id, title, details, kind: 'info', side });
   log(G, { kind: 'notice', payload: { id, title } });
 }
 

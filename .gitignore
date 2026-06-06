@@ -76,3 +76,6 @@ logs-tmp/
 # Scratch issue-body dumps from `gh issue view N --json body --jq .body`
 # during ad-hoc investigation. Local-only.
 issue*-body.txt
+
+# wrangler pages functions build output (local bundle check)
+.fnbuild*

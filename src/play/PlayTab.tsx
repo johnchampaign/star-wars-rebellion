@@ -25,13 +25,25 @@ function otherSide(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 const UnitStyleContext = createContext<UnitImageStyle>('vmod');
 const useUnitStyle = () => useContext(UnitStyleContext);
 import { createGame } from '../engine/setup';
-import * as phases from '../engine/phases';
+import * as _phases from '../engine/phases';
+import type { MoveOrder } from '../engine/phases';
 import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
-import * as combat from '../engine/combat';
+import * as _combat from '../engine/combat';
 import { CombatBoardLive } from './CombatBoardLive';
 import { encode, decode, canEncode } from '../engine/codec';
 import type { GameState, Side } from '../engine/types';
+import type { RebellionAction } from '../adapter/rebellionAction';
+import { makeOnlinePhases, makeOnlineCombat } from '../online/onlineEngine';
 import type { System, MaskRect } from '../types';
+
+// Active engine handles. Module-level so PlayTab AND its module-scope
+// sub-components/helpers all call the same `phases.*`/`combat.*`. The PlayTab
+// component reassigns these each render: the real engine in single-player, or
+// the online shim (submits actions to the server) in online mode. Safe because
+// only one PlayTab instance is mounted at a time, and the reassignment runs
+// before any child renders within the same render pass.
+let phases = _phases;
+let combat = _combat;
 
 const NATIVE_W = 3180;
 const NATIVE_H = 1590;
@@ -259,8 +271,25 @@ function hasAnyCommandAction(G: GameState, side: Side): boolean {
   return false;
 }
 
-export default function PlayTab() {
+/** Online mode (Phase 4b): when provided, PlayTab renders the redacted server
+ *  view instead of owning a local engine. Read-only for now (the OnlinePlay
+ *  wrapper disables pointer events and supplies the action panel); per-control
+ *  submit wiring is the next step. When `online` is undefined, PlayTab behaves
+ *  exactly as the single-player app — every online code path below is gated. */
+export type PlayTabOnlineMode = {
+  view: GameState;
+  you: Side | null;
+  yourTurn: boolean;
+  submit: (action: RebellionAction) => Promise<void>;
+};
+
+export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {}) {
   const gameRef = useRef<GameState | null>(null);
+  // Point the module-level engine handles at the online shim (mutators submit
+  // RebellionActions to the server) or the real modules (single-player). See
+  // the `let phases/combat` declaration above and onlineEngine.ts.
+  phases = online ? makeOnlinePhases(online.submit, () => online.yourTurn) : _phases;
+  combat = online ? makeOnlineCombat(online.submit, () => online.yourTurn) : _combat;
   // Undo stack for the interactive Setup phase. Each entry is an encoded
   // snapshot (codec string) of G taken just BEFORE a human placement /
   // auto-fill. Undo pops the latest; Reset restores entry[0] (the state
@@ -420,6 +449,12 @@ export default function PlayTab() {
     });
   };
   const [humanSide, setHumanSide] = useState<Side>(() => {
+    // Online: the server seat is authoritative and already known at mount
+    // (OnlinePlay only renders us once `view`/`you` have loaded). Never let a
+    // stale localStorage side (e.g. from a prior game where you were the Empire)
+    // make the Rebel client render the Empire's perspective — that hides the
+    // Rebel's own base and suppresses the Rebel setup panels.
+    if (online?.you === 'Rebel' || online?.you === 'Empire') return online.you;
     const stored = localStorage.getItem(LS_HUMAN_SIDE);
     return stored === 'Rebel' || stored === 'Empire' ? stored : 'Rebel';
   });
@@ -449,6 +484,7 @@ export default function PlayTab() {
    *  render covering all AI actions in the burst — simpler than per-step
    *  timeouts and immune to Strict Mode timer cancellation races. */
   const runAILoop = useCallback(() => {
+    if (online) return; // online games are server-authoritative — no local AI.
     const G0 = gameRef.current;
     if (!G0 || G0.isGameOver) return;
     const human = (localStorage.getItem(LS_HUMAN_SIDE) === 'Empire') ? 'Empire' : 'Rebel';
@@ -584,6 +620,8 @@ export default function PlayTab() {
 
   // Persist current game state after every action.
   const persist = useCallback(() => {
+    if (online) return; // online games live on the server; never write the
+    // redacted view to single-player localStorage (it would corrupt resume).
     const G = gameRef.current;
     if (!G) return;
     try {
@@ -721,6 +759,12 @@ export default function PlayTab() {
     }
   }, [resumeSaved]);
 
+  // Online mode: render the redacted server view directly (no local engine).
+  // Done at render so there's no first-paint flash; OnlinePlay always mounts us
+  // with a view in hand. Keep the seat (humanSide) in sync with our server seat.
+  if (online) gameRef.current = online.view;
+  useEffect(() => { if (online?.you) setHumanSide(online.you); }, [online?.you]);
+
   const G = gameRef.current;
 
   // (AI driver moved into refresh() / runAILoop() above — a useEffect-based
@@ -820,13 +864,27 @@ export default function PlayTab() {
 
   const onPass = () => {
     if (!G) return;
+    // Guard: passing ENDS your Command phase for the round — any missions you
+    // assigned but haven't revealed won't happen. A common mistake (esp. online)
+    // is to pass over your own mission reveals, which looks like "the opponent
+    // did everything". Warn if the passing side still has assigned missions.
+    const f = G.currentPlayer === 'Rebel' ? G.rebel : G.empire;
+    const pending = f.leadersOnMissions.length;
+    if (pending > 0) {
+      const ok = window.confirm(
+        `You still have ${pending} assigned mission${pending === 1 ? '' : 's'} you haven't revealed.\n\n` +
+        `Passing ends your Command phase for this round — those missions will NOT be carried out ` +
+        `(their leaders just return at the end of the round). Pass anyway?`,
+      );
+      if (!ok) return;
+    }
     phases.pass(G, G.currentPlayer);
     persist();
     refresh();
   };
 
   const onActivateSystem = (
-    leaderId: string, targetSystemId: string, moveOrders: phases.MoveOrder[],
+    leaderId: string, targetSystemId: string, moveOrders: MoveOrder[],
   ) => {
     if (!G) return;
     const r = phases.activateSystem(G, G.currentPlayer, leaderId, targetSystemId, moveOrders);
@@ -878,6 +936,17 @@ export default function PlayTab() {
     if (!G) return;
     const r = phases.pickRebelBase(G, systemId);
     if (!r.ok) { alert(`Cannot pick: ${r.reason}`); return; }
+    persist();
+    refresh();
+  };
+
+  // Dismiss the front-most report modal. Goes through the engine mutator so that
+  // online it submits an action (server-persisted) instead of shifting the local
+  // redacted view — a local shift is undone by the next poll, which locked the
+  // dialog.
+  const onAckReport = (reportType: 'mission' | 'combat' | 'objective' | 'refresh') => {
+    if (!G) return;
+    phases.acknowledgeReport(G, reportType);
     persist();
     refresh();
   };
@@ -1140,14 +1209,21 @@ export default function PlayTab() {
         }
       />
 
+      {/* Setup panels. Setup is concurrent: each player sets up their OWN side.
+          - Hotseat: one human runs both sides, so show whichever side the engine
+            has active (G.currentPlayer).
+          - Online: show the human their OWN setup — the Rebel's base pick + the
+            Rebel's deployment, or the Empire's deployment — independent of
+            G.currentPlayer, so neither player waits on the other to finish. */}
       {G.phase === 'Setup' && !G.isGameOver && G.pendingRebelBasePick && humanSide === 'Rebel' && (
         <RebelBasePickPanel G={G} onPick={onPickRebelBase} />
       )}
 
-      {G.phase === 'Setup' && !G.isGameOver && G.pendingDeployment && (
+      {G.phase === 'Setup' && !G.isGameOver && G.pendingDeployment
+        && (online ? (G.pendingDeployment[humanSide]?.length ?? 0) > 0 : true) && (
         <SetupPanel
           G={G}
-          side={G.currentPlayer}
+          side={online ? humanSide : G.currentPlayer}
           onDeploy={onSetupDeploy}
           onAutoFill={onSetupAutoFill}
           onUndo={onSetupUndo}
@@ -1156,8 +1232,12 @@ export default function PlayTab() {
         />
       )}
 
-      {G.phase === 'Assignment' && !G.isGameOver && (
-        <AssignmentPanel G={G} side={G.currentPlayer} humanSide={humanSide} onChange={() => { persist(); refresh(); }} />
+      {/* Online: only show the human their OWN assignment, on their OWN turn —
+          otherwise the opponent sees this side's panel (with an undo button on
+          their assigned leaders, and the mission redacted to __hidden__). Hotseat
+          shows the engine's active side. */}
+      {G.phase === 'Assignment' && !G.isGameOver && (!online || G.currentPlayer === humanSide) && (
+        <AssignmentPanel G={G} side={online ? humanSide : G.currentPlayer} humanSide={humanSide} onChange={() => { persist(); refresh(); }} />
       )}
 
       {G.phase === 'Command' && !G.isGameOver && G.currentPlayer === humanSide && (
@@ -1253,12 +1333,23 @@ export default function PlayTab() {
         </div>
       )}
 
-      {G.pendingNotices && G.pendingNotices.length > 0 && (
-        <NotImplementedModal
-          notices={G.pendingNotices}
-          onDismiss={() => { if (G) G.pendingNotices = []; persist(); refresh(); }}
-        />
-      )}
+      {/* Notices live in shared engine state. Online, a seat sees only the
+          notices addressed to it (its own side or untagged/global) — a Rebel-only
+          notice (e.g. "Rapid Mobilization queued") must never pop for the Empire.
+          Dismissal goes through the engine mutator so it persists server-side (a
+          local G.pendingNotices=[] on the redacted view is undone by the next
+          poll, re-showing the notice forever). */}
+      {(() => {
+        const all = G.pendingNotices ?? [];
+        const visible = online ? all.filter((n) => !n.side || n.side === humanSide) : all;
+        if (visible.length === 0) return null;
+        return (
+          <NotImplementedModal
+            notices={visible}
+            onDismiss={() => { phases.acknowledgeNotices(G); persist(); refresh(); }}
+          />
+        );
+      })()}
 
       {objectiveNoticeQueue.length > 0 && (
         <ObjectiveScoredModal
@@ -1310,41 +1401,52 @@ export default function PlayTab() {
         />
       )}
 
-      {G.combatReports && G.combatReports.length > 0 && (
+      {/* Report modals. Online, show a blocking report only when it's the
+          viewer's turn (online.yourTurn) — the SAME signal that enables clicks.
+          Gating on yourTurn (rather than currentPlayer) guarantees a visible
+          report modal is always interactive: if clicks are suppressed because
+          it's not your turn, the modal isn't shown, so it can never lock. The
+          report is cleared by whoever currently holds the turn, via onAckReport
+          (server-persisted acknowledge online). */}
+      {G.combatReports && G.combatReports.length > 0
+        && (!online || online.yourTurn) && (
         <CombatReportModal
           G={G}
           report={G.combatReports[0]}
-          onDismiss={() => { if (G && G.combatReports) G.combatReports.shift(); persist(); refresh(); }}
+          onDismiss={() => onAckReport('combat')}
         />
       )}
 
-      {G.missionReports && G.missionReports.length > 0 && (
+      {G.missionReports && G.missionReports.length > 0
+        && (!online || online.yourTurn) && (
         <MissionReportModal
           G={G}
           report={G.missionReports[0]}
-          onDismiss={() => { if (G && G.missionReports) G.missionReports.shift(); persist(); refresh(); }}
+          onDismiss={() => onAckReport('mission')}
         />
       )}
 
       {G.objectiveReports && G.objectiveReports.length > 0
         && (!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0) && (
+        && (!G.combatReports || G.combatReports.length === 0)
+        && (!online || online.yourTurn) && (
         <ObjectiveReportModal
           G={G}
           report={G.objectiveReports[0]}
-          onDismiss={() => { if (G && G.objectiveReports) G.objectiveReports.shift(); persist(); refresh(); }}
+          onDismiss={() => onAckReport('objective')}
         />
       )}
 
       {G.refreshReports && G.refreshReports.length > 0
         && (!G.missionReports || G.missionReports.length === 0)
         && (!G.objectiveReports || G.objectiveReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0) && (
+        && (!G.combatReports || G.combatReports.length === 0)
+        && (!online || online.yourTurn) && (
         <RefreshReportModal
           G={G}
           report={G.refreshReports[0]}
           humanSide={humanSide}
-          onDismiss={() => { if (G && G.refreshReports) G.refreshReports.shift(); persist(); refresh(); }}
+          onDismiss={() => onAckReport('refresh')}
         />
       )}
 
@@ -2151,6 +2253,7 @@ export default function PlayTab() {
         <CombatBoardLive
           G={G}
           humanSide={humanSide}
+          online={online ? { submit: online.submit, yourTurn: online.yourTurn } : undefined}
           onPersist={() => { persist(); refresh(); }}
           onShowDiceKey={() => setShowDiceKey(true)}
           onShowTacticKey={() => setShowTacticKey(true)}
@@ -5764,6 +5867,11 @@ function UnitCluster({ centerX, centerY, groups, iconSize, maxWidth }: {
  *  old version only marked the current probeHand, badly under-counting
  *  (reporter: "only 4 in deck but far more than 4 unmarked"). */
 function empireRuledOutSystems(G: GameState): Set<string> {
+  // Online: the probe deck is hidden, so the server precomputes the rule-outs
+  // (from the real deck) into empireProbeRuledOut. Prefer it when present —
+  // deriving from the redacted (all-hidden) deck would mark EVERY system ruled
+  // out. Hotseat falls through to the deck-based computation below.
+  if (G.empireProbeRuledOut) return new Set(G.empireProbeRuledOut);
   const inDeck = new Set(
     (G.probeDeck ?? []).map((pid) => G.catalog.probes[pid]?.systemId).filter(Boolean) as string[],
   );
@@ -7088,7 +7196,7 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onReset, undoCount 
 function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
   G: GameState;
   side: Side;
-  onActivate: (leaderId: string, targetSystemId: string, moveOrders: phases.MoveOrder[]) => boolean | void;
+  onActivate: (leaderId: string, targetSystemId: string, moveOrders: MoveOrder[]) => boolean | void;
   onReveal: (missionId: string, targetSystemId: string, targetLeaderId?: string) => boolean | void;
   onPass: () => void;
 }) {
@@ -7172,7 +7280,7 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
   const handleActivate = () => {
     if (!leaderId || !targetSystemId) return;
     // Build moveOrders: convert (sysId × typeId × count) → unit instance IDs.
-    const orders: phases.MoveOrder[] = [];
+    const orders: MoveOrder[] = [];
     for (const sysId of Object.keys(moveCounts)) {
       const sub = moveCounts[sysId];
       const src = sysId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[sysId];

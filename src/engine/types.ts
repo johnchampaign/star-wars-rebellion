@@ -1193,6 +1193,13 @@ export type GameState = {
   // the base relocates. Not secret (these are systems ruled OUT).
   empireSearchedRuledOut?: SystemId[];
 
+  // Online-only: the probe-deck-derived ruled-out systems, computed server-side
+  // and attached to the EMPIRE's redacted view. The deck itself is hidden online
+  // (it would leak the base — the base's probe is absent from it), so the UI
+  // can't derive rule-outs from the deck and reads this instead. Excludes the
+  // base, so it's safe to send. Absent in hotseat (UI computes from the deck).
+  empireProbeRuledOut?: SystemId[];
+
   // Shared decks
   probeDeck: string[];
   spaceTacticDeck: string[];
@@ -1227,7 +1234,10 @@ export type GameState = {
   // `kind` distinguishes real game-info notices (pushNotice) from unfinished
   // code-path notices (notImplemented) so the UI can title each correctly.
   // Absent ⇒ treat as 'notImplemented' for back-compat with old logs.
-  pendingNotices?: { id: string; title: string; details?: string; kind?: 'info' | 'notImplemented' }[];
+  // `side`, when set, scopes the notice to that player — online, only that seat
+  // is shown it (a Rebel-only "Rapid Mobilization queued" notice must NOT pop for
+  // the Empire). Untagged notices are global (shown to whoever's acting).
+  pendingNotices?: { id: string; title: string; details?: string; kind?: 'info' | 'notImplemented'; side?: Side }[];
 
   // Persistent leader attachments ("attachment rings", RR p.3). Per the
   // rulebook, a leader can have only one ring at a time — a new ring replaces
@@ -1331,6 +1341,12 @@ export type GameState = {
   isGameOver: boolean;
   winner?: Side;
   winReason?: string;
+
+  // Online "vs AI": sides controlled by the server-side heuristic AI. Set at
+  // game creation for online-vs-AI games; the engine ignores it (it's metadata
+  // the online server reads to auto-play those seats). Absent/empty = all
+  // seats are human.
+  aiSides?: Side[];
 
   // Determinism
   rng: SeededRngState;

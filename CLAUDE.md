@@ -3,11 +3,25 @@
 Project-local conventions for the Star Wars: Rebellion port. Skim before
 each session.
 
-## Single branch: master is the only active branch
+## Branches: master + the multiplayer-framework feature branch
 
-This project develops on **`master`** only, in the one working directory
+This project develops on **`master`**, in the one working directory
 `C:/Users/johnc/Claude Games/Star Wars Rebellion`. master is production
-(deploys to https://star-wars-rebellion.pages.dev). Do all work here.
+(deploys to https://star-wars-rebellion.pages.dev). Do all hotseat/engine
+work here.
+
+**Active feature branch: `multiplayer-framework`.** This is the
+async-online-PvP + vs-AI rebuild on `digital-boardgame-framework` (Supabase
++ Cloudflare Functions + Resend email). It is a *real, live* branch (unlike
+the abandoned `framework-port`), kept reconciled with master by periodically
+`git merge master` into it (PlayTab auto-merges cleanly so far). It merges
+to master at "Phase 6" after a live two-human playtest. The online stack,
+its architecture, the secret/deploy model, and the pre-merge checklist are
+documented in **`docs/online-multiplayer.md`** — read it before touching
+anything under `functions/`, `src/adapter/`, or `src/online/`. The
+engine has branch-only additions there (`codec.encodeFull`,
+`setup.buildCatalog` export, `types.aiSides`) that don't exist on master
+yet.
 
 History: there was a `framework-port` branch (an online/lobby/game-server
 rebuild) developed in parallel. It was **abandoned** — the parallel
@@ -182,6 +196,10 @@ Do **not** "fix" these by adding `@types/node` to the main tsconfig, enabling
 - **Serverless** (`functions/api/*.ts`): Cloudflare Pages Functions for
   `/api/report` and `/api/upload-logs`. Mirror the dev-only vite
   middleware in `vite.config.ts` at the same paths.
+- **Online multiplayer** (`multiplayer-framework` branch only): the async
+  PvP + vs-AI stack — `src/adapter/` (engine↔framework glue), `functions/`
+  (authoritative server, AI takeover, abandonment, turn email), `src/online/`
+  (Lobby + OnlinePlay). Full map in **`docs/online-multiplayer.md`**.
 
 ## AI logs & analysis — which side was the human?
 

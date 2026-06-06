@@ -11,6 +11,9 @@ import LeadersTab from './devtabs/LeadersTab';
 import CardsTab from './devtabs/CardsTab';
 import ProbeTab from './devtabs/ProbeTab';
 import PlayTab from './play/PlayTab';
+import Lobby from './online/Lobby';
+import OnlinePlay from './online/OnlinePlay';
+import { readOnlineInvite } from './online/gameClient';
 
 type TabId = 'play' | 'systems' | 'adjacency' | 'regions' | 'resources' | 'positions' | 'mask' | 'silhouette' | 'tokens' | 'leaders' | 'cards' | 'probe';
 
@@ -44,10 +47,16 @@ function isDevMode(): boolean {
 export default function App() {
   const [dev, setDev] = useState(isDevMode());
   const [tab, setTab] = useState<TabId>(dev ? 'systems' : 'play');
+  const [showLobby, setShowLobby] = useState(false);
 
   useEffect(() => {
     document.title = dev ? 'Star Wars: Rebellion — Dev' : 'Star Wars: Rebellion';
   }, [dev]);
+
+  // An invite deep-link (?g=<gameId>&t=<token>) takes over the whole app and
+  // opens straight into the online game, covering every route.
+  const invite = readOnlineInvite();
+  if (invite) return <OnlinePlay gameId={invite.gameId} token={invite.token} />;
 
   return (
     <div className="app">
@@ -55,10 +64,17 @@ export default function App() {
         <h1>Star Wars: Rebellion</h1>
         <nav className="tab-bar">
           <button
-            className={`tab-button ${tab === 'play' ? 'active' : ''}`}
-            onClick={() => setTab('play')}
+            className={`tab-button ${tab === 'play' && !showLobby ? 'active' : ''}`}
+            onClick={() => { setShowLobby(false); setTab('play'); }}
           >
             play
+          </button>
+          <button
+            className={`tab-button ${showLobby ? 'active' : ''}`}
+            onClick={() => setShowLobby(true)}
+            title="Play a two-player game online"
+          >
+            play online
           </button>
           {dev &&
             DEV_TABS.map((t) => (
@@ -88,7 +104,8 @@ export default function App() {
       </header>
 
       <main className="app-main">
-        {tab === 'play' && <PlayTab />}
+        {showLobby && <Lobby onClose={() => setShowLobby(false)} />}
+        {!showLobby && tab === 'play' && <PlayTab />}
         {tab === 'systems' && <SystemsTab />}
         {tab === 'adjacency' && <AdjacencyTab />}
         {tab === 'regions' && <RegionsTab />}
