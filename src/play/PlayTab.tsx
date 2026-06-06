@@ -449,6 +449,12 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     });
   };
   const [humanSide, setHumanSide] = useState<Side>(() => {
+    // Online: the server seat is authoritative and already known at mount
+    // (OnlinePlay only renders us once `view`/`you` have loaded). Never let a
+    // stale localStorage side (e.g. from a prior game where you were the Empire)
+    // make the Rebel client render the Empire's perspective — that hides the
+    // Rebel's own base and suppresses the Rebel setup panels.
+    if (online?.you === 'Rebel' || online?.you === 'Empire') return online.you;
     const stored = localStorage.getItem(LS_HUMAN_SIDE);
     return stored === 'Rebel' || stored === 'Empire' ? stored : 'Rebel';
   });
