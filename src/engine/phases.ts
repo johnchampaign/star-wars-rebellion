@@ -389,8 +389,15 @@ export function acknowledgeReport(
  *  is an engine mutation so online it can be submitted (clearing them on the
  *  server) — a local `G.pendingNotices = []` on the redacted view is undone by
  *  the next poll, re-showing the notice over and over. */
-export function acknowledgeNotices(G: GameState): { ok: boolean; reason?: string } {
+export function acknowledgeNotices(G: GameState, side?: Side): { ok: boolean; reason?: string } {
   if (!G.pendingNotices || G.pendingNotices.length === 0) return { ok: false, reason: 'no-notices' };
+  if (side) {
+    // Online: each seat clears only the notices it can see — its own + global
+    // (untagged). Leaves the other side's notices for them to dismiss.
+    const before = G.pendingNotices.length;
+    G.pendingNotices = G.pendingNotices.filter((n) => n.side && n.side !== side);
+    return { ok: G.pendingNotices.length < before, reason: 'no-matching-notices' };
+  }
   G.pendingNotices = [];
   return { ok: true };
 }

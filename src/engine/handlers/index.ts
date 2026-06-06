@@ -194,6 +194,7 @@ const rapidMobilization: EffectHandler = (G, ctx) => {
       'You\'ll then choose to either move up to 5 units from one system to the Rebel ' +
       'Base (ignoring adjacency) or establish a new Rebel Base.' +
       (twoLeaders ? ' Two leaders were assigned, so a new-base search draws 8 probe cards instead of 4.' : ''),
+    'Rebel', // Rebel-only notice — the Empire must not be shown it.
   );
   return true;
 };

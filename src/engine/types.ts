@@ -1234,7 +1234,10 @@ export type GameState = {
   // `kind` distinguishes real game-info notices (pushNotice) from unfinished
   // code-path notices (notImplemented) so the UI can title each correctly.
   // Absent ⇒ treat as 'notImplemented' for back-compat with old logs.
-  pendingNotices?: { id: string; title: string; details?: string; kind?: 'info' | 'notImplemented' }[];
+  // `side`, when set, scopes the notice to that player — online, only that seat
+  // is shown it (a Rebel-only "Rapid Mobilization queued" notice must NOT pop for
+  // the Empire). Untagged notices are global (shown to whoever's acting).
+  pendingNotices?: { id: string; title: string; details?: string; kind?: 'info' | 'notImplemented'; side?: Side }[];
 
   // Persistent leader attachments ("attachment rings", RR p.3). Per the
   // rulebook, a leader can have only one ring at a time — a new ring replaces
