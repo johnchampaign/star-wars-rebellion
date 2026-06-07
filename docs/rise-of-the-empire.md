@@ -10,19 +10,25 @@ target base-only / rote-only / both via the `set` tag.
 - **Granular toggles** (not one master switch). The expansion config is:
   ```
   expansion: {
-    enabled: boolean         // include RoE leaders/systems/cards + new rules
-    roeUnits?: boolean       // SWAP base unit roster → RoE unit roster
-    roeMissions?: boolean    // SWAP base mission set → RoE mission set
-    cinematicCombat?: boolean// use the Cinematic Combat module
+    enabled: boolean          // include RoE leaders/cards + new rules
+    roeUnits?: boolean        // SWAP base unit roster → RoE unit roster
+    newStarterUnits?: boolean // starter deployment: New (on) vs Old (off) RoE list
+    roeMissions?: boolean     // SWAP base mission set → RoE mission set
+    expandedBoard?: boolean   // full expanded board (on) vs base board (off)
+    cinematicCombat?: boolean // use the Cinematic Combat module
   }
   ```
+  Every axis is an independent player toggle (like the other content options) —
+  mix-and-match is allowed (e.g. base board + RoE units, or expanded board with
+  base missions). Phase 2 finalizes the exact switch set against the real data;
+  defaults follow the user's picks below.
   (Phase 1 shipped a single `includeExpansion` placeholder; it gets promoted to
   this config in Phase 2.)
 - **Cinematic Combat IS in scope** — build the full alternate combat module.
-- **Starting units:** when `roeUnits` is on, use the **New Starter Units** list
-  (the `Rise of the Empire - New Starter Units` VASSAL setup), not the Old one.
-- **Board:** when `enabled`, use the **full expanded board** — every RoE system
-  (Nal Hutta, Mandalore, …) and the larger map, not base + a few extras.
+- **Starting units:** an independent toggle (`newStarterUnits`); **default New**
+  (the `Rise of the Empire - New Starter Units` VASSAL setup), Old available.
+- **Board:** an independent toggle (`expandedBoard`); **default the full
+  expanded board** — every RoE system (Nal Hutta, Mandalore, …), base available.
 
 ### Additive vs swap (important)
 
