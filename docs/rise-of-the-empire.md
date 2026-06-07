@@ -157,9 +157,30 @@ New mechanics that need engine work, not just data:
      external source (physical cards, BGG, fan-made chart) before
      transcription. This blocks the minor-skill mechanic (a Phase 6
      concern) and any RoE mission that requires an RoE leader portrait.
-   - **5d — RoE action cards, objectives, probe cards (TODO):** full
-     text is in `MissionReference_RotE_Final.pdf` pp. 5-7; same
-     data-only-then-handlers pattern as 5a/5b.
+   - **5d — RoE action cards + objectives, data-only (DONE):** 14 RoE
+     action cards (7 Imperial, 7 Rebel) and 12 RoE objectives (4 Level I,
+     4 Level II inc. Death Star Plans handling, 4 Level III inc. DSP)
+     appended to `assets/actions.json` and `assets/objectives.json` via
+     `scripts/add-rote-actions-objectives.mjs` (idempotent), tagged
+     `set: 'rote'` with `effectKey: ''`. Source:
+     `MissionReference_RotE_Final.pdf` pp. 5-7. Both decks are ADDITIVE
+     under `expansion.enabled` (no swap flag) — matches the rulebook
+     since action and objective decks have no "OR" wording. C-3PO and
+     R2-D2 are skipped as duplicates of base "Human Cyborg Relations"
+     and "Resourceful Astromech". RoE leader-only action cards
+     (Krennic / Motti / Jabba / Jyn Erso / Chirrut / Andor / Gerrera)
+     are wired with the correct slugs so they fire as soon as Phase 5c
+     lands those leaders. **Known follow-up (RAW correctness):** with
+     RoE objectives present each stage pool grows beyond 5 cards. RAW
+     wants "5 random per stage" with Death Star Plans locked into
+     Levels II and III. The setup code documents this with a TODO; for
+     now expansion games run with the full enlarged pool (9/8/8).
+   - **5d-probes — RoE probe cards (TODO):** the FFG RoE expansion adds
+     no new probe cards (the probe deck is per-system and the system
+     set is unchanged from base). Confirmed against the rulebook:
+     nothing to do.
+   - **5d-handlers (TODO):** bind `effectKey` for RoE action cards and
+     objectives. Same pattern as 5b for missions.
    - **5e — Advanced tactic cards (TODO):** full text on p.8; really
      part of Phase 7 (Cinematic Combat) since they only do anything
      when that module is on.

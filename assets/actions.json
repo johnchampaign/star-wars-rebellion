@@ -10,7 +10,8 @@
       "effectKey: bound to a registered handler in code. Left blank until handlers exist.",
       "rulesText: copy verbatim from the card.",
       "Populated by scripts/populate-cards.py from user-provided reference materials (33 entries matched).",
-      "Populated by scripts/populate-cards.py from user-provided reference materials (34 entries matched)."
+      "Populated by scripts/populate-cards.py from user-provided reference materials (34 entries matched).",
+      "Phase 5d (data-only): appended 14 Rise of the Empire action cards tagged set: \"rote\". effectKey is empty pending handler bindings."
     ]
   },
   "actions": [
@@ -51,7 +52,7 @@
         "boba-fett"
       ],
       "effectKey": "",
-      "rulesText": "Place this leader in an Imperial system \u2014 Rebels cannot attempt missions or use action cards here.",
+      "rulesText": "Place this leader in an Imperial system — Rebels cannot attempt missions or use action cards here.",
       "image": "ActionCardEmpireBobaFettWhere.png"
     },
     {
@@ -183,7 +184,7 @@
         "janus-greejatus"
       ],
       "effectKey": "",
-      "rulesText": "Place this leader in an Imperial system without Rebel ground units \u2014 gain 3 Stormtroopers. Janus does not stop units from moving out of the system this turn.",
+      "rulesText": "Place this leader in an Imperial system without Rebel ground units — gain 3 Stormtroopers. Janus does not stop units from moving out of the system this turn.",
       "image": "ActionCardEmpirePublicSupport.png"
     },
     {
@@ -206,7 +207,9 @@
       "side": "Empire",
       "isStarting": false,
       "timing": "Assignment",
-      "leaderRequirement": ["soontir-fel"],
+      "leaderRequirement": [
+        "soontir-fel"
+      ],
       "effectKey": "",
       "rulesText": "Place this leader in any system. Then move up to 4 TIE Fighters from any system(s) to this system, ignoring transport restrictions and adjacency. If there are Rebel ships in this system, resolve a combat.",
       "image": "ActionCardEmpireScoutingMission.png"
@@ -258,7 +261,7 @@
       "timing": "Immediate",
       "leaderRequirement": [],
       "effectKey": "",
-      "rulesText": "C-3PO ring \u2014 discard to automatically succeed at a diplomacy mission after failure.",
+      "rulesText": "C-3PO ring — discard to automatically succeed at a diplomacy mission after failure.",
       "image": "ActionCardRebelStartingHumanCyborgRelations.png"
     },
     {
@@ -311,7 +314,7 @@
         "wedge-antilles"
       ],
       "effectKey": "",
-      "rulesText": "Use during a combat or mission \u2014 instead of rolling up to two dice, place them on the table showing results of your choice. Can be used to roll an automatic success with the \"Death Star Plans\" objective.",
+      "rulesText": "Use during a combat or mission — instead of rolling up to two dice, place them on the table showing results of your choice. Can be used to roll an automatic success with the \"Death Star Plans\" objective.",
       "image": "ActionCardRebelOneInAMillion.png"
     },
     {
@@ -362,7 +365,7 @@
       "timing": "Immediate",
       "leaderRequirement": [],
       "effectKey": "",
-      "rulesText": "R2-D2 ring \u2014 discard to turn 1 opponent's die to the blank side.",
+      "rulesText": "R2-D2 ring — discard to turn 1 opponent's die to the blank side.",
       "image": "ActionCardRebelStartingResourcefulAstromech.png"
     },
     {
@@ -428,7 +431,7 @@
         "chewbacca"
       ],
       "effectKey": "",
-      "rulesText": "Add the \"Millennium Falcon\" ring \u2014 automatically rescue 1 captured leader in a system after a successful mission there.",
+      "rulesText": "Add the \"Millennium Falcon\" ring — automatically rescue 1 captured leader in a system after a successful mission there.",
       "image": "ActionCardRebelTheMilleniniumFalcon.png"
     },
     {
@@ -455,8 +458,200 @@
         "chewbacca"
       ],
       "effectKey": "",
-      "rulesText": "Use when your opponent attempts a Spec Ops mission \u2014 it automatically fails.",
+      "rulesText": "Use when your opponent attempts a Spec Ops mission — it automatically fails.",
       "image": "ActionCardRebelWookieGuardian.png"
+    },
+    {
+      "id": "early-promotion",
+      "name": "Early Promotion",
+      "side": "Empire",
+      "isStarting": true,
+      "timing": "Immediate",
+      "leaderRequirement": [],
+      "effectKey": "",
+      "rulesText": "Draw 1 starting card, or recruit Motti (Space 2, Ground 1). Place Motti and Tarkin in any Imperial system.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "track-them",
+      "name": "Track Them",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "Special",
+      "leaderRequirement": [],
+      "effectKey": "",
+      "rulesText": "After a Rebel unit retreats from combat, choose an Imperial leader in the combat's system and return them to the leader pool.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "ambitions-of-power",
+      "name": "Ambitions of Power",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "Special",
+      "leaderRequirement": [
+        "motti",
+        "jabba"
+      ],
+      "effectKey": "",
+      "rulesText": "Play if you have more than 8 leaders in your leader pool. Your leader pool limit is increased by 1 for the rest of the game.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "secret-facility",
+      "name": "Secret Facility",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "Immediate",
+      "leaderRequirement": [
+        "krennic",
+        "krennics-finest"
+      ],
+      "effectKey": "",
+      "rulesText": "Place 1 of your probe cards facedown under this card. On your turn in the Command phase, reveal it to place 1 Shield Bunker and 1 triangle ground unit in that system. Resolve any combat. Doesn't require Krennic or Krennic's Finest.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "lord-vader-s-orders",
+      "name": "Lord Vader's Orders",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "Immediate",
+      "leaderRequirement": [
+        "krennic"
+      ],
+      "effectKey": "",
+      "rulesText": "Look at the top 3 objective cards and replace them on top of the deck in any order.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "post-bounty",
+      "name": "Post Bounty",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "Special",
+      "leaderRequirement": [
+        "jabba"
+      ],
+      "effectKey": "",
+      "rulesText": "Use after a leader fails a mission in this leader's system. Attach a bounty ring to 1 un-ringed leader. When that leader is captured, Rebels lose 1 reputation.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "sweep-the-area",
+      "name": "Sweep the Area",
+      "side": "Empire",
+      "isStarting": false,
+      "timing": "Immediate",
+      "leaderRequirement": [
+        "krennics-finest"
+      ],
+      "effectKey": "",
+      "rulesText": "Place 1 of your probe cards facedown under this card. At the end of any Command phase, reveal it to capture 1 leader in that system (doesn't require Krennic's Finest). Move the captured leader to the closest system containing Imperial units.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "false-orders",
+      "name": "False Orders",
+      "side": "Rebel",
+      "isStarting": true,
+      "timing": "Assignment",
+      "leaderRequirement": [],
+      "effectKey": "",
+      "rulesText": "Play at the end of the Assignment phase. Choose 1 lone Imperial leader assigned to a mission. Return that leader to the leader pool and the mission to the Imperial hand.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "rebel-extremist",
+      "name": "Rebel Extremist",
+      "side": "Rebel",
+      "isStarting": true,
+      "timing": "Immediate",
+      "leaderRequirement": [],
+      "effectKey": "",
+      "rulesText": "Either draw another starting action card, OR lose 1 reputation and recruit Saw Gerrera (Space 1, Ground 3).",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "trust-in-the-force",
+      "name": "Trust in the Force",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "Assignment",
+      "leaderRequirement": [
+        "jyn-erso",
+        "chirrut-imwe"
+      ],
+      "effectKey": "",
+      "rulesText": "Place this leader in a subjugated system. Gain 1 loyalty and destroy 1 triangle ground unit in the system.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "under-the-radar",
+      "name": "Under the Radar",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "Immediate",
+      "leaderRequirement": [
+        "cassian-andor",
+        "saw-gerrera"
+      ],
+      "effectKey": "",
+      "rulesText": "Look at the top 4 probe cards. Keep 1 facedown and replace the others at the top or bottom of the deck in any order. At the start of your turn in the Command phase, you may return that probe card to the top of the probe deck.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "baze-s-loyalty",
+      "name": "Baze's Loyalty",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "StartOfCombat",
+      "leaderRequirement": [
+        "chirrut-imwe"
+      ],
+      "effectKey": "",
+      "rulesText": "Destroy 2 health-worth of units.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "he-means-well",
+      "name": "He Means Well",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "Immediate",
+      "leaderRequirement": [
+        "cassian-andor"
+      ],
+      "effectKey": "",
+      "rulesText": "Add a K-2SO ring to a non-ringed leader. That leader gains minor SpecOps and minor Intel icons.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "something-to-fight-for",
+      "name": "Something to Fight For",
+      "side": "Rebel",
+      "isStarting": false,
+      "timing": "Special",
+      "leaderRequirement": [
+        "jyn-erso"
+      ],
+      "effectKey": "",
+      "rulesText": "After you win a battle, choose a discarded objective card and place it on top of the deck.",
+      "image": "",
+      "set": "rote"
     }
   ]
 }

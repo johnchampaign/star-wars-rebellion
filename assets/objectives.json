@@ -6,9 +6,10 @@
     "notes": [
       "15 objective cards (Rebel only). Stage I/II/III deck structure (rr p.10).",
       "reputation: number printed in the top-left corner (how many spaces the reputation marker moves).",
-      "timing: Combat | StartOfRefresh | Special \u2014 read from the bold text at the top of the card.",
+      "timing: Combat | StartOfRefresh | Special — read from the bold text at the top of the card.",
       "Two \"Death Star Plans\" cards exist (stage 2 and stage 3); their ids include the stage suffix to disambiguate.",
-      "Populated by scripts/populate-cards.py from user-provided reference materials (15 entries matched)."
+      "Populated by scripts/populate-cards.py from user-provided reference materials (15 entries matched).",
+      "Phase 5d (data-only): appended 12 Rise of the Empire objective cards tagged set: \"rote\". effectKey is empty pending handler bindings."
     ]
   },
   "objectives": [
@@ -161,6 +162,138 @@
       "effectKey": "",
       "rulesText": "After you win a battle in Darth Vader's or Emperor Palpatine's system. If Luke Skywalker (Jedi) is in this system, eliminate 1 Imperial leader in this system.",
       "image": "ObjectiveLvl3ReturnOfTheJedi.png"
+    },
+    {
+      "id": "decisive-victory-1",
+      "name": "Decisive Victory",
+      "stage": 1,
+      "reputation": 1,
+      "timing": "Combat",
+      "effectKey": "",
+      "rulesText": "Win a space battle and a ground battle in the same combat.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "defensive-position-1",
+      "name": "Defensive Position",
+      "stage": 1,
+      "reputation": 1,
+      "timing": "Refresh",
+      "effectKey": "",
+      "rulesText": "A single system (other than the Rebel Base space) contains 3 Rebel structures.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "support-of-the-hutts-1",
+      "name": "Support of the Hutts",
+      "stage": 1,
+      "reputation": 1,
+      "timing": "Refresh",
+      "effectKey": "",
+      "rulesText": "3 or more systems in Nal Hutta's region have Rebel loyalty.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "the-long-war-1",
+      "name": "The Long War",
+      "stage": 1,
+      "reputation": 1,
+      "timing": "Refresh",
+      "effectKey": "",
+      "rulesText": "Discard 2 other objective cards from your hand.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "threaten-the-core-1",
+      "name": "Threaten the Core",
+      "stage": 1,
+      "reputation": 1,
+      "timing": "Refresh",
+      "effectKey": "",
+      "rulesText": "5 or more Rebel units are in and/or adjacent to Coruscant.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "a-time-for-peace-2",
+      "name": "A Time for Peace",
+      "stage": 2,
+      "reputation": 1,
+      "timing": "Refresh",
+      "effectKey": "",
+      "rulesText": "Destroy 2 triangle, 1 circle, and 1 square unit on the Imperial build queue.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "raid-outposts-2",
+      "name": "Raid Outposts",
+      "stage": 2,
+      "reputation": 1,
+      "timing": "Immediate",
+      "effectKey": "",
+      "rulesText": "Imperial player places 1 target marker in each of 2 remote systems. Rebel gains 1 reputation each time a marker is removed (potential 1–2 total).",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "rebel-cell-2",
+      "name": "Rebel Cell",
+      "stage": 2,
+      "reputation": 1,
+      "timing": "Immediate",
+      "effectKey": "",
+      "rulesText": "Place a target marker in a Rebel system. If the marker is still there at the start of each Refresh phase, discard 1 objective card to gain 1 reputation.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "seize-control-2",
+      "name": "Seize Control",
+      "stage": 2,
+      "reputation": 1,
+      "timing": "Combat",
+      "effectKey": "",
+      "rulesText": "Win a space or ground battle in a system with a sabotage marker. You may then remove the marker.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "raid-imperial-factory-3",
+      "name": "Raid Imperial Factory",
+      "stage": 3,
+      "reputation": 1,
+      "timing": "Combat",
+      "effectKey": "",
+      "rulesText": "Win a battle in a combat the Rebels initiated, in a system with a resource icon.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "show-no-fear-3",
+      "name": "Show No Fear",
+      "stage": 3,
+      "reputation": 0,
+      "timing": "Refresh",
+      "effectKey": "",
+      "rulesText": "Place a target marker in the Rebel Base's system. Remove it when a new base is established. If the marker is still present at the start of each Refresh phase, gain 1 reputation.",
+      "image": "",
+      "set": "rote"
+    },
+    {
+      "id": "uprising-3",
+      "name": "Uprising",
+      "stage": 3,
+      "reputation": 2,
+      "timing": "Refresh",
+      "effectKey": "",
+      "rulesText": "Play if 9 or more systems have Rebel loyalty.",
+      "image": "",
+      "set": "rote"
     }
   ]
 }

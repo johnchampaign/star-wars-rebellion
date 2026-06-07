@@ -480,6 +480,16 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
 
   // Objective deck: stages 1, 2, 3 stacked (3 on bottom, 1 on top per rr p.15).
   // Shuffle each stage individually, then assemble.
+  //
+  // RAW caveat: base game has exactly 5 cards per stage so this code just
+  // includes everything. Phase 5d added 4 Level I + 3 Level II + 3 Level III
+  // RoE objectives. RAW p.15: "Level II = Death Star Plans + 4 random; Level
+  // III = Death Star Plans + 4 random." With the expansion enabled, RAW
+  // therefore wants us to PICK 5 per stage from the larger pool, locking DSP
+  // into Levels II and III. Phase 5d ships the data; the per-stage random
+  // pick + DSP lock is a TODO — until then, expansion games run with the
+  // full enlarged pool (9/8/8 cards instead of 5/5/5). Functional but not
+  // strictly RAW; doesn't affect single-stage games at all.
   const objsByStage: Record<number, string[]> = { 1: [], 2: [], 3: [] };
   for (const o of Object.values(catalog.objectives)) {
     if (!inSet(o)) continue;
