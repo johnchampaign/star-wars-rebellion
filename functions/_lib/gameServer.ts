@@ -293,6 +293,51 @@ export async function advanceAIAndStore(store: SnapshotStore, codec: Codec<GameS
   return true;
 }
 
+// ----- In-game chat (table swr_chat) -----
+// A lightweight async message channel between the two human seats. Stored OUT
+// of the engine state (it's not a game move), so it never touches redaction or
+// snapshots. Both seats see all messages — chat carries no hidden info.
+// Requires (one-time): create table if not exists swr_chat (
+//   id bigint generated always as identity primary key,
+//   game_id text not null, seat text not null, body text not null,
+//   created_at timestamptz not null default now());
+//   create index if not exists swr_chat_game_idx on swr_chat (game_id, created_at);
+
+export interface ChatMessage { seat: string; body: string; at: string }
+
+const CHAT_MAX_LEN = 500;
+
+/** Latest `limit` messages for a game, in chronological order. Best-effort. */
+export async function fetchChat(
+  supabase: SupabaseClient, gameId: string, limit = 100,
+): Promise<ChatMessage[]> {
+  try {
+    const { data } = await supabase
+      .from('swr_chat')
+      .select('seat,body,created_at')
+      .eq('game_id', gameId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+    return (data ?? [])
+      .map((r: { seat: string; body: string; created_at: string }) =>
+        ({ seat: r.seat, body: r.body, at: r.created_at }))
+      .reverse();
+  } catch {
+    return [];
+  }
+}
+
+/** Append a message from `seat`. Server stamps the seat (from the auth token),
+ *  NOT the client, so a player can't post as their opponent. Trims/caps the
+ *  body; ignores empty messages. */
+export async function postChat(
+  supabase: SupabaseClient, gameId: string, seat: Side, body: string,
+): Promise<void> {
+  const text = (body ?? '').toString().replace(/\s+$/g, '').slice(0, CHAT_MAX_LEN).trim();
+  if (!text) return;
+  await supabase.from('swr_chat').insert({ game_id: gameId, seat, body: text });
+}
+
 // ----- Abandonment handling (Part 2) -----
 
 const DEFAULT_GRACE_MS = 3 * 24 * 60 * 60 * 1000; // 3 days

@@ -79,7 +79,10 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
     <div style={{ ...pad, maxWidth: 1280, margin: '0 auto', fontFamily: 'system-ui, sans-serif', color: '#e8e6f2' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: '8px 0' }}>Online game <span style={{ color: '#8a7', fontSize: 14 }}>(preview)</span></h2>
-        <button onClick={() => void refresh()} className="tab-button">Refresh</button>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+          <button onClick={() => void refresh()} className="tab-button">Refresh</button>
+          {you && <ChatPanel gameId={gameId} token={token} you={you as Side} />}
+        </div>
       </div>
 
       <div style={card}>
@@ -152,3 +155,116 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
 const pad: React.CSSProperties = { padding: 20 };
 const card: React.CSSProperties = { background: '#1b1e24', border: '1px solid #333', borderRadius: 8, padding: 14, margin: '12px 0' };
 const errBox: React.CSSProperties = { background: '#3a1d1d', color: '#f3b', padding: 10, borderRadius: 6, whiteSpace: 'pre-wrap' };
+
+// ----- In-game chat panel (top-right, under Refresh) -----
+
+interface ChatMsg { seat: string; body: string; at: string }
+
+function relativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 60_000) return 'just now';
+  const m = Math.floor(ms / 60_000);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
+}
+
+/** Async message channel between the two human seats. Self-contained: polls
+ *  the same game endpoint (which now returns `chat`) every 12s + on tab focus,
+ *  and posts via /chat. Messages render as plain text (React escapes). */
+function ChatPanel({ gameId, token, you }: { gameId: string; token: string; you: Side }) {
+  const base = `/api/games/${encodeURIComponent(gameId)}`;
+  const q = `?t=${encodeURIComponent(token)}`;
+  const [open, setOpen] = useState(false);
+  const [msgs, setMsgs] = useState<ChatMsg[]>([]);
+  const [draft, setDraft] = useState('');
+  const [sending, setSending] = useState(false);
+  const [seenCount, setSeenCount] = useState(0);
+  const listRef = useRef<HTMLDivElement | null>(null);
+
+  const loadRef = useRef<() => void>(() => {});
+  loadRef.current = async () => {
+    try {
+      const r = await fetch(`${base}${q}`);
+      const j = await r.json().catch(() => ({}));
+      if (Array.isArray(j.chat)) setMsgs(j.chat as ChatMsg[]);
+    } catch { /* best-effort */ }
+  };
+
+  useEffect(() => {
+    void loadRef.current();
+    const iv = setInterval(() => loadRef.current(), 12000);
+    const onVis = () => { if (document.visibilityState === 'visible') void loadRef.current(); };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onVis);
+    return () => {
+      clearInterval(iv);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onVis);
+    };
+  }, []);
+
+  // While open, treat everything as read and keep scrolled to the newest.
+  useEffect(() => {
+    if (open) {
+      setSeenCount(msgs.length);
+      listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
+    }
+  }, [open, msgs.length]);
+
+  const unread = open ? 0 : Math.max(0, msgs.length - seenCount);
+
+  async function send() {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setSending(true);
+    try {
+      const r = await fetch(`${base}/chat${q}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (Array.isArray(j.chat)) setMsgs(j.chat as ChatMsg[]);
+      setDraft('');
+    } catch { /* surfaced by the next poll if it actually landed */ }
+    finally { setSending(false); }
+  }
+
+  const seatColor = (s: string) => (s === 'Rebel' ? '#4fc3f7' : '#ff8a80');
+
+  return (
+    <div style={{ width: 280, textAlign: 'left' }}>
+      <button onClick={() => setOpen((o) => !o)} className="tab-button" style={{ width: '100%' }}>
+        💬 Messages{unread > 0 ? ` (${unread} new)` : ''} {open ? '▾' : '▸'}
+      </button>
+      {open && (
+        <div style={{ border: '1px solid #333', borderTop: 'none', borderRadius: '0 0 6px 6px', background: '#15171c' }}>
+          <div ref={listRef} style={{ maxHeight: 220, overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {msgs.length === 0 && (
+              <div style={{ color: '#667', fontSize: 12, fontStyle: 'italic' }}>No messages yet — say hi to your opponent.</div>
+            )}
+            {msgs.map((m, i) => (
+              <div key={i} style={{ fontSize: 12, lineHeight: 1.35 }}>
+                <span style={{ color: seatColor(m.seat), fontWeight: 700 }}>{m.seat === you ? 'You' : m.seat}</span>
+                <span style={{ color: '#667', marginLeft: 6, fontSize: 10 }}>{relativeTime(m.at)}</span>
+                <div style={{ color: '#e8e6f2', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.body}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: 'flex', gap: 4, padding: 8, borderTop: '1px solid #333' }}>
+            <input
+              value={draft}
+              maxLength={500}
+              placeholder="Message…"
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') void send(); }}
+              style={{ flex: 1, background: '#0c0d10', color: '#e8e6f2', border: '1px solid #3a3d44', borderRadius: 4, padding: '4px 6px', fontSize: 12 }}
+            />
+            <button onClick={() => void send()} disabled={sending || !draft.trim()} className="tab-button" style={{ fontSize: 12 }}>Send</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
