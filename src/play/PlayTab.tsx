@@ -3603,21 +3603,29 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
     (choice.theater === 'ground' && cid.includes('dig-in')) ||
     (choice.theater === 'space' && cid.includes('outmaneuver'))
   ) ?? null;
-  const sacrificeCandidates = choice.hand.filter((cid) =>
-    cid !== freeBlock && cid !== paidBlock
-  );
+  // Dig In / Outmaneuver discard ONE OTHER ground/space tactic card from hand
+  // to block 2 (RAW). The sacrifice may be ANY other tactic card in hand —
+  // including a Defensive Formation you'd otherwise have played for a free
+  // block. (#122: the sacrifice list wrongly excluded the free-block card, so
+  // a hand of [Dig In, Defensive Formation] couldn't play Dig In at all.)
+  const sacrificeCandidates = choice.hand.filter((cid) => cid !== paidBlock);
 
   const [useFree, setUseFree] = useState(false);
   const [usePaid, setUsePaid] = useState(false);
   const [sacrifice, setSacrifice] = useState<string | null>(sacrificeCandidates[0] ?? null);
 
   const cardLabel = (cid: string) => G.catalog.tactics[cid]?.name ?? cid;
+  // A card spent as the Dig In sacrifice can't ALSO be played as a free block.
+  const digInSacrifice = (usePaid && paidBlock && sacrifice) ? sacrifice : null;
+  const playFree = !!(useFree && freeBlock && freeBlock !== digInSacrifice);
   const blockCards: string[] = [];
   const sacrifices: string[] = [];
-  if (useFree && freeBlock) blockCards.push(freeBlock);
+  if (playFree && freeBlock) blockCards.push(freeBlock);
   if (usePaid && paidBlock && sacrifice) {
     blockCards.push(paidBlock); sacrifices.push(sacrifice);
   }
+  // Defensive Formation blocks 1; Dig In / Outmaneuver block 2.
+  const blockTotal = (playFree ? 1 : 0) + ((usePaid && paidBlock && sacrifice) ? 2 : 0);
 
   return (
     <div style={{
@@ -3633,7 +3641,7 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
         </div>
         <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
           Incoming damage: <strong style={{ color: '#ff6961' }}>{choice.incomingHits}</strong>.
-          Play defensive tactic cards to block (each blocks 1).
+          Defensive Formation blocks 1; Dig In / Outmaneuver block 2 by discarding a second tactic card.
         </div>
 
         {!freeBlock && !paidBlock && (
@@ -3645,10 +3653,14 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
         {freeBlock && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
             padding: 6, background: '#1f2128', borderRadius: 4, cursor: 'pointer' }}>
-            <input type="checkbox" checked={useFree} onChange={(e) => setUseFree(e.target.checked)} />
+            <input type="checkbox" checked={useFree}
+              disabled={usePaid && sacrifice === freeBlock}
+              onChange={(e) => setUseFree(e.target.checked)} />
             <span style={{ color: '#fff', fontSize: 13 }}>
               <strong>{cardLabel(freeBlock)}</strong>
-              <span style={{ color: '#aaa', marginLeft: 6 }}>— block 1 (free)</span>
+              <span style={{ color: '#aaa', marginLeft: 6 }}>
+                — block 1 (free){usePaid && sacrifice === freeBlock ? ' — spent on Dig In' : ''}
+              </span>
             </span>
           </label>
         )}
@@ -3666,7 +3678,7 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
               <span style={{ color: '#fff', fontSize: 13 }}>
                 <strong>{cardLabel(paidBlock)}</strong>
                 <span style={{ color: '#aaa', marginLeft: 6 }}>
-                  — block 1 (discard a second card){sacrificeCandidates.length === 0 ? ' — no spare card' : ''}
+                  — block up to 2 (discard a second tactic card){sacrificeCandidates.length === 0 ? ' — no spare card' : ''}
                 </span>
               </span>
             </label>
@@ -3700,7 +3712,7 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
             style={{ padding: '6px 14px', background: blockCards.length === 0 ? '#444' : color, color: '#000',
               border: 'none', borderRadius: 4, cursor: blockCards.length === 0 ? 'not-allowed' : 'pointer', fontWeight: 600 }}
           >
-            Block {blockCards.length}
+            Block {blockTotal}
           </button>
         </div>
       </div>
