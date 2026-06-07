@@ -1659,6 +1659,174 @@ const safeHaven: EffectHandler = (G, ctx) => {
 };
 
 // ============================================================================
+// Rise of the Empire — Wave C handlers (Phase 5b)
+// ============================================================================
+//
+// The harder missions: a project, the cap-ship-on-DS effect, and a few
+// auto-pick stubs for cards whose RAW text needs a real choice UI to
+// honour fully. Notes on each handler call out where the auto-pick is
+// just a placeholder vs. where the card resolves cleanly.
+
+// ----- Imperial Wave C -----
+
+/** Interdictor Development (project, 2 leaders): "Place 1 Interdictor on
+ *  build space 2. If 2 leaders are assigned, place on space 1 and return
+ *  the card." The "return the card" clause = card goes back to the
+ *  Imperial mission hand instead of the project discard pile. */
+const interdictorDevelopment: EffectHandler = (G, ctx) => {
+  const twoLeaders = ctx.leaderIds.length >= 2;
+  const slot: 1 | 2 = twoLeaders ? 1 : 2;
+  M.buildToQueue(G, 'Empire', 'interdictor', slot);
+  if (twoLeaders) {
+    // Card returns to hand instead of the discard. We can't intercept the
+    // discard from here (the mission-resolution path does it), so we flag
+    // it and let the mission flow consume the flag. For now log the
+    // intent so a follow-up can pick it up.
+    log(G, { kind: 'mission-return-to-hand-flag', side: 'Empire', payload: {
+      missionId: ctx.card.id, reason: 'interdictor-development-2-leaders',
+    }});
+  }
+  return true;
+};
+
+/** Single Reactor Ignition (project): "Resolve on a Death Star (not DSUC).
+ *  Rebels must reveal base if in this system. Destroy any Rebel ground
+ *  units and remove any target markers in system." */
+const singleReactorIgnition: EffectHandler = (G, ctx) => {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  if (G.rebelBaseSystemId === sysId && !G.rebelBaseRevealed) {
+    M.revealRebelBase(G, 'single-reactor-ignition');
+  }
+  const ss = G.map.systems[sysId];
+  if (ss) {
+    const rebelGround = ss.units
+      .filter((u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground')
+      .map((u) => u.instanceId);
+    for (const id of rebelGround) M.destroyUnit(G, id, 'single-reactor-ignition');
+    // Remove every target marker on this system (whoever placed it).
+    if (ss.targetMarkers?.length) {
+      const sources = ss.targetMarkers.map((m) => m.source);
+      for (const src of sources) M.removeTargetMarker(G, sysId, src, 'Empire');
+    }
+    log(G, { kind: 'single-reactor-ignition', side: 'Empire', payload: {
+      systemId: sysId, groundDestroyed: rebelGround.length,
+    }});
+  }
+  return true;
+};
+
+/** Break Their Will: "Name a system; Rebel must tell you if their base is
+ *  in that system's region." Auto-picks the first populous, non-Coruscant
+ *  system that hasn't been ruled out — same heuristic as a fresh probe. */
+const breakTheirWill: EffectHandler = (G, ctx) => {
+  // Default the region check to the target system's region if no naming UI
+  // hooked up. Realistic Empire play would name a system in an UNCHECKED
+  // region; we approximate by picking the alphabetically-first populous
+  // non-Coruscant system not already in the rule-out list.
+  const ruledOut = new Set(G.empireSearchedRuledOut ?? []);
+  const candidate = Object.values(G.catalog.systems)
+    .filter((s) => !s.isRemote && !s.isCoruscant && !ruledOut.has(s.id))
+    .sort((a, b) => a.id.localeCompare(b.id))[0];
+  if (!candidate) return true;
+  const baseDef = G.catalog.systems[G.rebelBaseSystemId];
+  const inRegion = !!baseDef && baseDef.region === candidate.region;
+  log(G, { kind: 'break-their-will-probe', side: 'Empire', payload: {
+    systemId: candidate.id, region: candidate.region, baseInRegion: inRegion,
+  }});
+  pushNotice(G, `btw-${candidate.id}-t${G.timeMarker}`, 'Break Their Will',
+    inRegion
+      ? `The Rebel base IS in ${candidate.name}'s region.`
+      : `The Rebel base is NOT in ${candidate.name}'s region.`);
+  return true;
+};
+
+/** Draw Them Out (Krennic): "Choose a Rebel leader in the leader pool;
+ *  place that leader in this system." Auto-picks the first eligible. */
+const drawThemOut: EffectHandler = (G, ctx) => {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  const lid = G.rebel.leaderPool[0];
+  if (!lid) return true;
+  // Remove from pool and place on the board at the targeted system.
+  G.rebel.leaderPool.shift();
+  M.placeLeader(G, 'Rebel', lid, sysId);
+  log(G, { kind: 'draw-them-out', side: 'Empire', payload: { leaderId: lid, systemId: sysId } });
+  return true;
+};
+
+// ----- Rebel Wave C -----
+
+/** Aggressive Negotiations (Chirrut): rescue the captured leader at the
+ *  target system. RAW also has a fail-only side effect ("destroy 1 triangle
+ *  ground unit") — that doesn't fire here because handlers only run on
+ *  mission success; the fail path is a future enhancement. */
+const aggressiveNegotiations: EffectHandler = (G, ctx) => {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  const cap = (G.empire.capturedLeaders ?? []).find((c) => c.systemId === sysId);
+  if (cap) M.rescueLeader(G, cap.leaderId, 'aggressive-negotiations');
+  return true;
+};
+
+/** Prepare for Battle (Gerrera): "Return assigned leaders to the pool.
+ *  Look at the top 4 cards of any tactic deck and place them top/bottom in
+ *  any order, OR return discarded Rebel advanced tactic cards to their
+ *  decks." We honour the leader-return part now; the choice between the
+ *  two effects + the peek/reorder needs a tactic-deck choice UI that
+ *  doesn't exist yet — surface a notice so the player can resolve it by
+ *  hand. */
+const prepareForBattle: EffectHandler = (G, ctx) => {
+  for (const lid of ctx.leaderIds) M.returnLeader(G, 'Rebel', lid);
+  pushNotice(G, `pfb-t${G.timeMarker}`, 'Prepare For Battle',
+    'Assigned leaders are back in the pool. Now look at the top 4 of any ' +
+    'tactic deck and rearrange, or return discarded Rebel advanced tactic ' +
+    'cards to their decks. Resolve the choice manually until the tactic-deck ' +
+    'UI lands.');
+  return true;
+};
+
+/** Secret Mission (Andor): "Look at the top 6 mission cards; keep 1 and
+ *  shuffle the deck. If Andor is assigned, you may keep 2 cards." Auto-keeps
+ *  the first card (and the second when Andor is on the mission), then
+ *  shuffles the rest. */
+const secretMission: EffectHandler = (G, ctx) => {
+  const deck = G.rebel.missionDeck;
+  if (!deck || deck.length === 0) return true;
+  const keepCount = ctx.leaderIds.includes('cassian-andor') ? 2 : 1;
+  const n = Math.min(6, deck.length);
+  const peek = deck.splice(0, n);
+  const kept = peek.splice(0, keepCount);
+  for (const mid of kept) G.rebel.missionHand.push(mid);
+  // Shuffle the rest back into the deck (with whatever's left underneath).
+  const rest = [...peek, ...deck];
+  shuffle(G.rng, rest);
+  G.rebel.missionDeck = rest;
+  log(G, { kind: 'secret-mission', side: 'Rebel', payload: { kept, andor: keepCount === 2 } });
+  return true;
+};
+
+/** Behind Enemy Lines: "Move 5 units from the Rebel Base, ignoring leaders
+ *  and adjacency. Resolve combat." Auto-picks the first 5 units from the
+ *  base space (any theatre). Lead the Strike Team's full unit-picker UI is
+ *  the right long-term fit; this is the no-choice MVP. */
+const behindEnemyLines: EffectHandler = (G, ctx) => {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  const baseSourceId = G.rebelBaseRevealed ? G.rebelBaseSystemId : 'rebel-base-space';
+  const baseContainer = baseSourceId === 'rebel-base-space'
+    ? G.map.rebelBaseSpace : G.map.systems[baseSourceId];
+  if (!baseContainer) return true;
+  const taking = baseContainer.units.filter((u) => u.side === 'Rebel').slice(0, 5);
+  for (const u of taking) M.moveUnit(G, u.instanceId, baseSourceId, sysId);
+  log(G, { kind: 'behind-enemy-lines', side: 'Rebel', payload: {
+    systemId: sysId, moved: taking.length,
+  }});
+  triggerCombatAt(G, 'Rebel', sysId);
+  return true;
+};
+
+// ============================================================================
 // Defaults / helpers
 // ============================================================================
 
@@ -1786,6 +1954,21 @@ export function registerAll(): void {
   register('plant-explosives', plantExplosives);
   register('assault', assault);
   register('safe-haven', safeHaven);
+
+  // ----- Rise of the Empire — Wave C (Phase 5b) -----
+  // Imperial
+  register('interdictor-development', interdictorDevelopment);
+  register('single-reactor-ignition', singleReactorIgnition);
+  register('break-their-will', breakTheirWill);
+  register('draw-them-out', drawThemOut);
+  // Rebel
+  register('aggressive-negotiations', aggressiveNegotiations);
+  register('prepare-for-battle', prepareForBattle);
+  register('secret-mission', secretMission);
+  register('behind-enemy-lines', behindEnemyLines);
+  // Subversion (New/Original) intentionally left unbound — those are
+  // opposition-only missions and the engine doesn't dispatch them through
+  // the normal handler flow yet. They remain data-only.
 
   // Tactic cards (stubs)
   // No tactic-card registrations: those effects live inline in combat.ts.

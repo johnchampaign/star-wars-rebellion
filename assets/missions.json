@@ -16,7 +16,9 @@
       "Populated by scripts/populate-cards.py from user-provided reference materials (53 entries matched).",
       "Phase 5 (data-only): appended 31 Rise of the Empire missions tagged set: \"rote\". effectKey is empty pending Phase 5b handler bindings — the cards appear in the deck when expansion.roeMissions is on but resolve as no-ops until then. Skill assignments are best-effort from rule flavour; confirm against actual card art in a follow-up.",
       "Phase 5b Wave A: bound effectKey for 12 RoE missions to handlers in src/engine/handlers/index.ts. Choice-heavy missions deferred to Wave B/C.",
-      "Phase 5b Wave B: bound effectKey for 9 more RoE missions."
+      "Phase 5b Wave B: bound effectKey for 9 more RoE missions.",
+      "Phase 5b Wave C: bound effectKey for 7 more RoE missions. Subversion (New/Original) remain data-only — opposition missions don't dispatch through the normal handler flow yet.",
+      "Phase 5b Wave C: bound effectKey for 1 more RoE missions. Subversion (New/Original) remain data-only — opposition missions don't dispatch through the normal handler flow yet."
     ]
   },
   "missions": [
@@ -776,7 +778,7 @@
       "skillCost": 2,
       "isAttempt": false,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "interdictor-development",
       "rulesText": "Place 1 Interdictor on build space 2. If 2 leaders are assigned, place on space 1 and return the card.",
       "image": "",
       "set": "rote"
@@ -791,7 +793,7 @@
       "skillCost": 1,
       "isAttempt": false,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "single-reactor-ignition",
       "rulesText": "Resolve on a Death Star (not a DSUC). Rebels must reveal their base if it is in this system. Destroy any Rebel ground units and remove any target markers in the system.",
       "image": "",
       "set": "rote"
@@ -836,7 +838,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": "krennic",
-      "effectKey": "",
+      "effectKey": "draw-them-out",
       "rulesText": "Attempt on a system with no Rebel units. Choose a Rebel leader in the leader pool; place that leader in this system.",
       "image": "",
       "set": "rote"
@@ -941,7 +943,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "break-their-will",
       "rulesText": "Attempt on a captured leader. Count all icons. Name a system; Rebel must tell you if their base is in that system's region. If the mission fails, return this card to your hand.",
       "image": "",
       "set": "rote"
@@ -1031,7 +1033,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": "chirrut-imwe",
-      "effectKey": "",
+      "effectKey": "aggressive-negotiations",
       "rulesText": "Attempt on a captured leader. Rescue the leader. If the mission fails, you may destroy 1 triangle ground unit in the system.",
       "image": "",
       "set": "rote"
@@ -1061,7 +1063,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": "saw-gerrera",
-      "effectKey": "",
+      "effectKey": "prepare-for-battle",
       "rulesText": "Attempt on a subjugated system. Return assigned leaders to the pool. Look at the top 4 cards of any tactic deck and place them top/bottom in any order, or return discarded Rebel advanced tactic cards to their decks.",
       "image": "",
       "set": "rote"
@@ -1076,7 +1078,7 @@
       "skillCost": 0,
       "isAttempt": false,
       "leaderPortrait": "cassian-andor",
-      "effectKey": "",
+      "effectKey": "secret-mission",
       "rulesText": "Resolve on a Rebel system. Look at the top 6 mission cards; keep 1 and shuffle the deck. If Andor is assigned, you may keep 2 cards.",
       "image": "",
       "set": "rote"
@@ -1196,7 +1198,7 @@
       "skillCost": 0,
       "isAttempt": false,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "behind-enemy-lines",
       "rulesText": "Resolve on a subjugated or Rebel system. Move 5 units from the Rebel Base, ignoring leaders and adjacency. Resolve combat.",
       "image": "",
       "set": "rote"
