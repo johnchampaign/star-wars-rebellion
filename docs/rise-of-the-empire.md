@@ -270,3 +270,20 @@ New mechanics that need engine work, not just data:
    per-round draw/assign flow), gated on `cinematicCombat`. In scope.
 
 Each phase ships as a working slice; base game is never at risk.
+
+## Post-RotE: "Easy-To-Forget Rules" audit (deferred)
+
+`Star_Wars_Rebellion.pdf` (repo root) is a player-authored cheat sheet of
+easy-to-forget rules (setup, cleanup/refresh order, and misc). A full
+engine-vs-cheat-sheet audit was started but **deferred until RotE is
+finalized** — many of its items are exactly the RoE new-rules module
+(green dice, 8-leader pool cap, target markers, Shield Bunker / Golan turret
+abilities, minor skills), which would just read "pending" today. Re-run the
+audit once Phase 6 lands so each rule gets a real verdict instead.
+
+**One base-game discrepancy already flagged (resolve against RAW first):**
+- **Mission hand limit (10).** The cheat sheet says the limit *includes*
+  Imperial projects; the engine currently *excludes* projects (phases.ts
+  ~line 3299, citing "RR p.12: only non-project mission cards count toward the
+  10-card limit"). Settle which reading is correct against the Rules Reference
+  before adjusting anything.
