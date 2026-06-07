@@ -168,7 +168,14 @@ New mechanics that need engine work, not just data:
      physical cards if any feel off — the data slot is correct even
      if a count is later nudged. RoE leaders are non-starting per
      RAW; they enter play via the recruit missions/action cards that
-     Phase 5b/5d-handlers will wire.
+     Phase 5b/5d-handlers will wire. Patched again after the user
+     supplied `Leader_Pool_RotE.pdf` (the canonical RoE leader chart)
+     and noted that Jyn Erso has "six skill icons" — a second pass at
+     24× zoom corrected Jyn (minor Intel 1 → 2; total 6 icons),
+     Cassian Andor (added minor Logistics; total 5 icons), and
+     Director Krennic (both small middle icons are blue eyes, not a
+     white-square / eye mix). Other leaders unchanged. See
+     `scripts/fix-rote-leaders.mjs`.
    - **5d — RoE action cards + objectives, data-only (DONE):** 14 RoE
      action cards (7 Imperial, 7 Rebel) and 12 RoE objectives (4 Level I,
      4 Level II inc. Death Star Plans handling, 4 Level III inc. DSP)

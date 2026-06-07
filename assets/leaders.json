@@ -11,7 +11,8 @@
       "minorSkills: RoE expansion only. All zero in base game.",
       "Luke Skywalker (Jedi) is a distinct leader (rr p.8 says treat as Luke Skywalker for card and action card references -- modeled here as a separate id).",
       "Edited via dev leaders tab at 2026-05-20T00:12:34.266Z.",
-      "Phase 5c: appended 8 Rise of the Empire leaders tagged set: \"rote\". Skills/minor skills read from images/<Name>.png at high zoom (icon size distinguishes major vs minor). Tactic values cross-verified against the RoE action-card text in assets/actions.json — all match."
+      "Phase 5c: appended 8 Rise of the Empire leaders tagged set: \"rote\". Skills/minor skills read from images/<Name>.png at high zoom (icon size distinguishes major vs minor). Tactic values cross-verified against the RoE action-card text in assets/actions.json — all match.",
+      "Phase 5c patch: corrected 3 RoE leader skill counts after a second pass over the card art at 24x zoom (prompted by Leader_Pool_RotE.pdf and the canonical \"Jyn has six skill icons\"). Tactic values unchanged."
     ]
   },
   "leaders": [
@@ -627,9 +628,9 @@
       },
       "minorSkills": {
         "diplomacy": 0,
-        "intel": 1,
+        "intel": 2,
         "specOps": 0,
-        "logistics": 1
+        "logistics": 0
       },
       "tacticValues": {
         "space": 2,
@@ -701,7 +702,7 @@
         "diplomacy": 0,
         "intel": 1,
         "specOps": 0,
-        "logistics": 0
+        "logistics": 1
       },
       "tacticValues": {
         "space": 2,
@@ -723,8 +724,8 @@
       },
       "minorSkills": {
         "diplomacy": 1,
-        "intel": 1,
-        "specOps": 0,
+        "intel": 2,
+        "specOps": 1,
         "logistics": 0
       },
       "tacticValues": {
