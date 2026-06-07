@@ -5,7 +5,7 @@
 // server view (instead of OWNING a local engine) is the larger follow-on
 // (PlayTab currently constructs its own engine state).
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useGame } from 'digital-boardgame-framework/client';
 import { makeGameClient } from './gameClient';
 import PlayTab from '../play/PlayTab';
@@ -21,6 +21,27 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
   const [busy, setBusy] = useState(false);
   const [actErr, setActErr] = useState<string | null>(null);
   const [oppAbandoned, setOppAbandoned] = useState(false);
+
+  // Re-sync immediately whenever the tab regains focus/visibility. Browsers
+  // throttle or suspend background-tab timers (and a sleeping machine pauses
+  // them entirely), so the 8s poll can stall for a long time. Without this,
+  // returning to a backgrounded tab shows stale state — e.g. it still says
+  // "waiting for opponent" while the server has already handed the turn back to
+  // you (and the reminder email fired). Forcing a refresh on focus closes that
+  // gap. A ref holds the latest refresh so we subscribe the listeners once.
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
+  useEffect(() => {
+    const resync = () => {
+      if (document.visibilityState === 'visible') void refreshRef.current?.();
+    };
+    document.addEventListener('visibilitychange', resync);
+    window.addEventListener('focus', resync);
+    return () => {
+      document.removeEventListener('visibilitychange', resync);
+      window.removeEventListener('focus', resync);
+    };
+  }, []);
 
   // While waiting on the opponent, poll for abandonment (the server returns
   // opponentAbandoned once they've been away past the grace period).
