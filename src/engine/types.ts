@@ -60,6 +60,23 @@ export type SystemState = {
   destroyed: boolean;
   sabotage: boolean;
   units: UnitInstance[];
+  // RoE rules p.8 "Target Markers": objective and mission cards may place a
+  // marker on a system; the card lives ON the marker until something removes
+  // it. Each marker is tagged with `source` (the card id that placed it) so
+  // different cards' markers can coexist and each is removed/scored on its
+  // own rule. Removal usually needs a Rebel ground unit in the system
+  // (rules p.8: "When you have a ground unit in a system with a target
+  // marker and your opponent does not have any ground units in the system,
+  // you may remove the marker..."), but per-card text overrides this.
+  // Absent/undefined when no markers are present so base-game state remains
+  // byte-identical.
+  targetMarkers?: TargetMarker[];
+};
+
+export type TargetMarker = {
+  source: string;       // card id that placed it (e.g. 'secure-the-plans', 'show-no-fear')
+  placedBy: 'Rebel' | 'Empire';
+  placedAt?: number;    // optional round/turn stamp for "still present at start of refresh" checks
 };
 
 // The Rebel Base space is not a system but uses the same state shape for unit/leader staging.

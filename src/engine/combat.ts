@@ -2154,6 +2154,16 @@ export function resolveDeathStarPlansAttempt(
       }});
       return { ok: true };
     }
+    // RoE "Secure the Plans" Imperial mission (rules p.8) places a target
+    // marker on a remote system; "while the marker remains, Rebels cannot
+    // play 'Death Star Plans'." Block here too — same outcome as the Shield
+    // Bunker case (effectively a miss; card returns to hand).
+    if (G.expansion?.enabled && M.hasTargetMarker(G, pc.systemId, 'secure-the-plans')) {
+      log(G, { kind: 'death-star-plans-blocked-by-target-marker', side: 'Rebel', payload: {
+        objectiveId: pc.objectiveId, systemId: pc.systemId, source: 'secure-the-plans', faces,
+      }});
+      return { ok: true };
+    }
     // Death Star can't be damaged by normal attacks (health.color === null),
     // but RAW explicitly says "destroy" — bypass damage and just remove.
     M.destroyUnit(G, targetId, 'death-star-plans');

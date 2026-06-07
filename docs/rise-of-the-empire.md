@@ -229,9 +229,22 @@ New mechanics that need engine work, not just data:
      dependency), so green dice show correctly without new art. Mission
      green dice (from leader **minor** skills) are TODO — they're a
      Phase 5c leader-data dependency.
-   - **Target markers (TODO):** mission/objective cards that resolve via
-     a marker on the board; needed for Heist, Secure the Plans, Raid
-     Outposts, Rebel Cell, Show No Fear handlers.
+   - **Target markers (DONE):** game-state primitive landed in
+     `src/engine/types.ts` (`SystemState.targetMarkers?: TargetMarker[]`,
+     each tagged with `source` = card id and `placedBy`). Helpers in
+     `src/engine/mechanics.ts`: `placeTargetMarker`, `removeTargetMarker`,
+     `hasTargetMarker`, `systemsWithTargetMarker`. Absent/undefined when
+     no markers are present so base-game state remains byte-identical.
+     Wired into one use site already: the Death Star Plans path checks
+     `hasTargetMarker(G, sys, 'secure-the-plans')` and blocks the
+     destroy with `death-star-plans-blocked-by-target-marker` if the
+     Imperial "Secure the Plans" marker is on the Death Star's system
+     (rules p.8: "while the target marker remains, Rebels cannot play
+     'Death Star Plans'"). Remaining card handlers (Heist removes a
+     marker, Raid Outposts places 2 in remotes, Rebel Cell places +
+     scores per refresh, Show No Fear places at Rebel Base + scores)
+     are Phase 5d-handlers work, and now plug straight into these
+     primitives.
    - **Unit abilities (PARTIAL):**
      - **Interdictor retreat block (DONE):** `legalRetreatDestinations`
        in `combat.ts` returns `[]` for the Rebel side whenever any

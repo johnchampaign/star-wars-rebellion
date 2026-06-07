@@ -603,6 +603,60 @@ export function returnLeader(G: GameState, side: Side, leaderId: LeaderId): void
   log(G, { kind: 'return-leader', side, payload: { leaderId } });
 }
 
+// ---------- RoE Target markers ----------
+//
+// RoE rules p.8: several mission and objective cards resolve via a target
+// marker placed on a specific system. The marker persists until removed
+// (usually by a Rebel ground unit in the system per the generic rule, but
+// many cards have their own removal trigger written into rulesText).
+// Markers are stored on SystemState.targetMarkers, tagged with the card id
+// that placed them so multiple cards' markers can coexist.
+
+/** Place a target marker on a system from a specific card. Idempotent — if
+ *  that card already has a marker on that system, no-op (a single card
+ *  produces at most one marker on a given system at a time). */
+export function placeTargetMarker(
+  G: GameState, sysId: SystemId, source: string, placedBy: Side,
+): void {
+  const ss = G.map.systems[sysId];
+  if (!ss) return;
+  if (!ss.targetMarkers) ss.targetMarkers = [];
+  if (ss.targetMarkers.some((m) => m.source === source && m.placedBy === placedBy)) return;
+  ss.targetMarkers.push({ source, placedBy, placedAt: G.timeMarker });
+  log(G, { kind: 'target-marker-place', side: placedBy, payload: { systemId: sysId, source } });
+}
+
+/** Remove a target marker by source. Returns true if removed. */
+export function removeTargetMarker(
+  G: GameState, sysId: SystemId, source: string, by?: Side,
+): boolean {
+  const ss = G.map.systems[sysId];
+  if (!ss?.targetMarkers?.length) return false;
+  const i = ss.targetMarkers.findIndex((m) => m.source === source);
+  if (i < 0) return false;
+  const removed = ss.targetMarkers.splice(i, 1)[0];
+  if (ss.targetMarkers.length === 0) delete ss.targetMarkers;
+  log(G, { kind: 'target-marker-remove', side: by ?? removed.placedBy, payload: { systemId: sysId, source } });
+  return true;
+}
+
+/** Does this system carry a target marker from the given card source? */
+export function hasTargetMarker(G: GameState, sysId: SystemId, source: string): boolean {
+  const ss = G.map.systems[sysId];
+  return !!ss?.targetMarkers?.some((m) => m.source === source);
+}
+
+/** All systems that currently carry a target marker from the given card
+ *  source. Handy for "for each marker, at start of refresh" objective
+ *  scoring (Show No Fear, Rebel Cell, Raid Outposts). */
+export function systemsWithTargetMarker(G: GameState, source: string): SystemId[] {
+  const out: SystemId[] = [];
+  for (const [sysId, ss] of Object.entries(G.map.systems)) {
+    if (ss.targetMarkers?.some((m) => m.source === source)) out.push(sysId);
+  }
+  return out;
+}
+
 /** RoE rules p.8 "LEADER POOL LIMIT": a player can have at most 8 leaders
  *  in their leader pool. Excess leaders are eliminated.
  *
