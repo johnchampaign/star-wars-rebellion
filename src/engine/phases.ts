@@ -4210,11 +4210,19 @@ function applyAssignmentActionCardEffect(
       const target = systemId === 'bespin' ? 'lando-calrissian'
                    : systemId === 'kashyyyk' ? 'chewbacca' : null;
       const f = faction(G, side);
-      if (target && G.catalog.leaders[target]
-          && !f.leaderPool.includes(target)
-          && !f.eliminatedLeaders.includes(target)) {
-        f.leaderPool.push(target);
-        log(G, { kind: 'recruit-leader', side, payload: { leaderId: target, via: 'an-old-friend' } });
+      const inPlay = new Set(allLeadersOf(G, side));
+      const captured = (G.empire.capturedLeaders ?? []).some((c) => c.leaderId === target);
+      if (target && systemId && G.catalog.leaders[target]
+          && !inPlay.has(target)
+          && !f.eliminatedLeaders.includes(target)
+          && !captured) {
+        // RAW (card): "Place the recruited leader in Han Solo's system" — NOT
+        // the leader pool. Han was just placed on `systemId` by the generic
+        // assignment-card placement, so the recruited friend joins him there
+        // (player reports: nicktenny / MightyFaben — Chewie/Lando were landing
+        // in the ready-leaders pool instead of on Kashyyyk/Bespin).
+        (f.leadersOnBoard[systemId] ??= []).push(target);
+        log(G, { kind: 'recruit-leader', side, payload: { leaderId: target, via: 'an-old-friend', systemId } });
       }
       break;
     }
