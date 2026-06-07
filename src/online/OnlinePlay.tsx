@@ -234,34 +234,35 @@ function ChatPanel({ gameId, token, you }: { gameId: string; token: string; you:
   const seatColor = (s: string) => (s === 'Rebel' ? '#4fc3f7' : '#ff8a80');
 
   return (
-    <div style={{ width: 280, textAlign: 'left' }}>
-      <button onClick={() => setOpen((o) => !o)} className="tab-button" style={{ width: '100%' }}>
-        💬 Messages{unread > 0 ? ` (${unread} new)` : ''} {open ? '▾' : '▸'}
+    <div style={{ width: 220, textAlign: 'left' }}>
+      <button onClick={() => setOpen((o) => !o)} className="tab-button"
+        style={{ width: '100%', fontSize: 12, padding: '3px 8px' }}>
+        💬 Messages{unread > 0 ? ` (${unread})` : ''} {open ? '▾' : '▸'}
       </button>
       {open && (
         <div style={{ border: '1px solid #333', borderTop: 'none', borderRadius: '0 0 6px 6px', background: '#15171c' }}>
-          <div ref={listRef} style={{ maxHeight: 220, overflowY: 'auto', padding: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div ref={listRef} style={{ maxHeight: 150, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
             {msgs.length === 0 && (
-              <div style={{ color: '#667', fontSize: 12, fontStyle: 'italic' }}>No messages yet — say hi to your opponent.</div>
+              <div style={{ color: '#667', fontSize: 11, fontStyle: 'italic' }}>No messages yet — say hi.</div>
             )}
             {msgs.map((m, i) => (
-              <div key={i} style={{ fontSize: 12, lineHeight: 1.35 }}>
+              <div key={i} style={{ fontSize: 12, lineHeight: 1.3 }}>
                 <span style={{ color: seatColor(m.seat), fontWeight: 700 }}>{m.seat === you ? 'You' : m.seat}</span>
-                <span style={{ color: '#667', marginLeft: 6, fontSize: 10 }}>{relativeTime(m.at)}</span>
-                <div style={{ color: '#e8e6f2', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.body}</div>
+                <span style={{ color: '#667', marginLeft: 5, fontSize: 9.5 }}>{relativeTime(m.at)}</span>
+                <span style={{ color: '#e8e6f2', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{' · '}{m.body}</span>
               </div>
             ))}
           </div>
-          <div style={{ display: 'flex', gap: 4, padding: 8, borderTop: '1px solid #333' }}>
+          <div style={{ display: 'flex', gap: 4, padding: 6, borderTop: '1px solid #333' }}>
             <input
               value={draft}
               maxLength={500}
               placeholder="Message…"
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter') void send(); }}
-              style={{ flex: 1, background: '#0c0d10', color: '#e8e6f2', border: '1px solid #3a3d44', borderRadius: 4, padding: '4px 6px', fontSize: 12 }}
+              style={{ flex: 1, minWidth: 0, background: '#0c0d10', color: '#e8e6f2', border: '1px solid #3a3d44', borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
             />
-            <button onClick={() => void send()} disabled={sending || !draft.trim()} className="tab-button" style={{ fontSize: 12 }}>Send</button>
+            <button onClick={() => void send()} disabled={sending || !draft.trim()} className="tab-button" style={{ fontSize: 11, padding: '3px 8px' }}>Send</button>
           </div>
         </div>
       )}
