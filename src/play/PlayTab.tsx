@@ -1731,6 +1731,12 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             const r = phases.resolveDeployUnitPick(G, sid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
+          }}
+          cancelLabel="Leave on build queue (slot 1)"
+          onCancel={() => {
+            const r = phases.declineDeployUnit(G);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
           }} />
       )}
 
@@ -6927,13 +6933,15 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
 // ============================================================================
 
 function MapPickerOverlay({
-  G, systems, masks, humanSide, title, instructions, color, candidates, onPick, onCancel, unitTokens, multi, headerExtra, handReference,
+  G, systems, masks, humanSide, title, instructions, color, candidates, onPick, onCancel, cancelLabel, unitTokens, multi, headerExtra, handReference,
 }: {
   G: GameState; systems: System[]; masks: MaskRect[]; humanSide: Side;
   title: string; instructions?: string; color: string;
   candidates: string[];
   onPick: (systemId: string) => void;
   onCancel?: () => void;
+  // Label for the cancel/decline button (defaults to "Cancel").
+  cancelLabel?: string;
   // Optional "still to deploy" tokens (unit typeIds) shown under the list.
   // The first entry is the unit being placed right now; the rest are queued.
   unitTokens?: string[];
@@ -7080,7 +7088,7 @@ function MapPickerOverlay({
             </div>
           )}
           {onCancel && (
-            <button className="tab-button" style={{ marginTop: 12 }} onClick={onCancel}>Cancel</button>
+            <button className="tab-button" style={{ marginTop: 12 }} onClick={onCancel}>{cancelLabel ?? 'Cancel'}</button>
           )}
         </div>
       </div>
@@ -11595,9 +11603,9 @@ function RapidMobilizationBasePickModal({
   choice: { kind: 'RapidMobilizationBasePick'; side: Side; baseRevealed: boolean; probeSystemIds?: string[] };
   onPick: (systemId: string) => void;
 }) {
-  const candidates = choice.baseRevealed
-    ? Object.keys(G.map.systems)
-    : (choice.probeSystemIds ?? []);
+  // RR: establishing a new base always picks from the drawn probe cards (4 or
+  // 8), whether or not the old base was revealed. The new base is hidden.
+  const candidates = choice.probeSystemIds ?? [];
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
@@ -11610,8 +11618,8 @@ function RapidMobilizationBasePickModal({
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Rapid Mobilization — establish new base</h3>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
-          {choice.baseRevealed
-            ? 'Pick any system to be the new (still-revealed) Rebel Base.'
+          {candidates.length === 0
+            ? 'None of the drawn probe systems are legal (all have Imperial loyalty, Imperial units, or are destroyed). You cannot establish a new base this round.'
             : `Pick one of the ${candidates.length} systems drawn from probes as the new hidden Rebel Base.`}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>

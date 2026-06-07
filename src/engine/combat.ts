@@ -1471,9 +1471,38 @@ function listStartOfCombatPlayable(G: GameState, c: CombatState, side: Side): st
     const card = G.catalog.actions[cid];
     if (!card || card.timing !== 'StartOfCombat') return false;
     const req = card.leaderRequirement ?? [];
-    if (req.length === 0) return true;
-    return req.some((lid) => leadersHere.has(lid));
+    if (req.length > 0 && !req.some((lid) => leadersHere.has(lid))) return false;
+    // Some Start-of-Combat cards do nothing unless a legal target exists in the
+    // system. Offering them with no valid target lets a player waste the card
+    // (player report: "Target the Generator offered where there are no
+    // structures"). Gate those on target availability — RAW: their effect text
+    // names a specific target that must be present.
+    if (!hasStartOfCombatLegalTarget(G, c, cid)) return false;
+    return true;
   });
+}
+
+/** Whether `cardId`'s Start-of-Combat effect has at least one legal target in
+ *  the combat system. Cards without a hard target requirement return true. */
+function hasStartOfCombatLegalTarget(G: GameState, c: CombatState, cardId: string): boolean {
+  const ss = G.map.systems[c.systemId];
+  const units = ss?.units ?? [];
+  switch (cardId) {
+    case 'target-the-generator':
+      // "Destroy 1 structure in the system." — needs a structure present.
+      return units.some((u) => G.catalog.unitTypes[u.typeId]?.class === 'structure');
+    case 'fully-operational': {
+      // "If either a Death Star or DSUC is in this system, destroy 1 Rebel ship
+      // of your choice in the system." — needs the trigger AND a Rebel ship.
+      const hasDeathStar = units.some((u) =>
+        u.typeId === 'death-star' || u.typeId === 'death-star-under-construction');
+      const hasRebelShip = units.some((u) =>
+        u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'space');
+      return hasDeathStar && hasRebelShip;
+    }
+    default:
+      return true;
+  }
 }
 
 /** Resolve the Start-of-Combat action-card window for one side. `cardIds`

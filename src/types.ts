@@ -163,6 +163,12 @@ export type MissionCard = {
   side: Side;
   isStarting: boolean;
   isProject: boolean;
+  // Project missions only: number of identical copies in the project deck. The
+  // base-game project deck is 10 cards across 5 names (rr component list +
+  // mission reference: Construct Death Star x1, Construct Factory x2, Construct
+  // Super Star Destroyer x2, Oversee Project x2, Superlaser Online x3).
+  // Absent/1 for every non-project mission. See setup.ts deck expansion.
+  projectCopies?: number;
   skill: Skill | '';
   skillCost: number;
   isAttempt: boolean;

@@ -149,6 +149,21 @@ function opposerLeadersAt(G: GameState, opposerSide: Side, systemId: SystemId, m
   return here as LeaderId[];
 }
 
+/** Leaders that contribute to the ATTEMPTING side's mission roll. RR p.8:
+ *  "Each player rolls a number of dice equal to the combined number of skill
+ *  icons on ALL of his leaders in the system" — not just the leaders assigned
+ *  to the mission card. So a leader already in the target system (e.g. Han
+ *  sitting at Kashyyyk while Chewie reveals Wookiee Uprising) adds his icons
+ *  too. The mission-assigned leaders are placed in the system on reveal, so
+ *  leadersOnBoard[target] already contains them; this just folds in any others.
+ *  (The leader-portrait +2 bonus still keys only on the assigned leaders.) */
+function attemptingLeadersAt(G: GameState, side: Side, systemId: SystemId, missionLeaderIds: LeaderId[]): LeaderId[] {
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  const here = new Set<string>(f.leadersOnBoard[systemId] ?? []);
+  for (const lid of missionLeaderIds) here.add(lid);
+  return [...here] as LeaderId[];
+}
+
 /** Sum of matching-skill icons across a leader set. */
 function totalSkill(G: GameState, leaderIds: LeaderId[], skill: string): number {
   let total = 0;
@@ -171,6 +186,19 @@ function totalAllSkills(G: GameState, leaderIds: LeaderId[]): number {
            + (ld.skills.specOps ?? 0) + (ld.skills.logistics ?? 0);
   }
   return total;
+}
+
+/** Card-specific bonus dice added to the ATTEMPTING side's mission roll,
+ *  on top of the leaders' skill icons. Currently only Build Alliance:
+ *  "If there are Rebel units in this system, roll 2 additional dice."
+ *  (player reports #147/#149). Returns 0 for every other mission. */
+function missionExtraAttackerDice(G: GameState, missionId: string, targetSystemId: SystemId): number {
+  if (missionId === 'build-alliance') {
+    const ss = G.map.systems[targetSystemId];
+    const hasRebelUnit = (ss?.units ?? []).some((u) => u.side === 'Rebel');
+    return hasRebelUnit ? 2 : 0;
+  }
+  return 0;
 }
 
 /** Does the mission's rulesText say "count all skill icons during this attempt"? */
@@ -935,9 +963,11 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
     const pool = pending.blindsideActive ? [] : oppFaction.leaderPool.slice();
     const skill = card.skill as string;
     const countsAll = missionCountsAllSkills(G, pending.missionId);
-    const attackerDice = countsAll
-      ? totalAllSkills(G, pending.leaderIds as LeaderId[])
-      : totalSkill(G, pending.leaderIds as LeaderId[], skill);
+    const attLeaders = attemptingLeadersAt(G, pending.resolverSide, pending.targetSystemId, pending.leaderIds as LeaderId[]);
+    const attackerDice = (countsAll
+      ? totalAllSkills(G, attLeaders)
+      : totalSkill(G, attLeaders, skill))
+      + missionExtraAttackerDice(G, pending.missionId, pending.targetSystemId);
 
     G.pendingChoice = {
       kind: 'OpposeMission',
@@ -1067,9 +1097,11 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
   } else {
     const skill = c.skill;
     const countsAll = missionCountsAllSkills(G, pm.missionId);
-    const attackerDice = countsAll
-      ? totalAllSkills(G, pm.leaderIds as LeaderId[])
-      : totalSkill(G, pm.leaderIds as LeaderId[], skill);
+    const attLeaders = attemptingLeadersAt(G, pm.resolverSide, pm.targetSystemId, pm.leaderIds as LeaderId[]);
+    const attackerDice = (countsAll
+      ? totalAllSkills(G, attLeaders)
+      : totalSkill(G, attLeaders, skill))
+      + missionExtraAttackerDice(G, pm.missionId, pm.targetSystemId);
     const opposerDice = countsAll
       ? totalAllSkills(G, oppLeaderIds as LeaderId[])
       : totalSkill(G, oppLeaderIds as LeaderId[], skill);
@@ -1991,16 +2023,14 @@ export function resolveRapidMobilizationBranch(
     }});
     return { ok: true };
   }
-  // Establish a new Rebel Base.
-  if (baseRevealed) {
-    // Any system on the map is a candidate.
-    G.pendingChoice = { kind: 'RapidMobilizationBasePick', side: 'Rebel', baseRevealed: true };
-    log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-      kind: 'RapidMobilizationBasePick', baseRevealed: true,
-    }});
-    return { ok: true };
-  }
-  // Unrevealed: draw N probes (4 or 8) → those systems are the candidates.
+  // Establish a new Rebel Base. RR "Establishing a New Base": the Rebel ALWAYS
+  // draws the top N probe cards (4, or 8 with 2 leaders) and may choose one of
+  // those as the new location — this holds whether or not the base is currently
+  // revealed (player report: relocating a revealed base wrongly offered "any
+  // planet" and left the base revealed). The new base is placed facedown, so
+  // it becomes HIDDEN regardless of the old base's revealed state. A system
+  // with Imperial loyalty, Imperial units, or a destroyed marker cannot be
+  // chosen.
   const n = twoLeaders ? 8 : 4;
   const drawn = M.drawProbe(G, n);
   log(G, { kind: 'rapid-mobilization-probe-draw', side: 'Rebel', payload: {
@@ -2008,13 +2038,25 @@ export function resolveRapidMobilizationBranch(
   }});
   const probeSystemIds = drawn
     .map((pid) => G.catalog.probes[pid]?.systemId)
-    .filter((s): s is SystemId => !!s);
+    .filter((s): s is SystemId => !!s)
+    .filter((sid) => rebelBaseCandidateLegal(G, sid));
+  // RR: "If all cards drawn are systems that have Imperial loyalty, Imperial
+  // units, or a destroyed system marker, the Rebel player cannot establish a
+  // new base this round." Don't post a dead-end pick — just end this RM.
+  if (probeSystemIds.length === 0) {
+    log(G, { kind: 'rapid-mobilization-base-no-legal-candidate', side: 'Rebel', payload: {
+      twoLeaders, drawnCount: drawn.length,
+    }});
+    G.pendingChoice = undefined;
+    finishRapidMobilization(G);
+    return { ok: true };
+  }
   G.pendingChoice = {
     kind: 'RapidMobilizationBasePick', side: 'Rebel',
-    baseRevealed: false, probeSystemIds,
+    baseRevealed, probeSystemIds,
   };
   log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-    kind: 'RapidMobilizationBasePick', baseRevealed: false, candidates: probeSystemIds.length,
+    kind: 'RapidMobilizationBasePick', baseRevealed, candidates: probeSystemIds.length,
   }});
   return { ok: true };
 }
@@ -2051,26 +2093,62 @@ export function resolveRapidMobilizationMove(
   return { ok: true };
 }
 
-/** Rapid Mobilization establish-base sub-pick: relocate the Rebel Base to
- *  the chosen system. Revealed base stays revealed; unrevealed stays hidden. */
+/** A system may NOT become the new Rebel Base if it has Imperial loyalty,
+ *  Imperial units, or a destroyed-system marker (RR "Establishing a New Base"). */
+function rebelBaseCandidateLegal(G: GameState, systemId: SystemId): boolean {
+  const ss = G.map.systems[systemId];
+  if (!ss) return false;
+  if (ss.destroyed) return false;
+  if (ss.loyalty === 'imperial') return false;
+  if (ss.units.some((u) => u.side === 'Empire')) return false;
+  return true;
+}
+
+/** Rapid Mobilization establish-base sub-pick: relocate the Rebel Base to the
+ *  chosen system. RR: the new base is placed facedown, so it becomes HIDDEN —
+ *  even when the old base was revealed. If the old base was revealed, its units
+ *  and leaders (which sit in the actual old system) move back to the hidden
+ *  "Rebel Base" space along with the relocation. */
 export function resolveRapidMobilizationBasePick(
   G: GameState, systemId: SystemId
 ): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;
   if (!choice || choice.kind !== 'RapidMobilizationBasePick') return { ok: false, reason: 'no-pending' };
-  if (!choice.baseRevealed) {
-    if (!choice.probeSystemIds || !choice.probeSystemIds.includes(systemId)) {
-      return { ok: false, reason: 'not-a-drawn-probe-candidate' };
+  if (!choice.probeSystemIds || !choice.probeSystemIds.includes(systemId)) {
+    return { ok: false, reason: 'not-a-drawn-probe-candidate' };
+  }
+  if (!rebelBaseCandidateLegal(G, systemId)) return { ok: false, reason: 'illegal-base-system' };
+  const old = G.rebelBaseSystemId;
+  const wasRevealed = !!G.rebelBaseRevealed;
+
+  // If the base was revealed, its Rebel units/leaders live in the actual old
+  // system. Establishing a new (hidden) base pulls them back into the hidden
+  // "Rebel Base" space (mirror of revealRebelBase, in reverse) so the location
+  // is secret again.
+  if (wasRevealed) {
+    const oldSys = G.map.systems[old];
+    if (oldSys) {
+      const rebelUnits = oldSys.units.filter((u) => u.side === 'Rebel');
+      oldSys.units = oldSys.units.filter((u) => u.side !== 'Rebel');
+      G.map.rebelBaseSpace.units.push(...rebelUnits);
+    }
+    const rebLeaders = G.rebel.leadersOnBoard[old] ?? [];
+    if (rebLeaders.length > 0) {
+      G.rebel.leadersOnBoard['rebel-base-space'] = [
+        ...(G.rebel.leadersOnBoard['rebel-base-space'] ?? []),
+        ...rebLeaders,
+      ];
+      delete G.rebel.leadersOnBoard[old];
     }
   }
-  if (!G.map.systems[systemId]) return { ok: false, reason: 'unknown-system' };
-  const old = G.rebelBaseSystemId;
+
   G.rebelBaseSystemId = systemId;
+  G.rebelBaseRevealed = false; // new base is placed facedown — hidden again.
   // Base relocated → reset searched-ruled-out knowledge to systems that still
   // qualify (still subjugated / Imperial-loyal).
   M.resetEmpireSearchedForBaseMove(G);
   log(G, { kind: 'rapid-mobilization-base-established', side: 'Rebel', payload: {
-    fromSystemId: old, toSystemId: systemId, baseRevealed: choice.baseRevealed,
+    fromSystemId: old, toSystemId: systemId, baseRevealed: false, wasRevealed,
   }});
   G.pendingChoice = undefined;
   finishRapidMobilization(G);
@@ -4002,6 +4080,28 @@ export function resolveDeployUnitPick(G: GameState, systemId: SystemId): { ok: b
   return { ok: true };
 }
 
+/** Decline to deploy the unit currently offered by a DeployUnitPick. RR p.7:
+ *  "If a player cannot (or does not wish to) deploy some of his units, he
+ *  places these units back on the '1' space of his build queue." So instead of
+ *  forcing a system pick, the player may send this unit back to build-queue
+ *  slot 1 (player report: "no way to leave units on Build Queue 1"). */
+export function declineDeployUnit(G: GameState): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'DeployUnitPick') return { ok: false, reason: 'no-pending' };
+  const f = faction(G, pc.side);
+  f.buildQueue[1].push(pc.typeId);
+  log(G, { kind: 'deploy-declined-to-queue', side: pc.side, payload: { typeId: pc.typeId } });
+  G.pendingChoice = undefined;
+  const r = G.refreshPaused;
+  if (r?.pendingDeployPicks) r.pendingDeployPicks.shift();
+  if (promoteNextDeployPick(G)) return { ok: true };
+  // All deploys done — finish refresh.
+  const logStart = r?.logStart ?? 0;
+  G.refreshPaused = undefined;
+  finishRefreshAfterDeploy(G, logStart);
+  return { ok: true };
+}
+
 // ============================================================================
 // Assignment-phase action card play (14 cards, timing=Assignment)
 // ============================================================================
@@ -4593,7 +4693,11 @@ function applyAssignmentActionCardEffect(
       // own deck (G.empire.projectDeck, seeded at setup) — NOT the regular
       // mission deck. Searching missionDeck found nothing and wrongly reported
       // "no projects" even when the project deck was full (player report #104).
-      const projectCandidates = [...(f.projectDeck ?? [])];
+      // Dedupe: the project deck holds duplicate copies of the same project
+      // (rr base deck = 10 cards, 5 names), but the picker only needs each
+      // distinct project once. resolveProceedingAsPlannedPick removes one copy
+      // by index, so a single id in the candidate list maps to one card.
+      const projectCandidates = [...new Set(f.projectDeck ?? [])];
       if (projectCandidates.length === 0) {
         log(G, { kind: 'action-card-noop', side: 'Empire', payload: { cardId, reason: 'project-deck-empty' } });
         pushNotice(

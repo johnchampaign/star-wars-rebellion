@@ -470,7 +470,12 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
 
   rebel.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Rebel' && !m.isStarting && missionInDeck(m)).map((m) => m.id));
   empire.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Empire' && !m.isStarting && !m.isProject && missionInDeck(m)).map((m) => m.id));
-  empire.projectDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Empire' && m.isProject && missionInDeck(m)).map((m) => m.id));
+  // Project deck: each project name appears `projectCopies` times (rr base
+  // deck = 10 cards across 5 names). Duplicate ids are fine — a project leaves
+  // the deck by index when drawn, and only one copy is ever active at a time.
+  empire.projectDeck = shuffle(rng, Object.values(catalog.missions)
+    .filter((m) => m.side === 'Empire' && m.isProject && missionInDeck(m))
+    .flatMap((m) => Array.from({ length: m.projectCopies ?? 1 }, () => m.id)));
 
   // Draw 2 more missions each for starting hand (on top of the 4 starting missions).
   for (let i = 0; i < 2; i++) {
