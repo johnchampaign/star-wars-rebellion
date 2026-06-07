@@ -79,13 +79,11 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
     <div style={{ ...pad, maxWidth: 1280, margin: '0 auto', fontFamily: 'system-ui, sans-serif', color: '#e8e6f2' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: '8px 0' }}>Online game <span style={{ color: '#8a7', fontSize: 14 }}>(preview)</span></h2>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
-          <button onClick={() => void refresh()} className="tab-button">Refresh</button>
-          {you && <ChatPanel gameId={gameId} token={token} you={you as Side} />}
-        </div>
+        <button onClick={() => void refresh()} className="tab-button">Refresh</button>
       </div>
 
-      <div style={card}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', margin: '12px 0' }}>
+        <div style={{ ...card, flex: 1, minWidth: 0, margin: 0 }}>
         <div>
           <b>You are:</b> {you ?? '—'}
           {(() => {
@@ -105,6 +103,8 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
         <div><b>Phase:</b> {view.phase} &nbsp; <b>Turn marker:</b> {view.timeMarker}/{view.trackLength} &nbsp; <b>Reputation:</b> {view.reputationMarker}</div>
         <div><b>Move #:</b> {turn} &nbsp; {gameOver ? <span style={{ color: '#f88' }}>Game over{view.winner ? ` — ${view.winner} wins` : ''}</span>
           : <b style={{ color: yourTurn ? '#80dc78' : '#e0b84f' }}>{yourTurn ? 'Your turn' : 'Waiting for opponent…'}</b>}</div>
+        </div>
+        {you && <ChatPanel gameId={gameId} token={token} you={you as Side} />}
       </div>
 
       {oppAbandoned && !gameOver && (
