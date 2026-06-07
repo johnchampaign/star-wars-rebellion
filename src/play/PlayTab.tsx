@@ -3675,13 +3675,19 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
                 disabled={sacrificeCandidates.length === 0}
                 onChange={(e) => setUsePaid(e.target.checked)}
               />
-              <span style={{ color: '#fff', fontSize: 13 }}>
+              <span style={{ color: sacrificeCandidates.length === 0 ? '#888' : '#fff', fontSize: 13 }}>
                 <strong>{cardLabel(paidBlock)}</strong>
                 <span style={{ color: '#aaa', marginLeft: 6 }}>
-                  — block up to 2 (discard a second tactic card){sacrificeCandidates.length === 0 ? ' — no spare card' : ''}
+                  — block up to 2 (discard a second tactic card)
                 </span>
               </span>
             </label>
+            {sacrificeCandidates.length === 0 && (
+              <div style={{ marginLeft: 26, marginTop: 4, fontSize: 12, color: '#e0b94f' }}>
+                Can't play {cardLabel(paidBlock)} right now — it has to discard a second
+                tactic card to block, and this is the only card in your hand.
+              </div>
+            )}
             {usePaid && sacrificeCandidates.length > 0 && (
               <div style={{ marginLeft: 26, marginTop: 4, fontSize: 12, color: '#aaa' }}>
                 Discard with:&nbsp;
