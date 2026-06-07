@@ -1185,10 +1185,16 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
 
       {/* Leader rosters sit right above the map so you can check them without
           scrolling to the bottom of the page (request: MightyFaben). */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, margin: '8px 0' }}>
+      {/* All four rosters in one horizontal line on wide screens (units sit
+          right beside their faction's leaders), wrapping gracefully when the
+          viewport can't fit four columns. */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+        gap: 12, margin: '8px 0', alignItems: 'start',
+      }}>
         <LeaderRoster G={G} side="Rebel" humanSide={humanSide} />
-        <LeaderRoster G={G} side="Empire" humanSide={humanSide} />
         <UnitRoster G={G} side="Rebel" />
+        <LeaderRoster G={G} side="Empire" humanSide={humanSide} />
         <UnitRoster G={G} side="Empire" />
       </div>
 
@@ -6497,8 +6503,8 @@ function LeaderRoster({ G, side, humanSide }: { G: GameState; side: Side; humanS
   if (leaders.length === 0) return null;
   return (
     <details style={{ marginTop: 8 }}>
-      <summary style={{ cursor: 'pointer', fontSize: 12, color, fontWeight: 600 }}>
-        Leaders ({leaders.length}) — stats &amp; whereabouts
+      <summary style={{ cursor: 'pointer', fontSize: 12, color, fontWeight: 600, whiteSpace: 'nowrap' }}>
+        {side} leaders ({leaders.length})
       </summary>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
         {leaders.map((l) => {
@@ -6602,8 +6608,8 @@ function UnitRoster({ G, side }: { G: GameState; side: Side }) {
 
   return (
     <details style={{ marginTop: 8 }}>
-      <summary style={{ cursor: 'pointer', fontSize: 12, color, fontWeight: 600 }}>
-        Units ({types.length} types) — stats &amp; whereabouts
+      <summary style={{ cursor: 'pointer', fontSize: 12, color, fontWeight: 600, whiteSpace: 'nowrap' }}>
+        {side} units ({types.length})
       </summary>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
         {types.map((t) => {
