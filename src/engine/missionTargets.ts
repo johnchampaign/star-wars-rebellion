@@ -306,6 +306,15 @@ export function missionTargets(G: GameState, _side: Side, missionId: string): Ta
     };
   }
   const finalPred: Pred = (id) => basePred(id) && quals.every((q) => q(id));
-  const systemIds = allSystems(G).filter(finalPred);
+  // Destroyed systems can still hold ships and host space combat, so they ARE
+  // valid targets for unit/combat missions — e.g. Plan the Assault ("attempt in
+  // any system that contains an Imperial ship", then move ships + resolve
+  // combat there; player report #144 — a destroyed Naboo with ships wasn't
+  // offered). Only exclude destroyed systems for effects a destroyed system
+  // genuinely can't host: gaining loyalty, subjugating, or sabotaging — which
+  // keeps the Rule by Fear exclusion intact (player report #112).
+  const effectNeedsLiveSystem = /loyalty|subjugat|sabotage/.test(t);
+  const candidates = effectNeedsLiveSystem ? allSystems(G) : Object.keys(G.map.systems);
+  const systemIds = candidates.filter(finalPred);
   return { systemIds, permissive: false, note: noteParts.join(' + ') + '.' };
 }
