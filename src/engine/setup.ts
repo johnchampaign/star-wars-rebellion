@@ -67,6 +67,7 @@ export function buildCatalog(data: DataBundle): GameCatalog {
       id: s.id, name: s.name, region: s.region,
       isRemote: s.isRemote, isCoruscant: s.isCoruscant,
       resources: s.resources, buildSlot: s.buildSlot,
+      set: (s as { set?: 'base' | 'rote' }).set,
     };
   }
 
@@ -142,19 +143,33 @@ export type SetupOptions = {
   // If false, units go into G.pendingDeployment for interactive placement
   // during a 'Setup' phase (rr p.15 step 8).
   autoSetupUnits?: boolean;
+  // Opt into the Rise of the Empire expansion. When false/omitted (default),
+  // every 'rote'-tagged catalog entry is filtered out at setup, so the game is
+  // identical to base. The chosen value is recorded on G.includeExpansion.
+  includeExpansion?: boolean;
 };
 
 export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   const rng = createRng(opts.seed);
   const catalog = buildCatalog(data);
 
+  // Rise of the Empire opt-in. When off, every 'rote'-tagged content item is
+  // filtered out of the initial state, so a base game never contains expansion
+  // systems/leaders/cards/units. (Absent set === base.) The catalog itself
+  // stays the full superset — it's just a lookup table; only what setup puts
+  // INTO the state matters.
+  const includeExpansion = opts.includeExpansion ?? false;
+  const inSet = <T extends { set?: 'base' | 'rote' }>(e: T): boolean =>
+    includeExpansion || e.set !== 'rote';
+
   // ----- Empty map -----
   const map: MapState = {
     systems: {},
     rebelBaseSpace: emptySystemState(),
   };
-  for (const id of Object.keys(catalog.systems)) {
-    map.systems[id] = emptySystemState();
+  for (const s of Object.values(catalog.systems)) {
+    if (!inSet(s)) continue;
+    map.systems[s.id] = emptySystemState();
   }
   // Coruscant is always Imperial loyalty (rr p.8).
   if (map.systems['coruscant']) map.systems['coruscant'].loyalty = 'imperial';
@@ -171,7 +186,7 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   const REBEL_SETUP_LOYALTY_POOL = ['bothawui', 'kashyyyk', 'mon-calamari', 'naboo', 'ryloth'];
   const EMPIRE_SETUP_LOYALTY_POOL = ['corellia', 'mandalore', 'mustafar', 'mygeeto', 'rodia', 'saleucami', 'sullust'];
 
-  const probePoolIds = Object.values(catalog.probes).map((p) => p.id);
+  const probePoolIds = Object.values(catalog.probes).filter(inSet).map((p) => p.id);
   const probeDeck = shuffle(rng, [...probePoolIds]);
 
   const rebelLoyaltySystems: string[] = [];
@@ -323,6 +338,7 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   const empire = emptyFaction('Empire');
 
   for (const ldr of Object.values(catalog.leaders)) {
+    if (!inSet(ldr)) continue;
     if (ldr.isStarting) {
       if (ldr.side === 'Rebel') rebel.leaderPool.push(ldr.id);
       else empire.leaderPool.push(ldr.id);
@@ -333,26 +349,26 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   // ----- Factions: decks -----
   // Action decks: all action cards with isStarting=false form the recruit deck.
   // Starting action cards are dealt 2 random per side.
-  const rebelStartingActions = Object.values(catalog.actions).filter((a) => a.side === 'Rebel' && a.isStarting).map((a) => a.id);
-  const empireStartingActions = Object.values(catalog.actions).filter((a) => a.side === 'Empire' && a.isStarting).map((a) => a.id);
+  const rebelStartingActions = Object.values(catalog.actions).filter((a) => a.side === 'Rebel' && a.isStarting && inSet(a)).map((a) => a.id);
+  const empireStartingActions = Object.values(catalog.actions).filter((a) => a.side === 'Empire' && a.isStarting && inSet(a)).map((a) => a.id);
   shuffle(rng, rebelStartingActions);
   shuffle(rng, empireStartingActions);
   rebel.actionHand = rebelStartingActions.slice(0, 2);
   empire.actionHand = empireStartingActions.slice(0, 2);
 
-  rebel.actionDeck = shuffle(rng, Object.values(catalog.actions).filter((a) => a.side === 'Rebel' && !a.isStarting).map((a) => a.id));
-  empire.actionDeck = shuffle(rng, Object.values(catalog.actions).filter((a) => a.side === 'Empire' && !a.isStarting).map((a) => a.id));
+  rebel.actionDeck = shuffle(rng, Object.values(catalog.actions).filter((a) => a.side === 'Rebel' && !a.isStarting && inSet(a)).map((a) => a.id));
+  empire.actionDeck = shuffle(rng, Object.values(catalog.actions).filter((a) => a.side === 'Empire' && !a.isStarting && inSet(a)).map((a) => a.id));
 
   // Mission decks: starting missions go into the hand; remaining missions shuffled into the deck.
   // The Empire's project missions form the separate project deck.
-  const rebelStartingMissions = Object.values(catalog.missions).filter((m) => m.side === 'Rebel' && m.isStarting).map((m) => m.id);
-  const empireStartingMissions = Object.values(catalog.missions).filter((m) => m.side === 'Empire' && m.isStarting && !m.isProject).map((m) => m.id);
+  const rebelStartingMissions = Object.values(catalog.missions).filter((m) => m.side === 'Rebel' && m.isStarting && inSet(m)).map((m) => m.id);
+  const empireStartingMissions = Object.values(catalog.missions).filter((m) => m.side === 'Empire' && m.isStarting && !m.isProject && inSet(m)).map((m) => m.id);
   rebel.missionHand = [...rebelStartingMissions];
   empire.missionHand = [...empireStartingMissions];
 
-  rebel.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Rebel' && !m.isStarting).map((m) => m.id));
-  empire.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Empire' && !m.isStarting && !m.isProject).map((m) => m.id));
-  empire.projectDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Empire' && m.isProject).map((m) => m.id));
+  rebel.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Rebel' && !m.isStarting && inSet(m)).map((m) => m.id));
+  empire.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Empire' && !m.isStarting && !m.isProject && inSet(m)).map((m) => m.id));
+  empire.projectDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Empire' && m.isProject && inSet(m)).map((m) => m.id));
 
   // Draw 2 more missions each for starting hand (on top of the 4 starting missions).
   for (let i = 0; i < 2; i++) {
@@ -364,6 +380,7 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   // Shuffle each stage individually, then assemble.
   const objsByStage: Record<number, string[]> = { 1: [], 2: [], 3: [] };
   for (const o of Object.values(catalog.objectives)) {
+    if (!inSet(o)) continue;
     if (o.stage in objsByStage) objsByStage[o.stage].push(o.id);
   }
   shuffle(rng, objsByStage[1]); shuffle(rng, objsByStage[2]); shuffle(rng, objsByStage[3]);
@@ -374,11 +391,12 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   if (firstObj) rebel.objectiveHand!.push(firstObj);
 
   // Tactic decks
-  const groundTacticDeck = shuffle(rng, expandTacticDeck(Object.values(catalog.tactics).filter((t) => t.theater === 'ground')));
-  const spaceTacticDeck = shuffle(rng, expandTacticDeck(Object.values(catalog.tactics).filter((t) => t.theater === 'space')));
+  const groundTacticDeck = shuffle(rng, expandTacticDeck(Object.values(catalog.tactics).filter((t) => t.theater === 'ground' && inSet(t))));
+  const spaceTacticDeck = shuffle(rng, expandTacticDeck(Object.values(catalog.tactics).filter((t) => t.theater === 'space' && inSet(t))));
 
   // ----- Assemble GameState -----
   const G: GameState = {
+    includeExpansion,
     timeMarker: 1,
     reputationMarker: 14, // rr p.12
     trackLength: 16,

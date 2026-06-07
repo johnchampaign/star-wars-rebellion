@@ -37,6 +37,7 @@ export type UnitType = {
   transport: { capacity: number; restriction: boolean; immobile: boolean };
   buildResource: 1 | 2 | 3;
   supplyCount: number;
+  set?: 'base' | 'rote'; // undefined = base game; 'rote' = Rise of the Empire
 };
 
 export type UnitInstance = {
@@ -1173,6 +1174,12 @@ export type LogEntry = {
 export type SeededRngState = { state: number };
 
 export type GameState = {
+  // Which content set this game was created with. When false/undefined the
+  // game is base-only and all 'rote'-tagged content was filtered out at setup.
+  // Recorded so the UI, redaction, and any expansion-specific rule branch can
+  // see it without re-deriving from the board.
+  includeExpansion?: boolean;
+
   // Time / reputation
   timeMarker: number;          // 1..N (8 in base game)
   reputationMarker: number;    // starts at 14, decreases toward time marker
@@ -1386,4 +1393,5 @@ export type SystemDef = {
   isCoruscant: boolean;
   resources: ResourceIcon[];
   buildSlot: 1 | 2 | 3 | null;
+  set?: 'base' | 'rote'; // undefined = base game; 'rote' = Rise of the Empire
 };

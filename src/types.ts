@@ -64,6 +64,11 @@ export type TacticValues = {
   ground: number;
 };
 
+/** Which game set a content item belongs to. Absent/undefined is treated as
+ *  'base' everywhere — only entries explicitly tagged 'rote' are filtered out
+ *  of a game that didn't opt into the Rise of the Empire expansion. */
+export type ContentSet = 'base' | 'rote';
+
 export type Leader = {
   id: string;
   name: string;
@@ -73,6 +78,7 @@ export type Leader = {
   minorSkills: SkillCounts; // RoE only — always zeros in base game
   tacticValues: TacticValues;
   image: string; // filename inside the .vmod images set
+  set?: ContentSet; // undefined = base game
 };
 
 export type RectKind =
@@ -127,6 +133,7 @@ export type ActionCard = {
   effectKey: string;
   rulesText: string;
   image: string;
+  set?: ContentSet;
 };
 
 export type MissionCard = {
@@ -142,6 +149,7 @@ export type MissionCard = {
   effectKey: string;
   rulesText: string;
   image: string;
+  set?: ContentSet;
 };
 
 export type ObjectiveTiming = 'Combat' | 'StartOfRefresh' | 'Special' | '';
@@ -155,6 +163,7 @@ export type ObjectiveCard = {
   effectKey: string;
   rulesText: string;
   image: string;
+  set?: ContentSet;
 };
 
 export type TacticCard = {
@@ -165,12 +174,14 @@ export type TacticCard = {
   effectKey: string;
   rulesText: string;
   image: string;
+  set?: ContentSet;
 };
 
 export type ProbeCard = {
   id: string;
   systemId: string;
   systemName: string;
+  set?: ContentSet;
 };
 
 type DeckMeta = {
