@@ -1,9 +1,38 @@
 # Rise of the Empire expansion — implementation plan
 
-Opt-in expansion, kept fully separate from the base game. A game records
-`G.includeExpansion`; when off, every `set: 'rote'`-tagged catalog entry is
+Opt-in expansion, kept fully separate from the base game. A game records its
+expansion config; when fully off, every `set: 'rote'`-tagged catalog entry is
 filtered out at `createGame` so base play is byte-identical. Future fixes can
 target base-only / rote-only / both via the `set` tag.
+
+## Confirmed scope (user decisions)
+
+- **Granular toggles** (not one master switch). The expansion config is:
+  ```
+  expansion: {
+    enabled: boolean         // include RoE leaders/systems/cards + new rules
+    roeUnits?: boolean       // SWAP base unit roster → RoE unit roster
+    roeMissions?: boolean    // SWAP base mission set → RoE mission set
+    cinematicCombat?: boolean// use the Cinematic Combat module
+  }
+  ```
+  (Phase 1 shipped a single `includeExpansion` placeholder; it gets promoted to
+  this config in Phase 2.)
+- **Cinematic Combat IS in scope** — build the full alternate combat module.
+
+### Additive vs swap (important)
+
+- **Additive package** (present whenever `enabled`): RoE **leaders, systems,
+  action / objective / probe cards**, and the new rules (green dice, leader cap,
+  target markers, unit abilities).
+- **Swaps** (exclusive base-OR-RoE, per the rulebook's "choose ... or ..."):
+  - **Units** — `roeUnits` replaces the base unit roster + starting units with
+    the RoE ones (rather than adding to them).
+  - **Missions** — `roeMissions` replaces the base mission deck with the RoE
+    deck (starting/project missions always included).
+  So the `inSet` gate is per-content-type: additive content keys off `enabled`;
+  unit/mission selection keys off the swap flags. This is implemented alongside
+  the actual content (Phases 3 & 5), where it can be verified against real data.
 
 ## Source material (all on disk)
 
@@ -41,8 +70,10 @@ New mechanics that need engine work, not just data:
    in SetupOptions → GameState; `inSet` filter at every `createGame` selection
    point; catalog stays a full superset. Verified: typecheck baseline, 8-game
    conservation unchanged with flag off.
-2. **UI toggle:** "Include Rise of the Empire" in hotseat new-game + online
-   Lobby, threaded through `createGame` / `/api/games`.
+2. **Toggle model + UI:** promote `includeExpansion` → the `expansion` config
+   object (enabled / roeUnits / roeMissions / cinematicCombat); expose the
+   switches in hotseat new-game + online Lobby, threaded through `createGame` /
+   `/api/games`.
 3. **Units:** transcribe RoE unit stats/supply from the battle mats into
    `units.ts` tagged `set: 'rote'`; wire build-icon legality + alternate
    starting-unit lists.
@@ -52,6 +83,7 @@ New mechanics that need engine work, not just data:
    probe / tactic decks, each `set: 'rote'`, with handlers per card.
 6. **New rules modules:** green dice, leader-pool cap, target markers, the unit
    abilities — each gated and tested.
-7. **(Optional) Cinematic Combat** — separate opt-in if wanted.
+7. **Cinematic Combat** — the alternate combat module (advanced tactic cards,
+   per-round draw/assign flow), gated on `cinematicCombat`. In scope.
 
 Each phase ships as a working slice; base game is never at risk.
