@@ -1188,6 +1188,8 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, margin: '8px 0' }}>
         <LeaderRoster G={G} side="Rebel" humanSide={humanSide} />
         <LeaderRoster G={G} side="Empire" humanSide={humanSide} />
+        <UnitRoster G={G} side="Rebel" />
+        <UnitRoster G={G} side="Empire" />
       </div>
 
       <Board
@@ -6556,6 +6558,93 @@ function LeaderRoster({ G, side, humanSide }: { G: GameState; side: Side; humanS
       </div>
       <div style={{ fontSize: 9.5, color: '#666', marginTop: 4 }}>
         D/I/O/L = Diplomacy / Intel / Spec-Ops / Logistics skill · S/G = space / ground tactic value
+      </div>
+    </details>
+  );
+}
+
+/** Per-faction unit roster: every unit type, its stats, and where each token
+ *  currently is — in the holding-pool supply, on the board (by system), or in
+ *  a build-queue slot. Mirrors LeaderRoster. Whereabouts are computed from the
+ *  viewer's (already-redacted) G, so hidden Rebel-base deployments stay hidden
+ *  to the Empire — those just read as "in supply" from their side, which is the
+ *  most they can know. */
+function UnitRoster({ G, side }: { G: GameState; side: Side }) {
+  const color = sideColor(side);
+  const types = Object.values(G.catalog.unitTypes).filter((t) => t.side === side);
+  if (types.length === 0) return null;
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+
+  // typeId → (locationName → count) across the board + Rebel-base space.
+  const boardByType = new Map<string, Map<string, number>>();
+  const tally = (units: { side: Side; typeId: string }[] | undefined, locName: string) => {
+    for (const u of units ?? []) {
+      if (u.side !== side) continue;
+      const m = boardByType.get(u.typeId) ?? new Map<string, number>();
+      m.set(locName, (m.get(locName) ?? 0) + 1);
+      boardByType.set(u.typeId, m);
+    }
+  };
+  for (const [sid, ss] of Object.entries(G.map.systems)) {
+    tally(ss.units, G.catalog.systems[sid]?.name ?? sid);
+  }
+  tally(G.map.rebelBaseSpace?.units, 'Rebel Base space');
+
+  // typeId → (slot → count) in this side's build queue.
+  const queueByType = new Map<string, Map<1 | 2 | 3, number>>();
+  for (const slot of [1, 2, 3] as const) {
+    for (const t of f.buildQueue[slot] ?? []) {
+      const m = queueByType.get(t) ?? new Map<1 | 2 | 3, number>();
+      m.set(slot, (m.get(slot) ?? 0) + 1);
+      queueByType.set(t, m);
+    }
+  }
+
+  return (
+    <details style={{ marginTop: 8 }}>
+      <summary style={{ cursor: 'pointer', fontSize: 12, color, fontWeight: 600 }}>
+        Units ({types.length} types) — stats &amp; whereabouts
+      </summary>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 6 }}>
+        {types.map((t) => {
+          const board = boardByType.get(t.id);
+          const queue = queueByType.get(t.id);
+          const onBoard = board ? [...board.values()].reduce((a, b) => a + b, 0) : 0;
+          const queued = queue ? [...queue.values()].reduce((a, b) => a + b, 0) : 0;
+          const supply = Math.max(0, (t.supplyCount ?? 0) - onBoard - queued);
+          const art = (t as { image?: string }).image ? getCachedArtUrlSync((t as { image?: string }).image!) : null;
+          return (
+            <div key={t.id} style={{
+              background: '#0c0d10', border: `1px solid ${color}33`,
+              borderLeft: `3px solid ${color}`, borderRadius: 4, padding: '4px 8px',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                {art && <img src={art} alt="" style={{ width: 22, height: 22, objectFit: 'contain', flex: '0 0 auto' }} />}
+                <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', minWidth: 130 }}>{t.name}</span>
+                <UnitStatLine G={G} typeId={t.id} />
+                <span style={{ fontSize: 11, color: '#9a937f' }}>· build {t.buildResource}</span>
+                <span style={{ fontSize: 11, color: '#666' }}>· total {t.supplyCount}</span>
+              </div>
+              <div style={{ fontSize: 11, marginTop: 2, lineHeight: 1.4 }}>
+                <span style={{ color: supply > 0 ? '#80dc78' : '#5a5a5a', fontWeight: 600 }}>
+                  Supply {supply}
+                </span>
+                {board && [...board.entries()].map(([loc, n]) => (
+                  <span key={loc} style={{ color: '#cbc4b0' }}>{' · '}{loc}{n > 1 ? `×${n}` : ''}</span>
+                ))}
+                {queue && [...queue.entries()].sort((a, b) => a[0] - b[0]).map(([slot, n]) => (
+                  <span key={slot} style={{ color: '#ffd54a' }}>
+                    {' · '}queue slot {slot}{n > 1 ? `×${n}` : ''}{slot === 1 ? ' (deploys next refresh)' : ''}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 9.5, color: '#666', marginTop: 4 }}>
+        Supply = tokens still in the holding pool (printed total minus what's on the board or queued).
+        atk R/B = red/black attack dice · HP = health · build = resource cost.
       </div>
     </details>
   );

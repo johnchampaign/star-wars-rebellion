@@ -1,6 +1,15 @@
 // Base-game unit catalog. Stats verified against the printed FFG base-game
 // faction reference sheets (Rebel Alliance + Galactic Empire). Rise of the
 // Empire expansion units are intentionally omitted.
+//
+// supplyCount verified against the Learn to Play component manifest (p.3:
+// 89 Imperial + 64 Rebel minis — the per-type sums match both totals exactly).
+// The Death Star split (death-star: 2, death-star-under-construction: 1) is RAW
+// per Rules Reference p.6 "Building a Death Star": "Construct Death Star" builds
+// a SECOND Death Star (2 completed minis) plus a separate Death Star Under
+// Construction piece — three distinct components, NOT a shared pool of two.
+// The holding-pool cap rule is RR p.6 "Component Limitations → Units":
+// "a player cannot build a unit type if there are none available."
 
 import type { UnitType } from './types';
 
