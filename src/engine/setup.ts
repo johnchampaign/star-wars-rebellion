@@ -479,23 +479,33 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   }
 
   // Objective deck: stages 1, 2, 3 stacked (3 on bottom, 1 on top per rr p.15).
-  // Shuffle each stage individually, then assemble.
   //
-  // RAW caveat: base game has exactly 5 cards per stage so this code just
-  // includes everything. Phase 5d added 4 Level I + 3 Level II + 3 Level III
-  // RoE objectives. RAW p.15: "Level II = Death Star Plans + 4 random; Level
-  // III = Death Star Plans + 4 random." With the expansion enabled, RAW
-  // therefore wants us to PICK 5 per stage from the larger pool, locking DSP
-  // into Levels II and III. Phase 5d ships the data; the per-stage random
-  // pick + DSP lock is a TODO — until then, expansion games run with the
-  // full enlarged pool (9/8/8 cards instead of 5/5/5). Functional but not
-  // strictly RAW; doesn't affect single-stage games at all.
+  // RAW p.15: Level I = 5 random Level I cards. Level II = Death Star Plans
+  // + 4 random Level II. Level III = Death Star Plans + 4 random Level III.
+  // Base game has exactly 5 cards per stage so this is a no-op; with the
+  // expansion enabled the pool grows (e.g. 9 Level I cards), and we have to
+  // sample 5 per stage with Death Star Plans locked into II and III.
+  const STAGE_SIZE = 5;
+  const DSP_BY_STAGE: Record<2 | 3, string> = { 2: 'death-star-plans-2', 3: 'death-star-plans-3' };
   const objsByStage: Record<number, string[]> = { 1: [], 2: [], 3: [] };
   for (const o of Object.values(catalog.objectives)) {
     if (!inSet(o)) continue;
     if (o.stage in objsByStage) objsByStage[o.stage].push(o.id);
   }
   shuffle(rng, objsByStage[1]); shuffle(rng, objsByStage[2]); shuffle(rng, objsByStage[3]);
+  const pickStage = (stage: 1 | 2 | 3): string[] => {
+    const pool = objsByStage[stage];
+    if (pool.length <= STAGE_SIZE) return pool;
+    const dspId = stage === 1 ? undefined : DSP_BY_STAGE[stage];
+    if (dspId && pool.includes(dspId)) {
+      const others = pool.filter((id) => id !== dspId);
+      return [dspId, ...others.slice(0, STAGE_SIZE - 1)];
+    }
+    return pool.slice(0, STAGE_SIZE);
+  };
+  objsByStage[1] = pickStage(1);
+  objsByStage[2] = pickStage(2);
+  objsByStage[3] = pickStage(3);
   const objectiveDeck = [...objsByStage[1], ...objsByStage[2], ...objsByStage[3]];
   rebel.objectiveDeck = objectiveDeck;
   // Rebel draws 1 objective (rr p.15 step 4).

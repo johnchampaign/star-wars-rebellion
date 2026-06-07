@@ -184,8 +184,29 @@ New mechanics that need engine work, not just data:
    - **5e — Advanced tactic cards (TODO):** full text on p.8; really
      part of Phase 7 (Cinematic Combat) since they only do anything
      when that module is on.
-6. **New rules modules:** green dice, leader-pool cap, target markers, the unit
-   abilities — each gated and tested.
+6. **New rules modules** — incremental:
+   - **Leader-pool 8-cap (DONE):** `enforceLeaderPoolCap` in
+     `src/engine/mechanics.ts`. Called at the end of every Refresh phase
+     (after retrievals + recruits land); excess leaders are eliminated
+     tail-first with a `leader-pool-cap-eliminate` log entry per drop.
+     RAW lets the player pick which to keep — that's a future UI prompt
+     (pendingChoice); for now the deterministic tail-elimination at
+     least surfaces the rule. No-op when `expansion.enabled` is false.
+   - **Per-stage objective pick + Death Star Plans lock (DONE):** RAW
+     wants 5 random per stage, with Death Star Plans locked into II and
+     III. Base game (5 cards per stage) was a no-op; with RoE the pools
+     grow to 9/8/8 and we now sample 5/5/5 with DSP forced in. See
+     setup.ts; verified in-browser (RoE game: deckSize 14 + 1 in hand,
+     both DSP cards present; base game: deckSize 14 + 1 in hand,
+     no RoE leakage).
+   - **Green dice (TODO):** combat module rolls green dice for units
+     whose `attack.green > 0`; 3-die cap per RoE rules p.8.
+   - **Target markers (TODO):** mission/objective cards that resolve via
+     a marker on the board; needed for Heist, Secure the Plans, Raid
+     Outposts, Rebel Cell, Show No Fear handlers.
+   - **Unit abilities (TODO):** Interdictor retreat block, Shield Bunker
+     Death Star protection / easy deploy / local reinforcement,
+     structures-survive-combat. Each is a localized rule patch.
 7. **Cinematic Combat** — the alternate combat module (advanced tactic cards,
    per-round draw/assign flow), gated on `cinematicCombat`. In scope.
 

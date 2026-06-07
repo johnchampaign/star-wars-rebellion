@@ -603,6 +603,30 @@ export function returnLeader(G: GameState, side: Side, leaderId: LeaderId): void
   log(G, { kind: 'return-leader', side, payload: { leaderId } });
 }
 
+/** RoE rules p.8 "LEADER POOL LIMIT": a player can have at most 8 leaders
+ *  in their leader pool. Excess leaders are eliminated.
+ *
+ *  RAW lets the player CHOOSE which to keep — we don't have a UI prompt for
+ *  that yet, so this MVP eliminates from the tail of the pool (most-recent
+ *  additions go first). It still surfaces every elimination via a clear
+ *  `leader-pool-cap-eliminate` log entry so playtesters can flag misses.
+ *  When a "pick which to keep" UI exists, swap the tail-eliminate for a
+ *  pendingChoice. Phase 6 MVP — see docs/rise-of-the-empire.md.
+ *
+ *  No-op when expansion.enabled is false (base game has no cap). */
+export function enforceLeaderPoolCap(G: GameState, side: Side): void {
+  if (!G.expansion?.enabled) return;
+  const CAP = 8;
+  const f = faction(G, side);
+  while (f.leaderPool.length > CAP) {
+    const eliminated = f.leaderPool.pop();
+    if (!eliminated) break;
+    if (!f.eliminatedLeaders) f.eliminatedLeaders = [];
+    f.eliminatedLeaders.push(eliminated);
+    log(G, { kind: 'leader-pool-cap-eliminate', side, payload: { leaderId: eliminated, poolSizeBeforeCap: CAP + 1 } });
+  }
+}
+
 /** Move a leader that is already on the board from one system to another,
  *  without touching the leader pool. Used when a leader leads a combat
  *  retreat (rr p.5: "take one of his leaders from the system and place it in

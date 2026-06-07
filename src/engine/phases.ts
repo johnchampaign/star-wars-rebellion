@@ -3074,6 +3074,14 @@ function finishRefreshAfterBuild(G: GameState, logStart: number): void {
 /** Final step of the refresh phase: report + advance to Assignment. */
 function finishRefreshAfterDeploy(G: GameState, logStart: number): void {
   if (G.isGameOver) return;
+  // RoE leader-pool cap (rules p.8): a player can have at most 8 leaders in
+  // their pool. Refresh is the natural enforcement point — leaders return
+  // from missions/board in step 1 and any recruit lands in step 5, so by the
+  // end of refresh the pool reflects the round's accumulation. Excess
+  // leaders are eliminated (tail-first; pick-which-to-keep UI is a follow-up).
+  // No-op when expansion.enabled is false.
+  M.enforceLeaderPoolCap(G, 'Rebel');
+  M.enforceLeaderPoolCap(G, 'Empire');
   buildRefreshReport(G, logStart);
   enterAssignmentPhase(G);
 }
