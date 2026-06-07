@@ -18,10 +18,22 @@ target base-only / rote-only / both via the `set` tag.
     cinematicCombat?: boolean // use the Cinematic Combat module
   }
   ```
-  Every axis is an independent player toggle (like the other content options) —
-  mix-and-match is allowed (e.g. base board + RoE units, or expanded board with
-  base missions). Phase 2 finalizes the exact switch set against the real data;
-  defaults follow the user's picks below.
+  **UX + semantics (Option A — RAW-faithful):**
+  - Default is the **base game, untouched** (`enabled: false`). A single "Rise
+    of the Empire" switch turns it on; turning it on *reveals* the sub-toggles.
+  - `enabled` is NOT just a UI gate — it carries the expansion's **non-optional**
+    pieces: the new **leaders** (minor-skill mechanic) and the **core new rules**
+    (green dice, 8-leader pool cap, target markers, unit abilities). These aren't
+    individually optional in the physical game, so they aren't separate toggles.
+  - The sub-toggles cover only what the rulebook actually lets you choose:
+    `roeUnits` / `newStarterUnits`, `roeMissions`, `cinematicCombat`, plus
+    `expandedBoard` (a digital nicety — RAW plays RoE on the big board;
+    default-on with RoE, base board stays available).
+  - Consequence: "RoE on + all sub-toggles off" is a *hybrid* (base board/units/
+    missions but RoE leaders + new rules), NOT the base game. The base game is
+    simply `enabled: false`. This is intended.
+  Defaults when `enabled` turns on follow the user's picks: New starter units,
+  expanded board, RoE units/missions on; Cinematic Combat off by default.
   (Phase 1 shipped a single `includeExpansion` placeholder; it gets promoted to
   this config in Phase 2.)
 - **Cinematic Combat IS in scope** — build the full alternate combat module.
