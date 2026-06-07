@@ -19,6 +19,10 @@ target base-only / rote-only / both via the `set` tag.
   (Phase 1 shipped a single `includeExpansion` placeholder; it gets promoted to
   this config in Phase 2.)
 - **Cinematic Combat IS in scope** — build the full alternate combat module.
+- **Starting units:** when `roeUnits` is on, use the **New Starter Units** list
+  (the `Rise of the Empire - New Starter Units` VASSAL setup), not the Old one.
+- **Board:** when `enabled`, use the **full expanded board** — every RoE system
+  (Nal Hutta, Mandalore, …) and the larger map, not base + a few extras.
 
 ### Additive vs swap (important)
 
@@ -75,10 +79,10 @@ New mechanics that need engine work, not just data:
    switches in hotseat new-game + online Lobby, threaded through `createGame` /
    `/api/games`.
 3. **Units:** transcribe RoE unit stats/supply from the battle mats into
-   `units.ts` tagged `set: 'rote'`; wire build-icon legality + alternate
-   starting-unit lists.
-4. **Systems/board:** add RoE systems + adjacency, tagged rote; verify the map
-   renders and base map is unchanged when off.
+   `units.ts` tagged `set: 'rote'`; wire build-icon legality + the **New Starter
+   Units** starting lists (swap base roster when `roeUnits`).
+4. **Systems/board:** add ALL RoE systems + adjacency (the full expanded map),
+   tagged rote; verify it renders and the base map is unchanged when off.
 5. **Cards:** leaders (with minor skills), then mission / objective / action /
    probe / tactic decks, each `set: 'rote'`, with handlers per card.
 6. **New rules modules:** green dice, leader-pool cap, target markers, the unit
