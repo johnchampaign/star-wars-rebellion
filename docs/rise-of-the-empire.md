@@ -151,12 +151,24 @@ New mechanics that need engine work, not just data:
    - **5b — RoE mission handlers (TODO):** bind each RoE mission's
      `effectKey` to an `EffectHandler` in `src/engine/handlers/index.ts`.
      Big slice — base game has 53 handlers.
-   - **5c — RoE leaders (TODO, BLOCKED):** RoE leader stats (skills,
-     minor skills, tactic values) aren't on disk — the Leader Skill
-     Chart PDF and the VASSAL module are both base-only. Needs an
-     external source (physical cards, BGG, fan-made chart) before
-     transcription. This blocks the minor-skill mechanic (a Phase 6
-     concern) and any RoE mission that requires an RoE leader portrait.
+   - **5c — RoE leaders (DONE):** 8 RoE leaders appended to
+     `assets/leaders.json` via `scripts/add-rote-leaders.mjs`
+     (idempotent), tagged `set: 'rote'`. Source: the leader-card PNGs
+     in `images/` (Jabba.png, Krennic.png, Motti.png, Finest.png,
+     Cassian.png, Jyn.png, Chirrut2.png, Saw.png — turned out they
+     were on disk all along, contrary to the earlier "blocked"
+     status). Icons read at 18× zoom — blue eye / red fist / orange
+     diamond / white-square-arrow → Intel / SpecOps / Diplomacy /
+     Logistics; major = large circle, minor = small circle. Tactic
+     values are **cross-verified** against the RoE action-card text
+     in `assets/actions.json` — every Space/Ground value matches
+     ("Ambitions of Power Motti 2 1", "Lord Vader's Orders Krennic
+     2 2", "Secret Facility Kren.'s Finest 1 3", etc.). Major/minor
+     skill counts are best-effort transcriptions; confirm against
+     physical cards if any feel off — the data slot is correct even
+     if a count is later nudged. RoE leaders are non-starting per
+     RAW; they enter play via the recruit missions/action cards that
+     Phase 5b/5d-handlers will wire.
    - **5d — RoE action cards + objectives, data-only (DONE):** 14 RoE
      action cards (7 Imperial, 7 Rebel) and 12 RoE objectives (4 Level I,
      4 Level II inc. Death Star Plans handling, 4 Level III inc. DSP)

@@ -10,7 +10,8 @@
       "tacticValues (space, ground): printed numbers in the bottom corners. 0 = no value (leader cannot activate a system / cannot draw tactic cards in that theater).",
       "minorSkills: RoE expansion only. All zero in base game.",
       "Luke Skywalker (Jedi) is a distinct leader (rr p.8 says treat as Luke Skywalker for card and action card references -- modeled here as a separate id).",
-      "Edited via dev leaders tab at 2026-05-20T00:12:34.266Z."
+      "Edited via dev leaders tab at 2026-05-20T00:12:34.266Z.",
+      "Phase 5c: appended 8 Rise of the Empire leaders tagged set: \"rote\". Skills/minor skills read from images/<Name>.png at high zoom (icon size distinguishes major vs minor). Tactic values cross-verified against the RoE action-card text in assets/actions.json — all match."
     ]
   },
   "leaders": [
@@ -588,6 +589,198 @@
         "ground": 1
       },
       "image": "LeaderRebelWedgeAntilles.png"
+    },
+    {
+      "id": "jabba",
+      "name": "Jabba the Hutt",
+      "side": "Empire",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 2,
+        "intel": 2,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 1,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 0,
+        "ground": 0
+      },
+      "image": "Jabba.png",
+      "set": "rote"
+    },
+    {
+      "id": "krennic",
+      "name": "Director Krennic",
+      "side": "Empire",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 1,
+        "specOps": 1,
+        "logistics": 1
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 1,
+        "specOps": 0,
+        "logistics": 1
+      },
+      "tacticValues": {
+        "space": 2,
+        "ground": 2
+      },
+      "image": "Krennic.png",
+      "set": "rote"
+    },
+    {
+      "id": "motti",
+      "name": "Admiral Motti",
+      "side": "Empire",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 1,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 1
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 1,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 2,
+        "ground": 1
+      },
+      "image": "Motti.png",
+      "set": "rote"
+    },
+    {
+      "id": "krennics-finest",
+      "name": "Krennic's Finest",
+      "side": "Empire",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 3,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 1,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 1,
+        "ground": 3
+      },
+      "image": "Finest.png",
+      "set": "rote"
+    },
+    {
+      "id": "cassian-andor",
+      "name": "Cassian Andor",
+      "side": "Rebel",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 2,
+        "specOps": 0,
+        "logistics": 1
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 1,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 2,
+        "ground": 1
+      },
+      "image": "Cassian.png",
+      "set": "rote"
+    },
+    {
+      "id": "jyn-erso",
+      "name": "Jyn Erso",
+      "side": "Rebel",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 1,
+        "specOps": 1,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 1,
+        "intel": 1,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 1,
+        "ground": 2
+      },
+      "image": "Jyn.png",
+      "set": "rote"
+    },
+    {
+      "id": "chirrut-imwe",
+      "name": "Chirrut Imwe",
+      "side": "Rebel",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 1,
+        "intel": 0,
+        "specOps": 2,
+        "logistics": 0
+      },
+      "minorSkills": {
+        "diplomacy": 1,
+        "intel": 0,
+        "specOps": 0,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 1,
+        "ground": 2
+      },
+      "image": "Chirrut2.png",
+      "set": "rote"
+    },
+    {
+      "id": "saw-gerrera",
+      "name": "Saw Gerrera",
+      "side": "Rebel",
+      "isStarting": false,
+      "skills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 1,
+        "logistics": 1
+      },
+      "minorSkills": {
+        "diplomacy": 0,
+        "intel": 0,
+        "specOps": 1,
+        "logistics": 0
+      },
+      "tacticValues": {
+        "space": 1,
+        "ground": 3
+      },
+      "image": "Saw.png",
+      "set": "rote"
     }
   ]
 }
