@@ -213,9 +213,32 @@ New mechanics that need engine work, not just data:
    - **Target markers (TODO):** mission/objective cards that resolve via
      a marker on the board; needed for Heist, Secure the Plans, Raid
      Outposts, Rebel Cell, Show No Fear handlers.
-   - **Unit abilities (TODO):** Interdictor retreat block, Shield Bunker
-     Death Star protection / easy deploy / local reinforcement,
-     structures-survive-combat. Each is a localized rule patch.
+   - **Unit abilities (PARTIAL):**
+     - **Interdictor retreat block (DONE):** `legalRetreatDestinations`
+       in `combat.ts` returns `[]` for the Rebel side whenever any
+       Imperial Interdictor is in the combat system. One-directional
+       per RAW. The "as soon as all Interdictors destroyed" caveat
+       falls out of reading live unit lists — already-destroyed
+       Interdictors aren't in `ss.units` anymore.
+     - **Structures-survive-combat (DONE):** `applyStructureRule` now
+       checks `c.report.rounds[c.round-1].attacks` for any die rolled
+       by the side in the ground theater this round. If yes, structures
+       survive and combat continues; a `combat-structure-survive` log
+       entry surfaces it. Base behaviour preserved when
+       `expansion.enabled` is false.
+     - **Shield Bunker Death Star protection (DONE):**
+       `isLegalTarget` in the damage-assignment path excludes Death
+       Stars and DSUC from eligible targets while any Imperial Shield
+       Bunker is in the system. The Death Star Plans path is also
+       guarded: a successful DSP direct-hit logs
+       `death-star-plans-blocked-by-shield-bunker` and skips the
+       destroy, effectively returning the card to hand. Protection
+       lapses automatically when all Shield Bunkers in the system die.
+     - **Shield Bunker easy-deployment / local-reinforcement (TODO):**
+       the two non-combat parts of the ability (rules p.8 — deploy a
+       Shield Bunker to any Imperial-ground system with no Rebels;
+       remote Shield Bunker enables full Imperial deployment to that
+       remote). Both belong in the Refresh-deploy / build code paths.
 7. **Cinematic Combat** — the alternate combat module (advanced tactic cards,
    per-round draw/assign flow), gated on `cinematicCombat`. In scope.
 

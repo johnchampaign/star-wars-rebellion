@@ -1035,9 +1035,30 @@ function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): vo
   const liveTargets = unitsOf(G, other(pa.side), c.systemId, pa.theater)
     .filter((u) => !stagedSet.has(u.instanceId));
 
+  // RoE Shield Bunker (rules p.8): "Death Stars and DSUC cannot be destroyed
+  // or be assigned damage when a Shield Bunker is in the system." Filter the
+  // Death Star and DSUC out of the eligible-targets list while a Shield
+  // Bunker survives in the system. Death Star itself has health.color===null
+  // and is already excluded by the line below, but for DSUC (red 4 health,
+  // damageable in base game) the Shield Bunker protection is decisive.
+  // Symmetric: Rebels don't have Shield Bunkers, so this only protects
+  // Imperial Death Stars / DSUC. The shield-bunker plans-block (DS Plans
+  // objective) is enforced separately in the DSP path. As soon as all
+  // Shield Bunkers are destroyed in the system, protection lapses naturally
+  // because this reads live `c.systemId` ground units.
+  const shieldBunkerProtects = (typeId: string): boolean => {
+    if (!G.expansion?.enabled) return false;
+    if (typeId !== 'death-star' && typeId !== 'death-star-under-construction') return false;
+    const ss = G.map.systems[c.systemId];
+    return (ss?.units ?? []).some(
+      (u) => u.side === 'Empire' && u.typeId === 'shield-bunker',
+    );
+  };
+
   const isLegalTarget = (h: Hit, u: UnitInstance): boolean => {
     const t = G.catalog.unitTypes[u.typeId];
     if (!t || t.health.color === null) return false; // undamageable
+    if (shieldBunkerProtects(u.typeId)) return false; // RoE Shield Bunker
     if (h.face === 'direct-hit') return true;
     return h.color !== null && t.health.color === h.color;
   };
@@ -1672,6 +1693,20 @@ export function resolveCombatAddLeaderPick(
  *    "any adjacent system." We don't filter by attacker source for the
  *    defender (we leave that to expansion / FAQ if needed). */
 function legalRetreatDestinations(G: GameState, c: CombatState, side: Side): SystemId[] {
+  // RoE unit ability — Interdictor (rules p.8): "Rebel units in this system
+  // cannot retreat from a system containing an Interdictor." One-directional
+  // — Interdictors are Imperial, so only Rebel retreat is blocked. The
+  // ability fires whenever ANY Interdictor is in the combat system; "as soon
+  // as all Interdictors are destroyed, the ability no longer applies", which
+  // is naturally true because this function reads live `ss.units` and
+  // already-destroyed units are gone. Phase 6 unit-abilities module.
+  if (G.expansion?.enabled && side === 'Rebel') {
+    const ss = G.map.systems[c.systemId];
+    const hasInterdictor = (ss?.units ?? []).some(
+      (u) => u.side === 'Empire' && u.typeId === 'interdictor',
+    );
+    if (hasInterdictor) return [];
+  }
   // Rebel Base space is a special abstract system — can't retreat to it
   // unless the base is hidden and the side is Rebel.
   const adj = G.catalog.adjacency[c.systemId] ?? [];
@@ -1828,6 +1863,14 @@ export function resolveRetreatDecision(
  *  structures are destroyed. Idempotent — safe to call every round end and
  *  again at combat end. */
 function applyStructureRule(G: GameState, c: NonNullable<GameState['pendingCombat']>): void {
+  // RoE rules p.8 — "Destroying and moving structures": with the expansion
+  // on, if a player rolled at least 1 die in the ground theater THIS round,
+  // their structures survive even when they're the only ground units left,
+  // and combat continues into another round. Models the case where a
+  // non-structure ground unit attacked (rolled), then died — its structures
+  // get to fight on. Base game has no such reprieve and destroys structures
+  // immediately. Same applies symmetrically to space, though base-game has
+  // no space structures and RoE doesn't add any either.
   for (const side of [c.attackerSide, other(c.attackerSide)] as const) {
     const opp = other(side);
     const myGround = unitsOf(G, side, c.systemId, 'ground');
@@ -1836,6 +1879,16 @@ function applyStructureRule(G: GameState, c: NonNullable<GameState['pendingComba
     if (!onlyStructures) continue;
     const oppGround = unitsOf(G, opp, c.systemId, 'ground');
     if (oppGround.length === 0) continue;
+    if (G.expansion?.enabled) {
+      const thisRound = c.report.rounds.find((r) => r.round === c.round);
+      const rolledGroundThisRound = (thisRound?.attacks ?? []).some(
+        (a) => a.side === side && a.theater === 'ground' && a.dice.length > 0,
+      );
+      if (rolledGroundThisRound) {
+        log(G, { kind: 'combat-structure-survive', side, payload: { systemId: c.systemId, round: c.round } });
+        continue;
+      }
+    }
     const destroyedTypeIds: string[] = [];
     for (const u of [...myGround]) {
       destroyedTypeIds.push(u.typeId);
@@ -2087,6 +2140,20 @@ export function resolveDeathStarPlansAttempt(
     // didn't pass one (or if the passed id is no longer at the system).
     let targetId = deathStarInstanceId;
     if (!targetId || !pc.deathStarInstanceIds.includes(targetId)) targetId = pc.deathStarInstanceIds[0];
+    // RoE Shield Bunker (rules p.8) makes Death Stars + DSUC "immune to the
+    // Death Star Plans objective card." A direct-hit roll that would
+    // normally destroy the Death Star is blocked while any Shield Bunker
+    // remains in the system; the card returns to hand (effectively a miss).
+    const ss = G.map.systems[pc.systemId];
+    const shieldBunkerHere = G.expansion?.enabled && (ss?.units ?? []).some(
+      (u) => u.side === 'Empire' && u.typeId === 'shield-bunker',
+    );
+    if (shieldBunkerHere) {
+      log(G, { kind: 'death-star-plans-blocked-by-shield-bunker', side: 'Rebel', payload: {
+        objectiveId: pc.objectiveId, systemId: pc.systemId, faces,
+      }});
+      return { ok: true };
+    }
     // Death Star can't be damaged by normal attacks (health.color === null),
     // but RAW explicitly says "destroy" — bypass damage and just remove.
     M.destroyUnit(G, targetId, 'death-star-plans');
