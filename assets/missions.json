@@ -14,7 +14,8 @@
       "rulesText: copy verbatim from the card.",
       "Populated by scripts/populate-cards.py from user-provided reference materials (47 entries matched).",
       "Populated by scripts/populate-cards.py from user-provided reference materials (53 entries matched).",
-      "Phase 5 (data-only): appended 31 Rise of the Empire missions tagged set: \"rote\". effectKey is empty pending Phase 5b handler bindings — the cards appear in the deck when expansion.roeMissions is on but resolve as no-ops until then. Skill assignments are best-effort from rule flavour; confirm against actual card art in a follow-up."
+      "Phase 5 (data-only): appended 31 Rise of the Empire missions tagged set: \"rote\". effectKey is empty pending Phase 5b handler bindings — the cards appear in the deck when expansion.roeMissions is on but resolve as no-ops until then. Skill assignments are best-effort from rule flavour; confirm against actual card art in a follow-up.",
+      "Phase 5b Wave A: bound effectKey for 12 RoE missions to handlers in src/engine/handlers/index.ts. Choice-heavy missions deferred to Wave B/C."
     ]
   },
   "missions": [
@@ -849,7 +850,7 @@
       "skillCost": 0,
       "isAttempt": false,
       "leaderPortrait": "motti",
-      "effectKey": "",
+      "effectKey": "discredit-rebellion",
       "rulesText": "Resolve on a sabotaged system. Rebel player must remove all sabotage markers on the board, or roll 1 die — on any success, Rebels lose 1 reputation. If Motti is assigned, Rebels roll 2 dice instead.",
       "image": "",
       "set": "rote"
@@ -864,7 +865,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "deployment",
       "rulesText": "Attempt on a system with no Rebel units or loyalty. Gain 1 triangle ground unit.",
       "image": "",
       "set": "rote"
@@ -879,7 +880,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "message-from-high-command",
       "rulesText": "Attempt on a populous system. Gain 1 loyalty. Return all assigned leaders to the leader pool.",
       "image": "",
       "set": "rote"
@@ -894,7 +895,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "stolen-intel",
       "rulesText": "Attempt on a Rebel system. Draw a probe card. Look at the Rebel hand of missions and discard one (not a starter).",
       "image": "",
       "set": "rote"
@@ -954,7 +955,7 @@
       "skillCost": 0,
       "isAttempt": false,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "hire-mercenaries",
       "rulesText": "Resolve in a remote system. Recruit 1 Imperial leader without tactic values and place them in this system.",
       "image": "",
       "set": "rote"
@@ -984,7 +985,7 @@
       "skillCost": 0,
       "isAttempt": false,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "imperial-promotion",
       "rulesText": "Resolve in any Imperial system. Recruit 1 Imperial leader with tactic values and place them in this system.",
       "image": "",
       "set": "rote"
@@ -1104,7 +1105,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "regional-aid",
       "rulesText": "Attempt on any system. Gain 1 loyalty here, and 1 loyalty elsewhere in the same region.",
       "image": "",
       "set": "rote"
@@ -1119,7 +1120,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "reconnaissance",
       "rulesText": "Attempt on an Imperial system. Choose a discarded mission and return it to your hand.",
       "image": "",
       "set": "rote"
@@ -1134,7 +1135,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "critical-rescue",
       "rulesText": "Attempt on a captured leader. Rescue the leader. If the mission fails, return this card to your hand.",
       "image": "",
       "set": "rote"
@@ -1149,7 +1150,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "covert-operations",
       "rulesText": "Attempt on a system with 1+ Imperial units. Draw 2 Objective cards, keep 1, put the other at the bottom of the deck.",
       "image": "",
       "set": "rote"
@@ -1209,7 +1210,7 @@
       "skillCost": 0,
       "isAttempt": false,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "my-only-hope",
       "rulesText": "Resolve in a remote system. Recruit Luke, Obi-Wan, Jyn Erso, Han Solo, or Chirrut Imwe and place them here.",
       "image": "",
       "set": "rote"
@@ -1224,7 +1225,7 @@
       "skillCost": 0,
       "isAttempt": false,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "rebel-promotion",
       "rulesText": "Resolve in a Rebel system. Recruit Ackbar, Wedge, Madine, Cassian Andor, or Saw Gerrera and place them here.",
       "image": "",
       "set": "rote"

@@ -2,12 +2,13 @@
 // Each handler is small; complex multi-stage cards live in their own files
 // under handlers/ as the scope grows.
 
-import type { GameState } from '../types';
+import type { GameState, Side } from '../types';
 import * as M from '../mechanics';
 import { register, type EffectHandler } from './registry';
 import { beginCombat, runCombat } from '../combat';
 import { notImplemented, log, pushNotice } from '../log';
-import { shuffle, nextInt } from '../rng';
+import { shuffle, nextInt, rollDie } from '../rng';
+import { leaderRecruitable } from '../phases';
 
 /** Resolve a combat at `sysId` initiated by `attackerSide`. Used by mission
  *  effects that spawn units and then "resolve a combat" (Ignite Rebellion,
@@ -1302,6 +1303,190 @@ const covertOperation: EffectHandler = (G, ctx) => {
 };
 
 // ============================================================================
+// Rise of the Empire — Wave A handlers (data-only -> wired effects)
+// ============================================================================
+//
+// Phase 5b first batch: 12 RoE mission handlers whose effects either reuse
+// base-game mechanics or are simple combinations of them. Source text is in
+// assets/missions.json (transcribed from MissionReference_RotE_Final.pdf in
+// Phase 5a). Choice-heavy missions (per-card pick UIs) are deferred to
+// Wave B/C.
+
+/** Recruit the first eligible leader from `candidates` and place them at
+ *  `sysId`. Returns true if a leader was placed, false if no candidate was
+ *  recruitable (every leader already in pool, on board, on mission, or
+ *  eliminated). Mirrors the "Recruit X, place in this system" mission
+ *  phrasing used across Hire Mercenaries / Promotion / My Only Hope. */
+function recruitAndPlace(
+  G: GameState, side: Side, candidates: readonly string[], sysId: string, cause: string,
+): boolean {
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  const eligible = candidates.find((lid) => leaderRecruitable(G, side, lid));
+  if (!eligible) {
+    log(G, { kind: 'recruit-no-candidate', side, payload: { cause, candidates: [...candidates] } });
+    return false;
+  }
+  f.leaderPool.push(eligible);
+  log(G, { kind: 'recruit-leader', side, payload: { leaderId: eligible, via: cause } });
+  M.placeLeader(G, side, eligible, sysId);
+  return true;
+}
+
+/** All catalog leaders for `side` that satisfy a predicate AND are
+ *  recruitable RIGHT NOW. Used by Hire Mercenaries (no-tactic-values) and
+ *  Imperial Promotion (has-tactic-values). */
+function catalogRecruitable(
+  G: GameState, side: Side, pred: (id: string) => boolean,
+): string[] {
+  return Object.values(G.catalog.leaders)
+    .filter((l) => l.side === side && pred(l.id) && leaderRecruitable(G, side, l.id))
+    .map((l) => l.id);
+}
+
+const hasTacticValues = (G: GameState, lid: string): boolean => {
+  const l = G.catalog.leaders[lid];
+  return !!l && (l.tacticValues.space > 0 || l.tacticValues.ground > 0);
+};
+
+// ----- Imperial Wave A -----
+
+/** Deployment: "Attempt on a system with no Rebel units or loyalty. Gain 1
+ *  triangle ground unit." Auto-deploys 1 Stormtrooper at the target. */
+const deployment: EffectHandler = (G, ctx) => {
+  if (!ctx.targetSystemId) return true;
+  M.gainUnit(G, 'Empire', 'stormtrooper', ctx.targetSystemId);
+  return true;
+};
+
+/** Message From High Command: "Gain 1 loyalty. Return all assigned leaders
+ *  to the leader pool." */
+const messageFromHighCommand: EffectHandler = (G, ctx) => {
+  if (!ctx.targetSystemId) return true;
+  M.gainLoyalty(G, 'Empire', ctx.targetSystemId, 1);
+  for (const lid of ctx.leaderIds) M.returnLeader(G, 'Empire', lid);
+  return true;
+};
+
+/** Stolen Intel: "Draw a probe card. Look at the Rebel hand of missions and
+ *  discard one (not a starter)." Auto-picks the first non-starter Rebel
+ *  mission in hand. Empire-side. */
+const stolenIntel: EffectHandler = (G, _ctx) => {
+  M.drawProbe(G, 1);
+  const hand = G.rebel.missionHand;
+  const idx = hand.findIndex((mid) => {
+    const m = G.catalog.missions[mid];
+    return m && !m.isStarting;
+  });
+  if (idx < 0) {
+    log(G, { kind: 'stolen-intel-no-target', side: 'Empire', payload: {} });
+    return true;
+  }
+  const [discarded] = hand.splice(idx, 1);
+  G.rebel.missionDiscard.push(discarded);
+  log(G, { kind: 'stolen-intel-discard', side: 'Empire', payload: { missionId: discarded } });
+  return true;
+};
+
+/** Hire Mercenaries: "Resolve in a remote system. Recruit 1 Imperial leader
+ *  without tactic values and place them in this system." */
+const hireMercenaries: EffectHandler = (G, ctx) => {
+  if (!ctx.targetSystemId) return true;
+  const noTactic = catalogRecruitable(G, 'Empire', (lid) => !hasTacticValues(G, lid));
+  recruitAndPlace(G, 'Empire', noTactic, ctx.targetSystemId, 'hire-mercenaries');
+  return true;
+};
+
+/** Imperial Promotion: "Resolve in any Imperial system. Recruit 1 Imperial
+ *  leader with tactic values and place them in this system." */
+const imperialPromotion: EffectHandler = (G, ctx) => {
+  if (!ctx.targetSystemId) return true;
+  const withTactic = catalogRecruitable(G, 'Empire', (lid) => hasTacticValues(G, lid));
+  recruitAndPlace(G, 'Empire', withTactic, ctx.targetSystemId, 'imperial-promotion');
+  return true;
+};
+
+/** Discredit Rebellion: "Resolve on a sabotaged system. Rebel must remove
+ *  all sabotage markers on the board, or roll 1 die — on any success,
+ *  Rebels lose 1 reputation. If Motti is assigned, Rebels roll 2 dice
+ *  instead." Rebel almost always prefers to roll (sabotage markers are
+ *  valuable), so we auto-roll. */
+const discreditRebellion: EffectHandler = (G, ctx) => {
+  const dice = ctx.leaderIds.includes('motti') ? 2 : 1;
+  const faces: string[] = [];
+  for (let i = 0; i < dice; i++) faces.push(rollDie(G.rng, 'red').face);
+  const hit = faces.some((f) => f === 'hit' || f === 'direct-hit');
+  log(G, { kind: 'discredit-rebellion-roll', side: 'Empire', payload: { faces, hit, dice } });
+  if (hit) M.loseReputation(G, 1);
+  return true;
+};
+
+// ----- Rebel Wave A -----
+
+/** Regional Aid: "Gain 1 loyalty here, and 1 loyalty elsewhere in the same
+ *  region." Auto-picks the first eligible other system in the region. */
+const regionalAid: EffectHandler = (G, ctx) => {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  M.gainLoyalty(G, 'Rebel', sysId, 1);
+  const def = G.catalog.systems[sysId];
+  if (!def) return true;
+  const other = Object.values(G.catalog.systems).find(
+    (s) => s.id !== sysId && s.region === def.region && !s.isRemote && !s.isCoruscant,
+  );
+  if (other) M.gainLoyalty(G, 'Rebel', other.id, 1);
+  return true;
+};
+
+/** Reconnaissance: "Attempt on an Imperial system. Choose a discarded
+ *  mission and return it to your hand." Auto-picks the first mission in
+ *  the Rebel discard pile. */
+const reconnaissance: EffectHandler = (G, _ctx) => {
+  const pile = G.rebel.missionDiscard;
+  if (!pile.length) return true;
+  const recovered = pile.shift()!;
+  G.rebel.missionHand.push(recovered);
+  log(G, { kind: 'reconnaissance-recover', side: 'Rebel', payload: { missionId: recovered } });
+  return true;
+};
+
+/** Critical Rescue: "Attempt on a captured leader. Rescue the leader. If
+ *  the mission fails, return this card to your hand." Mission-flow handles
+ *  the failure case (return-to-hand); the success handler just rescues. */
+const criticalRescue: EffectHandler = (G, ctx) => {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  const cap = (G.empire.capturedLeaders ?? []).find((c) => c.systemId === sysId);
+  if (cap) M.rescueLeader(G, cap.leaderId, 'critical-rescue');
+  return true;
+};
+
+const REBEL_PROMOTION_POOL = [
+  'admiral-ackbar', 'wedge-antilles', 'general-madine',
+  'cassian-andor', 'saw-gerrera',
+] as const;
+
+const MY_ONLY_HOPE_POOL = [
+  'luke-skywalker', 'obi-wan-kenobi', 'jyn-erso',
+  'han-solo', 'chirrut-imwe',
+] as const;
+
+/** Rebel Promotion: "Resolve in a Rebel system. Recruit Ackbar, Wedge,
+ *  Madine, Cassian Andor, or Saw Gerrera and place them here." */
+const rebelPromotion: EffectHandler = (G, ctx) => {
+  if (!ctx.targetSystemId) return true;
+  recruitAndPlace(G, 'Rebel', REBEL_PROMOTION_POOL, ctx.targetSystemId, 'rebel-promotion');
+  return true;
+};
+
+/** My Only Hope: "Resolve in a remote system. Recruit Luke, Obi-Wan, Jyn
+ *  Erso, Han Solo, or Chirrut Imwe and place them here." */
+const myOnlyHope: EffectHandler = (G, ctx) => {
+  if (!ctx.targetSystemId) return true;
+  recruitAndPlace(G, 'Rebel', MY_ONLY_HOPE_POOL, ctx.targetSystemId, 'my-only-hope');
+  return true;
+};
+
+// ============================================================================
 // Defaults / helpers
 // ============================================================================
 
@@ -1398,6 +1583,24 @@ export function registerAll(): void {
   register('intercept-transmissions', interceptTransmissions);
   register('homing-beacon', homingBeacon);
   register('plant-false-lead', plantFalseLead);
+
+  // ----- Rise of the Empire — Wave A (Phase 5b) -----
+  // Imperial
+  register('deployment', deployment);
+  register('message-from-high-command', messageFromHighCommand);
+  register('stolen-intel', stolenIntel);
+  register('hire-mercenaries', hireMercenaries);
+  register('imperial-promotion', imperialPromotion);
+  register('discredit-rebellion', discreditRebellion);
+  // Rebel
+  register('regional-aid', regionalAid);
+  register('reconnaissance', reconnaissance);
+  register('critical-rescue', criticalRescue);
+  register('rebel-promotion', rebelPromotion);
+  register('my-only-hope', myOnlyHope);
+  // RoE "Covert Operations" (plural) has the same effect as the base
+  // "Covert Operation" (singular) — reuse the existing handler.
+  register('covert-operations', covertOperation);
 
   // Tactic cards (stubs)
   // No tactic-card registrations: those effects live inline in combat.ts.
