@@ -50,7 +50,7 @@ function combatCanProgress(G: GameState, sysId: SystemId): boolean {
     for (const [atk, def] of [['Rebel', 'Empire'], ['Empire', 'Rebel']] as const) {
       const hasAttacker = unitsOf(G, atk, sysId, theater).some((u) => {
         const t = G.catalog.unitTypes[u.typeId];
-        return t ? (t.attack.red + t.attack.black) > 0 : false;
+        return t ? (t.attack.red + t.attack.black + t.attack.green) > 0 : false;
       });
       const hasDestructibleTarget = unitsOf(G, def, sysId, theater).some((u) => {
         const t = G.catalog.unitTypes[u.typeId];
@@ -447,16 +447,23 @@ function beginAttack(G: GameState, c: CombatState, side: Side, theater: Theater)
     return;
   }
 
-  // Sum attack values, capped at 5R + 5B per attack (rr p.4).
-  let red = 0, black = 0;
+  // Sum attack values, capped at 5R + 5B per attack (rr p.4). RoE adds a
+  // third die colour (green); the cap is 3 green per attack (RoE rules p.8:
+  // "A player cannot roll more than 3 green dice when attempting a mission
+  // or rolling dice in combat. These dice can be used in addition to the
+  // maximum of 5 red dice and 5 black dice."). Base-game units have
+  // attack.green === 0 so this is a no-op outside the expansion.
+  let red = 0, black = 0, green = 0;
   for (const u of myUnits) {
     const t = G.catalog.unitTypes[u.typeId];
     if (!t) continue;
     red += t.attack.red;
     black += t.attack.black;
+    green += t.attack.green;
   }
   red = Math.min(5, red);
   black = Math.min(5, black);
+  green = Math.min(3, green);
 
   // "According To My Design" (Emperor Palpatine start-of-combat action card):
   // Rebel rolls 1 fewer red die and 2 fewer black dice for the first round
@@ -475,6 +482,7 @@ function beginAttack(G: GameState, c: CombatState, side: Side, theater: Theater)
   const dice: DieResult[] = [];
   for (let i = 0; i < red; i++) dice.push(rollDie(G.rng, 'red' as DieColor));
   for (let i = 0; i < black; i++) dice.push(rollDie(G.rng, 'black' as DieColor));
+  for (let i = 0; i < green; i++) dice.push(rollDie(G.rng, 'green' as DieColor));
 
   // Stash the in-flight attack. The phase will be set by advanceAttackToTactics
   // based on which pre-tactic pause point (Yoda / Special) applies first.

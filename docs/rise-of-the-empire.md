@@ -199,8 +199,17 @@ New mechanics that need engine work, not just data:
      setup.ts; verified in-browser (RoE game: deckSize 14 + 1 in hand,
      both DSP cards present; base game: deckSize 14 + 1 in hand,
      no RoE leakage).
-   - **Green dice (TODO):** combat module rolls green dice for units
-     whose `attack.green > 0`; 3-die cap per RoE rules p.8.
+   - **Green dice in combat (DONE):** `beginAttack` in
+     `src/engine/combat.ts` now sums `attack.green` from each rolling
+     unit, caps at 3 (RoE rules p.8: "A player cannot roll more than
+     3 green dice"), and rolls. The has-attacker gate also checks
+     green so RoE units with green-only attack (e.g. TIE Striker) are
+     recognized as having attack capability. `rollDie` and
+     `GREEN_FACES` already supported green from a prior pass; the
+     `Die` component renders any colour via CSS+glyph (no PNG
+     dependency), so green dice show correctly without new art. Mission
+     green dice (from leader **minor** skills) are TODO — they're a
+     Phase 5c leader-data dependency.
    - **Target markers (TODO):** mission/objective cards that resolve via
      a marker on the board; needed for Heist, Secure the Plans, Raid
      Outposts, Rebel Cell, Show No Fear handlers.
