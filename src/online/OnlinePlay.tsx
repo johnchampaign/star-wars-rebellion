@@ -239,6 +239,20 @@ function ChatPanel({ gameId, token, you }: { gameId: string; token: string; you:
         style={{ width: '100%', fontSize: 12, padding: '3px 8px' }}>
         💬 Messages{unread > 0 ? ` (${unread})` : ''} {open ? '▾' : '▸'}
       </button>
+      {/* Collapsed peek: the last few messages (incl. your own), one line each,
+          so recent context is glanceable without expanding. */}
+      {!open && msgs.length > 0 && (
+        <div style={{ marginTop: 4, padding: 6, background: '#15171c', border: '1px solid #2a2d34',
+          borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {msgs.slice(-3).map((m, i) => (
+            <div key={i} title={`${m.seat === you ? 'You' : m.seat} (${relativeTime(m.at)}): ${m.body}`}
+              style={{ fontSize: 11, lineHeight: 1.25, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              <span style={{ color: seatColor(m.seat), fontWeight: 700 }}>{m.seat === you ? 'You' : m.seat}</span>
+              <span style={{ color: '#cdd6f4' }}>{' · '}{m.body}</span>
+            </div>
+          ))}
+        </div>
+      )}
       {open && (
         <div style={{ border: '1px solid #333', borderTop: 'none', borderRadius: '0 0 6px 6px', background: '#15171c' }}>
           <div ref={listRef} style={{ maxHeight: 150, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
