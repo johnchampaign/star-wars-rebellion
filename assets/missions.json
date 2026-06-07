@@ -15,7 +15,8 @@
       "Populated by scripts/populate-cards.py from user-provided reference materials (47 entries matched).",
       "Populated by scripts/populate-cards.py from user-provided reference materials (53 entries matched).",
       "Phase 5 (data-only): appended 31 Rise of the Empire missions tagged set: \"rote\". effectKey is empty pending Phase 5b handler bindings — the cards appear in the deck when expansion.roeMissions is on but resolve as no-ops until then. Skill assignments are best-effort from rule flavour; confirm against actual card art in a follow-up.",
-      "Phase 5b Wave A: bound effectKey for 12 RoE missions to handlers in src/engine/handlers/index.ts. Choice-heavy missions deferred to Wave B/C."
+      "Phase 5b Wave A: bound effectKey for 12 RoE missions to handlers in src/engine/handlers/index.ts. Choice-heavy missions deferred to Wave B/C.",
+      "Phase 5b Wave B: bound effectKey for 9 more RoE missions."
     ]
   },
   "missions": [
@@ -805,7 +806,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": "jabba",
-      "effectKey": "",
+      "effectKey": "make-an-example",
       "rulesText": "Attempt on a captured leader in a remote system. Count all skill icons; the captured leader is eliminated.",
       "image": "",
       "set": "rote"
@@ -820,7 +821,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": "krennic",
-      "effectKey": "",
+      "effectKey": "secure-the-plans",
       "rulesText": "Attempt on a remote system. Place a target marker. While the marker remains, Rebels cannot play \"Death Star Plans\".",
       "image": "",
       "set": "rote"
@@ -910,7 +911,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "were-the-bait",
       "rulesText": "Attempt on a captured leader's system. Take 4-health of ground units from the Rebel Base and place them here. Resolve combat.",
       "image": "",
       "set": "rote"
@@ -925,7 +926,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "exploit-weakness",
       "rulesText": "Attempt on a captured leader. Rebel reveals 1 random Objective card from hand and places it on top of the deck.",
       "image": "",
       "set": "rote"
@@ -970,7 +971,7 @@
       "skillCost": 0,
       "isAttempt": false,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "imperial-might",
       "rulesText": "Resolve on a Death Star, DSUC, or Shield Bunker with no Rebel units. Take 4 Imperial units from space 1 of the build queue and place them in this system. If 2 leaders are assigned, move those leaders to Coruscant.",
       "image": "",
       "set": "rote"
@@ -1045,7 +1046,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": "jyn-erso",
-      "effectKey": "",
+      "effectKey": "heist",
       "rulesText": "Attempt on a system with 1+ Imperial units. Remove 1 target marker. If on a Death Star or DSUC, you may draw the top objective card instead.",
       "image": "",
       "set": "rote"
@@ -1090,7 +1091,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "safe-haven",
       "rulesText": "Attempt on a Rebel system with no Imperial units. Take up to 2 units from the build queue and deploy them here.",
       "image": "",
       "set": "rote"
@@ -1165,7 +1166,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "assault",
       "rulesText": "Attempt on a subjugated system. Roll even if unopposed. If more successes than the Imperial player, destroy up to 3 Stormtroopers, up to the difference in successes.",
       "image": "",
       "set": "rote"
@@ -1180,7 +1181,7 @@
       "skillCost": 0,
       "isAttempt": true,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "plant-explosives",
       "rulesText": "Attempt on any system. Roll even if unopposed. If more successes than the Imperial player, destroy up to 3 ground units, combined health up to the difference in successes.",
       "image": "",
       "set": "rote"

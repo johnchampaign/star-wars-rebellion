@@ -1487,6 +1487,178 @@ const myOnlyHope: EffectHandler = (G, ctx) => {
 };
 
 // ============================================================================
+// Rise of the Empire — Wave B handlers (Phase 5b)
+// ============================================================================
+//
+// Missions using the target-marker primitive (placed in Phase 6) and
+// medium-complexity effects (build-queue moves, hand inspection, ground-
+// unit pulls). Break Their Will is deferred to Wave C — it needs a real
+// "name a system" choice and the same yes/no probe modal as Long Range
+// Probe.
+
+// ----- Imperial Wave B -----
+
+/** Secure the Plans (Krennic): place a target marker. Phase 6 already
+ *  wires this into the Death Star Plans path — while the marker remains,
+ *  Rebels can't play DSP on the marker's system. */
+const secureThePlans: EffectHandler = (G, ctx) => {
+  if (!ctx.targetSystemId) return true;
+  M.placeTargetMarker(G, ctx.targetSystemId, 'secure-the-plans', 'Empire');
+  return true;
+};
+
+/** Make an Example (Jabba): "Captured leader is eliminated." */
+const makeAnExample: EffectHandler = (G, ctx) => {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  const cap = (G.empire.capturedLeaders ?? []).find((c) => c.systemId === sysId);
+  if (cap) {
+    M.eliminateLeader(G, 'Rebel', cap.leaderId);
+    log(G, { kind: 'make-an-example-eliminate', side: 'Empire', payload: { leaderId: cap.leaderId, systemId: sysId } });
+  }
+  return true;
+};
+
+/** Imperial Might: "Take 4 Imperial units from space 1 of the build queue
+ *  and place them in this system. If 2 leaders assigned, move those leaders
+ *  to Coruscant." Auto-picks the first 4 units off slot 1. */
+const imperialMight: EffectHandler = (G, ctx) => {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  const q = G.empire.buildQueue[1];
+  const taken: string[] = [];
+  for (let i = 0; i < 4 && q.length > 0; i++) taken.push(q.shift()!);
+  for (const typeId of taken) M.deployUnit(G, 'Empire', typeId, sysId);
+  log(G, { kind: 'imperial-might-deploy', side: 'Empire', payload: { systemId: sysId, unitTypes: taken } });
+  if (ctx.leaderIds.length >= 2) {
+    for (const lid of ctx.leaderIds) {
+      M.returnLeader(G, 'Empire', lid);
+      M.placeLeader(G, 'Empire', lid, 'coruscant');
+    }
+    log(G, { kind: 'imperial-might-move-leaders', side: 'Empire', payload: { leaderIds: ctx.leaderIds } });
+  }
+  return true;
+};
+
+/** We're the Bait: "Take 4-health of ground units from the Rebel Base and
+ *  place them here. Resolve combat." Auto-picks ground units up to a
+ *  4-health budget (smallest first so we use the budget efficiently). */
+const weretheBait: EffectHandler = (G, ctx) => {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  const baseSourceId = G.rebelBaseRevealed ? G.rebelBaseSystemId : 'rebel-base-space';
+  const baseContainer = baseSourceId === 'rebel-base-space'
+    ? G.map.rebelBaseSpace : G.map.systems[baseSourceId];
+  if (!baseContainer) return true;
+  // Smallest-health first so the 4-health budget covers the maximum unit count.
+  const ground = baseContainer.units
+    .filter((u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground')
+    .slice()
+    .sort((a, b) => (G.catalog.unitTypes[a.typeId]?.health.value ?? 0) - (G.catalog.unitTypes[b.typeId]?.health.value ?? 0));
+  let budget = 4;
+  const moved: string[] = [];
+  for (const u of ground) {
+    const h = G.catalog.unitTypes[u.typeId]?.health.value ?? 0;
+    if (h === 0 || h > budget) continue;
+    M.moveUnit(G, u.instanceId, baseSourceId, sysId);
+    budget -= h;
+    moved.push(u.typeId);
+    if (budget === 0) break;
+  }
+  log(G, { kind: 'were-the-bait', side: 'Empire', payload: { systemId: sysId, moved } });
+  triggerCombatAt(G, 'Empire', sysId);
+  return true;
+};
+
+/** Exploit Weakness: "Rebel reveals 1 RANDOM Objective card from hand and
+ *  places it on top of the deck." Uses the game RNG so it's deterministic
+ *  per seed. */
+const exploitWeakness: EffectHandler = (G, _ctx) => {
+  const hand = G.rebel.objectiveHand ?? [];
+  const deck = G.rebel.objectiveDeck;
+  if (hand.length === 0 || !deck) return true;
+  const idx = nextInt(G.rng, hand.length);
+  const [picked] = hand.splice(idx, 1);
+  deck.unshift(picked);
+  log(G, { kind: 'exploit-weakness', side: 'Empire', payload: { objectiveId: picked } });
+  return true;
+};
+
+// ----- Rebel Wave B -----
+
+/** Heist (Jyn): "Remove 1 target marker. If on a Death Star or DSUC, you
+ *  may draw the top objective card instead." Auto-picks the more powerful
+ *  effect when both apply: draw an objective if a DS/DSUC is here. */
+const heist: EffectHandler = (G, ctx) => {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  const ss = G.map.systems[sysId];
+  const hasDsOrDsuc = (ss?.units ?? []).some(
+    (u) => u.side === 'Empire' && (u.typeId === 'death-star' || u.typeId === 'death-star-under-construction'),
+  );
+  if (hasDsOrDsuc) {
+    // Strictly the better effect at a DS/DSUC site.
+    M.drawObjective(G, 1);
+    log(G, { kind: 'heist-draw-objective', side: 'Rebel', payload: { systemId: sysId } });
+    return true;
+  }
+  // Remove any target marker present (RAW says "remove 1"). Take the first.
+  const markers = ss?.targetMarkers ?? [];
+  if (markers.length > 0) {
+    M.removeTargetMarker(G, sysId, markers[0].source, 'Rebel');
+  } else {
+    log(G, { kind: 'heist-no-marker', side: 'Rebel', payload: { systemId: sysId } });
+  }
+  return true;
+};
+
+/** Plant Explosives: "Destroy up to 3 ground units, combined health up to
+ *  the difference in successes." The handler runs only on success; we cap
+ *  at 3 health-worth of Imperial ground units. The "difference in
+ *  successes" refinement is a future polish pass — the engine doesn't pass
+ *  that delta to handlers today. */
+const plantExplosives: EffectHandler = (G, ctx) => {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  queueDestroyUpToHealth(G, 'Rebel', 'Empire', sysId, 3, 'Plant Explosives', 'ground');
+  return true;
+};
+
+/** Assault: "Destroy up to 3 Stormtroopers, up to the difference in
+ *  successes." Same successes-delta caveat as Plant Explosives; cap at 3
+ *  Stormtroopers (each 1 health, so it's also a 3-health cap by side
+ *  effect — but type-restricted). */
+const assault: EffectHandler = (G, ctx) => {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  const ss = G.map.systems[sysId];
+  if (!ss) return true;
+  const stormtroopers = ss.units
+    .filter((u) => u.side === 'Empire' && u.typeId === 'stormtrooper')
+    .slice(0, 3);
+  for (const u of stormtroopers) M.destroyUnit(G, u.instanceId, 'assault');
+  log(G, { kind: 'assault-destroy', side: 'Rebel', payload: { systemId: sysId, count: stormtroopers.length } });
+  return true;
+};
+
+/** Safe Haven: "Take up to 2 units from the build queue and deploy them
+ *  here." Pulls 2 unit types from the Rebel build queue (slot 1, then 2,
+ *  then 3) and deploys to the target. */
+const safeHaven: EffectHandler = (G, ctx) => {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return true;
+  const taken: string[] = [];
+  for (const slot of [1, 2, 3] as const) {
+    const q = G.rebel.buildQueue[slot];
+    while (taken.length < 2 && q.length > 0) taken.push(q.shift()!);
+    if (taken.length === 2) break;
+  }
+  for (const typeId of taken) M.deployUnit(G, 'Rebel', typeId, sysId);
+  log(G, { kind: 'safe-haven-deploy', side: 'Rebel', payload: { systemId: sysId, unitTypes: taken } });
+  return true;
+};
+
+// ============================================================================
 // Defaults / helpers
 // ============================================================================
 
@@ -1601,6 +1773,19 @@ export function registerAll(): void {
   // RoE "Covert Operations" (plural) has the same effect as the base
   // "Covert Operation" (singular) — reuse the existing handler.
   register('covert-operations', covertOperation);
+
+  // ----- Rise of the Empire — Wave B (Phase 5b) -----
+  // Imperial
+  register('secure-the-plans', secureThePlans);
+  register('make-an-example', makeAnExample);
+  register('imperial-might', imperialMight);
+  register('were-the-bait', weretheBait);
+  register('exploit-weakness', exploitWeakness);
+  // Rebel
+  register('heist', heist);
+  register('plant-explosives', plantExplosives);
+  register('assault', assault);
+  register('safe-haven', safeHaven);
 
   // Tactic cards (stubs)
   // No tactic-card registrations: those effects live inline in combat.ts.
