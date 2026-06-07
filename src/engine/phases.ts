@@ -1521,13 +1521,14 @@ export function resolvePlanTheAssaultShips(G: GameState, shipIds: string[]): { o
   // card does NOT say "ignoring transport restrictions" — fighters with
   // the restriction icon (X-Wing, Y-Wing) still need a transport-capacity
   // ship in the move group.
+  const sourceSystemId = choice.sourceSystemId ?? 'rebel-base-space';
   const cap = validateMoveOrderTransport(G, 'Rebel', {
-    fromSystemId: 'rebel-base-space', unitInstanceIds: shipIds,
+    fromSystemId: sourceSystemId, unitInstanceIds: shipIds,
   });
   if (!cap.ok) return { ok: false, reason: `plan-the-assault-transport:${cap.reason}` };
-  // Move each picked ship from rebel-base-space to the target system.
+  // Move each picked ship from its origin to the target system.
   for (const sid of shipIds) {
-    M.moveUnit(G, sid, 'rebel-base-space', targetSystemId);
+    M.moveUnit(G, sid, sourceSystemId, targetSystemId);
   }
   log(G, { kind: 'plan-the-assault-move', side: 'Rebel', payload: {
     targetSystemId, shipsSent: shipIds.length,
@@ -1535,8 +1536,8 @@ export function resolvePlanTheAssaultShips(G: GameState, shipIds: string[]): { o
   G.pendingChoice = undefined;
 
   // Kick off combat at the target if both sides now have units there.
-  // Source system for retreat purposes = rebel-base-space.
-  beginCombat(G, 'Rebel', 'rebel-base-space', targetSystemId);
+  // Source system for retreat purposes = the ships' origin.
+  beginCombat(G, 'Rebel', sourceSystemId, targetSystemId);
   runCombat(G);
 
   // If combat is paused for a choice, leave it. Otherwise resume mission
@@ -1562,14 +1563,17 @@ export function resolveLeadStrikeTeamUnits(G: GameState, unitIds: string[]): { o
     seen.add(uid);
   }
   const targetSystemId = choice.targetSystemId;
+  // After the base is revealed (RR p.11) the units live in the base's system,
+  // not the base space — move them from wherever the handler found them.
+  const sourceSystemId = choice.sourceSystemId ?? 'rebel-base-space';
   // Ignoring transport restriction and adjacency — just move them.
-  for (const uid of unitIds) M.moveUnit(G, uid, 'rebel-base-space', targetSystemId);
+  for (const uid of unitIds) M.moveUnit(G, uid, sourceSystemId, targetSystemId);
   log(G, { kind: 'lead-strike-team-move', side: 'Rebel', payload: {
     targetSystemId, unitsSent: unitIds.length,
   }});
   G.pendingChoice = undefined;
-  // Resolve combat at the target (retreat source = rebel-base-space).
-  beginCombat(G, 'Rebel', 'rebel-base-space', targetSystemId);
+  // Resolve combat at the target (retreat source = the units' origin).
+  beginCombat(G, 'Rebel', sourceSystemId, targetSystemId);
   runCombat(G);
   if (G.pendingChoice || G.pendingCombat) return { ok: true };
   resumeMissionAfterChoice(G);
@@ -1840,6 +1844,11 @@ export function resolvePublicUprisingPick(G: GameState, picks: {
 export function resolveSupportOfMonCalamariPick(G: GameState, option: 'loyalty' | 'cruiser'): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;
   if (!choice || choice.kind !== 'SupportOfMonCalamariPick') return { ok: false, reason: 'no-pending' };
+  if (option === 'cruiser' && M.unitsAvailableInSupply(G, 'mon-cala-cruiser') <= 0) {
+    // RR p.6 component limits: cannot place a cruiser when all 3 are already
+    // in play / queued. Refuse so the player must pick the loyalty option.
+    return { ok: false, reason: 'no-cruiser-in-supply' };
+  }
   if (option === 'loyalty') M.gainLoyalty(G, 'Rebel', 'mon-calamari', 2);
   else M.buildToQueue(G, 'Rebel', 'mon-cala-cruiser', 3);
   log(G, { kind: 'support-mon-cala-pick', side: 'Rebel', payload: { option } });

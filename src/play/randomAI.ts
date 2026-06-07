@@ -1721,7 +1721,10 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     // wasted, so take the guaranteed Mon Cala Cruiser instead. (Player report
     // #95: the Rebel AI kept gaining masked loyalty on Empire-held Mon Cala.)
     const loyaltyWasted = c.monCalaSubjugated || c.monCalaLoyalty === 'rebel';
-    return phases.resolveSupportOfMonCalamariPick(G, loyaltyWasted ? 'cruiser' : 'loyalty').ok;
+    // If no cruiser remains in supply (all 3 already in play), the cruiser
+    // option is illegal — fall back to loyalty even when it's "wasted".
+    const wantCruiser = loyaltyWasted && c.cruiserAvailable !== false;
+    return phases.resolveSupportOfMonCalamariPick(G, wantCruiser ? 'cruiser' : 'loyalty').ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'MisdirectionPick' && G.pendingChoice.side === side) {
     // AI: protect the highest-value Rebel leader.

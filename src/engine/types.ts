@@ -281,6 +281,9 @@ export type ChoiceRequest =
       side: Side;
       monCalaLoyalty: 'rebel' | 'imperial' | 'neutral';
       monCalaSubjugated: boolean;
+      // False when all 3 Mon Calamari Cruisers are already in play/queued
+      // (RR p.6 component limits) — the cruiser option must be unavailable.
+      cruiserAvailable: boolean;
     }
   | {
       // Refresh-phase deploy step: a unit fell off slot 1 of the build
@@ -728,6 +731,9 @@ export type ChoiceRequest =
       side: Side;            // always 'Rebel'
       targetSystemId: SystemId;
       availableShipIds: UnitInstanceId[];
+      // Origin of the ships: Rebel Base space, or the base's system once
+      // revealed (RR p.11). Defaulted on read for back-compat.
+      sourceSystemId?: SystemId;
     }
   | {
       // Lead The Strike Team: Rebel picks up to 4 GROUND units in
@@ -737,6 +743,10 @@ export type ChoiceRequest =
       side: Side;            // always 'Rebel'
       targetSystemId: SystemId;
       availableUnitIds: UnitInstanceId[];
+      // Where the units are moving FROM: the Rebel Base space, or — once the
+      // base is revealed (RR p.11) — the base's system. Defaulted on read for
+      // back-compat with choices serialized before this field existed.
+      sourceSystemId?: SystemId;
       max: number;           // up to 4
     }
   | {

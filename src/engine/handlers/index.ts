@@ -717,7 +717,14 @@ const leadTheStrikeTeam: EffectHandler = (G, ctx) => {
   // picks and kicks off combat.
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  const baseGround = G.map.rebelBaseSpace.units
+  // RR p.11: once the Rebel Base is revealed, cards that apply to the "Rebel
+  // Base" space apply to the base's SYSTEM instead — the staged units have all
+  // moved out of the base space and into that system (player report #142: after
+  // reveal, Lead the Strike Team found no units in the now-empty base space).
+  const baseSourceId = G.rebelBaseRevealed ? G.rebelBaseSystemId : 'rebel-base-space';
+  const baseContainer = baseSourceId === 'rebel-base-space'
+    ? G.map.rebelBaseSpace : G.map.systems[baseSourceId];
+  const baseGround = (baseContainer?.units ?? [])
     .filter((u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground')
     .map((u) => u.instanceId);
   if (baseGround.length === 0) {
@@ -731,6 +738,7 @@ const leadTheStrikeTeam: EffectHandler = (G, ctx) => {
     side: 'Rebel',
     targetSystemId: sysId,
     availableUnitIds: baseGround,
+    sourceSystemId: baseSourceId,
     max: 4,
   };
   log(G, { kind: 'choice-request', side: 'Rebel', payload: {
@@ -1174,6 +1182,7 @@ const supportOfMonCalamari: EffectHandler = (G, _ctx) => {
     side: 'Rebel',
     monCalaLoyalty: (monCala?.loyalty as 'rebel' | 'imperial' | 'neutral') ?? 'neutral',
     monCalaSubjugated: !!monCala?.subjugated,
+    cruiserAvailable: M.unitsAvailableInSupply(G, 'mon-cala-cruiser') > 0,
   };
   log(G, { kind: 'choice-request', side: 'Rebel', payload: {
     kind: 'SupportOfMonCalamariPick',
@@ -1213,7 +1222,12 @@ const planTheAssault: EffectHandler = (G, ctx) => {
   // kicks off combat via combat.beginCombat.
   const targetSystemId = ctx.targetSystemId;
   if (!targetSystemId) return true;
-  const baseUnits = G.map.rebelBaseSpace.units;
+  // RR p.11: after the base is revealed, the "Rebel Base" space becomes the
+  // base's system — source the ships from wherever they actually are.
+  const baseSourceId = G.rebelBaseRevealed ? G.rebelBaseSystemId : 'rebel-base-space';
+  const baseContainer = baseSourceId === 'rebel-base-space'
+    ? G.map.rebelBaseSpace : G.map.systems[baseSourceId];
+  const baseUnits = baseContainer?.units ?? [];
   const availableShips = baseUnits
     .filter((u) => {
       if (u.side !== 'Rebel') return false;
@@ -1231,6 +1245,7 @@ const planTheAssault: EffectHandler = (G, ctx) => {
     side: 'Rebel',
     targetSystemId,
     availableShipIds: availableShips,
+    sourceSystemId: baseSourceId,
   };
   log(G, { kind: 'choice-request', side: 'Rebel', payload: {
     kind: 'PlanTheAssaultShips', targetSystemId, available: availableShips.length,

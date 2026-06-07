@@ -4492,11 +4492,12 @@ function PublicUprisingModal({ G, choice, onSubmit }: {
 /** Support Of Mon Calamari — binary loyalty vs cruiser. */
 function SupportOfMonCalamariModal({ choice, onPick }: {
   G: GameState;
-  choice: { kind: 'SupportOfMonCalamariPick'; monCalaLoyalty: string; monCalaSubjugated: boolean };
+  choice: { kind: 'SupportOfMonCalamariPick'; monCalaLoyalty: string; monCalaSubjugated: boolean; cruiserAvailable?: boolean };
   onPick: (option: 'loyalty' | 'cruiser') => void;
 }) {
   const loyaltyHint = choice.monCalaLoyalty === 'rebel' && !choice.monCalaSubjugated
     ? 'Mon Calamari is already Rebel-loyal — gain has no effect.' : '';
+  const cruiserAvailable = choice.cruiserAvailable !== false;
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
@@ -4512,10 +4513,14 @@ function SupportOfMonCalamariModal({ choice, onPick }: {
             <strong>Gain 2 loyalty</strong> in Mon Calamari
             {loyaltyHint && <div style={{ color: '#ff8866', fontSize: 11, marginTop: 4 }}>{loyaltyHint}</div>}
           </button>
-          <button onClick={() => onPick('cruiser')}
+          <button onClick={() => cruiserAvailable && onPick('cruiser')}
+            disabled={!cruiserAvailable}
             style={{ textAlign: 'left', padding: 10, background: '#0c0d10', border: '1px solid #2a2d34',
-              borderRadius: 4, color: '#e8e8ea', cursor: 'pointer', fontSize: 13 }}>
+              borderRadius: 4, color: cruiserAvailable ? '#e8e8ea' : '#666',
+              cursor: cruiserAvailable ? 'pointer' : 'not-allowed', fontSize: 13 }}>
             <strong>Place 1 Mon Calamari Cruiser</strong> on build slot 3
+            {!cruiserAvailable && <div style={{ color: '#ff8866', fontSize: 11, marginTop: 4 }}>
+              All 3 Mon Calamari Cruisers are already in play — none left to place.</div>}
           </button>
         </div>
       </div>
@@ -6436,6 +6441,37 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                   </g>
                 );
               })()}
+            </g>
+          );
+        })}
+
+        {/* Destroyed-system markers — drawn on top of everything, centered on the
+            planet art (not the loyalty hex). A destroyed system has its loyalty
+            cleared, so this gets its own pass rather than riding the loyalty loop
+            (which early-returns for loyalty-less systems). Marker art comes from
+            the loaded .vmod cache (DestroyedSystem.png, 250x250 native). */}
+        {systems.map((s) => {
+          const state = G.map.systems[s.id];
+          if (!state?.destroyed) return null;
+          const DESTROYED_NATIVE = 250;
+          // Scale the marker down to roughly cover the planet disc rather than
+          // the whole hex — half native size reads cleanly at board scale.
+          const dW = DESTROYED_NATIVE * 0.5 * BOARD_SCALE;
+          const dH = DESTROYED_NATIVE * 0.5 * BOARD_SCALE;
+          const dx = s.boardPos.x * BOARD_SCALE;
+          const dy = s.boardPos.y * BOARD_SCALE;
+          const pickerActive = !!onSystemClick;
+          return (
+            <g key={`destroyed-${s.id}`} pointerEvents={pickerActive ? 'none' : 'auto'}>
+              <title>{`${s.name ?? s.id} — destroyed`}</title>
+              <image
+                href={vmodAssetUrl('DestroyedSystem.png', MARKER_IMAGE_BASE)}
+                x={dx - dW / 2}
+                y={dy - dH / 2}
+                width={dW}
+                height={dH}
+                preserveAspectRatio="xMidYMid meet"
+              />
             </g>
           );
         })}

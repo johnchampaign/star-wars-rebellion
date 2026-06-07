@@ -261,6 +261,14 @@ export function runCombat(G: GameState): void {
       c.roundTheatersDone.push('ground');
     }
 
+    // Structure rule (rr p.4 IV) — checked at the END of each combat round,
+    // not only when combat naturally terminates. If a side's only remaining
+    // ground units are structures and the opponent still has ground units,
+    // those structures are destroyed immediately (player report #136: a Shield
+    // Generator + Ion Cannon with 0 attack just sat taking damage for 8 rounds
+    // instead of being destroyed the moment they were the last Rebel ground).
+    applyStructureRule(G, c);
+
     // Retreat decision (RR pp.5-6) — each side may retreat at most once
     // per combat. Defender goes first per RAW; then attacker.
     if (!c.retreatStepDoneThisRound) {
@@ -1807,6 +1815,29 @@ export function resolveRetreatDecision(
   return { ok: true };
 }
 
+/** Structure rule (rr p.4 IV): if a side's only remaining ground units are
+ *  structures and the opponent still has any ground units in the system, those
+ *  structures are destroyed. Idempotent — safe to call every round end and
+ *  again at combat end. */
+function applyStructureRule(G: GameState, c: NonNullable<GameState['pendingCombat']>): void {
+  for (const side of [c.attackerSide, other(c.attackerSide)] as const) {
+    const opp = other(side);
+    const myGround = unitsOf(G, side, c.systemId, 'ground');
+    if (myGround.length === 0) continue;
+    const onlyStructures = myGround.every((u) => G.catalog.unitTypes[u.typeId]?.class === 'structure');
+    if (!onlyStructures) continue;
+    const oppGround = unitsOf(G, opp, c.systemId, 'ground');
+    if (oppGround.length === 0) continue;
+    const destroyedTypeIds: string[] = [];
+    for (const u of [...myGround]) {
+      destroyedTypeIds.push(u.typeId);
+      M.destroyUnit(G, u.instanceId, 'combat-structure-rule');
+    }
+    log(G, { kind: 'combat-structure-destroy', side, payload: { systemId: c.systemId } });
+    c.report.structureDestructions.push({ side, typeIds: destroyedTypeIds });
+  }
+}
+
 function endCombat(G: GameState): void {
   if (!G.pendingCombat) return;
   const c = G.pendingCombat;
@@ -1827,25 +1858,10 @@ function endCombat(G: GameState): void {
     }
   }
 
-  // Structure rule (rr p.4 IV): if a side's only remaining ground units are
-  // structures and the opponent still has any ground units, those structures
-  // are destroyed.
-  for (const side of [c.attackerSide, other(c.attackerSide)] as const) {
-    const opp = other(side);
-    const myGround = unitsOf(G, side, c.systemId, 'ground');
-    if (myGround.length === 0) continue;
-    const onlyStructures = myGround.every((u) => G.catalog.unitTypes[u.typeId]?.class === 'structure');
-    if (!onlyStructures) continue;
-    const oppGround = unitsOf(G, opp, c.systemId, 'ground');
-    if (oppGround.length === 0) continue;
-    const destroyedTypeIds: string[] = [];
-    for (const u of [...myGround]) {
-      destroyedTypeIds.push(u.typeId);
-      M.destroyUnit(G, u.instanceId, 'combat-structure-rule');
-    }
-    log(G, { kind: 'combat-structure-destroy', side, payload: { systemId: c.systemId } });
-    c.report.structureDestructions.push({ side, typeIds: destroyedTypeIds });
-  }
+  // Structure rule — also run at end-of-combat as a safety net for paths that
+  // reach Ended without a normal round boundary (it's idempotent: no-op once
+  // the structures are already gone).
+  applyStructureRule(G, c);
 
   // Discard tactic hands, reshuffle decks (rr p.14).
   if (c.attackerHand.length > 0 || c.defenderHand.length > 0) {
