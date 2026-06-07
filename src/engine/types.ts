@@ -5,6 +5,7 @@ import type {
   Side, SystemId, ResourceIcon,
   Leader as LeaderData,
   ActionCard, MissionCard, ObjectiveCard, TacticCard, ProbeCard,
+  ExpansionConfig,
 } from '../types';
 
 // Re-export the root data-file types the engine modules treat as engine types.
@@ -33,7 +34,11 @@ export type UnitType = {
   class: UnitClass;
   tier: UnitTier;
   health: { color: HealthColor; value: number };
-  attack: { red: number; black: number };
+  // RoE adds a third die colour (green); no 3-die cap on green (still capped
+  // at 5 red / 5 black total, 3 green). Base-game units have green: 0.
+  // Combat doesn't roll green dice until the Phase 6 new-rules module ships;
+  // until then the field is present-but-ignored.
+  attack: { red: number; black: number; green: number };
   transport: { capacity: number; restriction: boolean; immobile: boolean };
   buildResource: 1 | 2 | 3;
   supplyCount: number;
@@ -1174,11 +1179,12 @@ export type LogEntry = {
 export type SeededRngState = { state: number };
 
 export type GameState = {
-  // Which content set this game was created with. When false/undefined the
-  // game is base-only and all 'rote'-tagged content was filtered out at setup.
-  // Recorded so the UI, redaction, and any expansion-specific rule branch can
-  // see it without re-deriving from the board.
-  includeExpansion?: boolean;
+  // Rise of the Empire configuration this game was created with. Always
+  // present as a fully-resolved object (defaults applied at createGame), so
+  // engine code and UI can read flags without ?? chains. `enabled: false` is
+  // the base game — every other field is forced false in that case and every
+  // 'rote'-tagged content item was filtered out at setup.
+  expansion: ExpansionConfig;
 
   // Time / reputation
   timeMarker: number;          // 1..N (8 in base game)

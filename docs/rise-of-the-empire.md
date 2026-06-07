@@ -11,10 +11,9 @@ target base-only / rote-only / both via the `set` tag.
   ```
   expansion: {
     enabled: boolean          // include RoE leaders/cards + new rules
-    roeUnits?: boolean        // SWAP base unit roster → RoE unit roster
+    roeUnits?: boolean        // ADD RoE units to the buildable roster
     newStarterUnits?: boolean // starter deployment: New (on) vs Old (off) RoE list
     roeMissions?: boolean     // SWAP base mission set → RoE mission set
-    expandedBoard?: boolean   // full expanded board (on) vs base board (off)
     cinematicCombat?: boolean // use the Cinematic Combat module
   }
   ```
@@ -26,16 +25,15 @@ target base-only / rote-only / both via the `set` tag.
     (green dice, 8-leader pool cap, target markers, unit abilities). These aren't
     individually optional in the physical game, so they aren't separate toggles.
   - The sub-toggles cover only what the rulebook actually lets you choose:
-    `roeUnits` / `newStarterUnits`, `roeMissions`, `cinematicCombat`, plus
-    `expandedBoard` (a digital nicety — RAW plays RoE on the big board;
-    default-on with RoE, base board stays available).
+    `roeUnits` / `newStarterUnits`, `roeMissions`, `cinematicCombat`. (Earlier
+    drafts included an `expandedBoard` toggle; removed once Phase 4 confirmed
+    the FFG RoE box doesn't add system tiles — see Phase 4 notes below.)
   - Consequence: "RoE on + all sub-toggles off" is a *hybrid* (base board/units/
     missions but RoE leaders + new rules), NOT the base game. The base game is
     simply `enabled: false`. This is intended.
-  Defaults when `enabled` turns on follow the user's picks: New starter units,
-  expanded board, RoE units/missions on; Cinematic Combat off by default.
-  (Phase 1 shipped a single `includeExpansion` placeholder; it gets promoted to
-  this config in Phase 2.)
+  Defaults when `enabled` turns on: RoE units, New starter units, and RoE
+  missions ON; Cinematic Combat OFF. (Phase 1 shipped a single
+  `includeExpansion` placeholder; Phase 2 promoted it to this config.)
 - **Cinematic Combat IS in scope** — build the full alternate combat module.
 - **Starting units:** an independent toggle (`newStarterUnits`); **default New**
   (the `Rise of the Empire - New Starter Units` VASSAL setup), Old available.
@@ -47,14 +45,28 @@ target base-only / rote-only / both via the `set` tag.
 - **Additive package** (present whenever `enabled`): RoE **leaders, systems,
   action / objective / probe cards**, and the new rules (green dice, leader cap,
   target markers, unit abilities).
-- **Swaps** (exclusive base-OR-RoE, per the rulebook's "choose ... or ..."):
-  - **Units** — `roeUnits` replaces the base unit roster + starting units with
-    the RoE ones (rather than adding to them).
+- **Units are ADDITIVE, not a swap** (revised from earlier draft). The
+  rulebook's setup section gives the Imperial player both base units
+  (Star Destroyer, AT-AT, TIE Fighter, …) and RoE units (TIE Striker, Assault
+  Tank, Interdictor, Shield Bunker) — the new units add to the pool, they
+  don't replace the originals. Confirmed against the 2P reference mat
+  (shows base + RoE on the same panel) and the user's reading. So `roeUnits`
+  toggles whether the RoE-tagged units are *included* in the buildable roster;
+  base units stay buildable either way. Implementation: `legalUnitsForIcon`
+  in `src/engine/phases.ts` takes G and appends the RoE units on each icon
+  when `expansion.roeUnits` is true.
+- **Mission swap** (`roeMissions`, exclusive base-OR-RoE per the rules p.8):
   - **Missions** — `roeMissions` replaces the base mission deck with the RoE
     deck (starting/project missions always included).
-  So the `inSet` gate is per-content-type: additive content keys off `enabled`;
-  unit/mission selection keys off the swap flags. This is implemented alongside
-  the actual content (Phases 3 & 5), where it can be verified against real data.
+  - The mission swap is implemented in Phase 5 alongside the actual RoE
+    mission deck data.
+- **Starter-unit swap** (`newStarterUnits`, also exclusive): picks between
+  the New RoE deployment (default) and the Old RoE / base deployment. This
+  is distinct from the additive roster — the roster says "what's buildable"
+  while the starter list says "what's pre-placed at setup."
+- So the `inSet` gate is per-content-type: additive content (leaders, systems,
+  RoE-tagged units, cards) keys off `enabled` (or `roeUnits` for units);
+  mission selection and starter-list selection key off their own flags.
 
 ## Source material (all on disk)
 
@@ -81,7 +93,10 @@ New mechanics that need engine work, not just data:
 - **Setup choices** — players independently pick **base vs RoE starting units**
   and **base vs RoE mission set**. So "include expansion" is really several
   finer toggles; v1 may collapse them into one and refine later.
-- **Bigger board** — adds systems (Nal Hutta, Mandalore, …).
+- ~~**Bigger board** — adds systems (Nal Hutta, Mandalore, …).~~ Phase 4
+  confirmed this was wrong: the FFG RoE box adds no system tiles, and the
+  systems originally listed here are already in the base 32-system map. The
+  `expandedBoard` toggle has been removed.
 - **Cinematic Combat** — a large OPTIONAL alternate combat module (advanced
   tactic cards, per-round draw/assign flow). Treat as its own opt-in, likely
   deferred past first RotE release.
@@ -96,13 +111,58 @@ New mechanics that need engine work, not just data:
    object (enabled / roeUnits / roeMissions / cinematicCombat); expose the
    switches in hotseat new-game + online Lobby, threaded through `createGame` /
    `/api/games`.
-3. **Units:** transcribe RoE unit stats/supply from the battle mats into
-   `units.ts` tagged `set: 'rote'`; wire build-icon legality + the **New Starter
-   Units** starting lists (swap base roster when `roeUnits`).
-4. **Systems/board:** add ALL RoE systems + adjacency (the full expanded map),
-   tagged rote; verify it renders and the base map is unchanged when off.
-5. **Cards:** leaders (with minor skills), then mission / objective / action /
-   probe / tactic decks, each `set: 'rote'`, with handlers per card.
+3. **Units (DONE):** RoE unit stats transcribed from the 2P battle mats into
+   `units.ts` tagged `set: 'rote'` (TIE Striker, Assault Tank, Shield Bunker,
+   Interdictor / U-Wing, Nebulon-B Frigate, Rebel Vanguard, Golan Arms Turret).
+   `UnitType.attack` gained a `green` slot; combat ignores it until Phase 6.
+   `legalUnitsForIcon` adds RoE units to the buildable roster when
+   `expansion.roeUnits` is on (additive, not swap — see above). The **New
+   Starter Units** deployment list (rulebook p.8) lands as a second starter
+   stack, selected by `(expansion.enabled && newStarterUnits)`; the Old RoE
+   starter list is still a TODO and currently falls back to the base list.
+   Unit-ability behaviour (Shield Bunker Death Star protection / easy
+   deployment / local reinforcement, Interdictor retreat block, structures-
+   survive-combat) is captured in comments and deferred to Phase 6.
+4. **Systems/board (NO-OP — phase retired):** investigation found the FFG
+   RoE expansion adds no system tiles. The base 32-system map in
+   `assets/systems.json` is already the full named-planet set; the
+   "expanded board" the plan referred to was a vestigial idea. The
+   `expandedBoard` config flag and its UI checkboxes were removed in this
+   phase. Systems data is unchanged.
+5. **Cards** — split into sub-phases:
+   - **5a — RoE missions, data-only (DONE):** 31 RoE missions transcribed
+     from `MissionReference_RotE_Final.pdf` (pp. 1-4) into
+     `assets/missions.json` tagged `set: 'rote'`, with `effectKey: ''` —
+     the cards appear in the deck so the swap mechanic is testable
+     end-to-end but resolve as no-ops until 5b. The `roeMissions` swap
+     lives in `src/engine/setup.ts`: starting + project missions are
+     additive (base always in, RoE-tagged in when `expansion.enabled`);
+     regular missions are an exclusive swap on `roeMissions`. Verified
+     in-browser: with `roeMissions: true` the Heist / Secret Mission /
+     Imperial Promotion / etc. land in the decks and base regulars drop
+     out; with `roeMissions: false` it inverts. Skill assignments
+     (diplomacy/intel/specOps/logistics) and skill costs are best-effort
+     from rule flavour and need a confirmation pass against actual card
+     art. Leader portraits for RoE-only leaders (Krennic, Motti, Jabba,
+     Chirrut Imwe, Jyn Erso, Saw Gerrera, Cassian Andor) are stored as
+     slugs even though the leaders don't exist yet — wired so the data
+     is correct when Phase 5c lands those leaders. The mission-append
+     script lives at `scripts/add-rote-missions.mjs` and is idempotent.
+   - **5b — RoE mission handlers (TODO):** bind each RoE mission's
+     `effectKey` to an `EffectHandler` in `src/engine/handlers/index.ts`.
+     Big slice — base game has 53 handlers.
+   - **5c — RoE leaders (TODO, BLOCKED):** RoE leader stats (skills,
+     minor skills, tactic values) aren't on disk — the Leader Skill
+     Chart PDF and the VASSAL module are both base-only. Needs an
+     external source (physical cards, BGG, fan-made chart) before
+     transcription. This blocks the minor-skill mechanic (a Phase 6
+     concern) and any RoE mission that requires an RoE leader portrait.
+   - **5d — RoE action cards, objectives, probe cards (TODO):** full
+     text is in `MissionReference_RotE_Final.pdf` pp. 5-7; same
+     data-only-then-handlers pattern as 5a/5b.
+   - **5e — Advanced tactic cards (TODO):** full text on p.8; really
+     part of Phase 7 (Cinematic Combat) since they only do anything
+     when that module is on.
 6. **New rules modules:** green dice, leader-pool cap, target markers, the unit
    abilities — each gated and tested.
 7. **Cinematic Combat** — the alternate combat module (advanced tactic cards,

@@ -3,6 +3,8 @@
 // magic-link identity is Phase 5).
 
 import { useState } from 'react';
+import type { ExpansionConfig } from '../types';
+import { resolveExpansion } from '../engine/setup';
 
 interface CreateResult {
   gameId: string;
@@ -17,6 +19,16 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
   const [empireEmail, setEmpireEmail] = useState('');
   // 'pvp' = two humans; otherwise the AI plays the opposite side to the human.
   const [mode, setMode] = useState<'pvp' | 'human-rebel' | 'human-empire'>('pvp');
+  const [expansion, setExpansion] = useState<ExpansionConfig>(() => resolveExpansion({}));
+  const patchExpansion = (patch: Partial<ExpansionConfig>) =>
+    setExpansion((c) => {
+      // Disabled→enabled re-seeds the on-defaults; otherwise merge in place.
+      // See same fix in PlayTab.updateExpansionPref.
+      const base: Partial<ExpansionConfig> = (!c.enabled && patch.enabled)
+        ? { enabled: true }
+        : { ...c, ...patch };
+      return resolveExpansion({ ...base, ...patch });
+    });
 
   async function createGame() {
     setCreating(true);
@@ -29,7 +41,7 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
       const r = await fetch('/api/games', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ emails, aiSide }),
+        body: JSON.stringify({ emails, aiSide, expansion }),
       });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
@@ -103,6 +115,37 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
               <input type="email" placeholder="empire@example.com" value={empireEmail}
                 onChange={(e) => setEmpireEmail(e.target.value)} style={emailInput} />
             </label>
+          )}
+        </div>
+      )}
+
+      {!result && (
+        <div style={{ marginBottom: 16, maxWidth: 460 }}>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#e8e6f2', fontSize: 14 }}>
+            <input type="checkbox" checked={expansion.enabled}
+              onChange={(e) => patchExpansion({ enabled: e.target.checked })} />
+            Rise of the Empire expansion
+          </label>
+          {expansion.enabled && (
+            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
+              {([
+                ['roeUnits', 'RoE units'],
+                ['newStarterUnits', 'New starter units'],
+                ['roeMissions', 'RoE missions'],
+                ['cinematicCombat', 'Cinematic Combat'],
+              ] as const).map(([k, label]) => (
+                <label key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#cbc4b0', fontSize: 12 }}>
+                  <input type="checkbox" checked={expansion[k]}
+                    onChange={(e) => patchExpansion({ [k]: e.target.checked } as Partial<ExpansionConfig>)} />
+                  {label}
+                </label>
+              ))}
+            </div>
+          )}
+          {expansion.enabled && (
+            <div style={{ color: '#778', fontSize: 12, marginTop: 6 }}>
+              Expansion content lands incrementally — the switches are recorded on the game; rules wiring follows in later phases.
+            </div>
           )}
         </div>
       )}

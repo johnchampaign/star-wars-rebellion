@@ -67,6 +67,15 @@ OSD-*.pdf
 e96cd17d-*.png
 map_hires.png
 map_orig.png
+# Scratch image crops and ad-hoc extract dirs Claude makes when reading
+# reference PNGs / PDFs at a useful resolution. Underscore-prefix
+# convention — anything in the repo root starting with `_` is local-only.
+_*.png
+_e_extract/
+# Agent worktrees produced by claude-code's `isolation: 'worktree'`.
+# Each spawn is self-contained and cleaned up by the runtime; never
+# committed.
+.claude/worktrees/
 tournament-logs/
 # Scratch directory for ad-hoc extracts (.vmod inspection, screenshot
 # downloads, etc.) — anything dropped here is local-only.

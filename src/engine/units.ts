@@ -1,15 +1,23 @@
-// Base-game unit catalog. Stats verified against the printed FFG base-game
-// faction reference sheets (Rebel Alliance + Galactic Empire). Rise of the
-// Empire expansion units are intentionally omitted.
+// Unit catalog. Base-game stats verified against the printed FFG faction
+// reference sheets (Rebel Alliance + Galactic Empire). Rise of the Empire
+// expansion units are tagged `set: 'rote'` and filtered out at createGame
+// when the `roeUnits` flag is off, so a base-only game is byte-identical to
+// the original behaviour.
 //
-// supplyCount verified against the Learn to Play component manifest (p.3:
-// 89 Imperial + 64 Rebel minis — the per-type sums match both totals exactly).
-// The Death Star split (death-star: 2, death-star-under-construction: 1) is RAW
-// per Rules Reference p.6 "Building a Death Star": "Construct Death Star" builds
-// a SECOND Death Star (2 completed minis) plus a separate Death Star Under
-// Construction piece — three distinct components, NOT a shared pool of two.
-// The holding-pool cap rule is RR p.6 "Component Limitations → Units":
-// "a player cannot build a unit type if there are none available."
+// supplyCount for base units verified against the Learn to Play component
+// manifest (p.3: 89 Imperial + 64 Rebel minis — per-type sums match both
+// totals exactly). The Death Star split (death-star: 2, death-star-under-
+// construction: 1) is RAW per Rules Reference p.6 "Building a Death Star":
+// "Construct Death Star" builds a SECOND Death Star (2 completed minis) plus
+// a separate Death Star Under Construction piece. The holding-pool cap rule
+// is RR p.6 "Component Limitations → Units": "a player cannot build a unit
+// type if there are none available."
+//
+// RoE supply counts (TIE Striker, Assault Tank, Shield Bunker, Interdictor,
+// U-Wing, Nebulon-B, Rebel Vanguard, Golan Arms Turret) are estimates pending
+// a component-manifest check against the RoE box contents; they cover the
+// starter-deployment quantities from StarWarsRebellion_v2.5.pdf p.8 with
+// reasonable headroom. Refine when the RoE manifest is in hand.
 
 import type { UnitType } from './types';
 
@@ -27,76 +35,117 @@ export const PROJECT_ONLY_UNIT_IDS: ReadonlySet<string> = new Set([
 ]);
 
 export const UNIT_TYPES: UnitType[] = [
-  // ===== Imperial =====
+  // ===== Imperial — base =====
   I({
     id: 'tie-fighter', name: 'TIE Fighter', theater: 'space', class: 'fighter', tier: 'triangle',
     health: { color: 'black', value: 1 },
-    attack: { red: 0, black: 1 },
+    attack: { red: 0, black: 1, green: 0 },
     transport: { capacity: 0, restriction: true, immobile: false }, // TIE requires transport (rr p.14)
     buildResource: 1, supplyCount: 24,
   }),
   I({
     id: 'assault-carrier', name: 'Assault Carrier', theater: 'space', class: 'capital', tier: 'circle',
     health: { color: 'red', value: 2 },
-    attack: { red: 1, black: 1 },
+    attack: { red: 1, black: 1, green: 0 },
     transport: { capacity: 4, restriction: false, immobile: false },
     buildResource: 2, supplyCount: 8,
   }),
   I({
     id: 'star-destroyer', name: 'Star Destroyer', theater: 'space', class: 'capital', tier: 'square',
     health: { color: 'red', value: 4 },
-    attack: { red: 2, black: 1 },
+    attack: { red: 2, black: 1, green: 0 },
     transport: { capacity: 6, restriction: false, immobile: false },
     buildResource: 3, supplyCount: 8,
   }),
   I({
     id: 'super-star-destroyer', name: 'Super Star Destroyer', theater: 'space', class: 'capital', tier: 'square',
     health: { color: 'red', value: 6 },
-    attack: { red: 3, black: 2 },
+    attack: { red: 3, black: 2, green: 0 },
     transport: { capacity: 8, restriction: false, immobile: false },
     buildResource: 3, supplyCount: 2,
   }),
   I({
     id: 'death-star', name: 'Death Star', theater: 'space', class: 'station', tier: 'square',
     health: { color: null, value: 0 }, // cannot be damaged except via Death Star Plans (rr p.6)
-    attack: { red: 4, black: 0 }, // rolls 4 red dice per faction sheet
+    attack: { red: 4, black: 0, green: 0 }, // rolls 4 red dice per faction sheet
     transport: { capacity: 8, restriction: false, immobile: false },
     buildResource: 3, supplyCount: 2,
   }),
   I({
     id: 'death-star-under-construction', name: 'Death Star Under Construction', theater: 'space', class: 'station', tier: 'square',
     health: { color: 'red', value: 4 },
-    attack: { red: 0, black: 0 },
+    attack: { red: 0, black: 0, green: 0 },
     transport: { capacity: 0, restriction: false, immobile: true }, // rr p.6
     buildResource: 3, supplyCount: 1,
   }),
   I({
     id: 'stormtrooper', name: 'Stormtrooper', theater: 'ground', class: 'ground', tier: 'triangle',
     health: { color: 'black', value: 1 },
-    attack: { red: 0, black: 1 },
+    attack: { red: 0, black: 1, green: 0 },
     transport: { capacity: 0, restriction: false, immobile: false },
     buildResource: 1, supplyCount: 30,
   }),
   I({
     id: 'at-st', name: 'AT-ST', theater: 'ground', class: 'ground', tier: 'circle',
     health: { color: 'red', value: 2 },
-    attack: { red: 1, black: 1 },
+    attack: { red: 1, black: 1, green: 0 },
     transport: { capacity: 0, restriction: false, immobile: false },
     buildResource: 2, supplyCount: 10,
   }),
   I({
     id: 'at-at', name: 'AT-AT', theater: 'ground', class: 'ground', tier: 'square',
     health: { color: 'red', value: 3 },
-    attack: { red: 2, black: 1 },
+    attack: { red: 2, black: 1, green: 0 },
     transport: { capacity: 0, restriction: false, immobile: false },
     buildResource: 3, supplyCount: 4,
   }),
 
-  // ===== Rebel =====
+  // ===== Imperial — Rise of the Empire =====
+  // Stats transcribed from images/ReferenceEmpire2P.png (2-player battle mat).
+  // Setup quantities are from StarWarsRebellion_v2.5.pdf p.8 "Rise of the
+  // Empire Expansion → Setup" (the "New Starter Units" deployment).
+  I({
+    id: 'tie-striker', name: 'TIE Striker', theater: 'space', class: 'fighter', tier: 'triangle',
+    health: { color: 'black', value: 1 },
+    attack: { red: 0, black: 0, green: 1 },
+    // TIE Strikers are independently hyperdrive-capable (per the reference
+    // mat — no "must be transported" badge unlike base TIE Fighters).
+    transport: { capacity: 0, restriction: false, immobile: false },
+    buildResource: 1, supplyCount: 6, set: 'rote',
+  }),
+  I({
+    id: 'assault-tank', name: 'Assault Tank', theater: 'ground', class: 'ground', tier: 'triangle',
+    health: { color: 'red', value: 1 },
+    attack: { red: 0, black: 0, green: 1 },
+    transport: { capacity: 0, restriction: false, immobile: false },
+    buildResource: 1, supplyCount: 6, set: 'rote',
+  }),
+  I({
+    id: 'shield-bunker', name: 'Shield Bunker', theater: 'ground', class: 'structure', tier: 'circle',
+    // Ability (rules p.8): Death Stars and DSUC in the system can't be
+    // destroyed/damaged while a Shield Bunker is present. Easy-deployment
+    // and Local-reinforcement clauses follow. Wired in Phase 6 (unit-
+    // abilities module); here we just carry the stats.
+    health: { color: 'red', value: 3 },
+    attack: { red: 0, black: 0, green: 0 },
+    transport: { capacity: 0, restriction: false, immobile: true },
+    buildResource: 2, supplyCount: 3, set: 'rote',
+  }),
+  I({
+    id: 'interdictor', name: 'Interdictor', theater: 'space', class: 'capital', tier: 'square',
+    // Ability (rules p.8): "Rebel units in this system cannot retreat."
+    // Phase 6 wires retreat-blocking; stats stand alone.
+    health: { color: 'red', value: 4 },
+    attack: { red: 0, black: 0, green: 2 },
+    transport: { capacity: 0, restriction: false, immobile: false },
+    buildResource: 3, supplyCount: 3, set: 'rote',
+  }),
+
+  // ===== Rebel — base =====
   R({
     id: 'x-wing', name: 'X-Wing', theater: 'space', class: 'fighter', tier: 'triangle',
     health: { color: 'black', value: 1 },
-    attack: { red: 0, black: 1 },
+    attack: { red: 0, black: 1, green: 0 },
     // Rebel fighters do NOT carry the transport-restriction icon (only the
     // TIE Fighter does, per the printed reference mats — TIEs have no
     // hyperdrive and must be carried; X/Y-wings move on their own). So no
@@ -107,7 +156,7 @@ export const UNIT_TYPES: UnitType[] = [
   R({
     id: 'y-wing', name: 'Y-Wing', theater: 'space', class: 'fighter', tier: 'triangle',
     health: { color: 'black', value: 1 },
-    attack: { red: 1, black: 0 }, // bombers
+    attack: { red: 1, black: 0, green: 0 }, // bombers
     // No transport-restriction icon on the Rebel fighters (see X-Wing note;
     // only the TIE Fighter requires transport). Issue #47.
     transport: { capacity: 0, restriction: false, immobile: false },
@@ -116,7 +165,7 @@ export const UNIT_TYPES: UnitType[] = [
   R({
     id: 'corellian-corvette', name: 'Corellian Corvette', theater: 'space', class: 'capital', tier: 'circle',
     health: { color: 'red', value: 2 },
-    attack: { red: 1, black: 1 },
+    attack: { red: 1, black: 1, green: 0 },
     transport: { capacity: 2, restriction: false, immobile: false },
     buildResource: 2, supplyCount: 4,
   }),
@@ -126,44 +175,78 @@ export const UNIT_TYPES: UnitType[] = [
     // X-Wing and Y-Wing. (Issue #50.)
     id: 'rebel-transport', name: 'Rebel Transport', theater: 'space', class: 'capital', tier: 'triangle',
     health: { color: 'red', value: 2 },
-    attack: { red: 0, black: 0 }, // does not attack
+    attack: { red: 0, black: 0, green: 0 }, // does not attack
     transport: { capacity: 4, restriction: false, immobile: false },
     buildResource: 2, supplyCount: 4,
   }),
   R({
     id: 'mon-cala-cruiser', name: 'Mon Calamari Cruiser', theater: 'space', class: 'capital', tier: 'square',
     health: { color: 'red', value: 4 },
-    attack: { red: 2, black: 1 },
+    attack: { red: 2, black: 1, green: 0 },
     transport: { capacity: 4, restriction: false, immobile: false },
     buildResource: 3, supplyCount: 3,
   }),
   R({
     id: 'rebel-trooper', name: 'Rebel Trooper', theater: 'ground', class: 'ground', tier: 'triangle',
     health: { color: 'black', value: 1 },
-    attack: { red: 0, black: 1 },
+    attack: { red: 0, black: 1, green: 0 },
     transport: { capacity: 0, restriction: false, immobile: false },
     buildResource: 1, supplyCount: 21,
   }),
   R({
     id: 'airspeeder', name: 'Airspeeder', theater: 'ground', class: 'ground', tier: 'circle',
     health: { color: 'red', value: 2 },
-    attack: { red: 1, black: 1 },
+    attack: { red: 1, black: 1, green: 0 },
     transport: { capacity: 0, restriction: false, immobile: false },
     buildResource: 2, supplyCount: 6,
   }),
   R({
     id: 'shield-generator', name: 'Shield Generator', theater: 'ground', class: 'structure', tier: 'square',
     health: { color: 'red', value: 3 }, // structure, special rules
-    attack: { red: 0, black: 0 },
+    attack: { red: 0, black: 0, green: 0 },
     transport: { capacity: 0, restriction: false, immobile: true },
     buildResource: 3, supplyCount: 3, // orange (ground) SQUARE per printed components (#129)
   }),
   R({
     id: 'ion-cannon', name: 'Ion Cannon', theater: 'ground', class: 'structure', tier: 'square',
     health: { color: 'red', value: 3 }, // structure, special rules
-    attack: { red: 0, black: 0 },
+    attack: { red: 0, black: 0, green: 0 },
     transport: { capacity: 0, restriction: false, immobile: true },
     buildResource: 3, supplyCount: 3, // orange (ground) SQUARE per printed components (#129)
+  }),
+
+  // ===== Rebel — Rise of the Empire =====
+  // Stats transcribed from images/ReferenceRebel2P.png. Setup quantities
+  // are from StarWarsRebellion_v2.5.pdf p.8.
+  R({
+    id: 'u-wing', name: 'U-Wing', theater: 'space', class: 'capital', tier: 'triangle',
+    health: { color: 'black', value: 1 },
+    attack: { red: 0, black: 0, green: 1 },
+    // Per the reference mat the U-Wing carries a transport-capacity-1 badge
+    // — small but it counts as a carrier for ground-unit movement.
+    transport: { capacity: 1, restriction: false, immobile: false },
+    buildResource: 1, supplyCount: 4, set: 'rote',
+  }),
+  R({
+    id: 'nebulon-b-frigate', name: 'Nebulon-B Frigate', theater: 'space', class: 'capital', tier: 'circle',
+    health: { color: 'red', value: 3 },
+    attack: { red: 0, black: 0, green: 2 },
+    transport: { capacity: 0, restriction: false, immobile: false },
+    buildResource: 2, supplyCount: 4, set: 'rote',
+  }),
+  R({
+    id: 'rebel-vanguard', name: 'Rebel Vanguard', theater: 'ground', class: 'ground', tier: 'triangle',
+    health: { color: 'black', value: 1 },
+    attack: { red: 0, black: 0, green: 1 },
+    transport: { capacity: 0, restriction: false, immobile: false },
+    buildResource: 1, supplyCount: 6, set: 'rote',
+  }),
+  R({
+    id: 'golan-arms-turret', name: 'Golan Arms Turret', theater: 'ground', class: 'structure', tier: 'circle',
+    health: { color: 'red', value: 3 },
+    attack: { red: 0, black: 0, green: 2 },
+    transport: { capacity: 0, restriction: false, immobile: true },
+    buildResource: 2, supplyCount: 3, set: 'rote',
   }),
 ];
 

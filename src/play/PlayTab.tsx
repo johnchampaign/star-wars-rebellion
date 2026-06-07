@@ -17,6 +17,7 @@ import {
 
 const LS_HUMAN_SIDE = 'rebellion-human-side';
 const LS_SIDE_PREF = 'rebellion-side-pref'; // 'Rebel' | 'Empire' | 'Random'
+const LS_EXPANSION = 'rebellion-expansion-config';
 type SidePref = 'Rebel' | 'Empire' | 'Random';
 function randomSide(): Side { return Math.random() < 0.5 ? 'Rebel' : 'Empire'; }
 function otherSide(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
@@ -24,7 +25,7 @@ function otherSide(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 // Context so helper components can read the current style without prop drilling.
 const UnitStyleContext = createContext<UnitImageStyle>('vmod');
 const useUnitStyle = () => useContext(UnitStyleContext);
-import { createGame } from '../engine/setup';
+import { createGame, resolveExpansion } from '../engine/setup';
 import * as _phases from '../engine/phases';
 import type { MoveOrder } from '../engine/phases';
 import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
@@ -34,7 +35,7 @@ import { encode, decode, canEncode } from '../engine/codec';
 import type { GameState, Side } from '../engine/types';
 import type { RebellionAction } from '../adapter/rebellionAction';
 import { makeOnlinePhases, makeOnlineCombat } from '../online/onlineEngine';
-import type { System, MaskRect } from '../types';
+import type { System, MaskRect, ExpansionConfig } from '../types';
 
 // Active engine handles. Module-level so PlayTab AND its module-scope
 // sub-components/helpers all call the same `phases.*`/`combat.*`. The PlayTab
@@ -468,6 +469,28 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     setSidePref(p);
     localStorage.setItem(LS_SIDE_PREF, p);
   };
+  // Rise of the Empire opt-in for the NEXT new game. Persisted as a partial
+  // config; resolveExpansion fills defaults at start. Default: base game.
+  const [expansionPref, setExpansionPref] = useState<ExpansionConfig>(() => {
+    try {
+      const raw = localStorage.getItem(LS_EXPANSION);
+      if (raw) return resolveExpansion(JSON.parse(raw));
+    } catch { /* ignore */ }
+    return resolveExpansion({});
+  });
+  const updateExpansionPref = (patch: Partial<ExpansionConfig>) => {
+    // Disabled→enabled is a special case: the disabled state forces every
+    // sub-flag false, so merging it with `{enabled: true}` would defeat the
+    // resolveExpansion defaults (false ?? true === false). Seed from a fresh
+    // resolve in that case so the on-defaults (RoE units / new starters /
+    // RoE missions / expanded board ON; cinematic combat OFF) are applied.
+    const base: Partial<ExpansionConfig> = (!expansionPref.enabled && patch.enabled)
+      ? { enabled: true }
+      : { ...expansionPref, ...patch };
+    const next = resolveExpansion({ ...base, ...patch });
+    setExpansionPref(next);
+    try { localStorage.setItem(LS_EXPANSION, JSON.stringify(next)); } catch { /* ignore */ }
+  };
   const aiSide = otherSide(humanSide);
   // True while the Empire player is hovering the probe-deck UI; Board uses
   // this to highlight systems already ruled out by drawn probe cards.
@@ -663,7 +686,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     const trimmed = seed.trim();
     const s = trimmed === '' ? Math.floor(Math.random() * 1e9) : Number(trimmed);
     if (Number.isNaN(s)) return;
-    gameRef.current = createGame(dataRef.current, { seed: s, autoSetupUnits: false });
+    gameRef.current = createGame(dataRef.current, { seed: s, autoSetupUnits: false, expansion: expansionPref });
     // New game: nothing scored yet, but reset the seen-cursor to be safe.
     seenObjectiveLogIdxRef.current = 0;
     aiActivitySeenIdxRef.current = 0;
@@ -681,7 +704,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     setHumanSide(newHuman);
     persist();
     refresh();
-  }, [seed, refresh, persist, sidePref]);
+  }, [seed, refresh, persist, sidePref, expansionPref]);
 
   const resumeSaved = useCallback(() => {
     const raw = localStorage.getItem(LS_CURRENT);
@@ -825,6 +848,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
                 })}
               </div>
             </div>
+            <ExpansionPanel cfg={expansionPref} onChange={updateExpansionPref} />
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'center', flexWrap: 'wrap' }}>
               <label style={{ color: '#aaa', fontSize: 13 }}>
                 Seed (blank = random):{' '}
@@ -11618,6 +11642,62 @@ function archiveCompletedGame(G: GameState): void {
   } catch (e) {
     console.warn('archive failed', e);
   }
+}
+
+/** Rise of the Empire opt-in panel. Default closed (base game); the master
+ *  switch reveals the sub-toggles. See docs/rise-of-the-empire.md. */
+function ExpansionPanel({ cfg, onChange }: {
+  cfg: ExpansionConfig;
+  onChange: (patch: Partial<ExpansionConfig>) => void;
+}) {
+  const labelStyle: React.CSSProperties = {
+    color: '#cbc4b0', fontSize: 12, display: 'inline-flex',
+    alignItems: 'center', gap: 6, cursor: 'pointer',
+  };
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'center',
+      padding: '8px 12px', border: '1px solid #2c2e36', borderRadius: 4,
+      background: '#101218', maxWidth: 560,
+    }}>
+      <label style={{ ...labelStyle, fontSize: 13, color: '#e8e6f2' }}>
+        <input
+          type="checkbox" checked={cfg.enabled}
+          onChange={(e) => onChange({ enabled: e.target.checked })}
+        />
+        Rise of the Empire expansion
+      </label>
+      {cfg.enabled && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 14px', justifyContent: 'center' }}>
+          <label style={labelStyle}>
+            <input type="checkbox" checked={cfg.roeUnits}
+              onChange={(e) => onChange({ roeUnits: e.target.checked })} />
+            RoE units
+          </label>
+          <label style={labelStyle}>
+            <input type="checkbox" checked={cfg.newStarterUnits}
+              onChange={(e) => onChange({ newStarterUnits: e.target.checked })} />
+            New starter units
+          </label>
+          <label style={labelStyle}>
+            <input type="checkbox" checked={cfg.roeMissions}
+              onChange={(e) => onChange({ roeMissions: e.target.checked })} />
+            RoE missions
+          </label>
+          <label style={labelStyle}>
+            <input type="checkbox" checked={cfg.cinematicCombat}
+              onChange={(e) => onChange({ cinematicCombat: e.target.checked })} />
+            Cinematic Combat
+          </label>
+        </div>
+      )}
+      {cfg.enabled && (
+        <div style={{ color: '#778', fontSize: 11, textAlign: 'center', maxWidth: 480 }}>
+          Expansion content lands incrementally — Phase 2 wires the switches; units, board, cards, and new rules follow.
+        </div>
+      )}
+    </div>
+  );
 }
 
 const inputStyle: React.CSSProperties = {

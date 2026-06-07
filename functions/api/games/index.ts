@@ -14,6 +14,8 @@ interface CreateBody {
   emails?: Partial<Record<'Rebel' | 'Empire', string>>;
   /** When set, that seat is played by the server-side AI (online vs AI). */
   aiSide?: 'Rebel' | 'Empire';
+  /** Rise of the Empire opt-in. Omitted ⇒ base game. */
+  expansion?: Partial<import('../../../src/types').ExpansionConfig>;
 }
 
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
@@ -21,7 +23,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     const { request, env } = ctx;
     const body = (await request.json().catch(() => ({}))) as CreateBody;
     const { server, dataBundle } = await makeServer(request, env);
-    const initialState = newInitialState(dataBundle, body.aiSide);
+    const initialState = newInitialState(dataBundle, body.aiSide, body.expansion);
     // If the AI moves first (e.g. it's the Rebel and acts first in Assignment),
     // play its opening now so the human's first fetch shows their own turn.
     runServerAI(initialState);

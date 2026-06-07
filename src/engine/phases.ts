@@ -3518,29 +3518,52 @@ export function resolveRecruitLeaderPick(G: GameState, leaderId: LeaderId): { ok
 /** Return the legal unit type IDs a side may build for one (type, shape)
  *  resource icon. Base-game scope; expansion units would extend this. */
 export function legalUnitsForIcon(
-  side: Side, type: 'space' | 'ground', shape: 'triangle' | 'circle' | 'square'
+  side: Side, type: 'space' | 'ground', shape: 'triangle' | 'circle' | 'square',
+  // Pass G to opt into RoE build options when expansion.roeUnits is on. The
+  // RoE roster is additive (not a swap) per the rules p.8 — base units stay
+  // buildable, the RoE units add new options on the same build icons.
+  // Optional so existing call sites continue to work for base-only games.
+  G?: { expansion?: { roeUnits?: boolean } },
 ): string[] {
+  const roe = G?.expansion?.roeUnits === true;
   if (side === 'Rebel') {
     if (type === 'space') {
       // Rebel Transport's build icon is a space TRIANGLE (not circle) per
       // the reference mat — so the space-triangle build offers 3 options
       // (issue #50), and the space-circle build is just the Corvette.
-      if (shape === 'triangle') return ['x-wing', 'y-wing', 'rebel-transport'];
-      if (shape === 'circle')   return ['corellian-corvette'];
+      if (shape === 'triangle') return roe
+        ? ['x-wing', 'y-wing', 'rebel-transport', 'u-wing']
+        : ['x-wing', 'y-wing', 'rebel-transport'];
+      if (shape === 'circle')   return roe
+        ? ['corellian-corvette', 'nebulon-b-frigate']
+        : ['corellian-corvette'];
       if (shape === 'square')   return ['mon-cala-cruiser'];
     } else {
-      if (shape === 'triangle') return ['rebel-trooper'];
-      if (shape === 'circle')   return ['airspeeder'];
+      if (shape === 'triangle') return roe
+        ? ['rebel-trooper', 'rebel-vanguard']
+        : ['rebel-trooper'];
+      if (shape === 'circle')   return roe
+        ? ['airspeeder', 'golan-arms-turret']
+        : ['airspeeder'];
       if (shape === 'square')   return []; // no base-game Rebel square ground
     }
   } else {
     if (type === 'space') {
-      if (shape === 'triangle') return ['tie-fighter'];
+      if (shape === 'triangle') return roe
+        ? ['tie-fighter', 'tie-striker']
+        : ['tie-fighter'];
       if (shape === 'circle')   return ['assault-carrier'];
-      if (shape === 'square')   return ['star-destroyer']; // SSD is a project, not an icon-build
+      // Interdictor is a normal square space build in RoE (not a project).
+      if (shape === 'square')   return roe
+        ? ['star-destroyer', 'interdictor']
+        : ['star-destroyer']; // SSD is a project, not an icon-build
     } else {
-      if (shape === 'triangle') return ['stormtrooper'];
-      if (shape === 'circle')   return ['at-st'];
+      if (shape === 'triangle') return roe
+        ? ['stormtrooper', 'assault-tank']
+        : ['stormtrooper'];
+      if (shape === 'circle')   return roe
+        ? ['at-st', 'shield-bunker']
+        : ['at-st'];
       if (shape === 'square')   return ['at-at'];
     }
   }
@@ -3606,7 +3629,7 @@ function refreshBuildIfApplicable(G: GameState, logStart: number): boolean {
 
       const slot = (sysDef.buildSlot ?? 1) as 1 | 2 | 3;
       for (const icon of icons) {
-        const legal = legalUnitsForIcon(side, icon.type, icon.shape);
+        const legal = legalUnitsForIcon(side, icon.type, icon.shape, G);
         if (legal.length === 0) continue;
         // RAW: you can only build a unit you still have a token for in the
         // holding pool. Drop types that are exhausted so the player isn't
@@ -3662,12 +3685,12 @@ function refreshBuildIfApplicable(G: GameState, logStart: number): boolean {
         // offers the same space-triangle options as any other system
         // (X-Wing / Y-Wing / Rebel Transport), instead of a hardcoded list
         // that drifted out of sync (issue #50).
-        const baseSpace = legalUnitsForIcon('Rebel', 'space', 'triangle')
+        const baseSpace = legalUnitsForIcon('Rebel', 'space', 'triangle', G)
           .filter((t) => M.unitsAvailableInSupply(G, t) > 0);
         if (baseSpace.length === 0) {
           log(G, { kind: 'build-wasted-no-supply', side: 'Rebel', payload: {
             sourceSystemId: 'rebel-base', slot: 1, iconType: 'space', iconShape: 'triangle',
-            legalUnitTypes: legalUnitsForIcon('Rebel', 'space', 'triangle'),
+            legalUnitTypes: legalUnitsForIcon('Rebel', 'space', 'triangle', G),
           }});
         } else if (baseSpace.length === 1) {
           M.buildToQueue(G, 'Rebel', baseSpace[0], 1, 'rebel-base');

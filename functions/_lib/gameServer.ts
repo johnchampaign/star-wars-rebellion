@@ -234,9 +234,13 @@ export async function recordTurnTiming(
  *  candidates are redacted from the Empire). The same setup actions, adapter
  *  dispatch, online shim, UI, and AI all support this. `aiSide`, when set,
  *  marks that seat as server-AI-controlled (the AI handles its own setup). */
-export function newInitialState(dataBundle: DataBundle, aiSide?: Side): GameState {
+export function newInitialState(
+  dataBundle: DataBundle,
+  aiSide?: Side,
+  expansion?: Partial<import('../../src/types').ExpansionConfig>,
+): GameState {
   const seed = Math.floor(Math.random() * 2 ** 31);
-  const state = createGame(dataBundle, { seed, autoSetupUnits: false });
+  const state = createGame(dataBundle, { seed, autoSetupUnits: false, expansion });
   if (aiSide) state.aiSides = [aiSide];
   return state;
 }

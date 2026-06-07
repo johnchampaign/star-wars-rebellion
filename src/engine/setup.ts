@@ -3,6 +3,7 @@
 import type {
   SystemsFile, AdjacencyFile, LeadersFile,
   ActionsFile, MissionsFile, ObjectivesFile, TacticsFile, ProbesFile,
+  ExpansionConfig,
 } from '../types';
 import type {
   GameState, GameCatalog, FactionState, SystemState, MapState,
@@ -31,8 +32,8 @@ export type DataBundle = {
   probes: ProbesFile;
 };
 
-// Starting units per rr p.15.
-const IMPERIAL_STARTING_UNITS: { typeId: string; count: number }[] = [
+// Base-game starting units per rr p.15.
+const IMPERIAL_STARTING_UNITS_BASE: { typeId: string; count: number }[] = [
   { typeId: 'star-destroyer', count: 3 },
   { typeId: 'assault-carrier', count: 3 },
   { typeId: 'tie-fighter', count: 12 },
@@ -42,7 +43,7 @@ const IMPERIAL_STARTING_UNITS: { typeId: string; count: number }[] = [
   { typeId: 'death-star', count: 1 },
 ];
 
-const REBEL_STARTING_UNITS: { typeId: string; count: number }[] = [
+const REBEL_STARTING_UNITS_BASE: { typeId: string; count: number }[] = [
   { typeId: 'corellian-corvette', count: 1 },
   { typeId: 'rebel-transport', count: 1 },
   { typeId: 'x-wing', count: 2 },
@@ -50,6 +51,58 @@ const REBEL_STARTING_UNITS: { typeId: string; count: number }[] = [
   { typeId: 'rebel-trooper', count: 6 },
   { typeId: 'airspeeder', count: 2 },
 ];
+
+// Rise of the Empire — "New Starter Units" deployment, per
+// StarWarsRebellion_v2.5.pdf p.8 "Rise of the Empire Expansion → Setup".
+// The rulebook splits the Imperial setup into (a) one chosen remote system
+// that gets a DSUC + 4 TIE Fighters + 1 Stormtrooper, plus a Death Star on
+// queue slot 3, and (b) the remaining roster deployed across Imperial
+// systems. We collapse both into a single per-unit list — the existing
+// auto-setup distributes; the interactive setup leaves placement to the
+// Imperial player. Totals: 12 TIE Fighters (4+8), 13 Stormtroopers (1+12),
+// 3 Assault Carriers, 3 Star Destroyers, 2 TIE Strikers, 4 AT-STs,
+// 2 Assault Tanks, 1 AT-AT, 1 DSUC, 1 Death Star (which the build queue
+// gets in this code path).
+const IMPERIAL_STARTING_UNITS_RoE_NEW: { typeId: string; count: number }[] = [
+  { typeId: 'star-destroyer', count: 3 },
+  { typeId: 'assault-carrier', count: 3 },
+  { typeId: 'tie-fighter', count: 12 },
+  { typeId: 'tie-striker', count: 2 },
+  { typeId: 'stormtrooper', count: 13 },
+  { typeId: 'at-st', count: 4 },
+  { typeId: 'assault-tank', count: 2 },
+  { typeId: 'at-at', count: 1 },
+  { typeId: 'death-star', count: 1 },
+  { typeId: 'death-star-under-construction', count: 1 },
+];
+
+// Rebel New Starter Units (rules p.8): all deploy to Rebel Base and/or any
+// Rebel/neutral system (except remote systems with a DSUC).
+const REBEL_STARTING_UNITS_RoE_NEW: { typeId: string; count: number }[] = [
+  { typeId: 'corellian-corvette', count: 1 },
+  { typeId: 'rebel-transport', count: 1 },
+  { typeId: 'x-wing', count: 1 },
+  { typeId: 'y-wing', count: 1 },
+  { typeId: 'u-wing', count: 1 },
+  { typeId: 'rebel-trooper', count: 5 },
+  { typeId: 'rebel-vanguard', count: 1 },
+  { typeId: 'airspeeder', count: 2 },
+];
+
+// Old RoE starter list (the original "Rise of the Empire - Old Starter
+// Units" VASSAL setup) is TODO — transcribe from the OLD deployment card
+// when needed. Until then, `expansion.newStarterUnits === false` (with
+// expansion enabled) falls back to the base starter list.
+function pickStartingUnits(expansion: ExpansionConfig, side: 'Empire' | 'Rebel') {
+  if (expansion.enabled && expansion.newStarterUnits) {
+    return side === 'Empire'
+      ? IMPERIAL_STARTING_UNITS_RoE_NEW
+      : REBEL_STARTING_UNITS_RoE_NEW;
+  }
+  return side === 'Empire'
+    ? IMPERIAL_STARTING_UNITS_BASE
+    : REBEL_STARTING_UNITS_BASE;
+}
 
 // ---------- Catalog builder ----------
 
@@ -143,11 +196,34 @@ export type SetupOptions = {
   // If false, units go into G.pendingDeployment for interactive placement
   // during a 'Setup' phase (rr p.15 step 8).
   autoSetupUnits?: boolean;
-  // Opt into the Rise of the Empire expansion. When false/omitted (default),
-  // every 'rote'-tagged catalog entry is filtered out at setup, so the game is
-  // identical to base. The chosen value is recorded on G.includeExpansion.
-  includeExpansion?: boolean;
+  // Rise of the Empire configuration. Pass a partial — defaults are applied
+  // by resolveExpansion(). Omitted/undefined ⇒ pure base game (every
+  // 'rote'-tagged catalog entry filtered out at setup). The resolved config
+  // is recorded on G.expansion. See ExpansionConfig in src/types.ts.
+  expansion?: Partial<ExpansionConfig>;
 };
+
+/** Apply defaults to a partial expansion config. When `enabled` is false the
+ *  sub-toggles are forced false (they can't matter without the expansion).
+ *  When `enabled` is true the defaults follow docs/rise-of-the-empire.md:
+ *  RoE units, New starter units, RoE missions ON; Cinematic Combat OFF. */
+export function resolveExpansion(input?: Partial<ExpansionConfig>): ExpansionConfig {
+  const enabled = input?.enabled === true;
+  if (!enabled) {
+    return {
+      enabled: false,
+      roeUnits: false, newStarterUnits: false, roeMissions: false,
+      cinematicCombat: false,
+    };
+  }
+  return {
+    enabled: true,
+    roeUnits: input?.roeUnits ?? true,
+    newStarterUnits: input?.newStarterUnits ?? true,
+    roeMissions: input?.roeMissions ?? true,
+    cinematicCombat: input?.cinematicCombat ?? false,
+  };
+}
 
 export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   const rng = createRng(opts.seed);
@@ -158,9 +234,12 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   // systems/leaders/cards/units. (Absent set === base.) The catalog itself
   // stays the full superset — it's just a lookup table; only what setup puts
   // INTO the state matters.
-  const includeExpansion = opts.includeExpansion ?? false;
+  const expansion = resolveExpansion(opts.expansion);
+  // Phase 2: a single gate keyed off `enabled`. Per-content-type swap gating
+  // (units on roeUnits, missions on roeMissions) lands with the actual RoE
+  // content in Phases 3 & 5 — see docs/rise-of-the-empire.md.
   const inSet = <T extends { set?: 'base' | 'rote' }>(e: T): boolean =>
-    includeExpansion || e.set !== 'rote';
+    expansion.enabled || e.set !== 'rote';
 
   // ----- Empty map -----
   const map: MapState = {
@@ -240,13 +319,15 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
     typeId, side, damage: 0,
   });
 
-  // Expand starting unit lists into flat per-unit arrays.
+  // Expand starting unit lists into flat per-unit arrays. The list itself
+  // depends on the RoE config (see pickStartingUnits — "New Starter Units"
+  // when expansion.enabled && newStarterUnits, base list otherwise).
   const empireUnitsToPlace: string[] = [];
-  for (const stack of IMPERIAL_STARTING_UNITS) {
+  for (const stack of pickStartingUnits(expansion, 'Empire')) {
     for (let i = 0; i < stack.count; i++) empireUnitsToPlace.push(stack.typeId);
   }
   const rebelUnitsToPlace: string[] = [];
-  for (const stack of REBEL_STARTING_UNITS) {
+  for (const stack of pickStartingUnits(expansion, 'Rebel')) {
     for (let i = 0; i < stack.count; i++) rebelUnitsToPlace.push(stack.typeId);
   }
 
@@ -361,14 +442,35 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
 
   // Mission decks: starting missions go into the hand; remaining missions shuffled into the deck.
   // The Empire's project missions form the separate project deck.
-  const rebelStartingMissions = Object.values(catalog.missions).filter((m) => m.side === 'Rebel' && m.isStarting && inSet(m)).map((m) => m.id);
-  const empireStartingMissions = Object.values(catalog.missions).filter((m) => m.side === 'Empire' && m.isStarting && !m.isProject && inSet(m)).map((m) => m.id);
+  //
+  // RoE mission selection is per-category, NOT a single inSet filter:
+  // - Starting + Project missions: ADDITIVE — base versions always in;
+  //   RoE-tagged versions also in when expansion.enabled.
+  // - Regular missions: SWAP — when expansion.roeMissions is on, the deck
+  //   uses ONLY the RoE-tagged set; otherwise ONLY the base set. (Rulebook
+  //   p.8: "Players choose to use the base set of mission cards or the
+  //   Rise of the Empire set.")
+  // Implementation note: every RoE mission added in Phase 5 has `set: 'rote'`
+  // but `effectKey: ''` (no handler yet) — they appear in the deck so the
+  // swap is testable end-to-end, but resolve as no-ops until Phase 5b
+  // binds them.
+  const isRoe = (m: { set?: 'base' | 'rote' }) => m.set === 'rote';
+  const missionInDeck = (m: { isStarting: boolean; isProject: boolean; set?: 'base' | 'rote' }): boolean => {
+    if (m.isStarting || m.isProject) {
+      // Additive: base always in; rote-tagged in when expansion enabled.
+      return expansion.enabled || !isRoe(m);
+    }
+    // Regular mission: swap.
+    return expansion.roeMissions ? isRoe(m) : !isRoe(m);
+  };
+  const rebelStartingMissions = Object.values(catalog.missions).filter((m) => m.side === 'Rebel' && m.isStarting && missionInDeck(m)).map((m) => m.id);
+  const empireStartingMissions = Object.values(catalog.missions).filter((m) => m.side === 'Empire' && m.isStarting && !m.isProject && missionInDeck(m)).map((m) => m.id);
   rebel.missionHand = [...rebelStartingMissions];
   empire.missionHand = [...empireStartingMissions];
 
-  rebel.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Rebel' && !m.isStarting && inSet(m)).map((m) => m.id));
-  empire.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Empire' && !m.isStarting && !m.isProject && inSet(m)).map((m) => m.id));
-  empire.projectDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Empire' && m.isProject && inSet(m)).map((m) => m.id));
+  rebel.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Rebel' && !m.isStarting && missionInDeck(m)).map((m) => m.id));
+  empire.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Empire' && !m.isStarting && !m.isProject && missionInDeck(m)).map((m) => m.id));
+  empire.projectDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Empire' && m.isProject && missionInDeck(m)).map((m) => m.id));
 
   // Draw 2 more missions each for starting hand (on top of the 4 starting missions).
   for (let i = 0; i < 2; i++) {
@@ -396,7 +498,7 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
 
   // ----- Assemble GameState -----
   const G: GameState = {
-    includeExpansion,
+    expansion,
     timeMarker: 1,
     reputationMarker: 14, // rr p.12
     trackLength: 16,

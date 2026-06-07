@@ -30,7 +30,16 @@
       "Bash(mkdir -p tmp/dice)",
       "Bash(unzip -o /tmp/inner.vmod -d tmp/dice \"images/Black *.PNG\" \"images/Red *.PNG\" \"images/Green *.PNG\")",
       "Bash(cp \"C:/Users/johnc/Downloads/stuck-combat-live-state.json\" \"C:/Users/johnc/Claude Games/Star Wars Rebellion/public/stuck.json\")",
-      "Bash(ls \"../Digital Boardgame Framework/\")"
+      "Bash(ls \"../Digital Boardgame Framework/\")",
+      "Bash(powershell.exe -NoProfile -Command \"Compress-Archive -Path 'images\\\\*' -DestinationPath 'swr-dev-art.zip' -Force; if \\(Test-Path 'swr-dev-art.vmod'\\) { Remove-Item 'swr-dev-art.vmod' }; Rename-Item 'swr-dev-art.zip' 'swr-dev-art.vmod'; \\(Get-Item 'swr-dev-art.vmod'\\).Length\")",
+      "Bash(git check-ignore *)",
+      "Bash(powershell.exe -NoProfile -Command 'Add-Type -A System.IO.Compression.FileSystem; $z=[IO.Compression.ZipFile]::OpenRead\\(\\(Resolve-Path '\\\\''swr-dev-art.vmod'\\\\''\\)\\); $png=$z.Entries | Where-Object { $_.FullName -match '\\\\''\\\\.png$'\\\\'' }; Write-Output \\('\\\\''PNG entries: '\\\\'' + $png.Count\\); Write-Output \\('\\\\''Has Liberation_Clear: '\\\\'' + [bool]\\($png | Where-Object { $_.Name -eq '\\\\''Liberation_Clear.png'\\\\'' }\\)\\); Write-Output \\('\\\\''Has ActionCardEmpireBlindside: '\\\\'' + [bool]\\($png | Where-Object { $_.Name -eq '\\\\''ActionCardEmpireBlindside.png'\\\\'' }\\)\\); $z.Dispose\\(\\)')",
+      "Bash(ls -la wrangler*.toml)",
+      "Bash(find . -maxdepth 3 -name \"wrangler*.toml\" -not -path \"*/node_modules/*\")",
+      "Bash(pdfinfo StarWarsRebellion_v2.5.pdf)",
+      "Bash(pdfinfo MissionReference_RotE_Final.pdf)",
+      "Bash(file images/Reference*.png)",
+      "Bash(identify images/Reference*.png)"
     ]
   }
 }

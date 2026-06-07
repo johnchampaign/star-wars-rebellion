@@ -69,6 +69,27 @@ export type TacticValues = {
  *  of a game that didn't opt into the Rise of the Empire expansion. */
 export type ContentSet = 'base' | 'rote';
 
+/** Per-game Rise of the Empire configuration. `enabled: false` (the default)
+ *  is the pure base game — every other field is forced off, and every
+ *  `set:'rote'` catalog entry is filtered out at setup, so play is byte-
+ *  identical to pre-expansion. When `enabled` flips on, it brings the
+ *  expansion's non-optional pieces (leaders, the core new rules — green
+ *  dice, 8-leader cap, target markers, unit abilities), and the sub-toggles
+ *  cover the parts the rulebook actually lets you mix-and-match. The
+ *  swap flags replace, not extend, the corresponding base content. See
+ *  docs/rise-of-the-empire.md for the full semantics. */
+export type ExpansionConfig = {
+  enabled: boolean;
+  /** Swap base unit roster + supply for the RoE roster. */
+  roeUnits: boolean;
+  /** Use the New Starter Units deployment list (vs the Old RoE list). */
+  newStarterUnits: boolean;
+  /** Swap base mission deck for the RoE deck (starting/project always in). */
+  roeMissions: boolean;
+  /** Use the optional Cinematic Combat module. */
+  cinematicCombat: boolean;
+};
+
 export type Leader = {
   id: string;
   name: string;
