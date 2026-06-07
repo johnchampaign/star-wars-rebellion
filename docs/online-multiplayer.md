@@ -99,44 +99,42 @@ The server can drive a seat with the existing heuristic AI
 Local verification without deploy/sleep: `reports/verify-abandon.mts`
 (in-memory store) exercises takeover / reclaim / claim / grace gate.
 
-## Email (Resend, poll-driven — "Option A")
+## Turn-reminder email (Resend — single source: the scheduled sweep)
 
-We do **not** email on every turn flip (that spams during active play).
-Instead `syncTurnNotify` (called from submit via `ctx.waitUntil`) records
-when the current actor's turn started; a later poll that finds the same
-actor still up after `TURN_EMAIL_DELAY_MS` (**15 min**) sends one email and
-sets `emailed`. A new actor restarts the clock. So you only get pinged once
-your opponent has genuinely stepped away.
-
-Identity is Supabase magic-link auth; the turn email is an
-`it's-your-move` nudge with a link back to the game.
-
-### Scheduled reminder cron (covers vs-AI / both-clients-closed)
-
-The poll-driven path can't fire when **no client is open** — most importantly
-in **vs-AI** games (the AI has no browser to poll). The fix is a sweep that
-runs server-side on a schedule.
+There is exactly **one** path that sends turn-reminder email: the scheduled
+sweep. A player gets **at most one** "it's your move" nudge per turn, ~15-20
+min after their opponent's move, whether or not any client is open (this is
+what makes **vs-AI** and both-clients-closed games work — they have no browser
+polling). We do **not** email on every turn flip (that spams active play).
 
 **Split design (no duplicated secrets):**
-- The sweep itself is a **Pages Function**, `/api/cron/sweep-reminders`, which
-  builds the server via `makeCronServer(env, origin)` — same wiring as the API
-  but with the **real** Resend notifier — and calls
-  `server.sweepTurnReminders({ olderThanMs: 24h })`. Because it's a Pages
+- The sweep is a **Pages Function**, `/api/cron/sweep-reminders`, which builds
+  the server via `makeCronServer(env, origin)` — same wiring as the API but
+  with the **real** Resend notifier — and calls
+  `server.sweepTurnReminders({ olderThanMs: 15 min })`. Because it's a Pages
   Function it already has the project's `SUPABASE_*` / `RESEND_*` secrets.
 - `workers/reminder-cron/` is a **tiny standalone Worker** (Pages Functions
-  can't run cron) that just **pings** that endpoint hourly. It holds **no
-  credentials** — only a `SWEEP_URL` var.
+  can't run cron) that just **pings** that endpoint **every 5 min**. It holds
+  **no credentials** — only a `SWEEP_URL` var.
 
-The framework keeps a per-game inactivity clock in `dbf_games.reminder`
-(jsonb) and sends at most one nudge per turn.
+The framework keeps a per-game inactivity clock in `dbf_games.reminder` (jsonb).
+The clock starts when a sweep first observes a turn, so the email lands one
+sweep interval (≤5 min) of lag plus the 15-min threshold after the move. A new
+turn resets the clock; `sent` dedupes to one email per turn.
+
+The request path (`recordTurnTiming`, called from fetch/submit via
+`ctx.waitUntil`) **no longer emails** — it only records who's on the clock and
+since when, in `swr_turn_notify`, which still drives **abandonment** detection
+(`isSideAbandoned` / `turnStartedAt`).
 
 - Deploy the cron Worker: `npx wrangler deploy --config workers/reminder-cron/wrangler.toml`
 - Auth (trust-tier): the endpoint is **open** by default — a sweep is
   idempotent and only sends already-due reminders. Set `CRON_SECRET` on the
   Pages project (and the matching `CRON_KEY` var on the Worker) to lock it
   down via an `x-cron-key` header.
-- The 15-min `syncTurnNotify` path is intentionally kept for prompt nudges in
-  active human-vs-human play; the two use independent dedupe state.
+
+Identity is Supabase magic-link auth; the turn email is an `it's-your-move`
+nudge with a link back to the game.
 
 ## Secrets & deploy model
 

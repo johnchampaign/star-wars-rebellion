@@ -4,7 +4,7 @@
 // turn ownership + legality via the adapter), then returns the submitter's
 // refreshed redacted view: { view, yourTurn, turn, gameOver, you }.
 
-import { makeServer, advanceAIAndStore, syncTurnNotify, currentActorOf, json, fail, type Env } from '../../../_lib/gameServer';
+import { makeServer, advanceAIAndStore, recordTurnTiming, currentActorOf, json, fail, type Env } from '../../../_lib/gameServer';
 import type { RebellionAction } from '../../../../src/adapter/rebellionAction';
 
 interface SubmitBody {
@@ -24,8 +24,9 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     // AI play and persist, then return the submitter's refreshed view.
     const advanced = await advanceAIAndStore(deps.store, deps.codec, id);
     const result = advanced ? await deps.server.fetch(id, token) : view;
-    // (Re)start the turn clock for whoever is now on the move.
-    waitUntil(syncTurnNotify(deps, id, currentActorOf(result), result.turn));
+    // (Re)start the turn clock for whoever is now on the move (abandonment +
+    // reminder-sweep handoff time). The scheduled sweep sends any email.
+    waitUntil(recordTurnTiming(deps.supabase, id, currentActorOf(result)));
     return json(result);
   } catch (e) {
     return fail(e);

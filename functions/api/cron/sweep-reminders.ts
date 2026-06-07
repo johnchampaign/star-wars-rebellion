@@ -17,7 +17,10 @@
 
 import { makeCronServer, json, fail, type Env } from '../../_lib/gameServer';
 
-const OLDER_THAN_MS = 24 * 60 * 60 * 1000; // 24h idle → nudge the waiting player
+// Nudge the player on the clock once their turn has been idle this long. The
+// cron runs every ~5 min, so the actual email lands roughly 15-20 min after the
+// opponent's move (one sweep interval of observation lag on top of this).
+const OLDER_THAN_MS = 15 * 60 * 1000; // 15 minutes
 
 const handler: PagesFunction<Env> = async (ctx) => {
   try {

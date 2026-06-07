@@ -157,10 +157,11 @@ export async function makeServer(request: Request, env: Env): Promise<{
   const supabase = getSupabase(env);
   const store: SnapshotStore = new SupabaseStore(supabase);
   const gameUrl: GameUrl = (gameId, token) => `${base}/?g=${encodeURIComponent(gameId)}&t=${encodeURIComponent(token)}`;
-  // Deferred-notification model: the framework would email on EVERY turn handoff
-  // (spammy during an active game). We give the framework a NoopNotifier and send
-  // "your turn" ourselves only when a player has been on the clock >15 min and
-  // hasn't moved (see syncTurnNotify). `notifier` here is the real Resend sender.
+  // The request path never emails turn nudges (the framework would email on
+  // EVERY handoff — spammy). All turn-reminder email is done by the scheduled
+  // sweep (makeCronServer's GameServer, with the real Resend notifier), so the
+  // per-request server gets a NoopNotifier. `notifier` is still returned for
+  // the invite path, though sendInviteEmail talks to Resend directly.
   const notifier = makeNotifier(env);
   const server = new GameServer<GameState, RebellionAction, Side>({
     adapter: rebellionAdapter,
@@ -173,11 +174,11 @@ export async function makeServer(request: Request, env: Env): Promise<{
 }
 
 /** Request-free GameServer for the scheduled stale-turn-reminder cron. Unlike
- *  makeServer (per-request, NoopNotifier because the request path emails via
- *  syncTurnNotify), the cron's server is given the REAL Resend notifier —
- *  sweepTurnReminders fires `notifier.notifyYourTurn` itself. Needs
- *  PUBLIC_BASE_URL set (used both to load the asset bundle and to mint the
- *  seat links in the email). */
+ *  makeServer (per-request, NoopNotifier — the request path never emails turn
+ *  nudges), the cron's server is given the REAL Resend notifier, since
+ *  sweepTurnReminders fires `notifier.notifyYourTurn` itself. This is the ONLY
+ *  path that sends turn-reminder email. Needs PUBLIC_BASE_URL (or a request
+ *  origin) — used to load the asset bundle and mint the seat links. */
 export async function makeCronServer(env: Env, originFallback?: string): Promise<{ server: Server }> {
   const base = env.PUBLIC_BASE_URL || originFallback;
   if (!base) {
@@ -198,42 +199,32 @@ export async function makeCronServer(env: Env, originFallback?: string): Promise
   return { server };
 }
 
-const TURN_EMAIL_DELAY_MS = 15 * 60 * 1000; // 15 minutes
-
-/** Deferred "your turn" email (Option A — poll-driven). Called on every fetch
- *  and submit. Tracks, per game, who is on the clock and since when (table
- *  swr_turn_notify). When the actor changes, the clock restarts. When the same
- *  actor has been on the clock >15 min and hasn't moved, email them once. The
- *  trigger is whoever next pings the game (typically the waiting opponent's
- *  poll), so an active back-and-forth produces zero emails. Best-effort. */
-export async function syncTurnNotify(
-  deps: { supabase: SupabaseClient; store: SnapshotStore; notifier: Notifier; gameUrl: GameUrl },
+/** Record who is on the clock and since when, per game (table
+ *  swr_turn_notify). Called on every fetch and submit. When the actor changes,
+ *  the clock restarts with a fresh `started_at` = the real moment the turn was
+ *  handed over.
+ *
+ *  This NO LONGER sends email — turn-reminder emails are handled solely by the
+ *  scheduled sweep (GameServer.sweepTurnReminders, fired by the cron Worker),
+ *  so a player gets at most one nudge per turn whether or not a client is open.
+ *  The timing recorded here is still used by abandonment detection
+ *  (isSideAbandoned / turnStartedAt). Best-effort. */
+export async function recordTurnTiming(
+  supabase: SupabaseClient,
   gameId: string,
   currentActor: Side | null,
-  turn: number,
 ): Promise<void> {
   try {
-    const { data: row } = await deps.supabase
-      .from('swr_turn_notify').select('*').eq('game_id', gameId).maybeSingle();
-    if (!currentActor) return; // game over / nobody to nudge
-    if (!row || row.actor !== currentActor) {
-      // New player on the clock — (re)start it, no email yet.
-      await deps.supabase.from('swr_turn_notify').upsert({
-        game_id: gameId, actor: currentActor, started_at: new Date().toISOString(), emailed: false,
-      });
-      return;
-    }
-    if (row.emailed) return;
-    if (Date.now() - new Date(row.started_at).getTime() < TURN_EMAIL_DELAY_MS) return;
-    const meta = await deps.store.getGameMeta(gameId);
-    const email = meta?.emails?.[currentActor];
-    if (meta && email) {
-      await deps.notifier.notifyYourTurn({ email, gameUrl: deps.gameUrl(gameId, meta.tokens[currentActor]), gameId, turn });
-    }
-    // Mark emailed regardless (no email on file => nothing to retry; avoids spin).
-    await deps.supabase.from('swr_turn_notify').update({ emailed: true }).eq('game_id', gameId);
+    if (!currentActor) return; // game over / nobody on the clock
+    const { data: row } = await supabase
+      .from('swr_turn_notify').select('actor').eq('game_id', gameId).maybeSingle();
+    if (row && row.actor === currentActor) return; // same actor — clock already running
+    // New player on the clock — (re)start it from this real handoff moment.
+    await supabase.from('swr_turn_notify').upsert({
+      game_id: gameId, actor: currentActor, started_at: new Date().toISOString(), emailed: false,
+    });
   } catch {
-    /* best-effort — never fail the request over a notification */
+    /* best-effort — never fail the request over timing bookkeeping */
   }
 }
 

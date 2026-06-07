@@ -3,7 +3,7 @@
 //   { view, yourTurn, turn, gameOver, you }
 
 import {
-  makeServer, syncTurnNotify, currentActorOf, reclaimSeat, isSideAbandoned, otherSide,
+  makeServer, recordTurnTiming, currentActorOf, reclaimSeat, isSideAbandoned, otherSide,
   json, fail, type Env,
 } from '../../../_lib/gameServer';
 import type { Side } from '../../../../src/types';
@@ -22,8 +22,9 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       await reclaimSeat(deps.store, deps.codec, id, you);
       r = await deps.server.fetch(id, token);
     }
-    // Deferred "your turn" email: this poll is the timer. Background (no latency).
-    waitUntil(syncTurnNotify(deps, id, currentActorOf(r), r.turn));
+    // Record who's on the clock (drives abandonment + the reminder sweep's
+    // handoff time). No email here — the scheduled sweep owns reminders now.
+    waitUntil(recordTurnTiming(deps.supabase, id, currentActorOf(r)));
     // Has the opponent abandoned (their turn, away past grace)? Drives the
     // takeover/claim UI. Only checked when it's not your turn.
     const opponentAbandoned =

@@ -7,10 +7,11 @@ name = "swr-reminder-cron"
 main = "index.ts"
 compatibility_date = "2024-09-23"
 
-# Hourly. The reminder fires once a turn has been idle past the endpoint's
-# threshold (24h); the hourly cadence just bounds how late the nudge can be.
+# Every 5 minutes. The endpoint nudges a player once their turn has been idle
+# past its threshold (15 min); this cadence bounds the observation lag, so the
+# email lands ~15-20 min after the opponent's move.
 [triggers]
-crons = ["0 * * * *"]
+crons = ["*/5 * * * *"]
 
 [vars]
 # The Pages endpoint to ping. Production:
