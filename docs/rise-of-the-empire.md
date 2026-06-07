@@ -253,11 +253,19 @@ New mechanics that need engine work, not just data:
        `death-star-plans-blocked-by-shield-bunker` and skips the
        destroy, effectively returning the card to hand. Protection
        lapses automatically when all Shield Bunkers in the system die.
-     - **Shield Bunker easy-deployment / local-reinforcement (TODO):**
-       the two non-combat parts of the ability (rules p.8 — deploy a
-       Shield Bunker to any Imperial-ground system with no Rebels;
-       remote Shield Bunker enables full Imperial deployment to that
-       remote). Both belong in the Refresh-deploy / build code paths.
+     - **Shield Bunker easy-deployment + local-reinforcement (DONE):**
+       `legalDeployTargets` in `src/engine/phases.ts` now takes an
+       optional `typeId` and, when `expansion.enabled` and the side is
+       Empire, widens the candidate set with two distinct overrides:
+       (1) when deploying a Shield Bunker, any non-destroyed system
+       (remote or populous) with an Imperial ground unit and no Rebels
+       is legal — loyalty doesn't matter; (2) any remote system that
+       already contains an Imperial Shield Bunker (and no Rebels) is
+       legal for ANY Imperial unit. Refresh-deploy path threads
+       `next.typeId` through to the function. The "can't use during
+       the build step while the Shield Bunker is being deployed"
+       carve-out is a build-action concern, separate from refresh
+       deploy.
 7. **Cinematic Combat** — the alternate combat module (advanced tactic cards,
    per-round draw/assign flow), gated on `cinematicCombat`. In scope.
 

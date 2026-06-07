@@ -3792,21 +3792,65 @@ export function resolveBuildPicks(G: GameState, choices: string[]): { ok: boolea
  *  RR p.7. A system is legal if it's controlled (subjugated for Empire),
  *  has no enemy units, no sabotage, isn't destroyed, isn't remote. Rebel
  *  Base space is added if the base is still hidden. */
-export function legalDeployTargets(G: GameState, side: Side): SystemId[] {
-  const out: SystemId[] = [];
-  for (const [sysId, ss] of Object.entries(G.map.systems)) {
+export function legalDeployTargets(G: GameState, side: Side, typeId?: UnitTypeId): SystemId[] {
+  const opp: Side = side === 'Rebel' ? 'Empire' : 'Rebel';
+  const out: Set<SystemId> = new Set();
+  const passesBase = (sysId: string, ss: typeof G.map.systems[string]): boolean => {
     const sysDef = G.catalog.systems[sysId];
-    if (!sysDef || sysDef.isRemote || ss.destroyed || ss.sabotage) continue;
-    if (side === 'Rebel' && ss.loyalty !== 'rebel') continue;
-    if (side === 'Empire' && ss.loyalty !== 'imperial' && !ss.subjugated) continue;
-    const opp: Side = side === 'Rebel' ? 'Empire' : 'Rebel';
-    if (ss.units.some((u) => u.side === opp)) continue;
-    out.push(sysId);
+    if (!sysDef || sysDef.isRemote || ss.destroyed || ss.sabotage) return false;
+    if (side === 'Rebel' && ss.loyalty !== 'rebel') return false;
+    if (side === 'Empire' && ss.loyalty !== 'imperial' && !ss.subjugated) return false;
+    if (ss.units.some((u) => u.side === opp)) return false;
+    return true;
+  };
+  for (const [sysId, ss] of Object.entries(G.map.systems)) {
+    if (passesBase(sysId, ss)) out.add(sysId);
   }
   if (side === 'Rebel' && !G.rebelBaseRevealed) {
-    out.push('rebel-base-space');
+    out.add('rebel-base-space');
   }
-  return out;
+
+  // RoE Shield Bunker — Empire-only extras to the deploy target set.
+  // Rules p.8 has two distinct widenings:
+  //
+  // 1. EASY DEPLOYMENT — Shield Bunker (the unit being deployed) may be
+  //    placed in ANY system (remote or populous) that contains at least 1
+  //    Imperial ground unit and no Rebel units. Loyalty doesn't matter.
+  //    Fires only when typeId === 'shield-bunker'.
+  //
+  // 2. LOCAL REINFORCEMENT — when an Imperial Shield Bunker is already in a
+  //    REMOTE system with no Rebel units, Imperial may deploy ANY unit
+  //    there as if it were a loyal system. Fires for any typeId. RAW also
+  //    notes "this cannot be used during the build step while the Shield
+  //    Bunker is being deployed" — that's the build-action restriction; the
+  //    refresh-deploy path (which this function feeds) is unaffected.
+  if (G.expansion?.enabled && side === 'Empire') {
+    for (const [sysId, ss] of Object.entries(G.map.systems)) {
+      if (out.has(sysId)) continue;
+      if (ss.destroyed) continue;
+      const sysDef = G.catalog.systems[sysId];
+      if (!sysDef) continue;
+      if (ss.units.some((u) => u.side === 'Rebel')) continue;
+      const isRemote = sysDef.isRemote;
+      const hasImpGround = ss.units.some(
+        (u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground',
+      );
+      const hasImpShieldBunker = ss.units.some(
+        (u) => u.side === 'Empire' && u.typeId === 'shield-bunker',
+      );
+      // 1. Easy deployment for a Shield Bunker
+      if (typeId === 'shield-bunker' && hasImpGround) {
+        out.add(sysId);
+        continue;
+      }
+      // 2. Local reinforcement at a remote Shield Bunker
+      if (isRemote && hasImpShieldBunker) {
+        out.add(sysId);
+      }
+    }
+  }
+
+  return Array.from(out);
 }
 
 /** Refresh deploy step. Slides queue 3→2→1, then queues a DeployUnitPick
@@ -3900,14 +3944,14 @@ function promoteNextDeployPick(G: GameState): boolean {
       // No marker found (e.g. it was destroyed mid-build) — fall through to a
       // normal deploy so the unit isn't silently dropped.
     }
-    const candidates = applyDeployCap(G, next.side, legalDeployTargets(G, next.side));
+    const candidates = applyDeployCap(G, next.side, legalDeployTargets(G, next.side, next.typeId));
     if (candidates.length === 0) {
       // RAW: returns to slot 1 of build queue. (Includes the case where
       // every legal system is already saturated at the 2-deploy cap.)
       f.buildQueue[1].push(next.typeId);
       log(G, { kind: 'deploy-returned-to-queue', side: next.side, payload: {
         typeId: next.typeId,
-        reason: legalDeployTargets(G, next.side).length === 0 ? 'no-legal-system' : 'all-systems-at-deploy-cap',
+        reason: legalDeployTargets(G, next.side, next.typeId).length === 0 ? 'no-legal-system' : 'all-systems-at-deploy-cap',
       }});
       r.pendingDeployPicks.shift();
       continue;
