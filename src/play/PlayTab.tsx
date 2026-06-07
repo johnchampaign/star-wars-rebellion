@@ -6655,7 +6655,13 @@ function LeaderRoster({ G, side, humanSide }: { G: GameState; side: Side; humanS
  *  most they can know. */
 function UnitRoster({ G, side }: { G: GameState; side: Side }) {
   const color = sideColor(side);
-  const types = Object.values(G.catalog.unitTypes).filter((t) => t.side === side);
+  // Only list units that are part of THIS game: base units always, RoE-tagged
+  // units only when the expansion is enabled. Without this, a base game shows
+  // expansion units (Interdictor, TIE Striker, …) it can never field
+  // (player report #152).
+  const types = Object.values(G.catalog.unitTypes).filter(
+    (t) => t.side === side && (t.set !== 'rote' || G.expansion?.enabled === true),
+  );
   if (types.length === 0) return null;
   const f = side === 'Rebel' ? G.rebel : G.empire;
 
@@ -9910,7 +9916,9 @@ function UnitKeyModal({ G, unitStyle, onClose }: {
   const shapeGlyph = (tier?: string) => tier === 'triangle' ? '▲' : tier === 'circle' ? '●' : '■';
   const all = Object.values(G.catalog.unitTypes);
   const renderSide = (side: Side) => {
-    const units = all.filter((t) => t.side === side);
+    // Hide RoE-tagged units in a base game (only show them when the expansion
+    // is enabled) — see player report #152.
+    const units = all.filter((t) => t.side === side && (t.set !== 'rote' || G.expansion?.enabled === true));
     return (
       <div style={{ flex: 1, minWidth: 240 }}>
         <div style={{ color: sideColor(side), fontWeight: 700, fontSize: 14, marginBottom: 6 }}>{side}</div>
