@@ -12,7 +12,9 @@
       "Luke Skywalker (Jedi) is a distinct leader (rr p.8 says treat as Luke Skywalker for card and action card references -- modeled here as a separate id).",
       "Edited via dev leaders tab at 2026-05-20T00:12:34.266Z.",
       "Phase 5c: appended 8 Rise of the Empire leaders tagged set: \"rote\". Skills/minor skills read from images/<Name>.png at high zoom (icon size distinguishes major vs minor). Tactic values cross-verified against the RoE action-card text in assets/actions.json — all match.",
-      "Phase 5c patch: corrected 3 RoE leader skill counts after a second pass over the card art at 24x zoom (prompted by Leader_Pool_RotE.pdf and the canonical \"Jyn has six skill icons\"). Tactic values unchanged."
+      "Phase 5c patch: corrected 3 RoE leader skill counts after a second pass over the card art at 24x zoom (prompted by Leader_Pool_RotE.pdf and the canonical \"Jyn has six skill icons\"). Tactic values unchanged.",
+      "Phase 5c patch v2: corrected 5 RoE leader skill counts after a third pass against Leader_Pool_RotE.pdf rendered at 400 DPI with each leader row cropped at the exact chart y-position. Tactic values unchanged. See scripts/fix-rote-leaders-v2.mjs for the per-leader rationale.",
+      "Phase 5c patch v3: user-verified corrections to Krennic, Krennic's Finest, and Motti (icon-size distinction at PDF resolution was ambiguous for these three; user read the physical chart). Jabba's data was already correct."
     ]
   },
   "leaders": [
@@ -604,7 +606,7 @@
       },
       "minorSkills": {
         "diplomacy": 1,
-        "intel": 0,
+        "intel": 1,
         "specOps": 0,
         "logistics": 0
       },
@@ -623,13 +625,13 @@
       "skills": {
         "diplomacy": 0,
         "intel": 1,
-        "specOps": 1,
+        "specOps": 0,
         "logistics": 1
       },
       "minorSkills": {
         "diplomacy": 0,
         "intel": 2,
-        "specOps": 0,
+        "specOps": 1,
         "logistics": 0
       },
       "tacticValues": {
@@ -645,13 +647,13 @@
       "side": "Empire",
       "isStarting": false,
       "skills": {
-        "diplomacy": 1,
+        "diplomacy": 0,
         "intel": 0,
         "specOps": 0,
         "logistics": 1
       },
       "minorSkills": {
-        "diplomacy": 0,
+        "diplomacy": 1,
         "intel": 1,
         "specOps": 0,
         "logistics": 0
@@ -671,13 +673,13 @@
       "skills": {
         "diplomacy": 0,
         "intel": 0,
-        "specOps": 3,
+        "specOps": 2,
         "logistics": 0
       },
       "minorSkills": {
         "diplomacy": 0,
         "intel": 0,
-        "specOps": 1,
+        "specOps": 2,
         "logistics": 0
       },
       "tacticValues": {
@@ -700,9 +702,9 @@
       },
       "minorSkills": {
         "diplomacy": 0,
-        "intel": 1,
+        "intel": 2,
         "specOps": 0,
-        "logistics": 1
+        "logistics": 0
       },
       "tacticValues": {
         "space": 2,
@@ -747,7 +749,7 @@
         "logistics": 0
       },
       "minorSkills": {
-        "diplomacy": 1,
+        "diplomacy": 2,
         "intel": 0,
         "specOps": 0,
         "logistics": 0
@@ -773,7 +775,7 @@
       "minorSkills": {
         "diplomacy": 0,
         "intel": 0,
-        "specOps": 1,
+        "specOps": 2,
         "logistics": 0
       },
       "tacticValues": {
