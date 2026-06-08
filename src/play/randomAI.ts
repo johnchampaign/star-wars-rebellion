@@ -1411,6 +1411,14 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'AmbitionsOfPowerOffer' && G.pendingChoice.side === side) {
     return phases.resolveAmbitionsOfPowerOffer(G, true).ok;
   }
+  // Heist (Rebel/RoE): if the draw-objective branch is available (DS/DSUC
+  // present), take it — a free objective card is strictly stronger than
+  // removing one Imperial marker. Otherwise remove the first marker.
+  if (G.pendingChoice && G.pendingChoice.kind === 'HeistChoice' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    if (c.canDrawObjective) return phases.resolveHeistChoice(G, 'draw').ok;
+    return phases.resolveHeistChoice(G, `remove:${c.markerSources[0]}`).ok;
+  }
   // Discredit Rebellion (RoE): heuristic — always prefer the ROLL branch.
   // Sabotage markers are a strategic asset (they cripple Imperial systems
   // every refresh); a single rep loss on a 1/3 or so chance is the better

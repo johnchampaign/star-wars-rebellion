@@ -234,6 +234,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'WereTheBaitUnits':         return pc.side === side;
     case 'ImperialMightUnits':       return pc.side === side;
     case 'BreakTheirWillPick':       return pc.side === side;
+    case 'HeistChoice':              return pc.side === side;
     // Robust default: ANY side-tagged choice belongs to the side it names, so
     // if that side is the AI, the AI owes it. This catches choice kinds the AI
     // can resolve but that aren't explicitly listed above — without it, such a
@@ -2076,6 +2077,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <DiscreditRebellionModal G={G} choice={G.pendingChoice}
           onAction={(action) => {
             const r = phases.resolveDiscreditRebellion(G, action);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'HeistChoice'
+        && G.pendingChoice.side === humanSide && (
+        <HeistChoiceModal G={G} choice={G.pendingChoice}
+          onAction={(action) => {
+            const r = phases.resolveHeistChoice(G, action);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -11440,6 +11453,50 @@ function SecretMissionPickModal({
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HeistChoiceModal({
+  G, choice, onAction,
+}: {
+  G: GameState;
+  choice: { systemId: string; canDrawObjective: boolean; markerSources: string[] };
+  onAction: (action: string) => void;
+}) {
+  const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  // Friendly label for a marker's source card (mission or action card name).
+  const sourceLabel = (src: string) =>
+    G.catalog.missions[src]?.name ?? G.catalog.actions[src]?.name ?? src;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Heist — at {sysName}</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+          {choice.canDrawObjective
+            ? 'A Death Star is here — you may draw the top objective card instead of removing a target marker.'
+            : 'Choose which target marker to remove.'}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {choice.canDrawObjective && (
+            <button className="tab-button active" onClick={() => onAction('draw')} style={{ textAlign: 'left', fontWeight: 700 }}>
+              Draw the top objective card
+            </button>
+          )}
+          {choice.markerSources.map((src) => (
+            <button key={src} className="tab-button" onClick={() => onAction(`remove:${src}`)} style={{ textAlign: 'left' }}>
+              Remove the {sourceLabel(src)} target marker
+            </button>
+          ))}
         </div>
       </div>
     </div>

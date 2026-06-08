@@ -1674,8 +1674,9 @@ const exploitWeakness: EffectHandler = (G, _ctx) => {
 // ----- Rebel Wave B -----
 
 /** Heist (Jyn): "Remove 1 target marker. If on a Death Star or DSUC, you
- *  may draw the top objective card instead." Auto-picks the more powerful
- *  effect when both apply: draw an objective if a DS/DSUC is here. */
+ *  may draw the top objective card instead." The Rebel chooses between the
+ *  draw-objective branch (only at a DS/DSUC) and removing a specific marker
+ *  whenever there's a real decision. */
 const heist: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
@@ -1683,20 +1684,38 @@ const heist: EffectHandler = (G, ctx) => {
   const hasDsOrDsuc = (ss?.units ?? []).some(
     (u) => u.side === 'Empire' && (u.typeId === 'death-star' || u.typeId === 'death-star-under-construction'),
   );
-  if (hasDsOrDsuc) {
-    // Strictly the better effect at a DS/DSUC site.
+  const markerSources = (ss?.targetMarkers ?? []).map((m) => m.source);
+
+  // No DS/DSUC: the only effect is "remove 1 marker".
+  if (!hasDsOrDsuc) {
+    if (markerSources.length === 0) {
+      log(G, { kind: 'heist-no-effect', side: 'Rebel', payload: { systemId: sysId } });
+      return true;
+    }
+    if (markerSources.length === 1) {
+      M.removeTargetMarker(G, sysId, markerSources[0], 'Rebel');
+      return true;
+    }
+    // Multiple markers — pick which to remove.
+  } else if (markerSources.length === 0) {
+    // DS/DSUC present but no markers — the only available effect is draw.
     M.drawObjective(G, 1);
     log(G, { kind: 'heist-draw-objective', side: 'Rebel', payload: { systemId: sysId } });
     return true;
   }
-  // Remove any target marker present (RAW says "remove 1"). Take the first.
-  const markers = ss?.targetMarkers ?? [];
-  if (markers.length > 0) {
-    M.removeTargetMarker(G, sysId, markers[0].source, 'Rebel');
-  } else {
-    log(G, { kind: 'heist-no-marker', side: 'Rebel', payload: { systemId: sysId } });
-  }
-  return true;
+
+  // Real decision: draw-objective branch and/or which marker to remove.
+  G.pendingChoice = {
+    kind: 'HeistChoice',
+    side: 'Rebel',
+    systemId: sysId,
+    canDrawObjective: hasDsOrDsuc,
+    markerSources,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'HeistChoice', systemId: sysId, canDrawObjective: hasDsOrDsuc, markers: markerSources.length,
+  }});
+  return false;
 };
 
 /** Plant Explosives: "Destroy up to 3 ground units, combined health up to

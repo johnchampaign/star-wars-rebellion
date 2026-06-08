@@ -1847,6 +1847,28 @@ export function resolveWereTheBaitUnits(G: GameState, unitIds: string[]): { ok: 
   return { ok: true };
 }
 
+/** Heist (Rebel/Jyn, RoE): resolve the player's choice. `action` is
+ *  'draw' (take the top objective — only legal at a DS/DSUC) or
+ *  'remove:<markerSource>' (remove that target marker). */
+export function resolveHeistChoice(G: GameState, action: string): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'HeistChoice') return { ok: false, reason: 'no-pending' };
+  if (action === 'draw') {
+    if (!pc.canDrawObjective) return { ok: false, reason: 'draw-not-available' };
+    M.drawObjective(G, 1);
+    log(G, { kind: 'heist-draw-objective', side: 'Rebel', payload: { systemId: pc.systemId } });
+  } else if (action.startsWith('remove:')) {
+    const source = action.slice('remove:'.length);
+    if (!pc.markerSources.includes(source)) return { ok: false, reason: 'marker-not-present' };
+    M.removeTargetMarker(G, pc.systemId, source, 'Rebel');
+  } else {
+    return { ok: false, reason: `bad-action:${action}` };
+  }
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Break Their Will (Empire, RoE): Empire named a system; reveal to the
  *  Empire whether the Rebel base is in that system's region. */
 export function resolveBreakTheirWillPick(G: GameState, systemId: SystemId): { ok: boolean; reason?: string } {

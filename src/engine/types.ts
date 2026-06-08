@@ -614,6 +614,17 @@ export type ChoiceRequest =
       candidates: SystemId[];
     }
   | {
+      // Heist (Rebel/Jyn, RoE): "Remove 1 target marker. If on a Death Star
+      // or DSUC, you may draw the top objective card instead." Posted when
+      // there's a real decision — multiple markers, or a DS/DSUC present
+      // (so the draw-objective branch is available).
+      kind: 'HeistChoice';
+      side: Side; // 'Rebel'
+      systemId: SystemId;
+      canDrawObjective: boolean; // true when a DS/DSUC is in the system
+      markerSources: string[];   // card-id sources of the target markers present
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated
