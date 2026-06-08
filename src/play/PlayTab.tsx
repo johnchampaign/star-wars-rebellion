@@ -11375,7 +11375,9 @@ function BrilliantAdministratorBuildPickModal({
         && t.theater === icon.theater
         && (tierRank[t.tier ?? 'square'] ?? 2) <= need
         && t.class !== 'structure'
-        && !PROJECT_ONLY_UNIT_IDS.has(t.id))
+        && !PROJECT_ONLY_UNIT_IDS.has(t.id)
+        // RoE units only buildable when the expansion's unit toggle is on.
+        && (t.set !== 'rote' || G.expansion?.roeUnits === true))
       .map((t) => t.id);
   };
   const defaults = choice.icons.map((icon) => {
@@ -11885,7 +11887,10 @@ function TemporaryAllianceBuildPickModal({
       .filter((t) => t.side === 'Rebel'
         && t.theater === icon.theater
         && (tierRank[t.tier ?? 'square'] ?? 2) <= need
-        && t.class !== 'structure')
+        && t.class !== 'structure'
+        // RoE units are only buildable when the expansion's unit toggle is on
+        // (base-game build must not offer U-Wing / Nebulon-B / etc.).
+        && (t.set !== 'rote' || G.expansion?.roeUnits === true))
       .map((t) => t.id);
   };
   const defaults = choice.icons.map((icon) => {
@@ -11956,7 +11961,9 @@ function BuildFromIconsPickModal({
         && t.theater === icon.theater
         && (tierRank[t.tier ?? 'square'] ?? 2) <= need
         && t.class !== 'structure'
-        && !PROJECT_ONLY_UNIT_IDS.has(t.id))
+        && !PROJECT_ONLY_UNIT_IDS.has(t.id)
+        // RoE units only buildable when the expansion's unit toggle is on.
+        && (t.set !== 'rote' || G.expansion?.roeUnits === true))
       .map((t) => t.id);
   };
   const defaults = choice.icons.map((icon) => {
