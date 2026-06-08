@@ -18,7 +18,8 @@
       "Phase 5b Wave A: bound effectKey for 12 RoE missions to handlers in src/engine/handlers/index.ts. Choice-heavy missions deferred to Wave B/C.",
       "Phase 5b Wave B: bound effectKey for 9 more RoE missions.",
       "Phase 5b Wave C: bound effectKey for 7 more RoE missions. Subversion (New/Original) remain data-only — opposition missions don't dispatch through the normal handler flow yet.",
-      "Phase 5b Wave C: bound effectKey for 1 more RoE missions. Subversion (New/Original) remain data-only — opposition missions don't dispatch through the normal handler flow yet."
+      "Phase 5b Wave C: bound effectKey for 1 more RoE missions. Subversion (New/Original) remain data-only — opposition missions don't dispatch through the normal handler flow yet.",
+      "Phase 5b polish: wired 2 Subversion missions. The two RoE Oppose-timing missions now auto-fire from resolveOpposition when the opposing side has them assigned (moves leaders to the target system + +1 opposition die). 31 / 31 RoE missions are now functional."
     ]
   },
   "missions": [
@@ -1003,7 +1004,7 @@
       "skillCost": 0,
       "isAttempt": false,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "subversion-new",
       "rulesText": "Oppose a Rebel mission (from the new RoE set). Place assigned leaders in that system. Roll 1 additional die to oppose the mission.",
       "image": "",
       "set": "rote"
@@ -1018,7 +1019,7 @@
       "skillCost": 0,
       "isAttempt": false,
       "leaderPortrait": null,
-      "effectKey": "",
+      "effectKey": "subversion-original",
       "rulesText": "Oppose a Rebel mission (from the original base set). Place assigned leaders in that system. Roll 1 additional die to oppose the mission.",
       "image": "",
       "set": "rote"

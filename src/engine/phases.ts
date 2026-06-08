@@ -876,6 +876,14 @@ export function revealMission(
   const card = G.catalog.missions[missionId];
   if (!card) return { ok: false, reason: 'unknown-mission' };
 
+  // RoE "Subversion" — Oppose-timing missions don't reveal proactively;
+  // they auto-fire from resolveOpposition when their owning side opposes
+  // an enemy mission. Refuse a direct reveal so a player can't sidestep
+  // the trigger by clicking Reveal at any system.
+  if (missionId === 'subversion-new' || missionId === 'subversion-original') {
+    return { ok: false, reason: 'subversion-auto-triggers' };
+  }
+
   // Skill check: sum of matching skill icons across assigned leaders must
   // meet card.skillCost. RoE rules p.8: minor icons count toward the
   // total too — totalSkill returns both halves.
@@ -1153,6 +1161,40 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
     M.placeLeader(G, c.opposerSide, opposerLeaderId, pm.targetSystemId);
   }
 
+  // RoE "Subversion" (Empire or Rebel, RoE Oppose-timing mission). When the
+  // opposing side has Subversion (New or Original) assigned in
+  // leadersOnMissions, it auto-fires here: the assigned leaders join the
+  // opposition at the target system, the Subversion mission card discards,
+  // and the opposition rolls +1 die. Auto-fire is the strict-upside play —
+  // RAW lets the opposer choose, but they almost always would. Both
+  // Subversion variants share the same effect; they exist to match the
+  // active mission deck (New for roeMissions=on, Original for off).
+  let subversionBonus = 0;
+  const opposerFaction = c.opposerSide === 'Rebel' ? G.rebel : G.empire;
+  const SUBVERSION_IDS = ['subversion-new', 'subversion-original'];
+  const subvAssigned = opposerFaction.leadersOnMissions.find(
+    (m) => SUBVERSION_IDS.includes(m.missionId),
+  );
+  if (subvAssigned) {
+    for (const lid of subvAssigned.leaderIds) {
+      M.placeLeader(G, c.opposerSide, lid, pm.targetSystemId);
+    }
+    const i = opposerFaction.leadersOnMissions.indexOf(subvAssigned);
+    if (i >= 0) opposerFaction.leadersOnMissions.splice(i, 1);
+    opposerFaction.missionDiscard.push(subvAssigned.missionId);
+    subversionBonus = 1;
+    log(G, { kind: 'subversion-trigger', side: c.opposerSide, payload: {
+      missionId: subvAssigned.missionId,
+      leaderIds: subvAssigned.leaderIds,
+      targetSystemId: pm.targetSystemId,
+    }});
+    noteIntervention(G, pm,
+      `${c.opposerSide} played ${G.catalog.missions[subvAssigned.missionId]?.name ?? 'Subversion'}: ` +
+      `moved their assigned leader${subvAssigned.leaderIds.length === 1 ? '' : 's'} to ` +
+      `${G.catalog.systems[pm.targetSystemId]?.name ?? pm.targetSystemId} and rolled +1 die.`,
+    );
+  }
+
   // Determine if opposition actually happens: any opposer leader at target.
   // Captured leaders only contribute when the mission targets them (RR p.9).
   const oppLeaderIds = opposerLeadersAt(G, c.opposerSide, pm.targetSystemId, pm.missionId);
@@ -1196,7 +1238,9 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
     const oppSkillSplit = countsAll
       ? totalAllSkills(G, oppLeaderIds as LeaderId[])
       : totalSkill(G, oppLeaderIds as LeaderId[], skill);
-    const opposerDice = oppSkillSplit.major + oppSkillSplit.minor;
+    // RoE Subversion adds 1 die to the opposition. Counted as a major die
+    // (red/black per the standard split).
+    const opposerDice = oppSkillSplit.major + oppSkillSplit.minor + subversionBonus;
     const att = rollMissionDice(G, attackerDice, attSkillSplit.minor, pm.resolverSide, pm.targetSystemId);
     const opp = rollMissionDice(G, opposerDice, oppSkillSplit.minor, c.opposerSide, pm.targetSystemId);
     const portrait = portraitBonus(G, pm.missionId, pm.leaderIds as LeaderId[]);
