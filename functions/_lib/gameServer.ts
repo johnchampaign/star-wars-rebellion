@@ -335,7 +335,17 @@ export async function postChat(
 ): Promise<void> {
   const text = (body ?? '').toString().replace(/\s+$/g, '').slice(0, CHAT_MAX_LEN).trim();
   if (!text) return;
-  await supabase.from('swr_chat').insert({ game_id: gameId, seat, body: text });
+  // Supabase's .insert() does NOT throw on error (e.g. a missing table) — it
+  // returns { error }. Surface it so a failed send is a real error the client
+  // can show, not a silent no-op that looks like success.
+  const { error } = await supabase.from('swr_chat').insert({ game_id: gameId, seat, body: text });
+  if (error) {
+    throw new Error(
+      /relation .*swr_chat.* does not exist/i.test(error.message)
+        ? 'Chat is not set up: the swr_chat table is missing. Run the one-time migration (see gameServer.ts header).'
+        : `Chat insert failed: ${error.message}`,
+    );
+  }
 }
 
 // ----- Abandonment handling (Part 2) -----

@@ -181,6 +181,7 @@ function ChatPanel({ gameId, token, you }: { gameId: string; token: string; you:
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [seenCount, setSeenCount] = useState(0);
+  const [sendErr, setSendErr] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
   const loadRef = useRef<() => void>(() => {});
@@ -218,17 +219,19 @@ function ChatPanel({ gameId, token, you }: { gameId: string; token: string; you:
   async function send() {
     const text = draft.trim();
     if (!text || sending) return;
-    setSending(true);
+    setSending(true); setSendErr(null);
     try {
       const r = await fetch(`${base}/chat${q}`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ message: text }),
       });
       const j = await r.json().catch(() => ({}));
+      if (!r.ok) { setSendErr(j?.error || `Couldn't send (HTTP ${r.status})`); return; }
       if (Array.isArray(j.chat)) setMsgs(j.chat as ChatMsg[]);
       setDraft('');
-    } catch { /* surfaced by the next poll if it actually landed */ }
-    finally { setSending(false); }
+    } catch (e) {
+      setSendErr(e instanceof Error ? e.message : 'Network error — message not sent.');
+    } finally { setSending(false); }
   }
 
   const seatColor = (s: string) => (s === 'Rebel' ? '#4fc3f7' : '#ff8a80');
@@ -278,6 +281,9 @@ function ChatPanel({ gameId, token, you }: { gameId: string; token: string; you:
             />
             <button onClick={() => void send()} disabled={sending || !draft.trim()} className="tab-button" style={{ fontSize: 11, padding: '3px 8px' }}>Send</button>
           </div>
+          {sendErr && (
+            <div style={{ padding: '0 6px 6px', fontSize: 10.5, color: '#e57373', lineHeight: 1.3 }}>{sendErr}</div>
+          )}
         </div>
       )}
     </div>
