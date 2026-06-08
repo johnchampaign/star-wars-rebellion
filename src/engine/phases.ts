@@ -1847,6 +1847,45 @@ export function resolveWereTheBaitUnits(G: GameState, unitIds: string[]): { ok: 
   return { ok: true };
 }
 
+/** Imperial Might (Empire, RoE): Empire picks up to `max` units (by index
+ *  into the slot-1 snapshot) to deploy at the target, then the 2-leaders →
+ *  Coruscant clause runs. Indices reference the queueTypeIds snapshot; we
+ *  remove the matching entries from the live build queue by value-and-count
+ *  (each chosen index consumes one matching type id from slot 1). */
+export function resolveImperialMightUnits(G: GameState, queueIndices: number[]): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'ImperialMightUnits') return { ok: false, reason: 'no-pending' };
+  if (queueIndices.length > pc.max) return { ok: false, reason: `too-many:${queueIndices.length}/${pc.max}` };
+  const seen = new Set<number>();
+  for (const i of queueIndices) {
+    if (i < 0 || i >= pc.queueTypeIds.length) return { ok: false, reason: `bad-index:${i}` };
+    if (seen.has(i)) return { ok: false, reason: `duplicate:${i}` };
+    seen.add(i);
+  }
+  const sysId = pc.targetSystemId;
+  const slot1 = G.empire.buildQueue[1];
+  const taken: string[] = [];
+  // Remove one matching entry from the live queue per chosen index.
+  for (const i of queueIndices) {
+    const typeId = pc.queueTypeIds[i];
+    const liveIdx = slot1.indexOf(typeId);
+    if (liveIdx >= 0) { slot1.splice(liveIdx, 1); taken.push(typeId); }
+  }
+  for (const typeId of taken) M.deployUnit(G, 'Empire', typeId, sysId);
+  log(G, { kind: 'imperial-might-deploy', side: 'Empire', payload: { systemId: sysId, unitTypes: taken } });
+  // 2-leaders → Coruscant clause.
+  if (pc.leaderIds.length >= 2) {
+    for (const lid of pc.leaderIds) {
+      M.returnLeader(G, 'Empire', lid);
+      M.placeLeader(G, 'Empire', lid, 'coruscant');
+    }
+    log(G, { kind: 'imperial-might-move-leaders', side: 'Empire', payload: { leaderIds: [...pc.leaderIds] } });
+  }
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Oversee Project: Empire picks which queued unit to deploy. */
 export function resolveOverseeProjectPick(G: GameState, queueIndex: number, slot: 1 | 2): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;

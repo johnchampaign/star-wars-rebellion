@@ -1575,25 +1575,44 @@ const makeAnExample: EffectHandler = (G, ctx) => {
   return true;
 };
 
+/** Apply the "if 2 leaders assigned, move them to Coruscant" clause shared
+ *  by Imperial Might's auto and choice paths. */
+function imperialMightMoveLeaders(G: GameState, leaderIds: readonly LeaderId[]): void {
+  if (leaderIds.length < 2) return;
+  for (const lid of leaderIds) {
+    M.returnLeader(G, 'Empire', lid);
+    M.placeLeader(G, 'Empire', lid, 'coruscant');
+  }
+  log(G, { kind: 'imperial-might-move-leaders', side: 'Empire', payload: { leaderIds: [...leaderIds] } });
+}
+
 /** Imperial Might: "Take 4 Imperial units from space 1 of the build queue
  *  and place them in this system. If 2 leaders assigned, move those leaders
- *  to Coruscant." Auto-picks the first 4 units off slot 1. */
+ *  to Coruscant." With 4 or fewer units on slot 1 there's no choice (take
+ *  all); with more the Empire picks which 4. */
 const imperialMight: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
   const q = G.empire.buildQueue[1];
-  const taken: string[] = [];
-  for (let i = 0; i < 4 && q.length > 0; i++) taken.push(q.shift()!);
-  for (const typeId of taken) M.deployUnit(G, 'Empire', typeId, sysId);
-  log(G, { kind: 'imperial-might-deploy', side: 'Empire', payload: { systemId: sysId, unitTypes: taken } });
-  if (ctx.leaderIds.length >= 2) {
-    for (const lid of ctx.leaderIds) {
-      M.returnLeader(G, 'Empire', lid);
-      M.placeLeader(G, 'Empire', lid, 'coruscant');
-    }
-    log(G, { kind: 'imperial-might-move-leaders', side: 'Empire', payload: { leaderIds: ctx.leaderIds } });
+  if (q.length <= 4) {
+    const taken = q.splice(0, q.length);
+    for (const typeId of taken) M.deployUnit(G, 'Empire', typeId, sysId);
+    log(G, { kind: 'imperial-might-deploy', side: 'Empire', payload: { systemId: sysId, unitTypes: taken, auto: true } });
+    imperialMightMoveLeaders(G, ctx.leaderIds);
+    return true;
   }
-  return true;
+  G.pendingChoice = {
+    kind: 'ImperialMightUnits',
+    side: 'Empire',
+    targetSystemId: sysId,
+    queueTypeIds: [...q],
+    max: 4,
+    leaderIds: [...ctx.leaderIds],
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'ImperialMightUnits', queueSize: q.length, max: 4,
+  }});
+  return false;
 };
 
 /** We're the Bait: "Take 4-health of ground units from the Rebel Base and

@@ -592,6 +592,20 @@ export type ChoiceRequest =
       healthBudget: number; // 4
     }
   | {
+      // Imperial Might (Empire, RoE): pick up to 4 units from build queue
+      // space 1 to deploy at the target. `queueTypeIds` is a snapshot of
+      // slot-1 contents (a list of unit type ids); the player picks up to
+      // `max` indices into it. leaderIds carries the assigned leaders so
+      // the resolver can do the "if 2 leaders, move them to Coruscant"
+      // clause after deployment.
+      kind: 'ImperialMightUnits';
+      side: Side; // 'Empire'
+      targetSystemId: SystemId;
+      queueTypeIds: string[]; // slot-1 unit type ids
+      max: number; // 4
+      leaderIds: LeaderId[];
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated

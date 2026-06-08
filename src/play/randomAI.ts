@@ -1493,6 +1493,18 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     }
     return phases.resolveWereTheBaitUnits(G, pick).ok;
   }
+  // Imperial Might (Empire/RoE): deploy the strongest `max` queued units
+  // (highest combined attack) into the target.
+  if (G.pendingChoice && G.pendingChoice.kind === 'ImperialMightUnits' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const scored = c.queueTypeIds.map((typeId, i) => {
+      const t = G.catalog.unitTypes[typeId];
+      const atk = t ? (t.attack.red + t.attack.black + t.attack.green) : 0;
+      return { i, atk };
+    }).sort((a, b) => b.atk - a.atk);
+    const pick = scored.slice(0, c.max).map((s) => s.i);
+    return phases.resolveImperialMightUnits(G, pick).ok;
+  }
   // MissionRecruitLeaderPick (RoE): pick the highest-tactic-total leader
   // (Hire Mercenaries / Imperial Promotion / Rebel Promotion / My Only
   // Hope). For Hire Mercenaries the candidates are no-tactic-value
