@@ -1974,8 +1974,17 @@ function stepOnceInner(G: GameState, side: Side): boolean {
         const orders: phases.MoveOrder[] = [];
         const f = side === 'Rebel' ? G.rebel : G.empire;
         const adj = G.catalog.adjacency[action.targetSystemId] ?? [];
+        // Never empty a system that imprisons a captured ENEMY leader — the
+        // moment no friendly unit remains there, the leader is auto-freed
+        // (player report #158: the AI moved every unit off Corellia and gifted
+        // Luke his freedom). Simplest safe guard: don't pull units from a
+        // prison system at all, keeping the garrison on watch.
+        const prisonSystems = new Set<string>(
+          (f.capturedLeaders ?? []).map((c) => c.systemId).filter(Boolean) as string[],
+        );
         const sources = adj.filter((sysId) => {
           if ((f.leadersOnBoard[sysId] ?? []).length > 0) return false;
+          if (prisonSystems.has(sysId)) return false; // guard captured leaders
           const ss = G.map.systems[sysId];
           return ss && ss.units.some((u) => u.side === side);
         });
