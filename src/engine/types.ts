@@ -544,6 +544,14 @@ export type ChoiceRequest =
       cause: string; // mission id (for the log + UI title)
     }
   | {
+      // Reconnaissance (Rebel, RoE): the Rebel picks a discarded mission
+      // to return to hand. Posted with all missions in rebel.missionDiscard
+      // as candidates.
+      kind: 'ReconnaissancePick';
+      side: Side; // 'Rebel'
+      candidates: string[]; // mission ids in the discard pile
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated

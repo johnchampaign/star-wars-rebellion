@@ -1474,11 +1474,23 @@ const regionalAid: EffectHandler = (G, ctx) => {
  *  the Rebel discard pile. */
 const reconnaissance: EffectHandler = (G, _ctx) => {
   const pile = G.rebel.missionDiscard;
-  if (!pile.length) return true;
-  const recovered = pile.shift()!;
-  G.rebel.missionHand.push(recovered);
-  log(G, { kind: 'reconnaissance-recover', side: 'Rebel', payload: { missionId: recovered } });
-  return true;
+  if (pile.length === 0) return true;
+  if (pile.length === 1) {
+    // Only one option — auto-recover without prompting.
+    const recovered = pile.shift()!;
+    G.rebel.missionHand.push(recovered);
+    log(G, { kind: 'reconnaissance-recover', side: 'Rebel', payload: { missionId: recovered, auto: true } });
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'ReconnaissancePick',
+    side: 'Rebel',
+    candidates: [...pile],
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'ReconnaissancePick', candidates: pile.length,
+  }});
+  return false;
 };
 
 /** Critical Rescue: "Attempt on a captured leader. Rescue the leader. If

@@ -1427,6 +1427,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     if (c.remaining.length === 0) return false; // safety
     return phases.resolveSecretMissionPick(G, c.remaining[0]).ok;
   }
+  // Reconnaissance (RoE): grab the first discarded mission. A smarter AI
+  // would prefer high-value missions (starting cards, no-leader-required
+  // resolves); MVP keeps it simple.
+  if (G.pendingChoice && G.pendingChoice.kind === 'ReconnaissancePick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    return phases.resolveReconnaissancePick(G, c.candidates[0]).ok;
+  }
   // MissionRecruitLeaderPick (RoE): pick the highest-tactic-total leader
   // (Hire Mercenaries / Imperial Promotion / Rebel Promotion / My Only
   // Hope). For Hire Mercenaries the candidates are no-tactic-value

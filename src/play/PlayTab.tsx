@@ -227,6 +227,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'DiscreditRebellionChoice': return pc.side === side;
     case 'SecretMissionPick':        return pc.side === side;
     case 'MissionRecruitLeaderPick': return pc.side === side;
+    case 'ReconnaissancePick':       return pc.side === side;
     // Robust default: ANY side-tagged choice belongs to the side it names, so
     // if that side is the AI, the AI owes it. This catches choice kinds the AI
     // can resolve but that aren't explicitly listed above — without it, such a
@@ -2051,6 +2052,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <MissionRecruitLeaderPickModal G={G} choice={G.pendingChoice}
           onPick={(lid) => {
             const r = phases.resolveMissionRecruitLeaderPick(G, lid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'ReconnaissancePick'
+        && G.pendingChoice.side === humanSide && (
+        <ReconnaissancePickModal G={G} choice={G.pendingChoice}
+          onPick={(mid) => {
+            const r = phases.resolveReconnaissancePick(G, mid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -10880,6 +10893,51 @@ function NobleSacrificeOfferModal({
           <button className="tab-button" onClick={() => onAccept(false)}>
             Keep, accept capture
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReconnaissancePickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { candidates: string[] };
+  onPick: (missionId: string) => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 680, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Reconnaissance — recover a discarded mission</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          Pick a mission from your discard pile to return to your hand:
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {choice.candidates.map((mid) => {
+            const m = G.catalog.missions[mid];
+            if (!m) return null;
+            return (
+              <button
+                key={mid}
+                className="tab-button"
+                onClick={() => onPick(mid)}
+                style={{ textAlign: 'left', padding: '8px 10px' }}
+              >
+                <div style={{ fontWeight: 700, color: '#fff' }}>{m.name}</div>
+                <div style={{ fontSize: 11, color: '#ccc', marginTop: 4, fontStyle: 'italic' }}>
+                  {m.rulesText}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

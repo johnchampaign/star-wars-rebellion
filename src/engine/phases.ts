@@ -2563,6 +2563,23 @@ export function resolvePostBountyOffer(G: GameState, leaderId: LeaderId | null):
   return { ok: true };
 }
 
+/** Reconnaissance (Rebel, RoE): pick a discarded mission to return to
+ *  hand. */
+export function resolveReconnaissancePick(G: GameState, missionId: string): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'ReconnaissancePick') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(missionId)) return { ok: false, reason: 'card-not-in-pile' };
+  const pile = G.rebel.missionDiscard;
+  const idx = pile.indexOf(missionId);
+  if (idx < 0) return { ok: false, reason: 'card-missing-from-discard' };
+  const [recovered] = pile.splice(idx, 1);
+  G.rebel.missionHand.push(recovered);
+  log(G, { kind: 'reconnaissance-recover', side: 'Rebel', payload: { missionId: recovered } });
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** RoE mission recruit (Hire Mercenaries, Imperial/Rebel Promotion, My
  *  Only Hope) — when 2+ candidates were eligible, the player picks one
  *  here. The chosen leader is added to the pool and placed at the
