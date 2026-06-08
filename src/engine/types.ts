@@ -79,6 +79,17 @@ export type TargetMarker = {
   placedAt?: number;    // optional round/turn stamp for "still present at start of refresh" checks
 };
 
+/** RoE: an action card the player has ARMED with a facedown probe card.
+ *  Used by Secret Facility + Sweep the Area. The committed system (the
+ *  destination the chosen probe pointed to) is stored as `probeSystemId`;
+ *  the card itself sits in `FactionState.armedActionCards` until its
+ *  trigger window auto-reveals it. */
+export type ArmedActionCard = {
+  cardId: string;        // 'secret-facility' | 'sweep-the-area'
+  probeSystemId: string; // the system the chosen probe revealed
+  armedAt: number;       // timeMarker stamp
+};
+
 // The Rebel Base space is not a system but uses the same state shape for unit/leader staging.
 export type RebelBaseSpaceState = SystemState;
 
@@ -135,6 +146,12 @@ export type FactionState = {
   // for the rest of the game. enforceLeaderPoolCap reads 8 + this bonus.
   // Absent/undefined ⇒ 0.
   leaderPoolCapBonus?: number;
+  // RoE multi-turn action cards "armed" with a facedown probe (Secret
+  // Facility, Sweep the Area). The probe card's destination system is
+  // recorded as `probeSystemId`; the action card is out of the hand and
+  // discard until it's revealed at its own RAW trigger window. Empire-only
+  // in practice (both cards are Imperial).
+  armedActionCards?: ArmedActionCard[];
 
   // Card piles
   actionDeck: string[];
@@ -456,6 +473,18 @@ export type ChoiceRequest =
       kind: 'PlayImmediateActionCard';
       side: Side;
       candidates: string[]; // card ids
+    }
+  | {
+      // RoE Secret Facility / Sweep the Area arming step: after the player
+      // picked the card from the immediate-play modal, pick which probe
+      // card from their probe hand to place facedown under it (the chosen
+      // probe's system is the committed target). The action card moves out
+      // of the actionHand and into FactionState.armedActionCards; the
+      // probe is consumed.
+      kind: 'ArmCardProbePick';
+      side: Side; // 'Empire'
+      cardId: string; // 'secret-facility' | 'sweep-the-area'
+      candidates: string[]; // probe card ids in the player's probe hand
     }
   | {
       // Post Bounty (Empire/Jabba, RoE Special): after a Rebel mission fails,

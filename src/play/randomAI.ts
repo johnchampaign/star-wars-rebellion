@@ -1420,6 +1420,14 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     if (c.candidates.length === 0) return phases.cancelImmediateActionCardPlay(G).ok;
     return phases.playImmediateActionCard(G, c.candidates[0]).ok;
   }
+  // ArmCardProbePick (RoE Secret Facility / Sweep the Area): auto-pick the
+  // first probe in hand. A smarter AI would target a system with a Rebel
+  // leader for Sweep / a low-defended remote for Secret Facility, but the
+  // MVP just commits to the first probe so the card resolves.
+  if (G.pendingChoice && G.pendingChoice.kind === 'ArmCardProbePick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    return phases.resolveArmCardProbePick(G, c.candidates[0]).ok;
+  }
   // Blindside: always accept (denies pool opposition; clear upside).
   if (G.pendingChoice && G.pendingChoice.kind === 'BlindsideOffer' && G.pendingChoice.side === side) {
     return phases.resolveBlindsideOffer(G, true).ok;

@@ -6,6 +6,7 @@
 
 import type {
   GameState, Side, SystemId, LeaderId, MissionResolution, UnitTypeId,
+  ArmedActionCard,
 } from './types';
 // (Phase advances from Setup → Assignment internally; no extra imports needed.)
 import * as M from './mechanics';
@@ -644,16 +645,26 @@ export function pass(G: GameState, side: Side): { ok: boolean; reason?: string }
  *  end-of-phase choices (RAW: those resolve after both players pass). */
 function advanceCommandTurn(G: GameState): void {
   if (G.passedThisCommand.length >= 2) {
+    // RoE Sweep the Area auto-reveal fires at end-of-Command-phase (right
+    // before Refresh kicks off).
+    autoRevealArmedActionCards(G, 'Empire', 'empire-command-end');
     processPendingRapidMobilizations(G);
     return;
   }
   // Pass to the other side, but skip them if they have already passed.
   const next = other(G.currentPlayer);
   if (G.passedThisCommand.includes(next)) {
-    // The other side is passed; current player keeps going.
+    // The other side is passed; current player keeps going. If it's
+    // Empire's turn that's still ongoing, Secret Facility might already
+    // have fired on the original turn-start — fine, it's been removed.
     return;
   }
   G.currentPlayer = next;
+  // RoE Secret Facility auto-reveal fires at the start of an Empire
+  // Command turn (the first one after arming).
+  if (next === 'Empire') {
+    autoRevealArmedActionCards(G, 'Empire', 'empire-command-start');
+  }
 }
 
 // ----- Activate System (basic; no combat yet) -----
@@ -4444,11 +4455,166 @@ function applyImmediateActionCardEffect(G: GameState, side: Side, cardId: string
       log(G, { kind: 'under-the-radar-peek', side, payload: { probes: peek } });
       break;
     }
+    case 'secret-facility':
+    case 'sweep-the-area': {
+      // RoE: "Place 1 of your probe cards facedown under this card." The
+      // card was just consumed by playImmediateActionCard — we need to
+      // UN-consume it and route through the arming choice instead, which
+      // pulls the card back into pending state and queues an
+      // ArmCardProbePick. RAW requires Empire to have at least one probe
+      // in hand to play these.
+      const e = G.empire;
+      if (!e.probeHand || e.probeHand.length === 0) {
+        // No probes — the card would have nothing facedown. Already
+        // discarded; treat as a wasted play.
+        log(G, { kind: 'arm-card-noop', side, payload: { cardId, reason: 'no-probes-in-hand' } });
+        break;
+      }
+      // Un-discard the card and queue the arming choice.
+      const di = e.actionDiscard.lastIndexOf(cardId);
+      if (di >= 0) e.actionDiscard.splice(di, 1);
+      G.pendingChoice = {
+        kind: 'ArmCardProbePick',
+        side: 'Empire',
+        cardId,
+        candidates: [...e.probeHand],
+      };
+      log(G, { kind: 'choice-request', side: 'Empire', payload: {
+        kind: 'ArmCardProbePick', cardId, probes: e.probeHand.length,
+      }});
+      break;
+    }
     default: {
       log(G, { kind: 'action-card-unknown', side, payload: { cardId, timing: 'Immediate' } });
       break;
     }
   }
+}
+
+/** Resolve the arming step for Secret Facility / Sweep the Area: stash the
+ *  card + chosen probe in faction.armedActionCards. The probe is consumed
+ *  (removed from probeHand). */
+export function resolveArmCardProbePick(G: GameState, probeId: string): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'ArmCardProbePick') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(probeId)) return { ok: false, reason: 'bad-probe' };
+  const e = G.empire;
+  const pi = (e.probeHand ?? []).indexOf(probeId);
+  if (pi < 0) return { ok: false, reason: 'probe-not-in-hand' };
+  const probe = G.catalog.probes[probeId];
+  if (!probe) return { ok: false, reason: 'unknown-probe' };
+  e.probeHand!.splice(pi, 1);
+  if (!e.armedActionCards) e.armedActionCards = [];
+  e.armedActionCards.push({
+    cardId: pc.cardId,
+    probeSystemId: probe.systemId,
+    armedAt: G.timeMarker,
+  });
+  G.pendingChoice = undefined;
+  log(G, { kind: 'arm-card', side: 'Empire', payload: {
+    cardId: pc.cardId, probeSystemId: probe.systemId, probeId,
+  }});
+  return { ok: true };
+}
+
+/** Auto-reveal all of `side`'s armed cards whose trigger matches `phaseEvent`.
+ *  Called from the appropriate turn-transition hooks. Each card-id's reveal
+ *  effect lives in revealArmedActionCard. */
+export function autoRevealArmedActionCards(G: GameState, side: Side, phaseEvent: 'empire-command-start' | 'empire-command-end'): void {
+  if (side !== 'Empire') return;
+  const f = G.empire;
+  if (!f.armedActionCards || f.armedActionCards.length === 0) return;
+  // Cards fire in order they were armed; each fires once and is removed.
+  const toFire: ArmedActionCard[] = [];
+  const keep: ArmedActionCard[] = [];
+  for (const a of f.armedActionCards) {
+    const trigger = a.cardId === 'secret-facility' ? 'empire-command-start'
+                  : a.cardId === 'sweep-the-area'  ? 'empire-command-end'
+                  : null;
+    if (trigger === phaseEvent) toFire.push(a);
+    else keep.push(a);
+  }
+  if (toFire.length === 0) return;
+  f.armedActionCards = keep;
+  for (const a of toFire) revealArmedActionCard(G, a);
+}
+
+function revealArmedActionCard(G: GameState, armed: ArmedActionCard): void {
+  const sys = armed.probeSystemId;
+  // The action card discards at reveal.
+  G.empire.actionDiscard.push(armed.cardId);
+  log(G, { kind: 'reveal-armed-card', side: 'Empire', payload: {
+    cardId: armed.cardId, systemId: sys, armedAt: armed.armedAt,
+  }});
+  switch (armed.cardId) {
+    case 'secret-facility': {
+      // RAW: "reveal to place 1 Shield Bunker and 1 triangle ground unit
+      // in that system. Resolve combat." The triangle ground unit is the
+      // Stormtrooper.
+      M.deployUnit(G, 'Empire', 'shield-bunker', sys);
+      M.deployUnit(G, 'Empire', 'stormtrooper', sys);
+      if (!G.pendingCombat) {
+        beginCombat(G, 'Empire', sys, sys);
+        runCombat(G);
+      }
+      break;
+    }
+    case 'sweep-the-area': {
+      // RAW: "reveal to capture 1 leader in that system. Move the captured
+      // leader to the closest system with Imperial units." Capture the
+      // first Rebel leader at the system; relocate via shortest BFS to a
+      // system with Imperial units. If no Rebel leader is there, the
+      // reveal lapses with no effect.
+      const ss = G.map.systems[sys];
+      const rebelHere = (G.rebel.leadersOnBoard[sys] ?? [])[0];
+      if (!rebelHere) {
+        log(G, { kind: 'reveal-armed-card-noop', side: 'Empire', payload: {
+          cardId: armed.cardId, reason: 'no-rebel-leader-here', systemId: sys,
+        }});
+        break;
+      }
+      M.captureLeader(G, rebelHere, 'captured');
+      // Move to closest Imperial-unit-system. BFS over adjacency.
+      const dest = closestImperialUnitSystem(G, sys);
+      if (dest && dest !== sys) {
+        const cap = (G.empire.capturedLeaders ?? []).find((c) => c.leaderId === rebelHere);
+        if (cap) cap.systemId = dest;
+        log(G, { kind: 'sweep-the-area-relocate', side: 'Empire', payload: {
+          leaderId: rebelHere, from: sys, to: dest,
+        }});
+      }
+      void ss;
+      break;
+    }
+    default: {
+      log(G, { kind: 'reveal-armed-card-unknown', payload: { cardId: armed.cardId } });
+      break;
+    }
+  }
+}
+
+/** BFS over adjacency from `sysId` to find the closest system that has at
+ *  least one Imperial unit. Returns sysId itself if Imperial units are
+ *  already there; null if no such system is reachable. */
+function closestImperialUnitSystem(G: GameState, sysId: SystemId): SystemId | null {
+  const hasImperial = (sid: SystemId): boolean => {
+    const ss = G.map.systems[sid];
+    return !!ss && ss.units.some((u) => u.side === 'Empire');
+  };
+  if (hasImperial(sysId)) return sysId;
+  const seen = new Set<string>([sysId]);
+  const queue: SystemId[] = [sysId];
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    const adj = G.catalog.adjacency[cur] ?? [];
+    for (const next of adj) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      if (hasImperial(next)) return next;
+      queue.push(next);
+    }
+  }
+  return null;
 }
 
 /** Per-card "needs a system pick?" + legal-system filter. */

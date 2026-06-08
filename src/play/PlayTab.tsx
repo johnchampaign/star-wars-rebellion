@@ -199,6 +199,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'RecruitActionCardPick':    return pc.side === side;
     case 'PlayAssignmentActionCard': return pc.side === side;
     case 'PlayImmediateActionCard':  return pc.side === side;
+    case 'ArmCardProbePick':         return pc.side === side;
     case 'ActionCardSystemPick':     return pc.side === side;
     case 'AttachRingPick':           return pc.side === side;
     case 'DeployUnitPick':           return pc.side === side;
@@ -1721,6 +1722,17 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           }}
           onCancel={() => {
             phases.cancelImmediateActionCardPlay(G);
+            persist(); refresh();
+          }} />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'ArmCardProbePick'
+        && G.pendingChoice.side === humanSide && (
+        <ArmCardProbePickModal G={G} choice={G.pendingChoice}
+          onPick={(probeId) => {
+            const r = phases.resolveArmCardProbePick(G, probeId);
+            if (!r.ok) alert(`Cannot arm: ${r.reason}`);
             persist(); refresh();
           }} />
       )}
@@ -9779,6 +9791,48 @@ function PlayAssignmentActionCardModal({
         </div>
         <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
           <button className="tab-button" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ArmCardProbePickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'ArmCardProbePick'; side: Side; cardId: string; candidates: string[] };
+  onPick: (probeId: string) => void;
+}) {
+  const card = G.catalog.actions[choice.cardId];
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 600, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>
+          {card?.name ?? choice.cardId} — pick a facedown probe
+        </h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          The chosen probe's system is the committed target. The card stays
+          facedown until its reveal trigger fires (start of your next Command
+          turn for Secret Facility; end of Command phase for Sweep the Area).
+          Rebels won't see which system you picked.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {choice.candidates.map((pid) => {
+            const p = G.catalog.probes[pid];
+            return (
+              <button key={pid} className="tab-button" onClick={() => onPick(pid)} style={{ textAlign: 'left' }}>
+                Commit to {p?.systemName ?? pid}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
