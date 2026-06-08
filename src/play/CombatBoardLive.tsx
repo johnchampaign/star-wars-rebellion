@@ -1150,15 +1150,21 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
     (choice.theater === 'ground' && cid.includes('dig-in')) ||
     (choice.theater === 'space' && cid.includes('outmaneuver'))
   ) ?? null;
-  const sacrificeCandidates = choice.hand.filter((cid) => cid !== free && cid !== paid);
+  // The Dig In / Outmaneuver sacrifice may be ANY other tactic card in hand —
+  // including a Defensive Formation you'd otherwise play for the free block
+  // (#122). A card spent as the sacrifice just can't ALSO be played as the
+  // free block, which the mutual-exclusion below enforces.
+  const sacrificeCandidates = choice.hand.filter((cid) => cid !== paid);
   const [useFree, setUseFree] = useState(false);
   const [usePaid, setUsePaid] = useState(false);
   const [sacrifice, setSacrifice] = useState<string | null>(sacrificeCandidates[0] ?? null);
   const label = (cid: string) => G.catalog.tactics[cid]?.name ?? cid;
 
+  const digInSacrifice = (usePaid && paid && sacrifice) ? sacrifice : null;
+  const playFree = !!(useFree && free && free !== digInSacrifice);
   const blocks: string[] = [];
   const sacs: string[] = [];
-  if (useFree && free) blocks.push(free);
+  if (playFree && free) blocks.push(free);
   if (usePaid && paid && sacrifice) { blocks.push(paid); sacs.push(sacrifice); }
 
   const submit = (b: string[], s: string[]) => {
@@ -1176,8 +1182,14 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
         {free && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
-            <input type="checkbox" checked={useFree} onChange={(e) => setUseFree(e.target.checked)} />
-            <CardHover G={G} cardId={free}>{label(free)}</CardHover> (free block 1)
+            <input
+              type="checkbox"
+              checked={playFree}
+              disabled={usePaid && sacrifice === free}
+              onChange={(e) => setUseFree(e.target.checked)}
+            />
+            <CardHover G={G} cardId={free}>{label(free)}</CardHover>{' '}
+            {usePaid && sacrifice === free ? `(discarded for ${paid ? label(paid) : 'block'})` : '(free block 1)'}
           </label>
         )}
         {paid && (
@@ -1232,7 +1244,7 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
           >
             {/* Damage blocked, not card count: defensive-formation blocks 1,
                 dig-in/outmaneuver block up to 2. */}
-            Block {(useFree && free ? 1 : 0) + (usePaid && paid && sacrifice ? 2 : 0)}
+            Block {(playFree ? 1 : 0) + (usePaid && paid && sacrifice ? 2 : 0)}
           </button>
         </div>
       </div>
