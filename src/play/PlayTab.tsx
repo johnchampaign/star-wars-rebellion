@@ -10450,11 +10450,21 @@ function R2D2MissionFlipModal({
   choice: {
     kind: 'R2D2Flip'; side: Side; context: 'combat' | 'mission';
     systemId: string; flippableDieIndices: number[]; missionFaces?: string[];
+    ownFaces?: string[]; ownSuccesses?: number; empireSuccesses?: number;
   };
   onPick: (flipIndex: number | null) => void;
 }) {
   const faces = choice.missionFaces ?? [];
+  const ownFaces = choice.ownFaces ?? [];
   const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  const dieGlyph = (face: string) =>
+    face === 'hit' ? '✓' : face === 'direct-hit' ? '✶' : face === 'special' ? '◈' : '·';
+  // Show the player where they stand so the flip isn't decided blind to their
+  // own roll. Factual only (both rolls + both tallies) — who ultimately "wins"
+  // depends on whether the Rebel is the resolver or the opposer and on ties.
+  const own = choice.ownSuccesses;
+  const emp = choice.empireSuccesses;
+  const haveTally = own !== undefined && emp !== undefined;
   // High z-index — must sit above the soon-to-arrive MissionReportModal.
   return (
     <div style={{
@@ -10476,6 +10486,41 @@ function R2D2MissionFlipModal({
           Empire rolled this mission at <b>{sysName}</b>. You may discard the
           ring to turn one of Empire's dice to blank. Once discarded, the card
           is gone for the rest of the game.
+        </div>
+
+        {/* Your own roll — shown so the flip isn't decided blind (forum
+            report: "you can see the empire result but not your own"). */}
+        {ownFaces.length > 0 && (
+          <div style={{ marginBottom: 10 }}>
+            <div style={{ color: '#8fdca0', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>
+              YOUR ROLL{own !== undefined ? ` — ${own} success${own === 1 ? '' : 'es'}` : ''}
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {ownFaces.map((face, i) => (
+                <div key={i} style={{
+                  width: 44, height: 44, borderRadius: 6,
+                  background: face === 'blank' ? '#222' : '#2f7d4a',
+                  color: '#fff', fontSize: 18, fontWeight: 700,
+                  border: '1px solid #3a6d4a',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                }} title={face}>
+                  <span>{dieGlyph(face)}</span>
+                  <span style={{ fontSize: 8, fontWeight: 500, opacity: 0.8 }}>{face}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {haveTally && (
+          <div style={{ fontSize: 12, color: '#ddd', marginBottom: 8, fontFamily: 'monospace' }}>
+            You <b style={{ color: '#8fdca0' }}>{own}</b> vs Empire <b style={{ color: '#ff8a80' }}>{emp}</b>
+            {' '}— flipping a hit to blank drops the Empire by 1.
+          </div>
+        )}
+
+        <div style={{ color: '#ff9d6b', fontSize: 11, fontWeight: 700, letterSpacing: 1, marginBottom: 4 }}>
+          EMPIRE'S ROLL — pick one to flip to blank
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
           {faces.map((face, i) => {

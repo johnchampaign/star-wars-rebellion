@@ -368,6 +368,12 @@ export type ChoiceRequest =
       flippableDieIndices: number[];
       // Mission-only: the actual faces array we're flipping (for display).
       missionFaces?: string[];
+      // Mission-only: the Rebel's OWN roll + the running success tallies, so
+      // the flip decision isn't made blind to your own result (forum report:
+      // "you can see the empire result but not your own").
+      ownFaces?: string[];
+      ownSuccesses?: number;
+      empireSuccesses?: number;
     }
   | {
       // Interrogation Droid (Empire mission): "Rebel must name 3 systems,

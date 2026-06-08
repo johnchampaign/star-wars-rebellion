@@ -1465,6 +1465,16 @@ function maybePostMissionR2D2(G: GameState, pm: MissionResolution): boolean {
   // time. (Currently maybePostMissionYodaReroll runs first and doesn't
   // touch this — but be defensive in case order changes later.)
   stash.empireSide = empireSide;
+  // The Rebel's OWN roll is the non-Empire side. Surface it (and the running
+  // success tallies, INCLUDING the resolver's portrait bonus so the comparison
+  // matches the real outcome) so the flip decision isn't made blind (forum
+  // report). The portrait bonus belongs to the resolver = the attacker side.
+  const rebelIsResolver = empireSide === 'opposer';
+  const rebelFaces = empireSide === 'attacker' ? stash.oppFaces : stash.attFaces;
+  const rebelSuccesses = (empireSide === 'attacker' ? stash.oppSuccesses : stash.attSuccesses)
+    + (rebelIsResolver ? stash.portrait : 0);
+  const empireSuccesses = (empireSide === 'attacker' ? stash.attSuccesses : stash.oppSuccesses)
+    + (rebelIsResolver ? 0 : stash.portrait);
   G.pendingChoice = {
     kind: 'R2D2Flip',
     side: 'Rebel',
@@ -1472,6 +1482,9 @@ function maybePostMissionR2D2(G: GameState, pm: MissionResolution): boolean {
     systemId: pm.targetSystemId,
     flippableDieIndices: flippable,
     missionFaces: [...empireFaces],
+    ownFaces: [...rebelFaces],
+    ownSuccesses: rebelSuccesses,
+    empireSuccesses,
   };
   log(G, { kind: 'choice-request', side: 'Rebel', payload: {
     kind: 'R2D2Flip', context: 'mission', flippable: flippable.length,
