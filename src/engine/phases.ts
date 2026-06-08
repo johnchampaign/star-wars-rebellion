@@ -5277,17 +5277,32 @@ function applyAssignmentActionCardEffect(
     }
     case 'lord-vader-s-orders': {
       // RAW: "Look at the top 3 objective cards and replace them on top of
-      // the deck in any order." Without a reorder UI yet, we peek and put
-      // them back in the same order (degenerate case of "any order").
-      // Empire sees what's coming; can't actually rearrange.
+      // the deck in any order." Reuses the existing StolenPlansReorder
+      // choice + modal — same UX as the base Stolen Plans mission, with
+      // 3 cards instead of 4. The choice's missionId field carries the
+      // card id (informational); the resolver doesn't run mission-resume
+      // when there's no pendingMission.
       const deck = G.rebel.objectiveDeck;
       if (!deck || deck.length === 0) break;
       const n = Math.min(3, deck.length);
-      const peek = deck.slice(0, n);
-      log(G, { kind: 'lord-vader-s-orders-peek', side: 'Empire', payload: {
-        objectiveIds: [...peek],
+      const drawn = deck.splice(0, n);
+      if (drawn.length === 1) {
+        // No reordering possible; just put back.
+        deck.unshift(drawn[0]);
+        log(G, { kind: 'lord-vader-s-orders-peek', side: 'Empire', payload: {
+          objectiveIds: [...drawn],
+        }});
+        break;
+      }
+      G.pendingChoice = {
+        kind: 'StolenPlansReorder',
+        missionId: cardId,
+        remaining: drawn,
+        orderedTop: [],
+      };
+      log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+        kind: 'StolenPlansReorder', count: drawn.length, via: 'lord-vader-s-orders',
       }});
-      // (deck order unchanged — peek only)
       break;
     }
     default: {
