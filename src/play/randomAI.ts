@@ -1450,6 +1450,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     }
     return phases.resolveDrawThemOutPick(G, best ?? c.candidates[0]).ok;
   }
+  // Regional Aid (Rebel/RoE): pick the first eligible "elsewhere" system
+  // for the second loyalty marker. A smarter AI would prefer a contested
+  // or Imperial-loyal system; MVP keeps it simple.
+  if (G.pendingChoice && G.pendingChoice.kind === 'RegionalAidPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    return phases.resolveRegionalAidPick(G, c.candidates[0]).ok;
+  }
   // MissionRecruitLeaderPick (RoE): pick the highest-tactic-total leader
   // (Hire Mercenaries / Imperial Promotion / Rebel Promotion / My Only
   // Hope). For Hire Mercenaries the candidates are no-tactic-value

@@ -561,6 +561,14 @@ export type ChoiceRequest =
       systemId: SystemId;
     }
   | {
+      // Regional Aid (Rebel, RoE): Rebel picks an "elsewhere" system in
+      // the same region as the target to gain a second loyalty marker on.
+      kind: 'RegionalAidPick';
+      side: Side; // 'Rebel'
+      candidates: SystemId[]; // populous, non-Coruscant systems in the same region (except the target)
+      targetSystemId: SystemId;
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated

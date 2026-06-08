@@ -2563,6 +2563,21 @@ export function resolvePostBountyOffer(G: GameState, leaderId: LeaderId | null):
   return { ok: true };
 }
 
+/** Regional Aid (Rebel, RoE): Rebel picks the "elsewhere in region"
+ *  system to gain the second loyalty marker on. */
+export function resolveRegionalAidPick(G: GameState, systemId: SystemId): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'RegionalAidPick') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(systemId)) return { ok: false, reason: 'not-a-candidate' };
+  M.gainLoyalty(G, 'Rebel', systemId, 1);
+  log(G, { kind: 'regional-aid-second', side: 'Rebel', payload: {
+    systemId, targetSystemId: pc.targetSystemId,
+  }});
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Draw Them Out (Empire/Krennic, RoE): Empire picks which Rebel leader
  *  to pull from the pool and place at the target system. */
 export function resolveDrawThemOutPick(G: GameState, leaderId: LeaderId): { ok: boolean; reason?: string } {

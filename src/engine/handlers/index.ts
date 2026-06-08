@@ -1455,18 +1455,32 @@ const discreditRebellion: EffectHandler = (G, ctx) => {
 // ----- Rebel Wave A -----
 
 /** Regional Aid: "Gain 1 loyalty here, and 1 loyalty elsewhere in the same
- *  region." Auto-picks the first eligible other system in the region. */
+ *  region." Gains the target loyalty immediately; with 2+ eligible
+ *  "elsewhere" systems the Rebel picks which gets the second marker. */
 const regionalAid: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
   M.gainLoyalty(G, 'Rebel', sysId, 1);
   const def = G.catalog.systems[sysId];
   if (!def) return true;
-  const other = Object.values(G.catalog.systems).find(
-    (s) => s.id !== sysId && s.region === def.region && !s.isRemote && !s.isCoruscant,
-  );
-  if (other) M.gainLoyalty(G, 'Rebel', other.id, 1);
-  return true;
+  const others = Object.values(G.catalog.systems)
+    .filter((s) => s.id !== sysId && s.region === def.region && !s.isRemote && !s.isCoruscant)
+    .map((s) => s.id);
+  if (others.length === 0) return true;
+  if (others.length === 1) {
+    M.gainLoyalty(G, 'Rebel', others[0], 1);
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'RegionalAidPick',
+    side: 'Rebel',
+    candidates: others,
+    targetSystemId: sysId,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'RegionalAidPick', candidates: others.length, targetSystemId: sysId,
+  }});
+  return false;
 };
 
 /** Reconnaissance: "Attempt on an Imperial system. Choose a discarded

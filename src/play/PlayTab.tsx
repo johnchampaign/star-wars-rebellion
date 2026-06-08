@@ -229,6 +229,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'MissionRecruitLeaderPick': return pc.side === side;
     case 'ReconnaissancePick':       return pc.side === side;
     case 'DrawThemOutPick':          return pc.side === side;
+    case 'RegionalAidPick':          return pc.side === side;
     // Robust default: ANY side-tagged choice belongs to the side it names, so
     // if that side is the AI, the AI owes it. This catches choice kinds the AI
     // can resolve but that aren't explicitly listed above — without it, such a
@@ -2077,6 +2078,23 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <DrawThemOutPickModal G={G} choice={G.pendingChoice}
           onPick={(lid) => {
             const r = phases.resolveDrawThemOutPick(G, lid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'RegionalAidPick'
+        && G.pendingChoice.side === humanSide && (
+        <MapPickerOverlay
+          G={G} systems={systemsRef.current} masks={masksRef.current} humanSide={humanSide}
+          color={sideColor(G.pendingChoice.side)}
+          title="Regional Aid — gain loyalty elsewhere in the region"
+          instructions="Pick a populous system in the same region as the target to gain a second loyalty marker."
+          candidates={G.pendingChoice.candidates}
+          onPick={(sid) => {
+            const r = phases.resolveRegionalAidPick(G, sid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
