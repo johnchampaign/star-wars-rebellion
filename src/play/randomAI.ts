@@ -1411,6 +1411,19 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'AmbitionsOfPowerOffer' && G.pendingChoice.side === side) {
     return phases.resolveAmbitionsOfPowerOffer(G, true).ok;
   }
+  // Under the Radar keep (Rebel/RoE): hold the FIRST peeked probe. Ideally
+  // the AI would hold a probe pointing at a system near its base to keep it
+  // out of the Empire's reach, but it doesn't reason about its own base
+  // here; first card is a safe default.
+  if (G.pendingChoice && G.pendingChoice.kind === 'UnderTheRadarKeep' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    return phases.resolveUnderTheRadarKeep(G, c.candidates[0]).ok;
+  }
+  // Under the Radar return (Rebel/RoE): keep holding the probe (decline the
+  // return) — holding a probe out of the Empire's deck is the whole point.
+  if (G.pendingChoice && G.pendingChoice.kind === 'UnderTheRadarReturn' && G.pendingChoice.side === side) {
+    return phases.resolveUnderTheRadarReturn(G, false).ok;
+  }
   // Heist (Rebel/RoE): if the draw-objective branch is available (DS/DSUC
   // present), take it — a free objective card is strictly stronger than
   // removing one Imperial marker. Otherwise remove the first marker.

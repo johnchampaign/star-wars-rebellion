@@ -146,6 +146,11 @@ export type FactionState = {
   // for the rest of the game. enforceLeaderPoolCap reads 8 + this bonus.
   // Absent/undefined ⇒ 0.
   leaderPoolCapBonus?: number;
+  // RoE "Under the Radar" (Rebel): a probe card pulled out of the deck and
+  // held facedown. At the start of each Rebel Command turn the Rebel may
+  // return it to the top of the probe deck. Holding it keeps that system
+  // out of the Empire's probe draws. Rebel-only.
+  heldProbe?: string;
   // RoE multi-turn action cards "armed" with a facedown probe (Secret
   // Facility, Sweep the Area). The probe card's destination system is
   // recorded as `probeSystemId`; the action card is out of the hand and
@@ -623,6 +628,22 @@ export type ChoiceRequest =
       systemId: SystemId;
       canDrawObjective: boolean; // true when a DS/DSUC is in the system
       markerSources: string[];   // card-id sources of the target markers present
+    }
+  | {
+      // Under the Radar (Rebel, RoE): pick 1 of the top 4 peeked probe
+      // cards to hold facedown (pulled out of the deck). The others stay
+      // on top in their original order.
+      kind: 'UnderTheRadarKeep';
+      side: Side; // 'Rebel'
+      candidates: string[]; // the top-N probe card ids (<= 4)
+    }
+  | {
+      // Under the Radar return offer: at the start of a Rebel Command turn
+      // while a probe is held facedown, the Rebel may return it to the top
+      // of the probe deck (or keep holding it).
+      kind: 'UnderTheRadarReturn';
+      side: Side; // 'Rebel'
+      heldProbe: string;
     }
   | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt

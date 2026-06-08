@@ -633,6 +633,9 @@ function enterCommandPhase(G: GameState): void {
   G.currentPlayer = 'Rebel'; // rr p.6
   G.passedThisCommand = [];
   log(G, { kind: 'phase', payload: { phase: 'Command' } });
+  // RoE Under the Radar: offer to return a held probe at the start of the
+  // Rebel's first Command turn.
+  maybeOfferUnderTheRadarReturn(G);
 }
 
 /** Pass. Passed sides stay passed for the rest of this Command phase but can
@@ -679,6 +682,11 @@ function advanceCommandTurn(G: GameState): void {
   // Command turn (the first one after arming).
   if (next === 'Empire') {
     autoRevealArmedActionCards(G, 'Empire', 'empire-command-start');
+  }
+  // RoE Under the Radar: offer to return a held probe at the start of a
+  // Rebel Command turn.
+  if (next === 'Rebel') {
+    maybeOfferUnderTheRadarReturn(G);
   }
 }
 
@@ -1861,6 +1869,53 @@ export function resolveWereTheBaitUnits(G: GameState, unitIds: string[]): { ok: 
   if (G.pendingChoice || G.pendingCombat) return { ok: true };
   resumeMissionAfterChoice(G);
   return { ok: true };
+}
+
+/** Under the Radar (Rebel, RoE): pick a probe from the peeked top 4 to
+ *  hold facedown. It's removed from the deck; the others stay on top in
+ *  their original order. */
+export function resolveUnderTheRadarKeep(G: GameState, probeId: string): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'UnderTheRadarKeep') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(probeId)) return { ok: false, reason: 'not-a-candidate' };
+  const idx = G.probeDeck.indexOf(probeId);
+  if (idx < 0) return { ok: false, reason: 'probe-not-in-deck' };
+  G.probeDeck.splice(idx, 1);
+  G.rebel.heldProbe = probeId;
+  log(G, { kind: 'under-the-radar-keep', side: 'Rebel', payload: { probeId } });
+  G.pendingChoice = undefined;
+  return { ok: true };
+}
+
+/** Under the Radar return offer: at the start of a Rebel Command turn, the
+ *  Rebel may return the held probe to the top of the probe deck. */
+export function resolveUnderTheRadarReturn(G: GameState, accept: boolean): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'UnderTheRadarReturn') return { ok: false, reason: 'no-pending' };
+  if (accept && G.rebel.heldProbe) {
+    G.probeDeck.unshift(G.rebel.heldProbe);
+    log(G, { kind: 'under-the-radar-return', side: 'Rebel', payload: { probeId: G.rebel.heldProbe } });
+    G.rebel.heldProbe = undefined;
+  } else {
+    log(G, { kind: 'under-the-radar-keep-holding', side: 'Rebel', payload: { probeId: G.rebel.heldProbe } });
+  }
+  G.pendingChoice = undefined;
+  return { ok: true };
+}
+
+/** Post the Under the Radar return offer when a Rebel Command turn begins
+ *  and the Rebel holds a facedown probe. Safe to call from turn-boundary
+ *  hooks — no-ops if there's no held probe, it's not the Rebel's turn, or
+ *  a choice is already pending. */
+function maybeOfferUnderTheRadarReturn(G: GameState): void {
+  if (G.phase !== 'Command') return;
+  if (G.currentPlayer !== 'Rebel') return;
+  if (!G.rebel.heldProbe) return;
+  if (G.pendingChoice || G.pendingMission || G.pendingCombat) return;
+  G.pendingChoice = { kind: 'UnderTheRadarReturn', side: 'Rebel', heldProbe: G.rebel.heldProbe };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'UnderTheRadarReturn', heldProbe: G.rebel.heldProbe,
+  }});
 }
 
 /** Heist (Rebel/Jyn, RoE): resolve the player's choice. `action` is
@@ -4810,17 +4865,32 @@ function applyImmediateActionCardEffect(G: GameState, side: Side, cardId: string
       // of your turn in the Command phase, you may return that probe card
       // to the top of the probe deck."
       //
-      // MVP scope: peek the top 4 probes and surface them to the Rebel via
-      // a notice (they learn the next 4 systems the Empire would probe).
-      // The "keep one facedown / optionally return it later" multi-turn
-      // state isn't built yet; this commit ships the information-gain
-      // part of the card. Adding the facedown-and-return mechanic is a
-      // follow-up.
+      // The Rebel picks which of the top 4 to hold facedown; the others
+      // stay on top in their original order (we skip the minor top/bottom
+      // reorder nicety). The held probe is pulled out of the deck and
+      // stored on rebel.heldProbe; a return offer fires at the start of
+      // each subsequent Rebel Command turn.
+      if (G.rebel.heldProbe) {
+        // Already holding one — RAW has no slot for a second; no-op.
+        log(G, { kind: 'under-the-radar-noop', side, payload: { reason: 'already-holding-probe' } });
+        break;
+      }
       const peek = G.probeDeck.slice(0, 4);
-      const names = peek.map((pid) => G.catalog.probes[pid]?.systemName ?? pid);
-      pushNotice(G, `utr-t${G.timeMarker}`, 'Under the Radar',
-        `Top 4 probe cards (next-up systems for the Empire's probes): ${names.join(', ')}.`);
-      log(G, { kind: 'under-the-radar-peek', side, payload: { probes: peek } });
+      if (peek.length === 0) {
+        log(G, { kind: 'under-the-radar-noop', side, payload: { reason: 'empty-probe-deck' } });
+        break;
+      }
+      if (peek.length === 1) {
+        // Only one card to choose — hold it without prompting.
+        G.probeDeck.shift();
+        G.rebel.heldProbe = peek[0];
+        log(G, { kind: 'under-the-radar-keep', side: 'Rebel', payload: { probeId: peek[0], auto: true } });
+        break;
+      }
+      G.pendingChoice = { kind: 'UnderTheRadarKeep', side: 'Rebel', candidates: peek };
+      log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+        kind: 'UnderTheRadarKeep', candidates: peek.length,
+      }});
       break;
     }
     case 'early-promotion': {

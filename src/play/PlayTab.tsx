@@ -235,6 +235,8 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'ImperialMightUnits':       return pc.side === side;
     case 'BreakTheirWillPick':       return pc.side === side;
     case 'HeistChoice':              return pc.side === side;
+    case 'UnderTheRadarKeep':        return pc.side === side;
+    case 'UnderTheRadarReturn':      return pc.side === side;
     // Robust default: ANY side-tagged choice belongs to the side it names, so
     // if that side is the AI, the AI owes it. This catches choice kinds the AI
     // can resolve but that aren't explicitly listed above — without it, such a
@@ -2089,6 +2091,30 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <HeistChoiceModal G={G} choice={G.pendingChoice}
           onAction={(action) => {
             const r = phases.resolveHeistChoice(G, action);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'UnderTheRadarKeep'
+        && G.pendingChoice.side === humanSide && (
+        <UnderTheRadarKeepModal G={G} choice={G.pendingChoice}
+          onPick={(probeId) => {
+            const r = phases.resolveUnderTheRadarKeep(G, probeId);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'UnderTheRadarReturn'
+        && G.pendingChoice.side === humanSide && (
+        <UnderTheRadarReturnModal G={G} choice={G.pendingChoice}
+          onAccept={(accept) => {
+            const r = phases.resolveUnderTheRadarReturn(G, accept);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -11453,6 +11479,80 @@ function SecretMissionPickModal({
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UnderTheRadarKeepModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { candidates: string[] };
+  onPick: (probeId: string) => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Under the Radar — hold a probe facedown</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          You see the top {choice.candidates.length} probe cards. Keep one facedown — it's
+          pulled out of the deck so the Empire can't draw it. You may return it to the top of
+          the deck at the start of a future Command turn.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {choice.candidates.map((pid) => {
+            const p = G.catalog.probes[pid];
+            return (
+              <button key={pid} className="tab-button" onClick={() => onPick(pid)} style={{ textAlign: 'left' }}>
+                Hold {p?.systemName ?? pid}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UnderTheRadarReturnModal({
+  G, choice, onAccept,
+}: {
+  G: GameState;
+  choice: { heldProbe: string };
+  onAccept: (accept: boolean) => void;
+}) {
+  const sysName = G.catalog.probes[choice.heldProbe]?.systemName ?? choice.heldProbe;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 480, width: '92%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Under the Radar — return held probe?</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+          You're holding the <b>{sysName}</b> probe facedown. Return it to the top of the
+          probe deck now (the Empire would draw it next), or keep holding it out of the deck.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="tab-button active" onClick={() => onAccept(true)} style={{ fontWeight: 700 }}>
+            Return to top of deck
+          </button>
+          <button className="tab-button" onClick={() => onAccept(false)}>
+            Keep holding
+          </button>
         </div>
       </div>
     </div>
