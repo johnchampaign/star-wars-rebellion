@@ -606,6 +606,14 @@ export type ChoiceRequest =
       leaderIds: LeaderId[];
     }
   | {
+      // Break Their Will (Empire, RoE): Empire names a system; the Rebel
+      // must reveal whether their hidden base is in that system's region.
+      // Candidates are every nameable system (non-Coruscant).
+      kind: 'BreakTheirWillPick';
+      side: Side; // 'Empire'
+      candidates: SystemId[];
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated

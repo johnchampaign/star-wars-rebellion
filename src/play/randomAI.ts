@@ -1457,6 +1457,18 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const c = G.pendingChoice;
     return phases.resolveRegionalAidPick(G, c.candidates[0]).ok;
   }
+  // Break Their Will (Empire/RoE): name a populous, non-ruled-out system —
+  // an unchecked region is the most informative probe. Falls back to the
+  // first candidate if everything's been ruled out.
+  if (G.pendingChoice && G.pendingChoice.kind === 'BreakTheirWillPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const ruledOut = new Set(G.empireSearchedRuledOut ?? []);
+    const fresh = c.candidates.find((sid) => {
+      const s = G.catalog.systems[sid];
+      return s && !s.isRemote && !ruledOut.has(sid);
+    });
+    return phases.resolveBreakTheirWillPick(G, fresh ?? c.candidates[0]).ok;
+  }
   // Behind Enemy Lines (Rebel/RoE): send the strongest `max` units (highest
   // combined attack) into the assault. A simple proxy: sort by total attack
   // dice and take the top `max`.

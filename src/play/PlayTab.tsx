@@ -233,6 +233,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'BehindEnemyLinesUnits':    return pc.side === side;
     case 'WereTheBaitUnits':         return pc.side === side;
     case 'ImperialMightUnits':       return pc.side === side;
+    case 'BreakTheirWillPick':       return pc.side === side;
     // Robust default: ANY side-tagged choice belongs to the side it names, so
     // if that side is the AI, the AI owes it. This catches choice kinds the AI
     // can resolve but that aren't explicitly listed above — without it, such a
@@ -2140,6 +2141,23 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           candidates={G.pendingChoice.candidates}
           onPick={(sid) => {
             const r = phases.resolveRegionalAidPick(G, sid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'BreakTheirWillPick'
+        && G.pendingChoice.side === humanSide && (
+        <MapPickerOverlay
+          G={G} systems={systemsRef.current} masks={masksRef.current} humanSide={humanSide}
+          color={sideColor(G.pendingChoice.side)}
+          title="Break Their Will — name a system"
+          instructions="Name any system. The Rebel must reveal whether their hidden base is in that system's region."
+          candidates={G.pendingChoice.candidates}
+          onPick={(sid) => {
+            const r = phases.resolveBreakTheirWillPick(G, sid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />

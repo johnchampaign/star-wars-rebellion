@@ -1804,28 +1804,21 @@ const singleReactorIgnition: EffectHandler = (G, ctx) => {
 };
 
 /** Break Their Will: "Name a system; Rebel must tell you if their base is
- *  in that system's region." Auto-picks the first populous, non-Coruscant
- *  system that hasn't been ruled out — same heuristic as a fresh probe. */
-const breakTheirWill: EffectHandler = (G, ctx) => {
-  // Default the region check to the target system's region if no naming UI
-  // hooked up. Realistic Empire play would name a system in an UNCHECKED
-  // region; we approximate by picking the alphabetically-first populous
-  // non-Coruscant system not already in the rule-out list.
-  const ruledOut = new Set(G.empireSearchedRuledOut ?? []);
-  const candidate = Object.values(G.catalog.systems)
-    .filter((s) => !s.isRemote && !s.isCoruscant && !ruledOut.has(s.id))
-    .sort((a, b) => a.id.localeCompare(b.id))[0];
-  if (!candidate) return true;
-  const baseDef = G.catalog.systems[G.rebelBaseSystemId];
-  const inRegion = !!baseDef && baseDef.region === candidate.region;
-  log(G, { kind: 'break-their-will-probe', side: 'Empire', payload: {
-    systemId: candidate.id, region: candidate.region, baseInRegion: inRegion,
+ *  in that system's region." The Empire names the system via a map pick. */
+const breakTheirWill: EffectHandler = (G, _ctx) => {
+  const candidates = Object.values(G.catalog.systems)
+    .filter((s) => !s.isCoruscant)
+    .map((s) => s.id);
+  if (candidates.length === 0) return true;
+  G.pendingChoice = {
+    kind: 'BreakTheirWillPick',
+    side: 'Empire',
+    candidates,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'BreakTheirWillPick', candidates: candidates.length,
   }});
-  pushNotice(G, `btw-${candidate.id}-t${G.timeMarker}`, 'Break Their Will',
-    inRegion
-      ? `The Rebel base IS in ${candidate.name}'s region.`
-      : `The Rebel base is NOT in ${candidate.name}'s region.`);
-  return true;
+  return false;
 };
 
 /** Draw Them Out (Krennic): "Choose a Rebel leader in the leader pool;

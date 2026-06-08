@@ -1847,6 +1847,27 @@ export function resolveWereTheBaitUnits(G: GameState, unitIds: string[]): { ok: 
   return { ok: true };
 }
 
+/** Break Their Will (Empire, RoE): Empire named a system; reveal to the
+ *  Empire whether the Rebel base is in that system's region. */
+export function resolveBreakTheirWillPick(G: GameState, systemId: SystemId): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'BreakTheirWillPick') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(systemId)) return { ok: false, reason: 'not-a-candidate' };
+  const named = G.catalog.systems[systemId];
+  const baseDef = G.catalog.systems[G.rebelBaseSystemId];
+  const inRegion = !!named && !!baseDef && baseDef.region === named.region;
+  log(G, { kind: 'break-their-will-probe', side: 'Empire', payload: {
+    systemId, region: named?.region, baseInRegion: inRegion,
+  }});
+  pushNotice(G, `btw-${systemId}-t${G.timeMarker}`, 'Break Their Will',
+    inRegion
+      ? `The Rebel base IS in ${named?.name ?? systemId}'s region.`
+      : `The Rebel base is NOT in ${named?.name ?? systemId}'s region.`);
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Imperial Might (Empire, RoE): Empire picks up to `max` units (by index
  *  into the slot-1 snapshot) to deploy at the target, then the 2-leaders →
  *  Coruscant clause runs. Indices reference the queueTypeIds snapshot; we
