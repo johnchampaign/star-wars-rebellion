@@ -2525,6 +2525,32 @@ export function resolvePostBountyOffer(G: GameState, leaderId: LeaderId | null):
   return { ok: true };
 }
 
+/** Secret Mission (Rebel/Cassian, RoE): Rebel picks a mission from the
+ *  peeked top 6 of the mission deck to add to hand. Resolves once
+ *  `kept.length === keepCount`; remaining peeked cards then shuffle back
+ *  into the deck. */
+export function resolveSecretMissionPick(G: GameState, missionId: string): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'SecretMissionPick') return { ok: false, reason: 'no-pending' };
+  const idx = pc.remaining.indexOf(missionId);
+  if (idx < 0) return { ok: false, reason: 'card-not-in-peek' };
+  const [taken] = pc.remaining.splice(idx, 1);
+  pc.kept.push(taken);
+  if (pc.kept.length >= pc.keepCount) {
+    for (const mid of pc.kept) G.rebel.missionHand.push(mid);
+    const deck = G.rebel.missionDeck;
+    const rest = [...pc.remaining, ...deck];
+    shuffle(G.rng, rest);
+    G.rebel.missionDeck = rest;
+    log(G, { kind: 'secret-mission', side: 'Rebel', payload: {
+      kept: pc.kept, andor: pc.keepCount === 2,
+    }});
+    G.pendingChoice = undefined;
+    resumeMissionAfterChoice(G);
+  }
+  return { ok: true };
+}
+
 /** Discredit Rebellion (Empire/Motti, RoE): Rebel chooses to wipe all
  *  sabotage markers off the board (avoids the rep-loss risk) or to roll
  *  dice — 2 dice with Motti, 1 otherwise. Any success on the roll loses

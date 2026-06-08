@@ -225,6 +225,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'PostBountyOffer':          return pc.side === side;
     case 'AmbitionsOfPowerOffer':    return pc.side === side;
     case 'DiscreditRebellionChoice': return pc.side === side;
+    case 'SecretMissionPick':        return pc.side === side;
     // Robust default: ANY side-tagged choice belongs to the side it names, so
     // if that side is the AI, the AI owes it. This catches choice kinds the AI
     // can resolve but that aren't explicitly listed above — without it, such a
@@ -2008,6 +2009,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <DiscreditRebellionModal G={G} choice={G.pendingChoice}
           onAction={(action) => {
             const r = phases.resolveDiscreditRebellion(G, action);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'SecretMissionPick'
+        && G.pendingChoice.side === humanSide && (
+        <SecretMissionPickModal G={G} choice={G.pendingChoice}
+          onPick={(mid) => {
+            const r = phases.resolveSecretMissionPick(G, mid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -10703,6 +10716,63 @@ function NobleSacrificeOfferModal({
           <button className="tab-button" onClick={() => onAccept(false)}>
             Keep, accept capture
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SecretMissionPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { remaining: string[]; kept: string[]; keepCount: 1 | 2 };
+  onPick: (missionId: string) => void;
+}) {
+  const remaining = choice.keepCount - choice.kept.length;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 680, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>
+          Secret Mission — keep {remaining} more mission{remaining === 1 ? '' : 's'}
+        </h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          You see the top {choice.remaining.length + choice.kept.length} cards of your
+          mission deck. Pick {choice.keepCount} to add to your hand
+          {choice.keepCount === 2 ? ' (Cassian Andor lets you keep 2)' : ''}.
+          The rest will be shuffled back into the deck.
+        </div>
+        {choice.kept.length > 0 && (
+          <div style={{ color: '#cbc4b0', fontSize: 12, marginBottom: 10 }}>
+            Already kept: {choice.kept.map((mid) => G.catalog.missions[mid]?.name ?? mid).join(', ')}
+          </div>
+        )}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {choice.remaining.map((mid) => {
+            const m = G.catalog.missions[mid];
+            return (
+              <button
+                key={mid}
+                className="tab-button"
+                onClick={() => onPick(mid)}
+                style={{ textAlign: 'left', padding: '8px 10px' }}
+              >
+                <div style={{ fontWeight: 700, color: '#fff' }}>{m?.name ?? mid}</div>
+                {m && (
+                  <div style={{ fontSize: 11, color: '#ccc', marginTop: 4, fontStyle: 'italic' }}>
+                    {m.rulesText}
+                  </div>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

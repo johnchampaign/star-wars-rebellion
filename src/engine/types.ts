@@ -516,6 +516,17 @@ export type ChoiceRequest =
       sabotageSystemIds: string[]; // every system with a sabotage marker
     }
   | {
+      // Secret Mission (Rebel/Cassian Andor, RoE): peek the top 6 of the
+      // mission deck and pick `keepCount` (1 normally, 2 with Andor
+      // assigned) to add to the Rebel mission hand. The remaining cards
+      // get shuffled back into the deck.
+      kind: 'SecretMissionPick';
+      side: Side; // 'Rebel'
+      remaining: string[]; // mission ids still to choose from
+      kept: string[];      // accumulating picks (resolves when length === keepCount)
+      keepCount: 1 | 2;
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated

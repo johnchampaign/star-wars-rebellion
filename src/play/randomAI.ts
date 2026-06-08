@@ -1419,6 +1419,14 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'DiscreditRebellionChoice' && G.pendingChoice.side === side) {
     return phases.resolveDiscreditRebellion(G, 'roll').ok;
   }
+  // Secret Mission (RoE): always pick the first remaining mission. A
+  // smarter AI would prefer high-information / high-impact missions
+  // (starting missions, no-leader-requirement); the MVP keeps it simple.
+  if (G.pendingChoice && G.pendingChoice.kind === 'SecretMissionPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    if (c.remaining.length === 0) return false; // safety
+    return phases.resolveSecretMissionPick(G, c.remaining[0]).ok;
+  }
   // PlayImmediateActionCard (RoE): the AI never PROACTIVELY opens this
   // modal (no requestImmediateActionCardPlay call in the AI driver yet),
   // but if it somehow gets posted to it, just pick the first candidate.

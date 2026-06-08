@@ -1813,17 +1813,28 @@ const prepareForBattle: EffectHandler = (G, ctx) => {
 const secretMission: EffectHandler = (G, ctx) => {
   const deck = G.rebel.missionDeck;
   if (!deck || deck.length === 0) return true;
-  const keepCount = ctx.leaderIds.includes('cassian-andor') ? 2 : 1;
+  const keepCount: 1 | 2 = ctx.leaderIds.includes('cassian-andor') ? 2 : 1;
   const n = Math.min(6, deck.length);
   const peek = deck.splice(0, n);
-  const kept = peek.splice(0, keepCount);
-  for (const mid of kept) G.rebel.missionHand.push(mid);
-  // Shuffle the rest back into the deck (with whatever's left underneath).
-  const rest = [...peek, ...deck];
-  shuffle(G.rng, rest);
-  G.rebel.missionDeck = rest;
-  log(G, { kind: 'secret-mission', side: 'Rebel', payload: { kept, andor: keepCount === 2 } });
-  return true;
+  if (peek.length <= keepCount) {
+    // Trivial: everything peeked goes to hand, nothing to shuffle back.
+    for (const mid of peek) G.rebel.missionHand.push(mid);
+    log(G, { kind: 'secret-mission', side: 'Rebel', payload: {
+      kept: peek, andor: keepCount === 2, autoTrivial: true,
+    }});
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'SecretMissionPick',
+    side: 'Rebel',
+    remaining: peek,
+    kept: [],
+    keepCount,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'SecretMissionPick', peekCount: peek.length, keepCount,
+  }});
+  return false;
 };
 
 /** Behind Enemy Lines: "Move 5 units from the Rebel Base, ignoring leaders
