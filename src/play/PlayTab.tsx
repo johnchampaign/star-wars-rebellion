@@ -224,6 +224,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'SomethingToFightForOffer': return pc.side === side;
     case 'PostBountyOffer':          return pc.side === side;
     case 'AmbitionsOfPowerOffer':    return pc.side === side;
+    case 'DiscreditRebellionChoice': return pc.side === side;
     // Robust default: ANY side-tagged choice belongs to the side it names, so
     // if that side is the AI, the AI owes it. This catches choice kinds the AI
     // can resolve but that aren't explicitly listed above — without it, such a
@@ -1995,6 +1996,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <AmbitionsOfPowerOfferModal choice={G.pendingChoice}
           onAccept={(accept) => {
             const r = phases.resolveAmbitionsOfPowerOffer(G, accept);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'DiscreditRebellionChoice'
+        && G.pendingChoice.side === humanSide && (
+        <DiscreditRebellionModal G={G} choice={G.pendingChoice}
+          onAction={(action) => {
+            const r = phases.resolveDiscreditRebellion(G, action);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -10689,6 +10702,47 @@ function NobleSacrificeOfferModal({
           </button>
           <button className="tab-button" onClick={() => onAccept(false)}>
             Keep, accept capture
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DiscreditRebellionModal({
+  G, choice, onAction,
+}: {
+  G: GameState;
+  choice: { diceCount: 1 | 2; sabotageSystemIds: string[] };
+  onAction: (action: 'remove' | 'roll') => void;
+}) {
+  const sysNames = choice.sabotageSystemIds
+    .map((sid) => G.catalog.systems[sid]?.name ?? sid)
+    .join(', ');
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Discredit Rebellion — remove markers or roll?</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+          The Empire resolved <i>Discredit Rebellion</i>. You must choose: remove
+          ALL sabotage markers from the board ({choice.sabotageSystemIds.length} —
+          {' '}{sysNames}) and stay safe, OR roll {choice.diceCount} red die{choice.diceCount === 1 ? '' : 's'}
+          {' '}— on any success the Rebels lose 1 reputation, but the sabotage
+          markers stay in play.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="tab-button" onClick={() => onAction('remove')} style={{ fontWeight: 700 }}>
+            Remove all {choice.sabotageSystemIds.length} sabotage marker{choice.sabotageSystemIds.length === 1 ? '' : 's'}
+          </button>
+          <button className="tab-button active" onClick={() => onAction('roll')}>
+            Roll {choice.diceCount} die
           </button>
         </div>
       </div>

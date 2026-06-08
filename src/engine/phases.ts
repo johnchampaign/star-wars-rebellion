@@ -557,16 +557,12 @@ export function assignLeader(G: GameState, side: Side, missionId: string, leader
   f.leadersOnMissions.push({ missionId, leaderIds: [...leaderIds] });
   log(G, { kind: 'assign-leader', side, payload: { missionId, leaderIds } });
 
-  // RAW: players ALTERNATE during Assignment (RR p.4). After this side
-  // assigns, control passes to the opponent — unless they've already
-  // signalled done, in which case the current side keeps going.
-  const opp: Side = side === 'Rebel' ? 'Empire' : 'Rebel';
-  const done = assignmentDone(G);
-  if (!done.has(opp)) {
-    G.currentPlayer = opp;
-  }
-  // If opponent has already passed but current side still has leaders,
-  // current side keeps the turn until they pass too.
+  // RAW (rules: "the Rebel player assigns any of their leaders to missions,
+  // followed by the Imperial player"): the active player assigns ALL of their
+  // leaders before the turn passes — assignment does NOT alternate leader-by-
+  // leader (that was the bug). The turn passes only when the player signals
+  // done via skipAssignment(): Rebel first (all), then Empire (all). So we
+  // leave G.currentPlayer untouched here.
   return { ok: true };
 }
 
@@ -2526,6 +2522,34 @@ export function resolvePostBountyOffer(G: GameState, leaderId: LeaderId | null):
   discardOrReturnMission(G, pm.resolverSide, pm.missionId);
   G.pendingMission = undefined;
   if (!G.isGameOver) advanceCommandTurn(G);
+  return { ok: true };
+}
+
+/** Discredit Rebellion (Empire/Motti, RoE): Rebel chooses to wipe all
+ *  sabotage markers off the board (avoids the rep-loss risk) or to roll
+ *  dice — 2 dice with Motti, 1 otherwise. Any success on the roll loses
+ *  the Rebel 1 reputation. */
+export function resolveDiscreditRebellion(G: GameState, action: 'remove' | 'roll'): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'DiscreditRebellionChoice') return { ok: false, reason: 'no-pending' };
+  G.pendingChoice = undefined;
+  if (action === 'remove') {
+    let removed = 0;
+    for (const sid of pc.sabotageSystemIds) {
+      const ss = G.map.systems[sid];
+      if (ss?.sabotage) { ss.sabotage = false; removed++; }
+    }
+    log(G, { kind: 'discredit-rebellion-remove', side: 'Rebel', payload: {
+      systemIds: pc.sabotageSystemIds, removed,
+    }});
+  } else {
+    const faces: string[] = [];
+    for (let i = 0; i < pc.diceCount; i++) faces.push(rollDie(G.rng, 'red').face);
+    const hit = faces.some((f) => f === 'hit' || f === 'direct-hit');
+    log(G, { kind: 'discredit-rebellion-roll', side: 'Rebel', payload: { faces, hit, diceCount: pc.diceCount } });
+    if (hit) M.loseReputation(G, 1);
+  }
+  resumeMissionAfterChoice(G);
   return { ok: true };
 }
 

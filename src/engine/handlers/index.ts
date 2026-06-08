@@ -1411,13 +1411,33 @@ const imperialPromotion: EffectHandler = (G, ctx) => {
  *  instead." Rebel almost always prefers to roll (sabotage markers are
  *  valuable), so we auto-roll. */
 const discreditRebellion: EffectHandler = (G, ctx) => {
-  const dice = ctx.leaderIds.includes('motti') ? 2 : 1;
-  const faces: string[] = [];
-  for (let i = 0; i < dice; i++) faces.push(rollDie(G.rng, 'red').face);
-  const hit = faces.some((f) => f === 'hit' || f === 'direct-hit');
-  log(G, { kind: 'discredit-rebellion-roll', side: 'Empire', payload: { faces, hit, dice } });
-  if (hit) M.loseReputation(G, 1);
-  return true;
+  // Rebel chooses: remove ALL sabotage markers on the board (avoids the
+  // reputation risk but loses the markers' ongoing pressure), or roll
+  // dice — 2 with Motti assigned, 1 otherwise. Any success costs 1 rep.
+  const diceCount = ctx.leaderIds.includes('motti') ? 2 : 1;
+  const sabotageSystemIds = Object.entries(G.map.systems)
+    .filter(([_sid, ss]) => ss.sabotage)
+    .map(([sid]) => sid);
+  // If there are no sabotage markers, the "remove" branch is a no-op and
+  // the player has nothing to weigh — just roll directly.
+  if (sabotageSystemIds.length === 0) {
+    const faces: string[] = [];
+    for (let i = 0; i < diceCount; i++) faces.push(rollDie(G.rng, 'red').face);
+    const hit = faces.some((f) => f === 'hit' || f === 'direct-hit');
+    log(G, { kind: 'discredit-rebellion-roll', side: 'Empire', payload: { faces, hit, diceCount } });
+    if (hit) M.loseReputation(G, 1);
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'DiscreditRebellionChoice',
+    side: 'Rebel',
+    diceCount,
+    sabotageSystemIds,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'DiscreditRebellionChoice', diceCount, sabotageCount: sabotageSystemIds.length,
+  }});
+  return false; // paused for Rebel choice
 };
 
 // ----- Rebel Wave A -----

@@ -506,6 +506,16 @@ export type ChoiceRequest =
       currentCap: number;
     }
   | {
+      // Discredit Rebellion (Empire/Motti, RoE): Rebel chooses to remove
+      // ALL sabotage markers on the board OR to roll dice (1 normally,
+      // 2 if Motti assigned). On any success on the roll, Rebels lose 1
+      // reputation.
+      kind: 'DiscreditRebellionChoice';
+      side: Side; // 'Rebel'
+      diceCount: 1 | 2;
+      sabotageSystemIds: string[]; // every system with a sabotage marker
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated

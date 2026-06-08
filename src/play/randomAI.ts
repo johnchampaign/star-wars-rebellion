@@ -1411,6 +1411,14 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'AmbitionsOfPowerOffer' && G.pendingChoice.side === side) {
     return phases.resolveAmbitionsOfPowerOffer(G, true).ok;
   }
+  // Discredit Rebellion (RoE): heuristic — always prefer the ROLL branch.
+  // Sabotage markers are a strategic asset (they cripple Imperial systems
+  // every refresh); a single rep loss on a 1/3 or so chance is the better
+  // trade. Closer to optimal would be: roll if many markers, remove if 1
+  // marker AND Motti is assigned (2-dice ~5/9 chance of losing rep).
+  if (G.pendingChoice && G.pendingChoice.kind === 'DiscreditRebellionChoice' && G.pendingChoice.side === side) {
+    return phases.resolveDiscreditRebellion(G, 'roll').ok;
+  }
   // PlayImmediateActionCard (RoE): the AI never PROACTIVELY opens this
   // modal (no requestImmediateActionCardPlay call in the AI driver yet),
   // but if it somehow gets posted to it, just pick the first candidate.
