@@ -169,14 +169,23 @@ function totalSkill(G: GameState, leaderIds: LeaderId[], skill: string): number 
   let total = 0;
   for (const lid of leaderIds) {
     const ld = G.catalog.leaders[lid];
-    if (ld) total += ld.skills[skill as keyof typeof ld.skills] ?? 0;
+    if (!ld) continue;
+    total += ld.skills[skill as keyof typeof ld.skills] ?? 0;
+    // RoE rules p.8: minor icons count toward skill totals on mission rolls
+    // (skill-cost and dice counts) too.
+    if (G.expansion?.enabled) {
+      total += ld.minorSkills[skill as keyof typeof ld.minorSkills] ?? 0;
+      total += ringMinorSkillBonus(G, lid, skill as 'diplomacy' | 'intel' | 'specOps' | 'logistics');
+    }
   }
   return total;
 }
 
 /** Sum of ALL skill icons (any type) across a leader set. Used by missions
  *  that say "count all skill icons during this attempt" (e.g. Interrogation
- *  Droid, Lure of the Dark Side). RR p.9. */
+ *  Droid, Lure of the Dark Side). RR p.9. With the RoE expansion enabled,
+ *  minor skill icons (printed and ring-granted) also count toward the sum
+ *  per rules p.8. */
 function totalAllSkills(G: GameState, leaderIds: LeaderId[]): number {
   let total = 0;
   for (const lid of leaderIds) {
@@ -184,8 +193,30 @@ function totalAllSkills(G: GameState, leaderIds: LeaderId[]): number {
     if (!ld) continue;
     total += (ld.skills.diplomacy ?? 0) + (ld.skills.intel ?? 0)
            + (ld.skills.specOps ?? 0) + (ld.skills.logistics ?? 0);
+    if (G.expansion?.enabled) {
+      total += (ld.minorSkills.diplomacy ?? 0) + (ld.minorSkills.intel ?? 0)
+             + (ld.minorSkills.specOps ?? 0) + (ld.minorSkills.logistics ?? 0);
+      for (const k of ['diplomacy', 'intel', 'specOps', 'logistics'] as const) {
+        total += ringMinorSkillBonus(G, lid, k);
+      }
+    }
   }
   return total;
+}
+
+/** RoE ring-granted minor-skill bonuses. K-2SO (the He Means Well ring)
+ *  grants +1 minor SpecOps and +1 minor Intel to the bearer. The bonus
+ *  counts as a minor icon for both mission skill-cost satisfaction (rules
+ *  p.8) and the green-dice mission roll (TODO when mission greens land).
+ *  Returns 0 when expansion is off or the leader has no relevant ring. */
+function ringMinorSkillBonus(G: GameState, leaderId: string, skill: 'diplomacy' | 'intel' | 'specOps' | 'logistics'): number {
+  if (!G.expansion?.enabled) return 0;
+  let bonus = 0;
+  const rings = G.leaderAttachments?.[leaderId] ?? [];
+  if (rings.includes('k2so')) {
+    if (skill === 'specOps' || skill === 'intel') bonus += 1;
+  }
+  return bonus;
 }
 
 /** Card-specific bonus dice added to the ATTEMPTING side's mission roll,
@@ -832,6 +863,12 @@ export function revealMission(
     const ldr = G.catalog.leaders[lid];
     if (!ldr) continue;
     total += ldr.skills[need as keyof typeof ldr.skills] ?? 0;
+    // RoE rules p.8: "Minor skill icons count toward fulfilling skill
+    // requirements on mission cards." Plus any ring-granted minors.
+    if (G.expansion?.enabled) {
+      total += ldr.minorSkills[need as keyof typeof ldr.minorSkills] ?? 0;
+      total += ringMinorSkillBonus(G, lid, need);
+    }
   }
   if (total < card.skillCost) return { ok: false, reason: `insufficient-skill:${total}/${card.skillCost}` };
 
@@ -4229,9 +4266,15 @@ export function declineDeployUnit(G: GameState): { ok: boolean; reason?: string 
 
 /** Droid "ring" action cards the Rebel may ATTACH during their Assignment
  *  phase: in hand and not already attached to a leader. */
-const DROID_RING_CARDS: Record<string, 'r2d2' | 'c3po'> = {
+// Cards that ATTACH as a ring during a Rebel Assignment turn (Immediate
+// timing in the printed game; we wedge them into the Assignment-card path
+// because there's no separate "play immediate card" affordance yet). Name
+// is historical — droid rings were the first members; K-2SO (He Means
+// Well) is RoE.
+const DROID_RING_CARDS: Record<string, 'r2d2' | 'c3po' | 'k2so'> = {
   'resourceful-astromech': 'r2d2',
   'human-cyborg-relations': 'c3po',
+  'he-means-well': 'k2so',
 };
 
 export function playableAssignmentActionCards(G: GameState, side: Side): string[] {
@@ -4243,7 +4286,15 @@ export function playableAssignmentActionCards(G: GameState, side: Side): string[
     // Droid ring cards (timing 'Immediate') can be ATTACHED during Assignment,
     // as long as the ring isn't already on a leader.
     if (DROID_RING_CARDS[cid]) {
-      if (side === 'Rebel' && !M.findRingHolder(G, DROID_RING_CARDS[cid])) out.push(cid);
+      // All current ring-attach cards are Rebel.
+      if (side !== 'Rebel') { continue; }
+      // Ring isn't already held by someone else (single ring at a time).
+      if (M.findRingHolder(G, DROID_RING_CARDS[cid])) { continue; }
+      // Leader requirement (RoE He Means Well needs Cassian; base droid
+      // rings have an empty requirement list, so this is a no-op for them).
+      const reqs = card.leaderRequirement ?? [];
+      if (reqs.length > 0 && !reqs.some((lid) => f.leaderPool.includes(lid))) continue;
+      out.push(cid);
       continue;
     }
     if (card.timing !== 'Assignment') continue;

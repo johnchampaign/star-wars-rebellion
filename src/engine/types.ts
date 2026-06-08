@@ -660,8 +660,8 @@ export type ChoiceRequest =
       // leader's system. Posted when the player plays the droid action card.
       kind: 'AttachRingPick';
       side: Side; // 'Rebel'
-      cardId: string; // 'resourceful-astromech' | 'human-cyborg-relations'
-      ringId: 'r2d2' | 'c3po';
+      cardId: string; // 'resourceful-astromech' | 'human-cyborg-relations' | 'he-means-well'
+      ringId: 'r2d2' | 'c3po' | 'k2so';
       candidates: LeaderId[];
     }
   | {
@@ -1328,7 +1328,7 @@ export type GameState = {
   // rulebook, a leader can have only one ring at a time — a new ring replaces
   // the old. The capture / carbonite rings live in capturedLeaders.ring;
   // these are the *other* rings (Yoda, dark-side, R2D2, etc).
-  leaderAttachments?: Record<string, ('yoda' | 'dark-side' | 'r2d2' | 'c3po' | 'bounty')[]>;
+  leaderAttachments?: Record<string, ('yoda' | 'dark-side' | 'r2d2' | 'c3po' | 'bounty' | 'k2so')[]>;
 
   // Leaders who can't be opposed by pool leaders this round (Misdirection).
   // Cleared at end of Command phase. The protection only blocks pool

@@ -9752,7 +9752,7 @@ function AttachRingPickModal({
   G, choice, onPick,
 }: {
   G: GameState;
-  choice: { kind: 'AttachRingPick'; side: Side; cardId: string; ringId: 'r2d2' | 'c3po'; candidates: string[] };
+  choice: { kind: 'AttachRingPick'; side: Side; cardId: string; ringId: 'r2d2' | 'c3po' | 'k2so'; candidates: string[] };
   onPick: (leaderId: string) => void;
 }) {
   const color = sideColor(choice.side);

@@ -14,7 +14,8 @@
       "Phase 5d (data-only): appended 14 Rise of the Empire action cards tagged set: \"rote\". effectKey is empty pending handler bindings.",
       "Phase 5d-handlers Wave D: wired 4 RoE action cards (Trust in the Force, False Orders, Lord Vader's Orders, Baze's Loyalty). Lord Vader's Orders timing changed from Immediate to Assignment so it dispatches through the existing Assignment-card path.",
       "Phase 5d-handlers Wave E: wired 2 RoE Special-timing action cards (Track Them, Something to Fight For). Both use inline event triggers + offer modals.",
-      "Phase 5d-handlers Wave F: wired 2 RoE Empire Special cards (Post Bounty, Ambitions of Power). Post Bounty introduces a new 'bounty' attachment ring; Ambitions of Power adds the FactionState.leaderPoolCapBonus field."
+      "Phase 5d-handlers Wave F: wired 2 RoE Empire Special cards (Post Bounty, Ambitions of Power). Post Bounty introduces a new 'bounty' attachment ring; Ambitions of Power adds the FactionState.leaderPoolCapBonus field.",
+      "Phase 5d-handlers Wave G: wired 1 RoE action card (He Means Well). Adds the 'k2so' AttachmentKind; the ring grants +1 minor SpecOps and +1 minor Intel to the bearer. Phase 6 RoE rule \"minor skill icons count toward mission skill requirements\" lands alongside."
     ]
   },
   "actions": [
@@ -637,7 +638,7 @@
       "leaderRequirement": [
         "cassian-andor"
       ],
-      "effectKey": "",
+      "effectKey": "he-means-well",
       "rulesText": "Add a K-2SO ring to a non-ringed leader. That leader gains minor SpecOps and minor Intel icons.",
       "image": "",
       "set": "rote"
