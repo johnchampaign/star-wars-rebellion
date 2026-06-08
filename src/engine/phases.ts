@@ -4455,6 +4455,49 @@ function applyImmediateActionCardEffect(G: GameState, side: Side, cardId: string
       log(G, { kind: 'under-the-radar-peek', side, payload: { probes: peek } });
       break;
     }
+    case 'early-promotion': {
+      // RAW: "Draw 1 starting card, or recruit Motti (S2 G1). Place Motti
+      // and Tarkin in any Imperial system." MVP scope: take the recruit
+      // branch (the more powerful effect almost always — pulling a new
+      // leader into the pool plus a Tarkin redeploy). Auto-picks the
+      // first Imperial-loyal or subjugated system as the placement target.
+      // The "draw a starting card" alternative branch and per-card system
+      // pick are TODOs once the engine has a starting-card-draw affordance.
+      if (leaderRecruitable(G, 'Empire', 'motti')) {
+        G.empire.leaderPool.push('motti' as LeaderId);
+        log(G, { kind: 'recruit-leader', side: 'Empire', payload: {
+          leaderId: 'motti', via: 'early-promotion',
+        }});
+      }
+      // Place Motti + Tarkin at the first Imperial system if we can find one.
+      const targetSys = Object.entries(G.map.systems)
+        .find(([_sid, ss]) => ss.loyalty === 'imperial' || ss.subjugated)?.[0];
+      if (targetSys) {
+        for (const lid of ['motti', 'tarkin'] as LeaderId[]) {
+          if (G.empire.leaderPool.includes(lid)) {
+            const i = G.empire.leaderPool.indexOf(lid);
+            G.empire.leaderPool.splice(i, 1);
+            M.placeLeader(G, 'Empire', lid, targetSys);
+          }
+        }
+      }
+      break;
+    }
+    case 'rebel-extremist': {
+      // RAW: "Either draw another starting action card, or lose 1
+      // reputation and recruit Saw Gerrera (S1 G3)." MVP scope: take the
+      // recruit branch. Rebels lose 1 reputation and Saw enters the
+      // leader pool. The "draw another starting card" alternative is a
+      // TODO when the starting-card-draw UI lands.
+      M.loseReputation(G, 1);
+      if (leaderRecruitable(G, 'Rebel', 'saw-gerrera')) {
+        G.rebel.leaderPool.push('saw-gerrera' as LeaderId);
+        log(G, { kind: 'recruit-leader', side: 'Rebel', payload: {
+          leaderId: 'saw-gerrera', via: 'rebel-extremist',
+        }});
+      }
+      break;
+    }
     case 'secret-facility':
     case 'sweep-the-area': {
       // RoE: "Place 1 of your probe cards facedown under this card." The

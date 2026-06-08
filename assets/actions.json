@@ -17,7 +17,8 @@
       "Phase 5d-handlers Wave F: wired 2 RoE Empire Special cards (Post Bounty, Ambitions of Power). Post Bounty introduces a new 'bounty' attachment ring; Ambitions of Power adds the FactionState.leaderPoolCapBonus field.",
       "Phase 5d-handlers Wave G: wired 1 RoE action card (He Means Well). Adds the 'k2so' AttachmentKind; the ring grants +1 minor SpecOps and +1 minor Intel to the bearer. Phase 6 RoE rule \"minor skill icons count toward mission skill requirements\" lands alongside.",
       "Phase 5d-handlers Wave H: wired 1 RoE action card (Under the Radar) + the new play-immediate-action-card affordance (requestImmediateActionCardPlay / PlayImmediateActionCard / etc.). Under the Radar's MVP peeks the top 4 probes for the Rebel; the multi-turn \"keep one facedown and return later\" mechanic is a follow-up.",
-      "Phase 5d-handlers Wave I: wired 2 RoE Empire Immediate cards (Secret Facility, Sweep the Area). Adds ArmedActionCard state + ArmCardProbePick choice. Cards auto-reveal at the start of an Empire Command turn (Secret Facility) or at end of Command phase (Sweep the Area)."
+      "Phase 5d-handlers Wave I: wired 2 RoE Empire Immediate cards (Secret Facility, Sweep the Area). Adds ArmedActionCard state + ArmCardProbePick choice. Cards auto-reveal at the start of an Empire Command turn (Secret Facility) or at end of Command phase (Sweep the Area).",
+      "Phase 5d-handlers Wave J: wired 2 RoE starting action cards (Early Promotion, Rebel Extremist). All 14 RoE action cards are now wired (with sub-choice TODOs noted on these two and on Under the Radar's facedown-and-return)."
     ]
   },
   "actions": [
@@ -474,7 +475,7 @@
       "isStarting": true,
       "timing": "Immediate",
       "leaderRequirement": [],
-      "effectKey": "",
+      "effectKey": "early-promotion",
       "rulesText": "Draw 1 starting card, or recruit Motti (Space 2, Ground 1). Place Motti and Tarkin in any Imperial system.",
       "image": "",
       "set": "rote"
@@ -582,7 +583,7 @@
       "isStarting": true,
       "timing": "Immediate",
       "leaderRequirement": [],
-      "effectKey": "",
+      "effectKey": "rebel-extremist",
       "rulesText": "Either draw another starting action card, OR lose 1 reputation and recruit Saw Gerrera (Space 1, Ground 3).",
       "image": "",
       "set": "rote"
