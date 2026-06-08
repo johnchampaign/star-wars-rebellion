@@ -14,9 +14,11 @@
 //     committed leaders are public, the chosen mission is not.
 //   - The RNG state + controller seeds (a client that has these could predict
 //     future dice rolls).
-//   - The turn log (it records the base pick and assigned mission ids). For now
-//     it is emptied wholesale — safe but lossy. TODO(#log-redaction): replace
-//     with per-entry filtering that keeps public events for the event banner.
+//   - The turn log: filtered per-entry (redactLog below). DEFAULT-DENY — only
+//     a curated allowlist of PUBLIC events (combat, loyalty/reputation, builds,
+//     mission reveals, captures, …) plus the VIEWER'S OWN side-tagged entries
+//     survive; the codec snapshot, base pick, hand draws, face-down missions,
+//     and peeks are dropped, with a base-location scrub on top while hidden.
 //
 // What's public (kept): leader pools, leaders/units on the board, the Rebel
 // Base space contents, eliminated/captured leaders, attachment rings, the build
@@ -29,6 +31,61 @@ import type { Side, SystemId } from '../types';
 /** Sentinel that replaces a hidden card/system id. Distinct enough that the UI
  *  and tests can detect "this was redacted". */
 export const HIDDEN = '__hidden__';
+
+// Log event kinds that are PUBLIC knowledge — both seats witness them by the
+// rules of the game (combat, loyalty/subjugation/reputation changes,
+// builds/deploys, mission REVEALS and their results, captures/rescues,
+// system destruction). DEFAULT-DENY: any kind NOT in this set is dropped from
+// the redacted log, so an unclassified or future event can never leak hidden
+// info (a hand draw, a face-down mission assignment, the base pick, the codec
+// snapshot, a peek effect, …). A second base-location scrub runs on top.
+export const PUBLIC_LOG_KINDS: ReadonlySet<string> = new Set([
+  'phase', 'advance-time', 'pass', 'done', 'game-over',
+  // Missions are public once revealed/resolved. Face-down assignment uses the
+  // separate 'mission' / 'assign-leader' / 'choice-request' kinds (NOT listed).
+  'reveal-mission', 'mission-roll', 'mission-unopposed', 'mission-discard',
+  // Combat is fully public.
+  'combat-begin', 'combat-attack', 'combat-tactic', 'combat-tactic-effect',
+  'combat-action-card', 'combat-action-card-applied', 'combat-action-card-effect',
+  'combat-add-leader', 'combat-add-leader-declined', 'combat-retreat',
+  'combat-retreat-decline', 'combat-end', 'combat-stalemate-end',
+  'combat-structure-destroy', 'combat-structure-survive', 'leader-retreat',
+  'destroy-unit', 'assault-destroy', 'destroy-up-to-health',
+  // Loyalty / subjugation / reputation.
+  'gain-loyalty', 'lose-loyalty', 'remove-loyalty', 'subjugated',
+  'subjugation-cleared', 'liberated', 'gain-reputation', 'lose-reputation',
+  // Builds & deploys (build queues are already public in the redacted view).
+  'build-queue', 'build-queue-advance', 'build-queue-destroy', 'build-from-icons',
+  'brilliant-administrator-built', 'establish-trade-relations-built',
+  'temporary-alliance-built', 'deploy', 'deploy-returned-to-queue',
+  'deploy-declined-to-queue', 'destroy-system', 'destroyed-system-overflow',
+  // Leaders going public: revealed base, captures, rescues, eliminations.
+  'reveal-base', 'capture-leader', 'rescue-leader', 'auto-rescue',
+  'eliminate-leader', 'leader-flipped', 'return-leader', 'leader-replaced',
+  'refresh-retrieve', 'sabotage-removed', 'death-star-completed',
+]);
+
+/** Per-entry log redaction (replaces the old wipe-the-whole-log stopgap). An
+ *  entry is kept if it's a PUBLIC_LOG_KINDS event OR it's tagged with the
+ *  viewer's OWN side (their own private actions — e.g. their own draws — which
+ *  they already know). Everything else is dropped (default-deny). Then, while
+ *  the Rebel base is hidden from this viewer, drop any surviving entry that
+ *  names the secret base system or the Rebel-Base staging space. */
+function redactLog(
+  log: GameState['turnLog'], viewer: Side | null, baseHidden: boolean, baseSystemId: string | undefined,
+): GameState['turnLog'] {
+  const out: GameState['turnLog'] = [];
+  for (const e of log) {
+    const own = viewer != null && (e as { side?: Side }).side === viewer;
+    if (!own && !PUBLIC_LOG_KINDS.has(e.kind)) continue;
+    if (baseHidden) {
+      const s = JSON.stringify(e);
+      if (s.includes('rebel-base') || (baseSystemId && s.includes(baseSystemId))) continue;
+    }
+    out.push(e);
+  }
+  return out;
+}
 
 /** Replace every entry with the HIDDEN sentinel, preserving the count. */
 function hide(pile: string[]): string[] {
@@ -101,8 +158,9 @@ export function redactStateForViewer(state: GameState, viewer: Side | null): Gam
     rebelBaseSystemId: baseHiddenToViewer ? (HIDDEN as SystemId) : G.rebelBaseSystemId,
     // The 5 Setup base candidates are shown to the Rebel only.
     pendingRebelBasePick: viewer === 'Rebel' ? G.pendingRebelBasePick : undefined,
-    // Log records the base pick + assigned mission ids — empty it for now.
-    turnLog: [],
+    // Per-entry log redaction: keep public events for the event banner, drop
+    // anything that could leak hidden info (and scrub the base location).
+    turnLog: redactLog(G.turnLog, viewer, baseHiddenToViewer, state.rebelBaseSystemId),
     rebel: redactFaction(G.rebel, viewer === 'Rebel'),
     empire: redactFaction(G.empire, viewer === 'Empire'),
   };

@@ -44,7 +44,14 @@ const fixture = {
   rebelBaseSystemId: BASE,
   rebelBaseRevealed: false,
   pendingRebelBasePick: ['cand-a', 'cand-b'],
-  turnLog: [{ kind: 'pick-rebel-base', systemId: BASE }],
+  turnLog: [
+    { kind: 'gain-loyalty', side: 'Rebel', payload: { systemId: 'naboo' } },           // public, non-base → kept by both
+    { kind: 'pick-rebel-base', side: 'Rebel', systemId: BASE },                         // hidden + base → Rebel-only, dropped for Empire
+    { kind: 'state', payload: { codec: 'CODEC-' + BASE } },                             // full-state snapshot → dropped for everyone
+    { kind: 'draw-mission', side: 'Empire', payload: { missionId: 'EMPIRESECRET-d' } }, // Empire's own draw → kept for Empire, dropped for Rebel
+    { kind: 'draw-mission', side: 'Rebel', payload: { missionId: 'REBELSECRET-d' } },   // Rebel's own draw → kept for Rebel, dropped for Empire
+    { kind: 'combat-begin', payload: { systemId: BASE } },                              // public KIND but names the hidden base → scrubbed for Empire
+  ],
   rebel: faction('Rebel', 'REBELSECRET'),
   empire: faction('Empire', 'EMPIRESECRET'),
 } as unknown as GameState;
@@ -56,7 +63,12 @@ check('base location masked', e.rebelBaseSystemId === HIDDEN);
 check('setup base candidates stripped', e.pendingRebelBasePick === undefined);
 check('rng zeroed', e.rng.state === 0);
 check('controller seeds zeroed', e.controllerSeeds.rebel === 0 && e.controllerSeeds.empire === 0);
-check('turn log emptied', e.turnLog.length === 0);
+check('log keeps public events', e.turnLog.some((x) => x.kind === 'gain-loyalty'));
+check('log drops the codec/state snapshot', !e.turnLog.some((x) => x.kind === 'state'));
+check('log drops the base pick (Empire)', !e.turnLog.some((x) => x.kind === 'pick-rebel-base'));
+check('log drops opponent private draw (Empire)', !e.turnLog.some((x) => JSON.stringify(x).includes('REBELSECRET')));
+check('log keeps own private draw (Empire)', e.turnLog.some((x) => JSON.stringify(x).includes('EMPIRESECRET-d')));
+check('log scrubs base-named public event (Empire)', !e.turnLog.some((x) => x.kind === 'combat-begin'));
 check('probe deck masked (count kept)', e.probeDeck.length === 3 && e.probeDeck.every((x) => x === HIDDEN));
 check('rebel mission hand masked (count kept)', e.rebel.missionHand.length === 1 && e.rebel.missionHand.every((x) => x === HIDDEN));
 check('rebel objective hand masked', (e.rebel.objectiveHand ?? []).every((x) => x === HIDDEN));
@@ -81,6 +93,8 @@ check('empire mission hand masked', r.empire.missionHand.every((x) => x === HIDD
 check('empire probe hand masked', (r.empire.probeHand ?? []).every((x) => x === HIDDEN));
 const rJson = JSON.stringify(r);
 check('no Empire secret in Rebel payload', !rJson.includes('EMPIRESECRET'));
+check('Rebel log keeps own base pick + private draw', r.turnLog.some((x) => x.kind === 'pick-rebel-base') && rJson.includes('REBELSECRET-d'));
+check('Rebel log keeps base-named public event (base not hidden to Rebel)', r.turnLog.some((x) => x.kind === 'combat-begin'));
 
 // ---- Spectator (null): sees no private info for either side ----
 console.log('Spectator (null) view:');
