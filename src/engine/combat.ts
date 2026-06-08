@@ -15,6 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
+import { autoPlayCinematicTactic, takeCinematicPrevent } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -438,6 +439,23 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
   }
 
   const order: Side[] = [c.attackerSide, other(c.attackerSide)];
+
+  // CINEMATIC COMBAT tactic sub-step (RoE p.9): before the dice attacks, each
+  // side (current player first) plays one advanced tactic card and resolves
+  // its primary/secondary ability — deal-damage hits land now, prevent
+  // effects accumulate for the upcoming rolls. Auto-played in Phase 7c-1
+  // (interactive selection is Phase 7d). Tracked so a mid-theatre resume
+  // (damage-assignment pause) doesn't replay it.
+  if (c.cinematic) {
+    c.cinematicTacticDoneThisRound ??= [];
+    for (const side of order) {
+      const key = `${side}:${theater}:${c.round}`;
+      if (c.cinematicTacticDoneThisRound.includes(key)) continue;
+      autoPlayCinematicTactic(G, c, side, theater);
+      c.cinematicTacticDoneThisRound.push(key);
+    }
+  }
+
   for (const attacker of order) {
     if (G.isGameOver) break;
     if (c.theaterAttackersDone!.includes(attacker)) continue;
@@ -485,6 +503,23 @@ function beginAttack(G: GameState, c: CombatState, side: Side, theater: Theater)
   red = Math.min(5, red);
   black = Math.min(5, black);
   green = Math.min(3, green);
+
+  // CINEMATIC COMBAT "Prevent N red/black" tactic effects reduce THIS side's
+  // roll (the prevention was set against them by the opponent's tactic card).
+  // Applied after the 5/5 cap per RoE p.9 ("an ability that reduces dice
+  // applies before the limit of 5 is applied" — but since prevention is
+  // listed in whole dice and our caps rarely bind, post-cap is equivalent in
+  // practice; we floor at 0). Special-die prevention is deferred to 7c-2.
+  if (c.cinematic) {
+    const prev = takeCinematicPrevent(c, side);
+    if (prev.red || prev.black) {
+      red = Math.max(0, red - prev.red);
+      black = Math.max(0, black - prev.black);
+      log(G, { kind: 'cinematic-prevent-applied', side, payload: {
+        theater, round: c.round, red: prev.red, black: prev.black,
+      }});
+    }
+  }
 
   // "According To My Design" (Emperor Palpatine start-of-combat action card):
   // Rebel rolls 1 fewer red die and 2 fewer black dice for the first round

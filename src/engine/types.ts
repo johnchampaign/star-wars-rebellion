@@ -151,6 +151,13 @@ export type FactionState = {
   // return it to the top of the probe deck. Holding it keeps that system
   // out of the Empire's probe draws. Rebel-only.
   heldProbe?: string;
+  // RoE Cinematic Combat: this side's advanced tactic cards that have been
+  // PLAYED. Unlike the standard tactic deck (reshuffled each combat), a
+  // played advanced card is NOT shuffled back at end of combat (rules p.9)
+  // — it's gone for the rest of the game. A side's AVAILABLE cinematic
+  // cards = all their side+theatre advanced cards minus this pile. Present
+  // only in cinematic games.
+  cinematicTacticDiscard?: string[];
   // RoE multi-turn action cards "armed" with a facedown probe (Secret
   // Facility, Sweep the Area). The probe card's destination system is
   // recorded as `probeSystemId`; the action card is out of the hand and
@@ -1168,6 +1175,17 @@ export type CombatState = {
   // beginCombat from expansion.cinematicCombat. Phase 7b wires (a) and skips
   // the standard tactic draw; Phase 7c adds the cinematic tactic subsystem.
   cinematic?: boolean;
+  // RoE Cinematic Combat dice-prevention accumulator (Phase 7c). A "Prevent
+  // N red/black/special" tactic ability reduces the OPPONENT's next attack
+  // roll in this theatre. Keyed by the side WHOSE DICE are reduced; consumed
+  // (zeroed) by beginAttack when that side rolls. Reset per theatre step.
+  cinematicPrevent?: {
+    Rebel?: { red: number; black: number; special: number };
+    Empire?: { red: number; black: number; special: number };
+  };
+  // Which (side, theatre) cinematic tactic sub-steps have been resolved this
+  // round, so re-entry doesn't replay them.
+  cinematicTacticDoneThisRound?: string[]; // entries like 'Rebel:space'
   attackerHand: string[]; // tactic card ids
   defenderHand: string[];
   retreated: Side[]; // each side at most once

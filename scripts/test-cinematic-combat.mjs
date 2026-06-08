@@ -11,6 +11,19 @@ register();
 const { createGame } = await import('../src/engine/setup.ts');
 const M = await import('../src/engine/mechanics.ts');
 const combat = await import('../src/engine/combat.ts');
+const { stepOnce } = await import('../src/play/randomAI.ts');
+
+/** Drive a combat to completion: resolve every pending combat choice (add-
+ *  leader, tactics, damage assignment, retreat) via the AI until pendingCombat
+ *  clears. Mirrors what the real AI/UI loop does. */
+function driveCombat(G) {
+  combat.runCombat(G);
+  let guard = 0;
+  while (G.pendingCombat && G.pendingChoice && guard++ < 500) {
+    const side = G.pendingChoice.side;
+    if (!stepOnce(G, side)) break;
+  }
+}
 
 function loadJson(p) { return JSON.parse(readFileSync(join(ROOT, 'assets', p), 'utf-8')); }
 const data = {
@@ -88,6 +101,52 @@ console.log('\n[ Standard (non-cinematic) still draws tactic cards ]');
   combat.runCombat(G);
   check('standard combat DID draw space tactic cards', G.spaceTacticDeck.length < spaceBefore,
     `${G.spaceTacticDeck.length} vs ${spaceBefore}`);
+}
+
+// ---- Cinematic tactic cards: deal-damage ability fires + persistent discard ----
+console.log('\n[ Cinematic: advanced tactic cards deal damage + discard persists ]');
+{
+  const G = createGame(data, baseOpts(703));
+  // Empire AT-STs (Overrun: top "deal 2 damage" needs an AT-ST present) vs a
+  // tanky Rebel mon-cala on ground? No — ground. Use AT-ST vs airspeeders.
+  M.deployUnit(G, 'Empire', 'at-st', 'felucia');
+  M.deployUnit(G, 'Empire', 'at-st', 'felucia');
+  M.deployUnit(G, 'Rebel', 'airspeeder', 'felucia');
+  M.deployUnit(G, 'Rebel', 'airspeeder', 'felucia');
+  M.deployUnit(G, 'Rebel', 'airspeeder', 'felucia');
+  const discardBefore = (G.empire.cinematicTacticDiscard ?? []).length;
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  driveCombat(G);
+  const discardAfter = (G.empire.cinematicTacticDiscard ?? []).length;
+  check('Empire played at least one advanced tactic card (discard grew)',
+    discardAfter > discardBefore, `${discardAfter} vs ${discardBefore}`);
+  // Discard should contain only cinematic Empire-ground cards.
+  const allEmpireGround = (G.empire.cinematicTacticDiscard ?? []).every((id) => {
+    const t = G.catalog.tactics[id];
+    return t && t.cinematic && t.side === 'Empire' && t.theater === 'ground';
+  });
+  check('discard contains only Empire-ground cinematic cards', allEmpireGround);
+}
+
+// ---- Cinematic discard PERSISTS across separate combats ----
+console.log('\n[ Cinematic: discard persists across combats ]');
+{
+  const G = createGame(data, baseOpts(704));
+  M.deployUnit(G, 'Empire', 'at-st', 'felucia');
+  M.deployUnit(G, 'Rebel', 'airspeeder', 'felucia');
+  M.deployUnit(G, 'Rebel', 'airspeeder', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  driveCombat(G);
+  const afterFirst = [...(G.empire.cinematicTacticDiscard ?? [])];
+  // Second combat at a different system — discard from the first must remain.
+  M.deployUnit(G, 'Empire', 'at-st', 'naboo');
+  M.deployUnit(G, 'Rebel', 'airspeeder', 'naboo');
+  combat.beginCombat(G, 'Empire', 'felucia', 'naboo');
+  driveCombat(G);
+  const afterSecond = G.empire.cinematicTacticDiscard ?? [];
+  check('first-combat discards still present after second combat',
+    afterFirst.every((id) => afterSecond.includes(id)),
+    `first=${afterFirst.length} second=${afterSecond.length}`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
