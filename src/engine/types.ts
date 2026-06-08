@@ -581,6 +581,17 @@ export type ChoiceRequest =
       max: number; // 5
     }
   | {
+      // We're the Bait (Empire, RoE): the Empire picks up to 4 HEALTH of
+      // Rebel ground units from the Rebel Base to drag to the target and
+      // resolve combat. Health-budgeted rather than count-capped.
+      kind: 'WereTheBaitUnits';
+      side: Side; // 'Empire'
+      targetSystemId: SystemId;
+      sourceSystemId: SystemId;
+      availableUnitIds: UnitInstanceId[];
+      healthBudget: number; // 4
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated

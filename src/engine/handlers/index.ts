@@ -1597,8 +1597,9 @@ const imperialMight: EffectHandler = (G, ctx) => {
 };
 
 /** We're the Bait: "Take 4-health of ground units from the Rebel Base and
- *  place them here. Resolve combat." Auto-picks ground units up to a
- *  4-health budget (smallest first so we use the budget efficiently). */
+ *  place them here. Resolve combat." The Empire picks which Rebel ground
+ *  units (combined health up to 4); auto-resolves when there's no real
+ *  choice (the total Rebel ground health at the base is already <= 4). */
 const weretheBait: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
@@ -1606,24 +1607,35 @@ const weretheBait: EffectHandler = (G, ctx) => {
   const baseContainer = baseSourceId === 'rebel-base-space'
     ? G.map.rebelBaseSpace : G.map.systems[baseSourceId];
   if (!baseContainer) return true;
-  // Smallest-health first so the 4-health budget covers the maximum unit count.
   const ground = baseContainer.units
-    .filter((u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground')
-    .slice()
-    .sort((a, b) => (G.catalog.unitTypes[a.typeId]?.health.value ?? 0) - (G.catalog.unitTypes[b.typeId]?.health.value ?? 0));
-  let budget = 4;
-  const moved: string[] = [];
-  for (const u of ground) {
-    const h = G.catalog.unitTypes[u.typeId]?.health.value ?? 0;
-    if (h === 0 || h > budget) continue;
-    M.moveUnit(G, u.instanceId, baseSourceId, sysId);
-    budget -= h;
-    moved.push(u.typeId);
-    if (budget === 0) break;
+    .filter((u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground');
+  if (ground.length === 0) {
+    triggerCombatAt(G, 'Empire', sysId);
+    return true;
   }
-  log(G, { kind: 'were-the-bait', side: 'Empire', payload: { systemId: sysId, moved } });
-  triggerCombatAt(G, 'Empire', sysId);
-  return true;
+  const totalHealth = ground.reduce(
+    (sum, u) => sum + (G.catalog.unitTypes[u.typeId]?.health.value ?? 0), 0);
+  // If everything fits the budget, take all of it — no choice to make.
+  if (totalHealth <= 4) {
+    for (const u of ground) M.moveUnit(G, u.instanceId, baseSourceId, sysId);
+    log(G, { kind: 'were-the-bait', side: 'Empire', payload: {
+      systemId: sysId, moved: ground.map((u) => u.typeId), auto: true,
+    }});
+    triggerCombatAt(G, 'Empire', sysId);
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'WereTheBaitUnits',
+    side: 'Empire',
+    targetSystemId: sysId,
+    sourceSystemId: baseSourceId,
+    availableUnitIds: ground.map((u) => u.instanceId),
+    healthBudget: 4,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'WereTheBaitUnits', available: ground.length, healthBudget: 4,
+  }});
+  return false;
 };
 
 /** Exploit Weakness: "Rebel reveals 1 RANDOM Objective card from hand and

@@ -1474,6 +1474,25 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const pick = scored.slice(0, c.max).map((s) => s.uid);
     return phases.resolveBehindEnemyLinesUnits(G, pick).ok;
   }
+  // We're the Bait (Empire/RoE): drag as many Rebel ground units as the
+  // 4-health budget allows — smallest-health-first maximizes the count of
+  // Rebel units yanked out of their base into the kill zone.
+  if (G.pendingChoice && G.pendingChoice.kind === 'WereTheBaitUnits' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const container = c.sourceSystemId === 'rebel-base-space'
+      ? G.map.rebelBaseSpace : G.map.systems[c.sourceSystemId];
+    const scored = c.availableUnitIds.map((uid) => {
+      const u = container?.units.find((x) => x.instanceId === uid);
+      const h = u ? (G.catalog.unitTypes[u.typeId]?.health.value ?? 0) : 99;
+      return { uid, h };
+    }).sort((a, b) => a.h - b.h);
+    let budget = c.healthBudget;
+    const pick: string[] = [];
+    for (const s of scored) {
+      if (s.h > 0 && s.h <= budget) { pick.push(s.uid); budget -= s.h; }
+    }
+    return phases.resolveWereTheBaitUnits(G, pick).ok;
+  }
   // MissionRecruitLeaderPick (RoE): pick the highest-tactic-total leader
   // (Hire Mercenaries / Imperial Promotion / Rebel Promotion / My Only
   // Hope). For Hire Mercenaries the candidates are no-tactic-value

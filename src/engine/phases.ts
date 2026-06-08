@@ -1811,6 +1811,42 @@ export function resolveBehindEnemyLinesUnits(G: GameState, unitIds: string[]): {
   return { ok: true };
 }
 
+/** We're the Bait (Empire, RoE): Empire picks Rebel ground units (combined
+ *  health <= healthBudget) to drag from the Rebel Base to the target, then
+ *  combat resolves. */
+export function resolveWereTheBaitUnits(G: GameState, unitIds: string[]): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'WereTheBaitUnits') {
+    return { ok: false, reason: 'no-pending-were-the-bait' };
+  }
+  const seen = new Set<string>();
+  let totalHealth = 0;
+  const container = choice.sourceSystemId === 'rebel-base-space'
+    ? G.map.rebelBaseSpace : G.map.systems[choice.sourceSystemId];
+  for (const uid of unitIds) {
+    if (!choice.availableUnitIds.includes(uid)) return { ok: false, reason: `illegal-unit:${uid}` };
+    if (seen.has(uid)) return { ok: false, reason: `duplicate:${uid}` };
+    seen.add(uid);
+    const u = container?.units.find((x) => x.instanceId === uid);
+    if (!u) return { ok: false, reason: `unit-missing:${uid}` };
+    totalHealth += G.catalog.unitTypes[u.typeId]?.health.value ?? 0;
+  }
+  if (totalHealth > choice.healthBudget) {
+    return { ok: false, reason: `over-budget:${totalHealth}/${choice.healthBudget}` };
+  }
+  const { targetSystemId, sourceSystemId } = choice;
+  for (const uid of unitIds) M.moveUnit(G, uid, sourceSystemId, targetSystemId);
+  log(G, { kind: 'were-the-bait', side: 'Empire', payload: {
+    systemId: targetSystemId, moved: unitIds.length, totalHealth,
+  }});
+  G.pendingChoice = undefined;
+  beginCombat(G, 'Empire', sourceSystemId, targetSystemId);
+  runCombat(G);
+  if (G.pendingChoice || G.pendingCombat) return { ok: true };
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Oversee Project: Empire picks which queued unit to deploy. */
 export function resolveOverseeProjectPick(G: GameState, queueIndex: number, slot: 1 | 2): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;

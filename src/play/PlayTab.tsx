@@ -231,6 +231,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'DrawThemOutPick':          return pc.side === side;
     case 'RegionalAidPick':          return pc.side === side;
     case 'BehindEnemyLinesUnits':    return pc.side === side;
+    case 'WereTheBaitUnits':         return pc.side === side;
     // Robust default: ANY side-tagged choice belongs to the side it names, so
     // if that side is the AI, the AI owes it. This catches choice kinds the AI
     // can resolve but that aren't explicitly listed above — without it, such a
@@ -1566,6 +1567,20 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           choice={G.pendingChoice}
           onSubmit={(unitIds) => {
             const r = phases.resolveBehindEnemyLinesUnits(G, unitIds);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'WereTheBaitUnits'
+        && humanSide === 'Empire' && (
+        <WereTheBaitUnitsModal
+          G={G}
+          choice={G.pendingChoice}
+          onSubmit={(unitIds) => {
+            const r = phases.resolveWereTheBaitUnits(G, unitIds);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }}
@@ -5111,6 +5126,97 @@ function BehindEnemyLinesUnitsModal({ G, choice, onSubmit }: {
               border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
           >
             Send {picked.size} unit{picked.size === 1 ? '' : 's'} & start combat
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WereTheBaitUnitsModal({ G, choice, onSubmit }: {
+  G: GameState;
+  choice: {
+    kind: 'WereTheBaitUnits';
+    side: Side;
+    targetSystemId: string;
+    sourceSystemId: string;
+    availableUnitIds: string[];
+    healthBudget: number;
+  };
+  onSubmit: (unitIds: string[]) => void;
+}) {
+  const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  const sourceContainer = choice.sourceSystemId === 'rebel-base-space'
+    ? G.map.rebelBaseSpace
+    : G.map.systems[choice.sourceSystemId];
+  const sourceUnits = sourceContainer?.units ?? [];
+  const units = choice.availableUnitIds
+    .map((uid) => sourceUnits.find((u) => u.instanceId === uid))
+    .filter((u): u is NonNullable<typeof u> => !!u);
+  const healthOf = (uid: string) => {
+    const u = sourceUnits.find((x) => x.instanceId === uid);
+    return u ? (G.catalog.unitTypes[u.typeId]?.health.value ?? 0) : 0;
+  };
+
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const usedHealth = Array.from(picked).reduce((s, uid) => s + healthOf(uid), 0);
+  const remaining = choice.healthBudget - usedHealth;
+  const toggle = (uid: string) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else if (healthOf(uid) <= remaining) next.add(uid); // enforce budget
+      return next;
+    });
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 22, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+      }}>
+        <div style={{ fontSize: 14, color: '#ffaaaa', fontWeight: 700, marginBottom: 6 }}>
+          We're the Bait — drag up to {choice.healthBudget} health of Rebel ground units to {targetName}
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>
+          Pick Rebel ground units from their base whose combined health is at most {choice.healthBudget}.
+          They're dragged to {targetName} and combat resolves immediately.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {units.map((u) => {
+            const t = G.catalog.unitTypes[u.typeId];
+            const h = t?.health.value ?? 0;
+            const isOn = picked.has(u.instanceId);
+            const disabled = !isOn && h > remaining;
+            return (
+              <label key={u.instanceId} style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: 4,
+                background: '#1f2128', borderRadius: 3,
+                cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+              }}>
+                <input type="checkbox" checked={isOn} disabled={disabled} onChange={() => toggle(u.instanceId)} />
+                <span style={{ color: '#fff', fontSize: 13 }}>
+                  {t?.name ?? u.typeId}
+                  <span style={{ color: '#888', fontSize: 11 }}> · {h} health</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+          <span style={{ color: '#888', fontSize: 11, marginRight: 'auto' }}>
+            {usedHealth}/{choice.healthBudget} health used
+          </span>
+          <button
+            onClick={() => onSubmit(Array.from(picked))}
+            style={{ padding: '6px 18px', background: '#ffaaaa', color: '#000',
+              border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
+          >
+            Drag {picked.size} unit{picked.size === 1 ? '' : 's'} & start combat
           </button>
         </div>
       </div>
