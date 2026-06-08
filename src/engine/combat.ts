@@ -1302,6 +1302,25 @@ function applySpecialTacticEffect(G: GameState, c: CombatState, side: Side, card
     log(G, { kind: 'combat-tactic', side, payload: { card: cardId, retreatTransport: false } });
     return;
   }
+  // Damage-boost cards (Onslaught / Take It Down / Critical Hit). These need a
+  // ★ to play, so they reach combat via THIS special-spend path — but the
+  // bonus-damage logic also lives in resolveAttackerTactics' damageBoostCardIds
+  // branch. Mirror it here so they actually resolve instead of logging "effect
+  // not yet wired" (player report #156: Onslaught did nothing). bonusDamage +
+  // bonusDamageSources feed the per-card target constraint in assignDamage
+  // (Onslaught spreads to different targets; Take It Down concentrates).
+  const boost = cardId.includes('take-it-down') ? 2
+              : cardId.includes('onslaught')    ? 2
+              : cardId.includes('critical-hit') ? 1
+              : 0;
+  if (boost > 0) {
+    pa.bonusDamage += boost;
+    (pa.bonusDamageSources ??= []).push({ source: cardId, amount: boost });
+    pa.tacticsPlayed.push({ card: cardId, detail: `+${boost} damage` });
+    log(G, { kind: 'combat-tactic', side, payload: { card: cardId, bonusDamage: boost } });
+    return;
+  }
+
   // Unknown special card — log only.
   pa.tacticsPlayed.push({ card: cardId, detail: 'played (effect not yet wired)' });
   log(G, { kind: 'combat-tactic', side, payload: { card: cardId, viaSpecial: true } });
@@ -1538,6 +1557,11 @@ function hasStartOfCombatLegalTarget(G: GameState, c: CombatState, cardId: strin
         return t?.health.color !== null;
       });
     }
+    case 'its-a-trap':
+      // "During the first round of combat, your opponent cannot play space
+      // tactic cards." Only meaningful when there's actually a space battle —
+      // otherwise it's a wasted card (player report #160).
+      return bothSidesHaveTheater(G, c.systemId, 'space');
     default:
       return true;
   }
