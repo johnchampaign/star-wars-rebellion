@@ -1427,6 +1427,22 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     if (c.remaining.length === 0) return false; // safety
     return phases.resolveSecretMissionPick(G, c.remaining[0]).ok;
   }
+  // MissionRecruitLeaderPick (RoE): pick the highest-tactic-total leader
+  // (Hire Mercenaries / Imperial Promotion / Rebel Promotion / My Only
+  // Hope). For Hire Mercenaries the candidates are no-tactic-value
+  // leaders, so this falls back to first-in-list by tie.
+  if (G.pendingChoice && G.pendingChoice.kind === 'MissionRecruitLeaderPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    let best = c.candidates[0];
+    let bestScore = -1;
+    for (const lid of c.candidates) {
+      const l = G.catalog.leaders[lid];
+      if (!l) continue;
+      const score = (l.tacticValues.space ?? 0) + (l.tacticValues.ground ?? 0);
+      if (score > bestScore) { best = lid; bestScore = score; }
+    }
+    return phases.resolveMissionRecruitLeaderPick(G, best ?? c.candidates[0]).ok;
+  }
   // PlayImmediateActionCard (RoE): the AI never PROACTIVELY opens this
   // modal (no requestImmediateActionCardPlay call in the AI driver yet),
   // but if it somehow gets posted to it, just pick the first candidate.

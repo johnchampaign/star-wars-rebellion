@@ -2,7 +2,7 @@
 // Each handler is small; complex multi-stage cards live in their own files
 // under handlers/ as the scope grows.
 
-import type { GameState, Side } from '../types';
+import type { GameState, Side, LeaderId } from '../types';
 import * as M from '../mechanics';
 import { register, type EffectHandler } from './registry';
 import { beginCombat, runCombat } from '../combat';
@@ -1312,24 +1312,38 @@ const covertOperation: EffectHandler = (G, ctx) => {
 // Phase 5a). Choice-heavy missions (per-card pick UIs) are deferred to
 // Wave B/C.
 
-/** Recruit the first eligible leader from `candidates` and place them at
- *  `sysId`. Returns true if a leader was placed, false if no candidate was
- *  recruitable (every leader already in pool, on board, on mission, or
- *  eliminated). Mirrors the "Recruit X, place in this system" mission
- *  phrasing used across Hire Mercenaries / Promotion / My Only Hope. */
+/** Recruit a leader from `candidates` and place them at `sysId`. With 2+
+ *  eligible candidates, queues a MissionRecruitLeaderPick so the player
+ *  chooses (returns 'paused'); with 1 it auto-recruits; with 0 it logs a
+ *  no-candidate event. Mirrors the "Recruit X, place in this system"
+ *  mission phrasing across Hire Mercenaries / Imperial Promotion /
+ *  Rebel Promotion / My Only Hope. */
 function recruitAndPlace(
   G: GameState, side: Side, candidates: readonly string[], sysId: string, cause: string,
-): boolean {
+): 'done' | 'paused' {
   const f = side === 'Rebel' ? G.rebel : G.empire;
-  const eligible = candidates.find((lid) => leaderRecruitable(G, side, lid));
-  if (!eligible) {
+  const eligible = candidates.filter((lid) => leaderRecruitable(G, side, lid));
+  if (eligible.length === 0) {
     log(G, { kind: 'recruit-no-candidate', side, payload: { cause, candidates: [...candidates] } });
-    return false;
+    return 'done';
   }
-  f.leaderPool.push(eligible);
-  log(G, { kind: 'recruit-leader', side, payload: { leaderId: eligible, via: cause } });
-  M.placeLeader(G, side, eligible, sysId);
-  return true;
+  if (eligible.length === 1) {
+    f.leaderPool.push(eligible[0]);
+    log(G, { kind: 'recruit-leader', side, payload: { leaderId: eligible[0], via: cause } });
+    M.placeLeader(G, side, eligible[0], sysId);
+    return 'done';
+  }
+  G.pendingChoice = {
+    kind: 'MissionRecruitLeaderPick',
+    side,
+    candidates: eligible as LeaderId[],
+    systemId: sysId,
+    cause,
+  };
+  log(G, { kind: 'choice-request', side, payload: {
+    kind: 'MissionRecruitLeaderPick', candidates: eligible, cause,
+  }});
+  return 'paused';
 }
 
 /** All catalog leaders for `side` that satisfy a predicate AND are
@@ -1392,8 +1406,7 @@ const stolenIntel: EffectHandler = (G, _ctx) => {
 const hireMercenaries: EffectHandler = (G, ctx) => {
   if (!ctx.targetSystemId) return true;
   const noTactic = catalogRecruitable(G, 'Empire', (lid) => !hasTacticValues(G, lid));
-  recruitAndPlace(G, 'Empire', noTactic, ctx.targetSystemId, 'hire-mercenaries');
-  return true;
+  return recruitAndPlace(G, 'Empire', noTactic, ctx.targetSystemId, 'hire-mercenaries') === 'done';
 };
 
 /** Imperial Promotion: "Resolve in any Imperial system. Recruit 1 Imperial
@@ -1401,8 +1414,7 @@ const hireMercenaries: EffectHandler = (G, ctx) => {
 const imperialPromotion: EffectHandler = (G, ctx) => {
   if (!ctx.targetSystemId) return true;
   const withTactic = catalogRecruitable(G, 'Empire', (lid) => hasTacticValues(G, lid));
-  recruitAndPlace(G, 'Empire', withTactic, ctx.targetSystemId, 'imperial-promotion');
-  return true;
+  return recruitAndPlace(G, 'Empire', withTactic, ctx.targetSystemId, 'imperial-promotion') === 'done';
 };
 
 /** Discredit Rebellion: "Resolve on a sabotaged system. Rebel must remove
@@ -1494,16 +1506,14 @@ const MY_ONLY_HOPE_POOL = [
  *  Madine, Cassian Andor, or Saw Gerrera and place them here." */
 const rebelPromotion: EffectHandler = (G, ctx) => {
   if (!ctx.targetSystemId) return true;
-  recruitAndPlace(G, 'Rebel', REBEL_PROMOTION_POOL, ctx.targetSystemId, 'rebel-promotion');
-  return true;
+  return recruitAndPlace(G, 'Rebel', REBEL_PROMOTION_POOL, ctx.targetSystemId, 'rebel-promotion') === 'done';
 };
 
 /** My Only Hope: "Resolve in a remote system. Recruit Luke, Obi-Wan, Jyn
  *  Erso, Han Solo, or Chirrut Imwe and place them here." */
 const myOnlyHope: EffectHandler = (G, ctx) => {
   if (!ctx.targetSystemId) return true;
-  recruitAndPlace(G, 'Rebel', MY_ONLY_HOPE_POOL, ctx.targetSystemId, 'my-only-hope');
-  return true;
+  return recruitAndPlace(G, 'Rebel', MY_ONLY_HOPE_POOL, ctx.targetSystemId, 'my-only-hope') === 'done';
 };
 
 // ============================================================================

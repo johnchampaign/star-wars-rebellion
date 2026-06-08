@@ -2563,6 +2563,23 @@ export function resolvePostBountyOffer(G: GameState, leaderId: LeaderId | null):
   return { ok: true };
 }
 
+/** RoE mission recruit (Hire Mercenaries, Imperial/Rebel Promotion, My
+ *  Only Hope) — when 2+ candidates were eligible, the player picks one
+ *  here. The chosen leader is added to the pool and placed at the
+ *  recorded system, mirroring the auto-resolution path in recruitAndPlace. */
+export function resolveMissionRecruitLeaderPick(G: GameState, leaderId: LeaderId): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'MissionRecruitLeaderPick') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'bad-leader' };
+  const f = pc.side === 'Rebel' ? G.rebel : G.empire;
+  f.leaderPool.push(leaderId);
+  log(G, { kind: 'recruit-leader', side: pc.side, payload: { leaderId, via: pc.cause } });
+  M.placeLeader(G, pc.side, leaderId, pc.systemId);
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Secret Mission (Rebel/Cassian, RoE): Rebel picks a mission from the
  *  peeked top 6 of the mission deck to add to hand. Resolves once
  *  `kept.length === keepCount`; remaining peeked cards then shuffle back

@@ -533,6 +533,17 @@ export type ChoiceRequest =
       keepCount: 1 | 2;
     }
   | {
+      // RoE: shared pick modal for "recruit a leader from a list and place
+      // them in this system" missions — Hire Mercenaries, Imperial
+      // Promotion, Rebel Promotion, My Only Hope. Posted when 2+ eligible
+      // candidates remain; with 0 or 1 the handler resolves auto.
+      kind: 'MissionRecruitLeaderPick';
+      side: Side;
+      candidates: LeaderId[];
+      systemId: SystemId;
+      cause: string; // mission id (for the log + UI title)
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated
