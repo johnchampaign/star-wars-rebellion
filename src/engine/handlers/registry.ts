@@ -20,6 +20,11 @@ export type EffectContext = {
   // Leaders attached to the originating mission/action (for "leaders assigned
   // to this mission" rules).
   leaderIds: LeaderId[];
+  // RoE: the resolver's winning margin (resolver successes − opposer
+  // successes, >= 0) for missions that resolved via a roll. Used by
+  // "destroy up to the difference in successes" effects (Plant Explosives,
+  // Assault). Undefined for auto-success missions.
+  successMargin?: number;
   // Pause/resume state.
   pendingChoice: ChoiceRequest | null;
   handlerState: unknown;
@@ -63,6 +68,7 @@ export function invokeByKey(G: GameState, key: string, ctx: EffectContext): bool
 export function makeContext(
   actorSide: Side, card: EffectCard, opts: {
     targetSystemId?: SystemId; targetLeaderId?: LeaderId; leaderIds?: LeaderId[];
+    successMargin?: number;
   } = {}
 ): EffectContext {
   return {
@@ -70,6 +76,7 @@ export function makeContext(
     targetSystemId: opts.targetSystemId,
     targetLeaderId: opts.targetLeaderId,
     leaderIds: opts.leaderIds ?? [],
+    successMargin: opts.successMargin,
     pendingChoice: null,
     handlerState: null,
     paused: false,

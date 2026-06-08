@@ -29,6 +29,14 @@ export const RECRUIT_TIME_MARKERS: ReadonlySet<number> = new Set([2, 3, 4, 5]);
  *  by the engine's Refresh build step and the UI turn tracker. */
 export const BUILD_TIME_MARKERS: ReadonlySet<number> = new Set([2, 4, 6, 8, 10, 12, 14]);
 
+/** RoE missions whose text says "Roll even if unopposed." These forgo the
+ *  free auto-success when unopposed and instead roll the resolver's dice
+ *  against a 0-success opposer, so their "up to the difference in
+ *  successes" effect has a real margin to work with. */
+const ROLL_EVEN_IF_UNOPPOSED: ReadonlySet<string> = new Set([
+  'plant-explosives', 'assault',
+]);
+
 /** Roll N mission dice and count successes. Per Rules Reference "Reveal a
  *  Mission" panel: each player rolls dice of any color, hit = 1 success,
  *  direct-hit = 2 successes. Per RR p.6 "Component Limitations": each player
@@ -1085,7 +1093,7 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
         interventions: pending.interventions ? [...pending.interventions] : undefined,
       });
     }
-    runMissionEffect(G, pending.resolverSide, pending.missionId, pending.targetSystemId, pending.leaderIds as LeaderId[], pending.targetLeaderId);
+    runMissionEffect(G, pending.resolverSide, pending.missionId, pending.targetSystemId, pending.leaderIds as LeaderId[], pending.targetLeaderId, pending.successMargin);
     if (G.pendingChoice) return { ok: true };
     discardOrReturnMission(G, pending.resolverSide, pending.missionId);
     G.pendingMission = undefined;
@@ -1230,7 +1238,12 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
   //     hit = 1 success, each direct-hit = 2 successes; portrait bonus +2.
   //     Resolver wins iff successes > opposer successes (ties fail).
   if (!G.missionReports) G.missionReports = [];
-  if (oppLeaderIds.length === 0) {
+  // RoE "Roll even if unopposed" missions (Plant Explosives, Assault) need
+  // the resolver's success count to bound their effect ("destroy up to the
+  // difference in successes"), so they roll against a 0-success opposer
+  // instead of taking the free auto-success.
+  const rollsEvenIfUnopposed = ROLL_EVEN_IF_UNOPPOSED.has(pm.missionId);
+  if (oppLeaderIds.length === 0 && !rollsEvenIfUnopposed) {
     log(G, { kind: 'mission-unopposed', side: pm.resolverSide, payload: {
       missionId: pm.missionId,
       result: 'auto-success',
@@ -1311,7 +1324,7 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
   // Continue mission resolution.
   if (maybePostMissionRingTrigger(G, pm)) return { ok: true };
   if (pm.stage === 'effect') {
-    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId);
+    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId, pm.successMargin);
     if (G.pendingChoice) return { ok: true }; // sub-choice triggered (e.g. Infiltration)
     discardOrReturnMission(G, pm.resolverSide, pm.missionId);
     G.pendingMission = undefined;
@@ -1387,6 +1400,9 @@ function finalizeMissionRoll(
     result: succeeded ? 'success' : 'failure',
     interventions: pm.interventions ? [...pm.interventions] : undefined,
   });
+  // RoE: record the winning margin for "destroy up to the difference in
+  // successes" effects. Only meaningful on success; clamp >= 0.
+  pm.successMargin = succeeded ? Math.max(0, attackerTotal - oppSuccesses) : 0;
   pm.stage = succeeded ? 'effect' : 'failed';
 }
 
@@ -1554,7 +1570,7 @@ function continueMissionFromStash(G: GameState, pm: MissionResolution): void {
   pm.r2d2Pending = undefined;
   if (maybePostMissionRingTrigger(G, pm)) return;
   if (pm.stage === 'effect') {
-    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId);
+    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId, pm.successMargin);
     if (G.pendingChoice) return;
     discardOrReturnMission(G, pm.resolverSide, pm.missionId);
     G.pendingMission = undefined;
@@ -1654,7 +1670,7 @@ export function resolveR2D2MissionFlip(G: GameState, flipIndex: number | null): 
   pm.r2d2Pending = undefined;
   if (maybePostMissionRingTrigger(G, pm)) return { ok: true };
   if (pm.stage === 'effect') {
-    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId);
+    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId, pm.successMargin);
     if (G.pendingChoice) return { ok: true };
     discardOrReturnMission(G, pm.resolverSide, pm.missionId);
     G.pendingMission = undefined;
@@ -2543,7 +2559,7 @@ function maybePostMissionRingTrigger(G: GameState, pm: MissionResolution): boole
  *  process pm.stage just like the original call sites do. */
 function continueAfterRingTrigger(G: GameState, pm: MissionResolution): void {
   if (pm.stage === 'effect') {
-    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId);
+    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId, pm.successMargin);
     if (G.pendingChoice) return;
     discardOrReturnMission(G, pm.resolverSide, pm.missionId);
     G.pendingMission = undefined;
@@ -2615,7 +2631,7 @@ export function resolveOneInAMillionMission(
   pm.r2d2Pending = undefined;
   if (maybePostMissionRingTrigger(G, pm)) return { ok: true };
   if (pm.stage === 'effect') {
-    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId);
+    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId, pm.successMargin);
     if (G.pendingChoice) return { ok: true };
     discardOrReturnMission(G, pm.resolverSide, pm.missionId);
     G.pendingMission = undefined;
@@ -3532,7 +3548,7 @@ export function resolveInfiltrationPick(G: GameState, keepOnTopId: string): { ok
   return { ok: true };
 }
 
-function runMissionEffect(G: GameState, side: Side, missionId: string, targetSystemId: SystemId, leaderIds: LeaderId[], targetLeaderId?: LeaderId): void {
+function runMissionEffect(G: GameState, side: Side, missionId: string, targetSystemId: SystemId, leaderIds: LeaderId[], targetLeaderId?: LeaderId, successMargin?: number): void {
   const card = G.catalog.missions[missionId];
   if (!card) return;
   // Prefer explicit effectKey if set and registered; otherwise fall back to
@@ -3544,7 +3560,7 @@ function runMissionEffect(G: GameState, side: Side, missionId: string, targetSys
     log(G, { kind: 'note', payload: { msg: `no handler for mission ${missionId}` } });
     return;
   }
-  const ctx = Handlers.makeContext(side, { kind: 'mission', id: missionId }, { targetSystemId, targetLeaderId, leaderIds });
+  const ctx = Handlers.makeContext(side, { kind: 'mission', id: missionId }, { targetSystemId, targetLeaderId, leaderIds, successMargin });
   Handlers.invokeByKey(G, key, ctx);
 }
 

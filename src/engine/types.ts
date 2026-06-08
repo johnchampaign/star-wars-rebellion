@@ -1394,6 +1394,12 @@ export type MissionResolution = {
   interventions?: string[];
   leaderIds: LeaderId[];
   stage: 'reveal' | 'oppose' | 'roll' | 'effect' | 'failed' | 'done';
+  // RoE: the resolver's winning margin (resolver total successes − opposer
+  // successes), clamped to >= 0. Set when the mission is resolved via a
+  // roll. Used by "destroy up to the difference in successes" effects
+  // (Plant Explosives, Assault). Undefined for auto-success (unopposed,
+  // non-rolling) missions.
+  successMargin?: number;
   // Mid-roll stash for R2-D2 mission flip. resolveOpposition pauses here
   // when Empire just rolled and Rebel holds R2-D2; the resolver applies
   // the flip (if accepted) and continues success calc + report push.

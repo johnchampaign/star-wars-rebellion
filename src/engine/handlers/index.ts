@@ -1719,31 +1719,45 @@ const heist: EffectHandler = (G, ctx) => {
 };
 
 /** Plant Explosives: "Destroy up to 3 ground units, combined health up to
- *  the difference in successes." The handler runs only on success; we cap
- *  at 3 health-worth of Imperial ground units. The "difference in
- *  successes" refinement is a future polish pass — the engine doesn't pass
- *  that delta to handlers today. */
+ *  the difference in successes." The destroy budget is min(3, successMargin)
+ *  health of Imperial ground units; the player picks which (via
+ *  queueDestroyUpToHealth's choice). When successMargin is 0 there's
+ *  nothing to destroy. */
 const plantExplosives: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  queueDestroyUpToHealth(G, 'Rebel', 'Empire', sysId, 3, 'Plant Explosives', 'ground');
+  const budget = Math.min(3, ctx.successMargin ?? 3);
+  if (budget <= 0) {
+    log(G, { kind: 'plant-explosives-no-margin', side: 'Rebel', payload: { systemId: sysId } });
+    return true;
+  }
+  // queueDestroyUpToHealth posts a choice (returns true) or no-ops if there
+  // are no candidates. Either way the mission flow continues.
+  queueDestroyUpToHealth(G, 'Rebel', 'Empire', sysId, budget, 'Plant Explosives', 'ground');
   return true;
 };
 
 /** Assault: "Destroy up to 3 Stormtroopers, up to the difference in
- *  successes." Same successes-delta caveat as Plant Explosives; cap at 3
- *  Stormtroopers (each 1 health, so it's also a 3-health cap by side
- *  effect — but type-restricted). */
+ *  successes." Cap = min(3, successMargin) Stormtroopers (each 1 health).
+ *  Stormtroopers are interchangeable, so we destroy the first N rather than
+ *  posting a pick. */
 const assault: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
   const ss = G.map.systems[sysId];
   if (!ss) return true;
+  const cap = Math.min(3, ctx.successMargin ?? 3);
+  if (cap <= 0) {
+    log(G, { kind: 'assault-no-margin', side: 'Rebel', payload: { systemId: sysId } });
+    return true;
+  }
   const stormtroopers = ss.units
     .filter((u) => u.side === 'Empire' && u.typeId === 'stormtrooper')
-    .slice(0, 3);
+    .slice(0, cap);
   for (const u of stormtroopers) M.destroyUnit(G, u.instanceId, 'assault');
-  log(G, { kind: 'assault-destroy', side: 'Rebel', payload: { systemId: sysId, count: stormtroopers.length } });
+  log(G, { kind: 'assault-destroy', side: 'Rebel', payload: {
+    systemId: sysId, count: stormtroopers.length, cap,
+  }});
   return true;
 };
 
