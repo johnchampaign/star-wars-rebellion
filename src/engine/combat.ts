@@ -113,9 +113,10 @@ export function beginCombat(
     step: 'AddLeader', round: 1,
     attackerHand: [], defenderHand: [],
     retreated: [], report: initialReport,
+    cinematic: !!G.expansion?.cinematicCombat,
   };
   G.pendingCombat = state;
-  log(G, { kind: 'combat-begin', payload: { systemId, attackerSide } });
+  log(G, { kind: 'combat-begin', payload: { systemId, attackerSide, cinematic: state.cinematic } });
 }
 
 /** Drive the combat forward. RESUMABLE: returns early whenever a player
@@ -174,26 +175,32 @@ export function runCombat(G: GameState): void {
   }
 
   // Step 2: Draw tactic cards based on leader tactic values, only for theaters
-  // where both sides have units.
+  // where both sides have units. CINEMATIC COMBAT (RoE p.9): leaders enable
+  // dice rerolls instead, and the tactic subsystem is the side-specific
+  // advanced deck (Phase 7c). In Phase 7b no cinematic tactic cards are
+  // drawn — the hands stay empty, so the standard attacker/defender tactics
+  // windows below are skipped (they no-op on empty hands).
   if (c.step === 'DrawTactics') {
-    for (const side of [c.attackerSide, other(c.attackerSide)] as const) {
-      const hand = side === c.attackerSide ? c.attackerHand : c.defenderHand;
-      if (bothSidesHaveTheater(G, c.systemId, 'space')) {
-        const n = leaderTacticValueIn(G, side, c.systemId, 'space');
-        for (let i = 0; i < n; i++) {
-          const card = G.spaceTacticDeck.shift();
-          if (card) hand.push(card);
+    if (!c.cinematic) {
+      for (const side of [c.attackerSide, other(c.attackerSide)] as const) {
+        const hand = side === c.attackerSide ? c.attackerHand : c.defenderHand;
+        if (bothSidesHaveTheater(G, c.systemId, 'space')) {
+          const n = leaderTacticValueIn(G, side, c.systemId, 'space');
+          for (let i = 0; i < n; i++) {
+            const card = G.spaceTacticDeck.shift();
+            if (card) hand.push(card);
+          }
         }
-      }
-      if (bothSidesHaveTheater(G, c.systemId, 'ground')) {
-        const n = leaderTacticValueIn(G, side, c.systemId, 'ground');
-        for (let i = 0; i < n; i++) {
-          const card = G.groundTacticDeck.shift();
-          if (card) hand.push(card);
+        if (bothSidesHaveTheater(G, c.systemId, 'ground')) {
+          const n = leaderTacticValueIn(G, side, c.systemId, 'ground');
+          for (let i = 0; i < n; i++) {
+            const card = G.groundTacticDeck.shift();
+            if (card) hand.push(card);
+          }
         }
       }
     }
-    log(G, { kind: 'combat-draw-tactics', payload: { attackerHand: c.attackerHand.length, defenderHand: c.defenderHand.length } });
+    log(G, { kind: 'combat-draw-tactics', payload: { attackerHand: c.attackerHand.length, defenderHand: c.defenderHand.length, cinematic: !!c.cinematic } });
     c.report.drawnTactics = {
       side: c.attackerSide,
       spaceCount: c.attackerHand.filter((cid) => G.catalog.tactics[cid]?.theater === 'space').length
@@ -497,6 +504,30 @@ function beginAttack(G: GameState, c: CombatState, side: Side, theater: Theater)
   for (let i = 0; i < red; i++) dice.push(rollDie(G.rng, 'red' as DieColor));
   for (let i = 0; i < black; i++) dice.push(rollDie(G.rng, 'black' as DieColor));
   for (let i = 0; i < green; i++) dice.push(rollDie(G.rng, 'green' as DieColor));
+
+  // CINEMATIC COMBAT reroll (RoE p.9): "Once per attack, you can reroll a
+  // number of your dice up to your leader's tactic value (highest relevant
+  // value if multiple leaders)." Phase 7b auto-applies it: reroll the
+  // blanks first (the dice most worth rerolling) up to that allowance. The
+  // standard combat path does NOT do this — leaders there determine tactic-
+  // card draws instead.
+  if (c.cinematic) {
+    const allowance = leaderTacticValueIn(G, side, c.systemId, theater);
+    if (allowance > 0) {
+      let rerolled = 0;
+      for (let i = 0; i < dice.length && rerolled < allowance; i++) {
+        if (dice[i].face === 'blank') {
+          dice[i] = rollDie(G.rng, dice[i].color);
+          rerolled++;
+        }
+      }
+      if (rerolled > 0) {
+        log(G, { kind: 'cinematic-reroll', side, payload: {
+          theater, round: c.round, rerolled, allowance,
+        }});
+      }
+    }
+  }
 
   // Stash the in-flight attack. The phase will be set by advanceAttackToTactics
   // based on which pre-tactic pause point (Yoda / Special) applies first.

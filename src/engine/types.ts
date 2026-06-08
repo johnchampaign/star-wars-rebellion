@@ -1160,6 +1160,14 @@ export type CombatState = {
   attackerSourceSystemId: SystemId; // for retreat-not-to-source rule (rr p.5)
   step: 'AddLeader' | 'DrawTactics' | 'Round' | 'Ended';
   round: number;
+  // RoE Cinematic Combat (rules p.9). The round structure, retreat, and end
+  // conditions are the SAME as standard combat; what differs is (a) leaders
+  // enable per-attack dice REROLLS (up to their tactic value) instead of
+  // determining how many tactic cards are drawn, and (b) the tactic-card
+  // subsystem (full-deck access, side-specific advanced cards). Set at
+  // beginCombat from expansion.cinematicCombat. Phase 7b wires (a) and skips
+  // the standard tactic draw; Phase 7c adds the cinematic tactic subsystem.
+  cinematic?: boolean;
   attackerHand: string[]; // tactic card ids
   defenderHand: string[];
   retreated: Side[]; // each side at most once
