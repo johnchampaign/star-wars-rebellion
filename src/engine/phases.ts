@@ -2563,6 +2563,25 @@ export function resolvePostBountyOffer(G: GameState, leaderId: LeaderId | null):
   return { ok: true };
 }
 
+/** Draw Them Out (Empire/Krennic, RoE): Empire picks which Rebel leader
+ *  to pull from the pool and place at the target system. */
+export function resolveDrawThemOutPick(G: GameState, leaderId: LeaderId): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'DrawThemOutPick') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'bad-leader' };
+  const pool = G.rebel.leaderPool;
+  const idx = pool.indexOf(leaderId);
+  if (idx < 0) return { ok: false, reason: 'leader-not-in-pool' };
+  pool.splice(idx, 1);
+  M.placeLeader(G, 'Rebel', leaderId, pc.systemId);
+  log(G, { kind: 'draw-them-out', side: 'Empire', payload: {
+    leaderId, systemId: pc.systemId,
+  }});
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Reconnaissance (Rebel, RoE): pick a discarded mission to return to
  *  hand. */
 export function resolveReconnaissancePick(G: GameState, missionId: string): { ok: boolean; reason?: string } {

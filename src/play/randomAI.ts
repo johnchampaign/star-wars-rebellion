@@ -1434,6 +1434,22 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const c = G.pendingChoice;
     return phases.resolveReconnaissancePick(G, c.candidates[0]).ok;
   }
+  // Draw Them Out (Empire/RoE): pull the highest-major-skill Rebel leader
+  // out of their pool — disrupting their best mission-runner is the
+  // strongest play.
+  if (G.pendingChoice && G.pendingChoice.kind === 'DrawThemOutPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    let best = c.candidates[0];
+    let bestScore = -1;
+    for (const lid of c.candidates) {
+      const l = G.catalog.leaders[lid];
+      if (!l) continue;
+      const sk = l.skills;
+      const score = (sk.diplomacy ?? 0) + (sk.intel ?? 0) + (sk.specOps ?? 0) + (sk.logistics ?? 0);
+      if (score > bestScore) { best = lid; bestScore = score; }
+    }
+    return phases.resolveDrawThemOutPick(G, best ?? c.candidates[0]).ok;
+  }
   // MissionRecruitLeaderPick (RoE): pick the highest-tactic-total leader
   // (Hire Mercenaries / Imperial Promotion / Rebel Promotion / My Only
   // Hope). For Hire Mercenaries the candidates are no-tactic-value

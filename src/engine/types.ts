@@ -552,6 +552,15 @@ export type ChoiceRequest =
       candidates: string[]; // mission ids in the discard pile
     }
   | {
+      // Draw Them Out (Empire/Krennic, RoE): Empire picks a Rebel leader
+      // from the leader pool to place into the target system. Posted with
+      // candidates = full Rebel pool when 2+ choices exist.
+      kind: 'DrawThemOutPick';
+      side: Side; // 'Empire'
+      candidates: LeaderId[]; // all Rebel leaders currently in their pool
+      systemId: SystemId;
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated

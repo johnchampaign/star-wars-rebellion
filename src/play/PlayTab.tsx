@@ -228,6 +228,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'SecretMissionPick':        return pc.side === side;
     case 'MissionRecruitLeaderPick': return pc.side === side;
     case 'ReconnaissancePick':       return pc.side === side;
+    case 'DrawThemOutPick':          return pc.side === side;
     // Robust default: ANY side-tagged choice belongs to the side it names, so
     // if that side is the AI, the AI owes it. This catches choice kinds the AI
     // can resolve but that aren't explicitly listed above — without it, such a
@@ -2064,6 +2065,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <ReconnaissancePickModal G={G} choice={G.pendingChoice}
           onPick={(mid) => {
             const r = phases.resolveReconnaissancePick(G, mid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'DrawThemOutPick'
+        && G.pendingChoice.side === humanSide && (
+        <DrawThemOutPickModal G={G} choice={G.pendingChoice}
+          onPick={(lid) => {
+            const r = phases.resolveDrawThemOutPick(G, lid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -10893,6 +10906,52 @@ function NobleSacrificeOfferModal({
           <button className="tab-button" onClick={() => onAccept(false)}>
             Keep, accept capture
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DrawThemOutPickModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { candidates: string[]; systemId: string };
+  onPick: (leaderId: string) => void;
+}) {
+  const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Draw Them Out — pull a Rebel leader</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          Pick a Rebel leader from their pool to place at <b>{sysName}</b>:
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {choice.candidates.map((lid) => {
+            const l = G.catalog.leaders[lid];
+            if (!l) return null;
+            const t = l.tacticValues;
+            const sk = l.skills;
+            const skillStr = ['diplomacy', 'intel', 'specOps', 'logistics']
+              .map((k) => `${k[0].toUpperCase()}${sk[k as keyof typeof sk]}`)
+              .filter((s) => !s.endsWith('0')).join(' ') || 'no major skills';
+            return (
+              <button key={lid} className="tab-button" onClick={() => onPick(lid)} style={{ textAlign: 'left', padding: '8px 10px' }}>
+                <div style={{ fontWeight: 700, color: '#fff' }}>{l.name}</div>
+                <div style={{ fontSize: 11, color: '#aaa' }}>
+                  Tactics S{t.space} G{t.ground} · {skillStr}
+                </div>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

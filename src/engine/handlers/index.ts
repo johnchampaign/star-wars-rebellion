@@ -1784,17 +1784,30 @@ const breakTheirWill: EffectHandler = (G, ctx) => {
 };
 
 /** Draw Them Out (Krennic): "Choose a Rebel leader in the leader pool;
- *  place that leader in this system." Auto-picks the first eligible. */
+ *  place that leader in this system." With 2+ leaders in the Rebel pool,
+ *  the Empire picks via a DrawThemOutPick choice; with 1 it auto-resolves;
+ *  with 0 it no-ops. */
 const drawThemOut: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  const lid = G.rebel.leaderPool[0];
-  if (!lid) return true;
-  // Remove from pool and place on the board at the targeted system.
-  G.rebel.leaderPool.shift();
-  M.placeLeader(G, 'Rebel', lid, sysId);
-  log(G, { kind: 'draw-them-out', side: 'Empire', payload: { leaderId: lid, systemId: sysId } });
-  return true;
+  const pool = G.rebel.leaderPool;
+  if (pool.length === 0) return true;
+  if (pool.length === 1) {
+    const lid = pool.shift()!;
+    M.placeLeader(G, 'Rebel', lid, sysId);
+    log(G, { kind: 'draw-them-out', side: 'Empire', payload: { leaderId: lid, systemId: sysId, auto: true } });
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'DrawThemOutPick',
+    side: 'Empire',
+    candidates: [...pool] as LeaderId[],
+    systemId: sysId,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'DrawThemOutPick', candidates: pool.length, systemId: sysId,
+  }});
+  return false;
 };
 
 // ----- Rebel Wave C -----
