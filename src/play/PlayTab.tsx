@@ -967,7 +967,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // online it submits an action (server-persisted) instead of shifting the local
   // redacted view — a local shift is undone by the next poll, which locked the
   // dialog.
-  const onAckReport = (reportType: 'mission' | 'combat' | 'objective' | 'refresh') => {
+  const onAckReport = (reportType: 'mission' | 'combat' | 'objective' | 'refresh' | 'activation') => {
     if (!G) return;
     phases.acknowledgeReport(G, reportType);
     persist();
@@ -1502,6 +1502,23 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           report={G.refreshReports[0]}
           humanSide={humanSide}
           onDismiss={() => onAckReport('refresh')}
+        />
+      )}
+
+      {/* Activation reports — lowest priority. Gated behind every other report
+         AND any in-flight resolution (a combat-triggering activation surfaces
+         its combat report/board first), so only one modal is ever on screen. */}
+      {G.activationReports && G.activationReports.length > 0
+        && (!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && (!G.objectiveReports || G.objectiveReports.length === 0)
+        && (!G.refreshReports || G.refreshReports.length === 0)
+        && !G.pendingMission && !G.pendingCombat && !G.pendingChoice
+        && (!online || online.yourTurn) && (
+        <ActivationReportModal
+          G={G}
+          report={G.activationReports[0]}
+          onDismiss={() => onAckReport('activation')}
         />
       )}
 
@@ -5133,6 +5150,95 @@ function CombatReportModal({ G, report, onDismiss }: {
 // ============================================================================
 // Mission Report Modal — full-screen showdown of a mission resolution
 // ============================================================================
+
+function ActivationReportModal({ G, report, onDismiss }: {
+  G: GameState;
+  report: import('../engine/types').SystemActivationReport;
+  onDismiss: () => void;
+}) {
+  const color = sideColor(report.side);
+  const ldr = G.catalog.leaders[report.leaderId];
+  const sysName = G.catalog.systems[report.targetSystemId]?.name ?? report.targetSystemId;
+  const unitName = (typeId: string) => G.catalog.unitTypes[typeId]?.name ?? typeId;
+  const srcName = (sid: string) => G.catalog.systems[sid]?.name ?? sid;
+  const totalUnits = report.moves.reduce(
+    (n, m) => n + m.units.reduce((k, u) => k + u.count, 0), 0,
+  );
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      // Just under the mission report (2500) / above the combat board (2000).
+      zIndex: 2450,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 8,
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '90vh', overflowY: 'auto',
+        boxShadow: `0 8px 40px ${color}44`,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+          {ldr?.image && (
+            <img
+              src={vmodAssetUrl(ldr.image, LEADER_IMAGE_BASE)}
+              width={56} height={56}
+              style={{ borderRadius: '50%', border: `2px solid ${color}`, objectFit: 'cover' }}
+              alt={ldr.name}
+            />
+          )}
+          <div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#fff' }}>{ldr?.name ?? report.leaderId}</div>
+            <div style={{ fontSize: 13, color: '#aaa' }}>
+              <span style={{ color }}>{report.side}</span> activated{' '}
+              <strong style={{ color: '#fff' }}>{sysName}</strong>
+            </div>
+          </div>
+        </div>
+
+        {report.moves.length > 0 ? (
+          <div style={{
+            background: '#0c0d10', border: '1px solid #2a2d34', borderRadius: 6,
+            padding: '10px 12px', marginBottom: 12,
+          }}>
+            <div style={{ fontSize: 11, color: '#8aa', fontWeight: 700, letterSpacing: 1, marginBottom: 6 }}>
+              UNITS MOVED ({totalUnits})
+            </div>
+            {report.moves.map((m, i) => (
+              <div key={i} style={{ fontSize: 13, color: '#e8e6f2', marginTop: i === 0 ? 0 : 6 }}>
+                <span style={{ color: '#9bb' }}>from {srcName(m.fromSystemId)}:</span>{' '}
+                {m.units.map((u) => `${u.count}× ${unitName(u.typeId)}`).join(', ')}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: '#888', fontStyle: 'italic', marginBottom: 12 }}>
+            Leader repositioned; no units moved.
+          </div>
+        )}
+
+        {report.startedCombat && (
+          <div style={{
+            padding: '10px 12px', borderRadius: 4, marginBottom: 12,
+            background: '#2a1410', border: '2px solid #d4794a', textAlign: 'center',
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#ff9d6b', letterSpacing: 1 }}>
+              ⚔ BATTLE AT {sysName.toUpperCase()}
+            </div>
+            <div style={{ fontSize: 12, color: '#f0c8b0', marginTop: 4 }}>
+              Both sides have units here — the combat report follows.
+            </div>
+          </div>
+        )}
+
+        <div style={{ textAlign: 'right' }}>
+          <button className="tab-button active" onClick={onDismiss} style={{ fontWeight: 700, fontSize: 14, padding: '8px 20px' }}>
+            OK
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function MissionReportModal({ G, report, onDismiss }: {
   G: GameState;

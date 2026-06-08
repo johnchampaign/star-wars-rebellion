@@ -443,12 +443,13 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
  *  more than one report kind is queued. */
 export function acknowledgeReport(
   G: GameState,
-  reportType: 'mission' | 'combat' | 'objective' | 'refresh',
+  reportType: 'mission' | 'combat' | 'objective' | 'refresh' | 'activation',
 ): { ok: boolean; reason?: string } {
   const arr =
     reportType === 'mission' ? G.missionReports
     : reportType === 'combat' ? G.combatReports
     : reportType === 'objective' ? G.objectiveReports
+    : reportType === 'activation' ? G.activationReports
     : G.refreshReports;
   if (!arr || arr.length === 0) return { ok: false, reason: `no-${reportType}-report` };
   arr.shift();
@@ -806,10 +807,22 @@ export function activateSystem(
   // Place the leader.
   M.placeLeader(G, side, leaderId, targetSystemId);
 
-  // Execute moves.
+  // Execute moves (capturing what moved, grouped by source + unit type, for the
+  // activation report surfaced to both players). Capture each unit's type from
+  // the source BEFORE moving it (afterward it's gone from the source system).
+  const reportMoves: { fromSystemId: SystemId; units: { typeId: UnitTypeId; count: number }[] }[] = [];
   for (const order of moveOrders) {
+    const counts = new Map<UnitTypeId, number>();
     for (const uid of order.unitInstanceIds) {
+      const inst = G.map.systems[order.fromSystemId]?.units.find((u) => u.instanceId === uid);
+      if (inst) counts.set(inst.typeId, (counts.get(inst.typeId) ?? 0) + 1);
       M.moveUnit(G, uid, order.fromSystemId, targetSystemId);
+    }
+    if (counts.size > 0) {
+      reportMoves.push({
+        fromSystemId: order.fromSystemId,
+        units: [...counts.entries()].map(([typeId, count]) => ({ typeId, count })),
+      });
     }
   }
 
@@ -820,7 +833,19 @@ export function activateSystem(
   const ss = G.map.systems[targetSystemId];
   const oppHere = ss?.units.some((u) => u.side === opp) ?? false;
   const myHere = ss?.units.some((u) => u.side === side) ?? false;
-  if (oppHere && myHere) {
+  const willFight = oppHere && myHere;
+
+  // Activation report (both sides). Only surface when something noteworthy
+  // happened — units moved or a battle is starting — so a lone leader
+  // repositioning doesn't spam a modal. Queued like the other reports; pushed
+  // BEFORE combat so it sits ahead of any combat report this activation spawns.
+  if (reportMoves.length > 0 || willFight) {
+    (G.activationReports ??= []).push({
+      side, leaderId, targetSystemId, moves: reportMoves, startedCombat: willFight,
+    });
+  }
+
+  if (willFight) {
     // Source system: use the first move order's from, or the target itself if no moves.
     const src = moveOrders[0]?.fromSystemId ?? targetSystemId;
     beginCombat(G, side, src, targetSystemId);

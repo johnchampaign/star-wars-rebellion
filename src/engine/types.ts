@@ -1202,6 +1202,22 @@ export type MissionResolutionReport = {
   interventions?: string[];
 };
 
+/** Surfaced (both sides) when a leader activates a system and moves units, so
+ *  movements are legible the way mission/combat outcomes are. Public info only
+ *  (board positions are visible to both players); redaction drops any report
+ *  that would name the hidden Rebel base. */
+export type SystemActivationReport = {
+  side: Side;
+  leaderId: LeaderId;
+  targetSystemId: SystemId;
+  /** Unit groups that moved into the target, grouped by source system and unit
+   *  type. Empty if the leader activated without moving any army units. */
+  moves: { fromSystemId: SystemId; units: { typeId: UnitTypeId; count: number }[] }[];
+  /** True if this activation brought both sides into the target and a battle
+   *  began (the combat board / combat report follows). */
+  startedCombat: boolean;
+};
+
 export type CombatReport = {
   systemId: SystemId;
   attackerSide: Side;
@@ -1407,6 +1423,10 @@ export type GameState = {
   // Mission resolution reports queued for the UI. Same lifecycle as
   // combatReports: engine appends, player dismisses one at a time.
   missionReports?: MissionResolutionReport[];
+
+  // System-activation reports (both sides) queued for the UI — leader moved
+  // units / triggered combat. Same append/dismiss lifecycle.
+  activationReports?: SystemActivationReport[];
 
   // Objective-completion notices queued for the UI (issue #71: scoring an
   // objective like Major Victory gained reputation silently). Same lifecycle:

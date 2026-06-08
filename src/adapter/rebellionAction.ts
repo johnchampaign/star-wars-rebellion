@@ -32,7 +32,7 @@ export type RebellionAction =
   | { kind: 'setupAutoFill' }
 
   // ---------- Reports / notices (dismiss a queued modal) ----------
-  | { kind: 'acknowledgeReport'; reportType: 'mission' | 'combat' | 'objective' | 'refresh' }
+  | { kind: 'acknowledgeReport'; reportType: 'mission' | 'combat' | 'objective' | 'refresh' | 'activation' }
   | { kind: 'acknowledgeNotices' }
 
   // ---------- Assignment ----------

@@ -87,6 +87,20 @@ function redactLog(
   return out;
 }
 
+/** System-activation reports are public (board positions are visible to both),
+ *  EXCEPT one that names the still-hidden Rebel base / base-staging space — its
+ *  target or a source system would leak the base location. While the base is
+ *  hidden from this viewer, drop any such report entirely. */
+function redactActivationReports(
+  reports: GameState['activationReports'], baseHidden: boolean, baseSystemId: string | undefined,
+): GameState['activationReports'] {
+  if (!reports || !baseHidden) return reports;
+  return reports.filter((r) => {
+    const s = JSON.stringify(r);
+    return !(s.includes('rebel-base') || (baseSystemId ? s.includes(baseSystemId) : false));
+  });
+}
+
 /** Replace every entry with the HIDDEN sentinel, preserving the count. */
 function hide(pile: string[]): string[] {
   return pile.map(() => HIDDEN);
@@ -161,6 +175,7 @@ export function redactStateForViewer(state: GameState, viewer: Side | null): Gam
     // Per-entry log redaction: keep public events for the event banner, drop
     // anything that could leak hidden info (and scrub the base location).
     turnLog: redactLog(G.turnLog, viewer, baseHiddenToViewer, state.rebelBaseSystemId),
+    activationReports: redactActivationReports(G.activationReports, baseHiddenToViewer, state.rebelBaseSystemId),
     rebel: redactFaction(G.rebel, viewer === 'Rebel'),
     empire: redactFaction(G.empire, viewer === 'Empire'),
   };
