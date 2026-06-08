@@ -48,12 +48,17 @@ function missionDieScore(face: string): number {
  *    Blank = 0.
  *  Per RR p.6 Component Limitations: 5 red + 5 black max per mission. */
 function rollMissionDice(
-  G: GameState, n: number, _side: Side, _systemId: SystemId,
-): { successes: number; faces: string[]; colors: ('red' | 'black')[] } {
-  const red = Math.min(n, 5);
-  const black = Math.min(Math.max(0, n - 5), 5);
+  G: GameState, n: number, minor: number, _side: Side, _systemId: SystemId,
+): { successes: number; faces: string[]; colors: ('red' | 'black' | 'green')[] } {
+  // Of the total `n` dice to roll, `minor` come from minor skill icons
+  // (RoE rules p.8) and roll GREEN — capped at 3 per attempt. The rest
+  // roll as the usual red+black split: red up to 5, black up to 5.
+  const greenCount = G.expansion?.enabled ? Math.min(minor, 3) : 0;
+  const major = Math.max(0, n - greenCount);
+  const red = Math.min(major, 5);
+  const black = Math.min(Math.max(0, major - 5), 5);
   const faces: string[] = [];
-  const colors: ('red' | 'black')[] = [];
+  const colors: ('red' | 'black' | 'green')[] = [];
   for (let i = 0; i < red; i++) {
     const r = rollDie(G.rng, 'red');
     faces.push(r.face); colors.push('red');
@@ -61,6 +66,10 @@ function rollMissionDice(
   for (let i = 0; i < black; i++) {
     const r = rollDie(G.rng, 'black');
     faces.push(r.face); colors.push('black');
+  }
+  for (let i = 0; i < greenCount; i++) {
+    const r = rollDie(G.rng, 'green');
+    faces.push(r.face); colors.push('green');
   }
   // Yoda ring is no longer auto-applied here. Mission-side Yoda is offered
   // as a player choice in resolveOpposition (mirrors the combat-side
@@ -166,43 +175,44 @@ function attemptingLeadersAt(G: GameState, side: Side, systemId: SystemId, missi
 }
 
 /** Sum of matching-skill icons across a leader set. */
-function totalSkill(G: GameState, leaderIds: LeaderId[], skill: string): number {
-  let total = 0;
+/** Split-by-major/minor skill count for a leader set on a single skill.
+ *  Used both for mission skill-cost checks (sum) and dice rolls (the minor
+ *  part rolls GREEN dice in RoE per rules p.8). */
+function totalSkill(G: GameState, leaderIds: LeaderId[], skill: string): { major: number; minor: number } {
+  let major = 0, minor = 0;
   for (const lid of leaderIds) {
     const ld = G.catalog.leaders[lid];
     if (!ld) continue;
-    total += ld.skills[skill as keyof typeof ld.skills] ?? 0;
-    // RoE rules p.8: minor icons count toward skill totals on mission rolls
-    // (skill-cost and dice counts) too.
+    major += ld.skills[skill as keyof typeof ld.skills] ?? 0;
     if (G.expansion?.enabled) {
-      total += ld.minorSkills[skill as keyof typeof ld.minorSkills] ?? 0;
-      total += ringMinorSkillBonus(G, lid, skill as 'diplomacy' | 'intel' | 'specOps' | 'logistics');
+      minor += ld.minorSkills[skill as keyof typeof ld.minorSkills] ?? 0;
+      minor += ringMinorSkillBonus(G, lid, skill as 'diplomacy' | 'intel' | 'specOps' | 'logistics');
     }
   }
-  return total;
+  return { major, minor };
 }
 
-/** Sum of ALL skill icons (any type) across a leader set. Used by missions
- *  that say "count all skill icons during this attempt" (e.g. Interrogation
- *  Droid, Lure of the Dark Side). RR p.9. With the RoE expansion enabled,
- *  minor skill icons (printed and ring-granted) also count toward the sum
- *  per rules p.8. */
-function totalAllSkills(G: GameState, leaderIds: LeaderId[]): number {
-  let total = 0;
+/** Split-by-major/minor sum of ALL skill icons across a leader set. Used
+ *  by missions that say "count all skill icons during this attempt"
+ *  (Interrogation Droid, Lure of the Dark Side, etc.). RR p.9. With the
+ *  RoE expansion enabled, minor skill icons (printed and ring-granted)
+ *  also count, and roll green dice per rules p.8. */
+function totalAllSkills(G: GameState, leaderIds: LeaderId[]): { major: number; minor: number } {
+  let major = 0, minor = 0;
   for (const lid of leaderIds) {
     const ld = G.catalog.leaders[lid];
     if (!ld) continue;
-    total += (ld.skills.diplomacy ?? 0) + (ld.skills.intel ?? 0)
+    major += (ld.skills.diplomacy ?? 0) + (ld.skills.intel ?? 0)
            + (ld.skills.specOps ?? 0) + (ld.skills.logistics ?? 0);
     if (G.expansion?.enabled) {
-      total += (ld.minorSkills.diplomacy ?? 0) + (ld.minorSkills.intel ?? 0)
+      minor += (ld.minorSkills.diplomacy ?? 0) + (ld.minorSkills.intel ?? 0)
              + (ld.minorSkills.specOps ?? 0) + (ld.minorSkills.logistics ?? 0);
       for (const k of ['diplomacy', 'intel', 'specOps', 'logistics'] as const) {
-        total += ringMinorSkillBonus(G, lid, k);
+        minor += ringMinorSkillBonus(G, lid, k);
       }
     }
   }
-  return total;
+  return { major, minor };
 }
 
 /** RoE ring-granted minor-skill bonuses. K-2SO (the He Means Well ring)
@@ -866,21 +876,13 @@ export function revealMission(
   const card = G.catalog.missions[missionId];
   if (!card) return { ok: false, reason: 'unknown-mission' };
 
-  // Skill check: sum of matching skill icons across assigned leaders must meet card.skillCost.
+  // Skill check: sum of matching skill icons across assigned leaders must
+  // meet card.skillCost. RoE rules p.8: minor icons count toward the
+  // total too — totalSkill returns both halves.
   const need = card.skill;
   if (!need) return { ok: false, reason: 'mission-has-no-skill' };
-  let total = 0;
-  for (const lid of assigned.leaderIds) {
-    const ldr = G.catalog.leaders[lid];
-    if (!ldr) continue;
-    total += ldr.skills[need as keyof typeof ldr.skills] ?? 0;
-    // RoE rules p.8: "Minor skill icons count toward fulfilling skill
-    // requirements on mission cards." Plus any ring-granted minors.
-    if (G.expansion?.enabled) {
-      total += ldr.minorSkills[need as keyof typeof ldr.minorSkills] ?? 0;
-      total += ringMinorSkillBonus(G, lid, need);
-    }
-  }
+  const skillCount = totalSkill(G, assigned.leaderIds, need);
+  const total = skillCount.major + skillCount.minor;
   if (total < card.skillCost) return { ok: false, reason: `insufficient-skill:${total}/${card.skillCost}` };
 
   // Target-legality check (heuristic — see missionTargets.ts). For permissive
@@ -1012,9 +1014,10 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
     const skill = card.skill as string;
     const countsAll = missionCountsAllSkills(G, pending.missionId);
     const attLeaders = attemptingLeadersAt(G, pending.resolverSide, pending.targetSystemId, pending.leaderIds as LeaderId[]);
-    const attackerDice = (countsAll
+    const attSkill = countsAll
       ? totalAllSkills(G, attLeaders)
-      : totalSkill(G, attLeaders, skill))
+      : totalSkill(G, attLeaders, skill);
+    const attackerDice = attSkill.major + attSkill.minor
       + missionExtraAttackerDice(G, pending.missionId, pending.targetSystemId);
 
     G.pendingChoice = {
@@ -1185,15 +1188,17 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
     const skill = c.skill;
     const countsAll = missionCountsAllSkills(G, pm.missionId);
     const attLeaders = attemptingLeadersAt(G, pm.resolverSide, pm.targetSystemId, pm.leaderIds as LeaderId[]);
-    const attackerDice = (countsAll
+    const attSkillSplit = countsAll
       ? totalAllSkills(G, attLeaders)
-      : totalSkill(G, attLeaders, skill))
+      : totalSkill(G, attLeaders, skill);
+    const attackerDice = attSkillSplit.major + attSkillSplit.minor
       + missionExtraAttackerDice(G, pm.missionId, pm.targetSystemId);
-    const opposerDice = countsAll
+    const oppSkillSplit = countsAll
       ? totalAllSkills(G, oppLeaderIds as LeaderId[])
       : totalSkill(G, oppLeaderIds as LeaderId[], skill);
-    const att = rollMissionDice(G, attackerDice, pm.resolverSide, pm.targetSystemId);
-    const opp = rollMissionDice(G, opposerDice, c.opposerSide, pm.targetSystemId);
+    const opposerDice = oppSkillSplit.major + oppSkillSplit.minor;
+    const att = rollMissionDice(G, attackerDice, attSkillSplit.minor, pm.resolverSide, pm.targetSystemId);
+    const opp = rollMissionDice(G, opposerDice, oppSkillSplit.minor, c.opposerSide, pm.targetSystemId);
     const portrait = portraitBonus(G, pm.missionId, pm.leaderIds as LeaderId[]);
 
     // R2-D2 mission-flip pause point. If Empire rolled (resolver OR opposer)

@@ -1262,10 +1262,10 @@ export type MissionResolution = {
     attDice: number;
     opposerDice: number;
     attFaces: string[];
-    attColors: ('red' | 'black')[];
+    attColors: ('red' | 'black' | 'green')[];
     attSuccesses: number;
     oppFaces: string[];
-    oppColors: ('red' | 'black')[];
+    oppColors: ('red' | 'black' | 'green')[];
     oppSuccesses: number;
     portrait: number;
     oppLeaderIds: LeaderId[];
