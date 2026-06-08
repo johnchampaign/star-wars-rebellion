@@ -13,7 +13,8 @@
       "Populated by scripts/populate-cards.py from user-provided reference materials (34 entries matched).",
       "Phase 5d (data-only): appended 14 Rise of the Empire action cards tagged set: \"rote\". effectKey is empty pending handler bindings.",
       "Phase 5d-handlers Wave D: wired 4 RoE action cards (Trust in the Force, False Orders, Lord Vader's Orders, Baze's Loyalty). Lord Vader's Orders timing changed from Immediate to Assignment so it dispatches through the existing Assignment-card path.",
-      "Phase 5d-handlers Wave E: wired 2 RoE Special-timing action cards (Track Them, Something to Fight For). Both use inline event triggers + offer modals."
+      "Phase 5d-handlers Wave E: wired 2 RoE Special-timing action cards (Track Them, Something to Fight For). Both use inline event triggers + offer modals.",
+      "Phase 5d-handlers Wave F: wired 2 RoE Empire Special cards (Post Bounty, Ambitions of Power). Post Bounty introduces a new 'bounty' attachment ring; Ambitions of Power adds the FactionState.leaderPoolCapBonus field."
     ]
   },
   "actions": [
@@ -497,7 +498,7 @@
         "motti",
         "jabba"
       ],
-      "effectKey": "",
+      "effectKey": "ambitions-of-power",
       "rulesText": "Play if you have more than 8 leaders in your leader pool. Your leader pool limit is increased by 1 for the rest of the game.",
       "image": "",
       "set": "rote"
@@ -540,7 +541,7 @@
       "leaderRequirement": [
         "jabba"
       ],
-      "effectKey": "",
+      "effectKey": "post-bounty",
       "rulesText": "Use after a leader fails a mission in this leader's system. Attach a bounty ring to 1 un-ringed leader. When that leader is captured, Rebels lose 1 reputation.",
       "image": "",
       "set": "rote"

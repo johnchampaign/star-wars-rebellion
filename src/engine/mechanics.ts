@@ -670,14 +670,47 @@ export function systemsWithTargetMarker(G: GameState, source: string): SystemId[
  *  No-op when expansion.enabled is false (base game has no cap). */
 export function enforceLeaderPoolCap(G: GameState, side: Side): void {
   if (!G.expansion?.enabled) return;
-  const CAP = 8;
   const f = faction(G, side);
-  while (f.leaderPool.length > CAP) {
+  const cap = 8 + (f.leaderPoolCapBonus ?? 0);
+
+  // RoE "Ambitions of Power" — Empire-only Special. If the pool is over
+  // the current cap AND Empire has the card in hand AND Motti or Jabba is
+  // accessible (in pool or on the board), offer to play it. Posting the
+  // offer pauses elimination; the resolver bumps leaderPoolCapBonus and
+  // re-runs enforceLeaderPoolCap when it lands.
+  if (side === 'Empire'
+      && f.leaderPool.length > cap
+      && G.empire.actionHand.includes('ambitions-of-power')
+      && !G.pendingChoice) {
+    const ambitionLeaders: LeaderId[] = ['motti', 'jabba'];
+    const accessible = ambitionLeaders.some((lid) => {
+      if (G.empire.leaderPool.includes(lid)) return true;
+      if (G.empire.leadersOnMissions.some((m) => m.leaderIds.includes(lid))) return true;
+      for (const board of Object.values(G.empire.leadersOnBoard)) {
+        if (board.includes(lid)) return true;
+      }
+      return false;
+    });
+    if (accessible) {
+      G.pendingChoice = {
+        kind: 'AmbitionsOfPowerOffer',
+        side: 'Empire',
+        currentPoolSize: f.leaderPool.length,
+        currentCap: cap,
+      };
+      log(G, { kind: 'choice-request', side: 'Empire', payload: {
+        kind: 'AmbitionsOfPowerOffer', poolSize: f.leaderPool.length, cap,
+      }});
+      return; // resolver re-runs the cap after answering
+    }
+  }
+
+  while (f.leaderPool.length > cap) {
     const eliminated = f.leaderPool.pop();
     if (!eliminated) break;
     if (!f.eliminatedLeaders) f.eliminatedLeaders = [];
     f.eliminatedLeaders.push(eliminated);
-    log(G, { kind: 'leader-pool-cap-eliminate', side, payload: { leaderId: eliminated, poolSizeBeforeCap: CAP + 1 } });
+    log(G, { kind: 'leader-pool-cap-eliminate', side, payload: { leaderId: eliminated, poolSizeBeforeCap: cap + 1 } });
   }
 }
 
@@ -741,6 +774,18 @@ export function captureLeader(G: GameState, leaderId: LeaderId, ring: 'captured'
   }
   e.capturedLeaders.push({ leaderId, ring, systemId: capturedSystemId });
   log(G, { kind: 'capture-leader', payload: { leaderId, ring, systemId: capturedSystemId } });
+
+  // RoE "Post Bounty" (Jabba) — if the captured leader bears a bounty ring,
+  // Rebels lose 1 reputation and the ring is consumed. Stacks if there
+  // happen to be multiple bounty rings on the same leader (RAW says one
+  // ring per leader; the dedup in attachRing keeps it to a single entry).
+  if (G.expansion?.enabled && G.leaderAttachments?.[leaderId]?.includes('bounty')) {
+    removeAttachment(G, leaderId, 'bounty');
+    loseReputation(G, 1);
+    log(G, { kind: 'post-bounty-rep-loss', side: 'Empire', payload: {
+      leaderId, systemId: capturedSystemId,
+    }});
+  }
 
   // Noble Sacrifice (Rebel/Obi-Wan) Special-timing trigger. The card reads
   // "use when this leader becomes captured" — so the use-window opens at the
@@ -835,7 +880,7 @@ export function rescueLeader(G: GameState, leaderId: LeaderId, reason: string = 
 // are tracked separately in G.empire.capturedLeaders[].ring (a leader can
 // have both an attachment ring AND a captured/carbonite status).
 
-export type AttachmentKind = 'yoda' | 'dark-side' | 'r2d2' | 'c3po';
+export type AttachmentKind = 'yoda' | 'dark-side' | 'r2d2' | 'c3po' | 'bounty';
 
 export function attachRing(G: GameState, leaderId: LeaderId, ring: AttachmentKind): void {
   if (!G.leaderAttachments) G.leaderAttachments = {};

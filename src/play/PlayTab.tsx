@@ -220,6 +220,8 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'SonOfSkywalkerOffer':      return pc.side === side;
     case 'TrackThemOffer':           return pc.side === side;
     case 'SomethingToFightForOffer': return pc.side === side;
+    case 'PostBountyOffer':          return pc.side === side;
+    case 'AmbitionsOfPowerOffer':    return pc.side === side;
     // Robust default: ANY side-tagged choice belongs to the side it names, so
     // if that side is the AI, the AI owes it. This catches choice kinds the AI
     // can resolve but that aren't explicitly listed above — without it, such a
@@ -1917,6 +1919,30 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <SomethingToFightForOfferModal G={G} choice={G.pendingChoice}
           onPick={(oid) => {
             const r = combat.resolveSomethingToFightForOffer(G, oid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'PostBountyOffer'
+        && G.pendingChoice.side === humanSide && (
+        <PostBountyOfferModal G={G} choice={G.pendingChoice}
+          onPick={(lid) => {
+            const r = phases.resolvePostBountyOffer(G, lid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'AmbitionsOfPowerOffer'
+        && G.pendingChoice.side === humanSide && (
+        <AmbitionsOfPowerOfferModal choice={G.pendingChoice}
+          onAccept={(accept) => {
+            const r = phases.resolveAmbitionsOfPowerOffer(G, accept);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -10518,6 +10544,82 @@ function NobleSacrificeOfferModal({
           </button>
           <button className="tab-button" onClick={() => onAccept(false)}>
             Keep, accept capture
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PostBountyOfferModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { candidates: string[]; missionId: string };
+  onPick: (leaderId: string | null) => void;
+}) {
+  const missionName = G.catalog.missions[choice.missionId]?.name ?? choice.missionId;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Post Bounty — bounty a Rebel leader?</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          <i>{missionName}</i> just failed. Discard <i>Post Bounty</i> to attach a bounty ring to one of
+          the Rebel leaders who attempted it — when that leader is captured, the Rebels lose 1 reputation:
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {choice.candidates.map((lid) => {
+            const l = G.catalog.leaders[lid];
+            return (
+              <button key={lid} className="tab-button" onClick={() => onPick(lid)} style={{ textAlign: 'left' }}>
+                Bounty {l?.name ?? lid}
+              </button>
+            );
+          })}
+        </div>
+        <button className="tab-button" onClick={() => onPick(null)}>
+          Keep, skip
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AmbitionsOfPowerOfferModal({
+  choice, onAccept,
+}: {
+  choice: { currentPoolSize: number; currentCap: number };
+  onAccept: (accept: boolean) => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 480, width: '92%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Ambitions of Power — raise the cap?</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+          Your leader pool is at {choice.currentPoolSize}, over the cap of {choice.currentCap}.
+          Discard <i>Ambitions of Power</i> to raise your pool cap by 1 for the rest of the game (keeping the
+          leader who would otherwise be eliminated). Without it, the bottom of the pool is eliminated.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="tab-button active" onClick={() => onAccept(true)} style={{ fontWeight: 700 }}>
+            Discard → cap +1
+          </button>
+          <button className="tab-button" onClick={() => onAccept(false)}>
+            Keep, accept elimination
           </button>
         </div>
       </div>

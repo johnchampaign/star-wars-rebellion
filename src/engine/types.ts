@@ -131,6 +131,10 @@ export type FactionState = {
   leadersOnMissions: AssignedMission[];
   eliminatedLeaders: LeaderId[];
   attachmentRings: AttachmentRing[]; // active rings on this side's leaders
+  // RoE "Ambitions of Power" (Motti/Jabba) bumps the leader-pool cap by 1
+  // for the rest of the game. enforceLeaderPoolCap reads 8 + this bonus.
+  // Absent/undefined ⇒ 0.
+  leaderPoolCapBonus?: number;
 
   // Card piles
   actionDeck: string[];
@@ -441,6 +445,25 @@ export type ChoiceRequest =
       kind: 'SomethingToFightForOffer';
       side: Side; // 'Rebel'
       candidates: string[]; // objective card ids in the discard pile
+    }
+  | {
+      // Post Bounty (Empire/Jabba, RoE Special): after a Rebel mission fails,
+      // may discard this card to attach a bounty ring to one of the Rebel
+      // leaders that attempted it. If the bountied leader is later captured,
+      // Rebels lose 1 reputation.
+      kind: 'PostBountyOffer';
+      side: Side; // 'Empire'
+      missionId: string;
+      candidates: LeaderId[]; // Rebel leaders that attempted the failed mission (un-ringed)
+    }
+  | {
+      // Ambitions of Power (Empire/Motti or Jabba, RoE Special): when the
+      // Empire leader pool would exceed the 8-leader cap, may discard this
+      // card to raise the cap by 1 for the rest of the game.
+      kind: 'AmbitionsOfPowerOffer';
+      side: Side; // 'Empire'
+      currentPoolSize: number;
+      currentCap: number;
     }
   | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
@@ -1305,7 +1328,7 @@ export type GameState = {
   // rulebook, a leader can have only one ring at a time — a new ring replaces
   // the old. The capture / carbonite rings live in capturedLeaders.ring;
   // these are the *other* rings (Yoda, dark-side, R2D2, etc).
-  leaderAttachments?: Record<string, ('yoda' | 'dark-side' | 'r2d2' | 'c3po')[]>;
+  leaderAttachments?: Record<string, ('yoda' | 'dark-side' | 'r2d2' | 'c3po' | 'bounty')[]>;
 
   // Leaders who can't be opposed by pool leaders this round (Misdirection).
   // Cleared at end of Command phase. The protection only blocks pool

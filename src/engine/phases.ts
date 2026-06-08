@@ -1011,11 +1011,50 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pending.stage === 'failed') {
+    // RoE "Post Bounty" (Empire/Jabba): after a Rebel mission fails, Empire
+    // may discard the card to slap a bounty ring on one of the Rebel
+    // leaders who attempted it. RAW also requires Jabba is accessible
+    // (pool, on a mission, or on the board). The offer pauses cleanup;
+    // resolvePostBountyOffer attaches the ring (or declines) and then runs
+    // the same discard/advance tail.
+    if (G.expansion?.enabled
+        && pending.resolverSide === 'Rebel'
+        && G.empire.actionHand.includes('post-bounty')
+        && jabbaAccessible(G)
+        && !G.pendingChoice) {
+      const candidates = (pending.leaderIds as LeaderId[]).filter(
+        (lid) => !G.leaderAttachments?.[lid]?.includes('bounty'),
+      );
+      if (candidates.length > 0) {
+        G.pendingChoice = {
+          kind: 'PostBountyOffer',
+          side: 'Empire',
+          missionId: pending.missionId,
+          candidates,
+        };
+        log(G, { kind: 'choice-request', side: 'Empire', payload: {
+          kind: 'PostBountyOffer', missionId: pending.missionId, candidates: candidates.length,
+        }});
+        return { ok: true };
+      }
+    }
     discardOrReturnMission(G, pending.resolverSide, pending.missionId);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   }
   return { ok: true };
+}
+
+/** Is Jabba currently in play on the Empire side? (pool, on board, or
+ *  assigned to a mission). Used by Post Bounty's offer gate. */
+function jabbaAccessible(G: GameState): boolean {
+  const e = G.empire;
+  if (e.leaderPool.includes('jabba' as LeaderId)) return true;
+  if (e.leadersOnMissions.some((m) => m.leaderIds.includes('jabba' as LeaderId))) return true;
+  for (const board of Object.values(e.leadersOnBoard)) {
+    if (board.includes('jabba' as LeaderId)) return true;
+  }
+  return false;
 }
 
 /** Continue mission resolution after the player resolves a mid-effect choice.
@@ -2359,6 +2398,63 @@ export function resolveNobleSacrificeOffer(G: GameState, accept: boolean): { ok:
   if (G.pendingMission) {
     resumeMissionAfterChoice(G);
   }
+  return { ok: true };
+}
+
+/** Post Bounty (Empire/Jabba, RoE Special): Empire picks one Rebel leader
+ *  to bounty (attach 'bounty' ring), or declines (leaderId === null). The
+ *  ring fires when the leader is later captured (mechanics.captureLeader),
+ *  costing the Rebels 1 reputation. Either way, the failed-mission cleanup
+ *  tail runs after the offer resolves. */
+export function resolvePostBountyOffer(G: GameState, leaderId: LeaderId | null): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'PostBountyOffer') return { ok: false, reason: 'no-pending' };
+  const pm = G.pendingMission;
+  if (!pm) return { ok: false, reason: 'no-mission' };
+  if (leaderId !== null) {
+    if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'bad-leader' };
+    const handIdx = G.empire.actionHand.indexOf('post-bounty');
+    if (handIdx < 0) return { ok: false, reason: 'card-not-in-hand' };
+    G.empire.actionHand.splice(handIdx, 1);
+    G.empire.actionDiscard.push('post-bounty');
+    M.attachRing(G, leaderId, 'bounty');
+    log(G, { kind: 'post-bounty-applied', side: 'Empire', payload: {
+      leaderId, missionId: pm.missionId,
+    }});
+  } else {
+    log(G, { kind: 'post-bounty-skipped', side: 'Empire', payload: { missionId: pm.missionId } });
+  }
+  G.pendingChoice = undefined;
+  // Run the same failed-mission cleanup tail as the inline branch above.
+  discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+  G.pendingMission = undefined;
+  if (!G.isGameOver) advanceCommandTurn(G);
+  return { ok: true };
+}
+
+/** Ambitions of Power (Empire/Motti or Jabba, RoE Special): Empire accepts
+ *  to discard the card for +1 leader-pool cap, or declines (the cap then
+ *  eliminates as usual). After answering, re-run enforceLeaderPoolCap to
+ *  apply the new cap (or proceed with the elimination). */
+export function resolveAmbitionsOfPowerOffer(G: GameState, accept: boolean): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'AmbitionsOfPowerOffer') return { ok: false, reason: 'no-pending' };
+  if (accept) {
+    const handIdx = G.empire.actionHand.indexOf('ambitions-of-power');
+    if (handIdx < 0) return { ok: false, reason: 'card-not-in-hand' };
+    G.empire.actionHand.splice(handIdx, 1);
+    G.empire.actionDiscard.push('ambitions-of-power');
+    G.empire.leaderPoolCapBonus = (G.empire.leaderPoolCapBonus ?? 0) + 1;
+    log(G, { kind: 'ambitions-of-power-applied', side: 'Empire', payload: {
+      newCap: 8 + G.empire.leaderPoolCapBonus,
+    }});
+  } else {
+    log(G, { kind: 'ambitions-of-power-skipped', side: 'Empire', payload: {} });
+  }
+  G.pendingChoice = undefined;
+  // Re-enter the cap enforcement — on accept the bonus may now cover the
+  // pool; on decline the elimination loop runs as before.
+  M.enforceLeaderPoolCap(G, 'Empire');
   return { ok: true };
 }
 
