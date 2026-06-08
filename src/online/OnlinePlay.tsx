@@ -6,7 +6,11 @@
 // (PlayTab currently constructs its own engine state).
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useGame } from 'digital-boardgame-framework/client';
+import {
+  useGame, useMessages,
+  type MessagingClientApi, type ChatMessage,
+} from 'digital-boardgame-framework/client';
+import { subscribeSupabaseRealtime } from 'digital-boardgame-framework/client/realtime';
 import { makeGameClient } from './gameClient';
 import PlayTab from '../play/PlayTab';
 import type { GameState } from '../engine/types';
@@ -158,8 +162,6 @@ const errBox: React.CSSProperties = { background: '#3a1d1d', color: '#f3b', padd
 
 // ----- In-game chat panel (top-right, under Refresh) -----
 
-interface ChatMsg { seat: string; body: string; at: string }
-
 function relativeTime(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   if (ms < 60_000) return 'just now';
@@ -176,64 +178,78 @@ function relativeTime(iso: string): string {
 function ChatPanel({ gameId, token, you }: { gameId: string; token: string; you: Side }) {
   const base = `/api/games/${encodeURIComponent(gameId)}`;
   const q = `?t=${encodeURIComponent(token)}`;
+
+  // MessagingClientApi over our /chat endpoints (backed server-side by the
+  // framework's server.postMessage / listMessages on the dbf_messages table).
+  const client = useMemo<MessagingClientApi>(() => ({
+    listMessages: async () => {
+      const r = await fetch(`${base}/chat${q}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json() as Promise<ChatMessage[]>;
+    },
+    postMessage: async (body: string) => {
+      const r = await fetch(`${base}/chat${q}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: body }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((j as { error?: string })?.error || `Couldn't send (HTTP ${r.status})`);
+      return j as ChatMessage[];
+    },
+  }), [base, q]);
+
+  // Optional Supabase Realtime push for instant delivery. Needs the PUBLIC anon
+  // key in the client bundle (VITE_SUPABASE_URL + VITE_SUPABASE_ANON_KEY build
+  // vars); without them, useMessages just polls.
+  const subscribe = useMemo(() => {
+    const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
+    const url = env.VITE_SUPABASE_URL;
+    const anonKey = env.VITE_SUPABASE_ANON_KEY;
+    return url && anonKey
+      ? subscribeSupabaseRealtime({ supabaseUrl: url, anonKey, gameId, event: 'message' })
+      : undefined;
+  }, [gameId]);
+
+  const { messages, send, sending, error, refresh } = useMessages(client, {
+    pollMs: subscribe ? 30_000 : 12_000,
+    subscribe,
+  });
+
   const [open, setOpen] = useState(false);
-  const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [draft, setDraft] = useState('');
-  const [sending, setSending] = useState(false);
   const [seenCount, setSeenCount] = useState(0);
-  const [sendErr, setSendErr] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
-  const loadRef = useRef<() => void>(() => {});
-  loadRef.current = async () => {
-    try {
-      const r = await fetch(`${base}${q}`);
-      const j = await r.json().catch(() => ({}));
-      if (Array.isArray(j.chat)) setMsgs(j.chat as ChatMsg[]);
-    } catch { /* best-effort */ }
-  };
-
+  // Re-sync immediately when the tab regains focus (background tabs throttle
+  // timers; realtime can drop while hidden).
   useEffect(() => {
-    void loadRef.current();
-    const iv = setInterval(() => loadRef.current(), 12000);
-    const onVis = () => { if (document.visibilityState === 'visible') void loadRef.current(); };
+    const onVis = () => { if (document.visibilityState === 'visible') void refresh(); };
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('focus', onVis);
     return () => {
-      clearInterval(iv);
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('focus', onVis);
     };
-  }, []);
+  }, [refresh]);
 
   // While open, treat everything as read and keep scrolled to the newest.
   useEffect(() => {
     if (open) {
-      setSeenCount(msgs.length);
+      setSeenCount(messages.length);
       listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
     }
-  }, [open, msgs.length]);
+  }, [open, messages.length]);
 
-  const unread = open ? 0 : Math.max(0, msgs.length - seenCount);
+  const unread = open ? 0 : Math.max(0, messages.length - seenCount);
 
-  async function send() {
+  async function onSend() {
     const text = draft.trim();
     if (!text || sending) return;
-    setSending(true); setSendErr(null);
-    try {
-      const r = await fetch(`${base}/chat${q}`, {
-        method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ message: text }),
-      });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) { setSendErr(j?.error || `Couldn't send (HTTP ${r.status})`); return; }
-      if (Array.isArray(j.chat)) setMsgs(j.chat as ChatMsg[]);
-      setDraft('');
-    } catch (e) {
-      setSendErr(e instanceof Error ? e.message : 'Network error — message not sent.');
-    } finally { setSending(false); }
+    try { await send(text); setDraft(''); } catch { /* surfaced via `error` below */ }
   }
 
+  const msgs = messages;
+  const sendErr = error?.message ?? null;
   const seatColor = (s: string) => (s === 'Rebel' ? '#4fc3f7' : '#ff8a80');
 
   return (
@@ -276,10 +292,10 @@ function ChatPanel({ gameId, token, you }: { gameId: string; token: string; you:
               maxLength={500}
               placeholder="Message…"
               onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') void send(); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') void onSend(); }}
               style={{ flex: 1, minWidth: 0, background: '#0c0d10', color: '#e8e6f2', border: '1px solid #3a3d44', borderRadius: 4, padding: '3px 6px', fontSize: 12 }}
             />
-            <button onClick={() => void send()} disabled={sending || !draft.trim()} className="tab-button" style={{ fontSize: 11, padding: '3px 8px' }}>Send</button>
+            <button onClick={() => void onSend()} disabled={sending || !draft.trim()} className="tab-button" style={{ fontSize: 11, padding: '3px 8px' }}>Send</button>
           </div>
           {sendErr && (
             <div style={{ padding: '0 6px 6px', fontSize: 10.5, color: '#e57373', lineHeight: 1.3 }}>{sendErr}</div>

@@ -4,7 +4,7 @@
 
 import {
   makeServer, recordTurnTiming, currentActorOf, reclaimSeat, isSideAbandoned, otherSide,
-  fetchChat, json, fail, type Env,
+  json, fail, type Env,
 } from '../../../_lib/gameServer';
 import type { Side } from '../../../../src/types';
 
@@ -31,10 +31,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       you && !r.yourTurn && !r.gameOver
         ? await isSideAbandoned(deps.supabase, id, otherSide(you), env)
         : false;
-    // In-game chat, delivered on the existing poll (only to an authenticated
-    // seat). Best-effort — never fail the view fetch over chat.
-    const chat = you ? await fetchChat(deps.supabase, id) : [];
-    return json({ ...r, opponentAbandoned, chat });
+    return json({ ...r, opponentAbandoned });
   } catch (e) {
     return fail(e);
   }
