@@ -1752,6 +1752,70 @@ export function resolveCombatAddLeaderPick(
   return { ok: true };
 }
 
+/** Track Them (Empire/RoE Special): Empire picks one of their leaders at
+ *  the combat system to return to the leader pool — or declines (leaderId
+ *  === null), in which case the card stays in hand. Posted from the retreat
+ *  resolver after a Rebel retreat. Either way we resume combat via
+ *  runCombat so the post-retreat flow continues unbroken. */
+export function resolveTrackThemOffer(
+  G: GameState, leaderId: LeaderId | null,
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'TrackThemOffer') return { ok: false, reason: 'no-pending' };
+  if (leaderId !== null) {
+    if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'bad-leader' };
+    const i = G.empire.actionHand.indexOf('track-them');
+    if (i < 0) return { ok: false, reason: 'card-not-in-hand' };
+    G.empire.actionHand.splice(i, 1);
+    G.empire.actionDiscard.push('track-them');
+    M.returnLeader(G, 'Empire', leaderId);
+    log(G, { kind: 'track-them-applied', side: 'Empire', payload: {
+      leaderId, systemId: pc.systemId,
+    }});
+  } else {
+    log(G, { kind: 'track-them-skipped', side: 'Empire', payload: { systemId: pc.systemId } });
+  }
+  G.pendingChoice = undefined;
+  runCombat(G);
+  return { ok: true };
+}
+
+/** Something to Fight For (Rebel/Jyn/RoE Special): Rebel picks one
+ *  discarded objective card to move to the top of the deck — or declines
+ *  (objectiveId === null), in which case the card stays in hand. Posted
+ *  from endCombat after a Rebel battle win. After resolving, call
+ *  finishCombatTail so the suspended end-of-combat flow continues. */
+export function resolveSomethingToFightForOffer(
+  G: GameState, objectiveId: string | null,
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'SomethingToFightForOffer') return { ok: false, reason: 'no-pending' };
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  if (objectiveId !== null) {
+    if (!pc.candidates.includes(objectiveId)) return { ok: false, reason: 'bad-objective' };
+    const handIdx = G.rebel.actionHand.indexOf('something-to-fight-for');
+    if (handIdx < 0) return { ok: false, reason: 'card-not-in-hand' };
+    const discard = G.rebel.objectiveDiscard;
+    const oi = discard?.findIndex((id) => id === objectiveId) ?? -1;
+    if (!discard || oi < 0) return { ok: false, reason: 'objective-not-in-discard' };
+    // Discard the card.
+    G.rebel.actionHand.splice(handIdx, 1);
+    G.rebel.actionDiscard.push('something-to-fight-for');
+    // Move objective from discard to top of objective deck.
+    const [picked] = discard.splice(oi, 1);
+    G.rebel.objectiveDeck?.unshift(picked);
+    log(G, { kind: 'something-to-fight-for-applied', side: 'Rebel', payload: {
+      objectiveId: picked,
+    }});
+  } else {
+    log(G, { kind: 'something-to-fight-for-skipped', side: 'Rebel', payload: {} });
+  }
+  G.pendingChoice = undefined;
+  finishCombatTail(G, c);
+  return { ok: true };
+}
+
 /** Compute the legal retreat destinations for `side`. RAW:
  *  - The attacker may only retreat to the system they moved from.
  *  - The defender may retreat to any adjacent system (and not into
@@ -1920,6 +1984,30 @@ export function resolveRetreatDecision(
     ignoresTransport,
   }});
 
+  // RoE "Track Them" (Empire Special): after a Rebel unit retreats from
+  // combat, Empire may discard Track Them to return one of their leaders
+  // at the combat system to the leader pool. The offer only fires when the
+  // card is in Empire's hand AND there's an eligible leader to return.
+  // Posting the offer pauses combat; the resolver consumes the card (or
+  // declines) and then resumes via runCombat.
+  if (side === 'Rebel'
+      && G.expansion?.enabled
+      && G.empire.actionHand.includes('track-them')) {
+    const empireLeadersHere = G.empire.leadersOnBoard[c.systemId] ?? [];
+    if (empireLeadersHere.length > 0) {
+      G.pendingChoice = {
+        kind: 'TrackThemOffer',
+        side: 'Empire',
+        systemId: c.systemId,
+        candidates: [...empireLeadersHere] as LeaderId[],
+      };
+      log(G, { kind: 'choice-request', side: 'Empire', payload: {
+        kind: 'TrackThemOffer', systemId: c.systemId, candidates: empireLeadersHere.length,
+      }});
+      return { ok: true };
+    }
+  }
+
   G.pendingChoice = undefined;
   runCombat(G);
   return { ok: true };
@@ -2050,6 +2138,29 @@ function endCombat(G: GameState): void {
   if (fired.length === 1) {
     playCombatObjective(G, fired[0]);
   }
+
+  // RoE "Something to Fight For" (Rebel/Jyn Special): after winning a
+  // battle, may discard this card to pick a discarded objective card and
+  // put it on top of the deck. Triggers only when the Rebel won, Jyn is
+  // in the Rebel pool (RAW leader requirement), the card is in the Rebel
+  // hand, and the objective discard has at least one card.
+  if (!G.pendingChoice
+      && G.expansion?.enabled
+      && c.report.winner === 'Rebel'
+      && G.rebel.actionHand.includes('something-to-fight-for')
+      && G.rebel.leaderPool.includes('jyn-erso')
+      && (G.rebel.objectiveDiscard ?? []).length > 0) {
+    G.pendingChoice = {
+      kind: 'SomethingToFightForOffer',
+      side: 'Rebel',
+      candidates: [...(G.rebel.objectiveDiscard ?? [])],
+    };
+    log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+      kind: 'SomethingToFightForOffer', candidates: (G.rebel.objectiveDiscard ?? []).length,
+    }});
+    return; // pendingCombat stays set; resolver calls finishCombatTail
+  }
+
   finishCombatTail(G, c);
 }
 

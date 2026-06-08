@@ -218,6 +218,8 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'C3POOffer':                return pc.side === side;
     case 'FalconOffer':              return pc.side === side;
     case 'SonOfSkywalkerOffer':      return pc.side === side;
+    case 'TrackThemOffer':           return pc.side === side;
+    case 'SomethingToFightForOffer': return pc.side === side;
     // Robust default: ANY side-tagged choice belongs to the side it names, so
     // if that side is the AI, the AI owes it. This catches choice kinds the AI
     // can resolve but that aren't explicitly listed above — without it, such a
@@ -1891,6 +1893,30 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <SonOfSkywalkerOfferModal G={G} choice={G.pendingChoice}
           onPick={(mid) => {
             const r = phases.resolveSonOfSkywalkerOffer(G, mid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'TrackThemOffer'
+        && G.pendingChoice.side === humanSide && (
+        <TrackThemOfferModal G={G} choice={G.pendingChoice}
+          onPick={(lid) => {
+            const r = combat.resolveTrackThemOffer(G, lid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'SomethingToFightForOffer'
+        && G.pendingChoice.side === humanSide && (
+        <SomethingToFightForOfferModal G={G} choice={G.pendingChoice}
+          onPick={(oid) => {
+            const r = combat.resolveSomethingToFightForOffer(G, oid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -10494,6 +10520,85 @@ function NobleSacrificeOfferModal({
             Keep, accept capture
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function TrackThemOfferModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { candidates: string[]; systemId: string };
+  onPick: (leaderId: string | null) => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Track Them — pull a leader home?</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          The Rebels just retreated from {G.catalog.systems[choice.systemId]?.name ?? choice.systemId}.
+          Discard <i>Track Them</i> to return one of your leaders here back to the leader pool:
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {choice.candidates.map((lid) => {
+            const l = G.catalog.leaders[lid];
+            return (
+              <button key={lid} className="tab-button" onClick={() => onPick(lid)} style={{ textAlign: 'left' }}>
+                Return {l?.name ?? lid}
+              </button>
+            );
+          })}
+        </div>
+        <button className="tab-button" onClick={() => onPick(null)}>
+          Keep, skip
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SomethingToFightForOfferModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { candidates: string[] };
+  onPick: (objectiveId: string | null) => void;
+}) {
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Something to Fight For — recycle an objective?</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          You just won a battle. Discard <i>Something to Fight For</i> to put one discarded objective card on top of the deck:
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {choice.candidates.map((oid) => {
+            const o = G.catalog.objectives[oid];
+            return (
+              <button key={oid} className="tab-button" onClick={() => onPick(oid)} style={{ textAlign: 'left' }}>
+                {o?.name ?? oid}{o ? ` (stage ${o.stage}, +${o.reputation} rep)` : ''}
+              </button>
+            );
+          })}
+        </div>
+        <button className="tab-button" onClick={() => onPick(null)}>
+          Keep, skip
+        </button>
       </div>
     </div>
   );

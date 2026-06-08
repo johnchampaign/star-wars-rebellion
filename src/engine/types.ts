@@ -426,6 +426,23 @@ export type ChoiceRequest =
       candidates: LeaderId[]; // rescuing leaders to potentially capture
     }
   | {
+      // Track Them (Empire, RoE Special): after a Rebel unit retreats from
+      // combat, may discard this card to return one Empire leader at the
+      // combat's system to the leader pool.
+      kind: 'TrackThemOffer';
+      side: Side; // 'Empire'
+      systemId: SystemId; // the combat system
+      candidates: LeaderId[]; // Empire leaders currently at the combat system
+    }
+  | {
+      // Something to Fight For (Rebel/Jyn, RoE Special): after a battle the
+      // Rebel won, may discard this card to choose a discarded objective
+      // card and put it on top of the deck.
+      kind: 'SomethingToFightForOffer';
+      side: Side; // 'Rebel'
+      candidates: string[]; // objective card ids in the discard pile
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated

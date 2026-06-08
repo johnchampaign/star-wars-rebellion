@@ -1362,6 +1362,34 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const c = G.pendingChoice;
     return phases.resolveSonOfSkywalkerOffer(G, c.candidates[0] ?? null).ok;
   }
+  // Track Them (RoE): always pull the highest-skill leader home (strict
+  // improvement — getting a leader off the board frees them for missions).
+  if (G.pendingChoice && G.pendingChoice.kind === 'TrackThemOffer' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    let best = c.candidates[0];
+    let bestScore = -1;
+    for (const lid of c.candidates) {
+      const l = G.catalog.leaders[lid];
+      if (!l) continue;
+      const sk = l.skills;
+      const score = (sk.diplomacy ?? 0) + (sk.intel ?? 0) + (sk.specOps ?? 0) + (sk.logistics ?? 0);
+      if (score > bestScore) { best = lid; bestScore = score; }
+    }
+    return combat.resolveTrackThemOffer(G, best ?? null).ok;
+  }
+  // Something to Fight For (RoE): always recycle the highest-rep objective
+  // (best value for the discard).
+  if (G.pendingChoice && G.pendingChoice.kind === 'SomethingToFightForOffer' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    let best = c.candidates[0];
+    let bestRep = -1;
+    for (const oid of c.candidates) {
+      const o = G.catalog.objectives[oid];
+      if (!o) continue;
+      if (o.reputation > bestRep) { best = oid; bestRep = o.reputation; }
+    }
+    return combat.resolveSomethingToFightForOffer(G, best ?? null).ok;
+  }
   // Blindside: always accept (denies pool opposition; clear upside).
   if (G.pendingChoice && G.pendingChoice.kind === 'BlindsideOffer' && G.pendingChoice.side === side) {
     return phases.resolveBlindsideOffer(G, true).ok;
