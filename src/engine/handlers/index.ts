@@ -1887,9 +1887,8 @@ const secretMission: EffectHandler = (G, ctx) => {
 };
 
 /** Behind Enemy Lines: "Move 5 units from the Rebel Base, ignoring leaders
- *  and adjacency. Resolve combat." Auto-picks the first 5 units from the
- *  base space (any theatre). Lead the Strike Team's full unit-picker UI is
- *  the right long-term fit; this is the no-choice MVP. */
+ *  and adjacency. Resolve combat." With more than 5 Rebel units at the
+ *  base the Rebel picks which to send; with 5 or fewer all of them go. */
 const behindEnemyLines: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
@@ -1897,13 +1896,33 @@ const behindEnemyLines: EffectHandler = (G, ctx) => {
   const baseContainer = baseSourceId === 'rebel-base-space'
     ? G.map.rebelBaseSpace : G.map.systems[baseSourceId];
   if (!baseContainer) return true;
-  const taking = baseContainer.units.filter((u) => u.side === 'Rebel').slice(0, 5);
-  for (const u of taking) M.moveUnit(G, u.instanceId, baseSourceId, sysId);
-  log(G, { kind: 'behind-enemy-lines', side: 'Rebel', payload: {
-    systemId: sysId, moved: taking.length,
+  const rebelUnits = baseContainer.units.filter((u) => u.side === 'Rebel');
+  if (rebelUnits.length === 0) {
+    // No units to move — still resolve combat in case the Rebel already
+    // has units at the target (mirrors Lead the Strike Team's edge case).
+    triggerCombatAt(G, 'Rebel', sysId);
+    return true;
+  }
+  if (rebelUnits.length <= 5) {
+    for (const u of rebelUnits) M.moveUnit(G, u.instanceId, baseSourceId, sysId);
+    log(G, { kind: 'behind-enemy-lines', side: 'Rebel', payload: {
+      systemId: sysId, moved: rebelUnits.length, auto: true,
+    }});
+    triggerCombatAt(G, 'Rebel', sysId);
+    return true;
+  }
+  G.pendingChoice = {
+    kind: 'BehindEnemyLinesUnits',
+    side: 'Rebel',
+    targetSystemId: sysId,
+    sourceSystemId: baseSourceId,
+    availableUnitIds: rebelUnits.map((u) => u.instanceId),
+    max: 5,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'BehindEnemyLinesUnits', available: rebelUnits.length, max: 5,
   }});
-  triggerCombatAt(G, 'Rebel', sysId);
-  return true;
+  return false;
 };
 
 // ============================================================================

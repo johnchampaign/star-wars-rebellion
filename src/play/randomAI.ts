@@ -1457,6 +1457,23 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const c = G.pendingChoice;
     return phases.resolveRegionalAidPick(G, c.candidates[0]).ok;
   }
+  // Behind Enemy Lines (Rebel/RoE): send the strongest `max` units (highest
+  // combined attack) into the assault. A simple proxy: sort by total attack
+  // dice and take the top `max`.
+  if (G.pendingChoice && G.pendingChoice.kind === 'BehindEnemyLinesUnits' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const scored = c.availableUnitIds.map((uid) => {
+      const container = c.sourceSystemId === 'rebel-base-space'
+        ? G.map.rebelBaseSpace : G.map.systems[c.sourceSystemId];
+      const u = container?.units.find((x) => x.instanceId === uid);
+      const t = u ? G.catalog.unitTypes[u.typeId] : undefined;
+      const atk = t ? (t.attack.red + t.attack.black + t.attack.green) : 0;
+      return { uid, atk };
+    });
+    scored.sort((a, b) => b.atk - a.atk);
+    const pick = scored.slice(0, c.max).map((s) => s.uid);
+    return phases.resolveBehindEnemyLinesUnits(G, pick).ok;
+  }
   // MissionRecruitLeaderPick (RoE): pick the highest-tactic-total leader
   // (Hire Mercenaries / Imperial Promotion / Rebel Promotion / My Only
   // Hope). For Hire Mercenaries the candidates are no-tactic-value

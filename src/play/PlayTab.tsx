@@ -230,6 +230,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'ReconnaissancePick':       return pc.side === side;
     case 'DrawThemOutPick':          return pc.side === side;
     case 'RegionalAidPick':          return pc.side === side;
+    case 'BehindEnemyLinesUnits':    return pc.side === side;
     // Robust default: ANY side-tagged choice belongs to the side it names, so
     // if that side is the AI, the AI owes it. This catches choice kinds the AI
     // can resolve but that aren't explicitly listed above — without it, such a
@@ -1551,6 +1552,20 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           choice={G.pendingChoice}
           onSubmit={(unitIds) => {
             const r = phases.resolveLeadStrikeTeamUnits(G, unitIds);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'BehindEnemyLinesUnits'
+        && humanSide === 'Rebel' && (
+        <BehindEnemyLinesUnitsModal
+          G={G}
+          choice={G.pendingChoice}
+          onSubmit={(unitIds) => {
+            const r = phases.resolveBehindEnemyLinesUnits(G, unitIds);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }}
@@ -4989,6 +5004,99 @@ function LeadStrikeTeamUnitsModal({ G, choice, onSubmit }: {
                   onChange={() => toggle(u.instanceId)}
                 />
                 <span style={{ color: '#fff', fontSize: 13 }}>{t?.name ?? u.typeId}</span>
+              </label>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+          <span style={{ color: '#888', fontSize: 11, marginRight: 'auto' }}>
+            {picked.size}/{choice.max} selected
+          </span>
+          <button
+            onClick={() => onSubmit(Array.from(picked))}
+            style={{ padding: '6px 18px', background: '#aae0ff', color: '#000',
+              border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
+          >
+            Send {picked.size} unit{picked.size === 1 ? '' : 's'} & start combat
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BehindEnemyLinesUnitsModal({ G, choice, onSubmit }: {
+  G: GameState;
+  choice: {
+    kind: 'BehindEnemyLinesUnits';
+    side: Side;
+    targetSystemId: string;
+    sourceSystemId: string;
+    availableUnitIds: string[];
+    max: number;
+  };
+  onSubmit: (unitIds: string[]) => void;
+}) {
+  const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  // Read units from the recorded source container (Rebel Base space, or the
+  // base's system after reveal) — not hardcoded to rebelBaseSpace.
+  const sourceContainer = choice.sourceSystemId === 'rebel-base-space'
+    ? G.map.rebelBaseSpace
+    : G.map.systems[choice.sourceSystemId];
+  const sourceUnits = sourceContainer?.units ?? [];
+  const units = choice.availableUnitIds
+    .map((uid) => sourceUnits.find((u) => u.instanceId === uid))
+    .filter((u): u is NonNullable<typeof u> => !!u);
+
+  const [picked, setPicked] = useState<Set<string>>(
+    () => new Set(choice.availableUnitIds.slice(0, choice.max)));
+  const atCap = picked.size >= choice.max;
+  const toggle = (uid: string) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else if (next.size < choice.max) next.add(uid);
+      return next;
+    });
+  };
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
+        padding: 22, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+      }}>
+        <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
+          Behind Enemy Lines — send up to {choice.max} units to {targetName}
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>
+          Choose up to {choice.max} units (any theatre) from the Rebel Base to move to {targetName}
+          {' '}(ignoring leaders, transport, and adjacency). Combat resolves immediately after.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {units.map((u) => {
+            const t = G.catalog.unitTypes[u.typeId];
+            const isOn = picked.has(u.instanceId);
+            const disabled = !isOn && atCap;
+            return (
+              <label key={u.instanceId} style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: 4,
+                background: '#1f2128', borderRadius: 3,
+                cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+              }}>
+                <input
+                  type="checkbox"
+                  checked={isOn}
+                  disabled={disabled}
+                  onChange={() => toggle(u.instanceId)}
+                />
+                <span style={{ color: '#fff', fontSize: 13 }}>
+                  {t?.name ?? u.typeId}
+                  <span style={{ color: '#888', fontSize: 11 }}> · {t?.theater}</span>
+                </span>
               </label>
             );
           })}

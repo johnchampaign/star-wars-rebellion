@@ -1782,6 +1782,35 @@ export function resolveLeadStrikeTeamUnits(G: GameState, unitIds: string[]): { o
   return { ok: true };
 }
 
+/** Behind Enemy Lines (Rebel, RoE): Rebel picks up to 5 units from the
+ *  Rebel Base to move to the target, then combat resolves. Mirrors
+ *  resolveLeadStrikeTeamUnits but isn't ground-restricted and reads the
+ *  recorded source container (post-reveal aware). */
+export function resolveBehindEnemyLinesUnits(G: GameState, unitIds: string[]): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'BehindEnemyLinesUnits') {
+    return { ok: false, reason: 'no-pending-behind-enemy-lines' };
+  }
+  if (unitIds.length > choice.max) return { ok: false, reason: `too-many:${unitIds.length}/${choice.max}` };
+  const seen = new Set<string>();
+  for (const uid of unitIds) {
+    if (!choice.availableUnitIds.includes(uid)) return { ok: false, reason: `illegal-unit:${uid}` };
+    if (seen.has(uid)) return { ok: false, reason: `duplicate:${uid}` };
+    seen.add(uid);
+  }
+  const { targetSystemId, sourceSystemId } = choice;
+  for (const uid of unitIds) M.moveUnit(G, uid, sourceSystemId, targetSystemId);
+  log(G, { kind: 'behind-enemy-lines', side: 'Rebel', payload: {
+    systemId: targetSystemId, moved: unitIds.length,
+  }});
+  G.pendingChoice = undefined;
+  beginCombat(G, 'Rebel', sourceSystemId, targetSystemId);
+  runCombat(G);
+  if (G.pendingChoice || G.pendingCombat) return { ok: true };
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Oversee Project: Empire picks which queued unit to deploy. */
 export function resolveOverseeProjectPick(G: GameState, queueIndex: number, slot: 1 | 2): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;

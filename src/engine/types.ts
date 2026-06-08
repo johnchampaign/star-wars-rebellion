@@ -569,6 +569,18 @@ export type ChoiceRequest =
       targetSystemId: SystemId;
     }
   | {
+      // Behind Enemy Lines (Rebel, RoE): pick up to 5 units (ANY theatre)
+      // from the Rebel Base to move to the target system, ignoring leaders
+      // and adjacency, then resolve combat. Like LeadStrikeTeamUnits but
+      // not ground-restricted and max 5.
+      kind: 'BehindEnemyLinesUnits';
+      side: Side; // 'Rebel'
+      targetSystemId: SystemId;
+      sourceSystemId: SystemId; // 'rebel-base-space' or the base's system post-reveal
+      availableUnitIds: UnitInstanceId[];
+      max: number; // 5
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated
