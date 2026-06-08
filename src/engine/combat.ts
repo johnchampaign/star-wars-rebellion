@@ -251,6 +251,19 @@ export function runCombat(G: GameState): void {
       // No space combat this round (only one side has space units) — mark done.
       c.roundTheatersDone.push('space');
     }
+
+    // Death Star Plans 2/3 window — RAW: "If there is at least 1 fighter AFTER
+    // the space battle step, reveal this card to roll 3 dice." Offer it here,
+    // once per round the instant the space step resolves — NOT only at combat
+    // end. Players survived a round in the Death Star's system with X-Wings
+    // left but never got the window because the engine waited until combat was
+    // over (by which point their fighters were dead). (Reports #139, #146.)
+    if (c.roundTheatersDone.includes('space') && !c.dsPlansOfferedThisRound) {
+      c.dsPlansOfferedThisRound = true;
+      maybePostDeathStarPlansChoice(G, c);
+      if (G.pendingChoice) return; // paused for the Rebel's attempt/decline
+    }
+
     // Ground sub-step
     if (!c.roundTheatersDone.includes('ground') && bothSidesHaveTheater(G, c.systemId, 'ground')) {
       runTheater(G, c, 'ground');
@@ -384,6 +397,7 @@ export function runCombat(G: GameState): void {
       } else {
         c.round++;
         c.roundTheatersDone = undefined; // reset for next round
+        c.dsPlansOfferedThisRound = false; // fresh Death Star Plans window next round
         c.retreatStepDoneThisRound = false;
         c.retreatDecidedThisRound = []; // each round each side gets a fresh retreat decision
         // No Escape only lasts the round it was played.
@@ -2230,11 +2244,11 @@ export function resolveCombatObjectivePick(
  *  Split out so it can run either inline (≤1 objective) or after the
  *  player's PlayObjective choice resolves (2+ objectives). */
 function finishCombatTail(G: GameState, c: CombatState): void {
-  // Death Star Plans 2/3 — player-discretion attempt. RAW eligibility:
-  // (1) Rebel holds the card, (2) at least one Rebel fighter is at the
-  // combat system after the space battle step (i.e. now), (3) at least one
-  // Death Star is here to destroy. Post the choice; resolver rolls dice.
-  if (!G.isGameOver) maybePostDeathStarPlansChoice(G, c);
+  // Death Star Plans 2/3 — combat-end catch for the edge where combat ends in
+  // a round whose space step never offered the window (e.g. a ground-only
+  // finish). The per-round window inside the loop is the primary path now;
+  // skip here if it already fired this round so the Rebel isn't asked twice.
+  if (!G.isGameOver && !c.dsPlansOfferedThisRound) maybePostDeathStarPlansChoice(G, c);
 
   G.pendingCombat = undefined;
 
@@ -2316,6 +2330,14 @@ function maybePostDeathStarPlansChoice(G: GameState, c: CombatState): void {
   }});
 }
 
+/** After a Death Star Plans attempt resolves, resume the combat loop if the
+ *  window was offered mid-combat (the per-round path). At the combat-end
+ *  window, pendingCombat is already cleared, so this is a no-op there. */
+function resumeAfterDsPlans(G: GameState): { ok: boolean } {
+  if (G.pendingCombat && G.pendingCombat.step !== 'Ended') runCombat(G);
+  return { ok: true };
+}
+
 /** Resolve a Death Star Plans 2/3 attempt. `attempt === true` means the
  *  Rebel reveals the card and rolls 3 dice; on direct-hit, destroy a
  *  Death Star + gain reputation + discard the card. On no hit, the card
@@ -2331,7 +2353,7 @@ export function resolveDeathStarPlansAttempt(
     log(G, { kind: 'death-star-plans-declined', side: 'Rebel', payload: {
       objectiveId: pc.objectiveId, systemId: pc.systemId,
     }});
-    return { ok: true };
+    return resumeAfterDsPlans(G);
   }
   // RAW: roll 3 dice. Color doesn't matter for mission-style rolls; pick red.
   const faces: string[] = [];
@@ -2354,7 +2376,7 @@ export function resolveDeathStarPlansAttempt(
       log(G, { kind: 'death-star-plans-blocked-by-shield-bunker', side: 'Rebel', payload: {
         objectiveId: pc.objectiveId, systemId: pc.systemId, faces,
       }});
-      return { ok: true };
+      return resumeAfterDsPlans(G);
     }
     // RoE "Secure the Plans" Imperial mission (rules p.8) places a target
     // marker on a remote system; "while the marker remains, Rebels cannot
@@ -2364,7 +2386,7 @@ export function resolveDeathStarPlansAttempt(
       log(G, { kind: 'death-star-plans-blocked-by-target-marker', side: 'Rebel', payload: {
         objectiveId: pc.objectiveId, systemId: pc.systemId, source: 'secure-the-plans', faces,
       }});
-      return { ok: true };
+      return resumeAfterDsPlans(G);
     }
     // Death Star can't be damaged by normal attacks (health.color === null),
     // but RAW explicitly says "destroy" — bypass damage and just remove.
@@ -2385,5 +2407,5 @@ export function resolveDeathStarPlansAttempt(
       objectiveId: pc.objectiveId, systemId: pc.systemId, faces,
     }});
   }
-  return { ok: true };
+  return resumeAfterDsPlans(G);
 }

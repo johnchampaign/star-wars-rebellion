@@ -1103,6 +1103,10 @@ export type CombatState = {
   // Whether the end-of-round retreat window has been resolved for the
   // current round. Reset at the start of each new round.
   retreatStepDoneThisRound?: boolean;
+  // Whether the Death Star Plans window has been offered after THIS round's
+  // space battle step. Reset each round. Prevents re-offering every loop
+  // re-entry and avoids a duplicate offer at combat end.
+  dsPlansOfferedThisRound?: boolean;
   // Sides that have decided this round's retreat window (whether by
   // retreating or declining). Without this, declining doesn't mark the
   // decision and the engine infinite-loops re-posting RetreatDecision.
