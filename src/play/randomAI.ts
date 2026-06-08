@@ -1411,6 +1411,12 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'AmbitionsOfPowerOffer' && G.pendingChoice.side === side) {
     return phases.resolveAmbitionsOfPowerOffer(G, true).ok;
   }
+  // Early Promotion / Rebel Extremist branch (RoE): take the recruit
+  // branch — a new leader (Motti / Saw) in the pool is generally stronger
+  // than a random starting action card.
+  if (G.pendingChoice && G.pendingChoice.kind === 'StartingCardBranch' && G.pendingChoice.side === side) {
+    return phases.resolveStartingCardBranch(G, 'recruit').ok;
+  }
   // Under the Radar keep (Rebel/RoE): hold the FIRST peeked probe. Ideally
   // the AI would hold a probe pointing at a system near its base to keep it
   // out of the Empire's reach, but it doesn't reason about its own base

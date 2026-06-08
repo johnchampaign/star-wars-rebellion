@@ -237,6 +237,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'HeistChoice':              return pc.side === side;
     case 'UnderTheRadarKeep':        return pc.side === side;
     case 'UnderTheRadarReturn':      return pc.side === side;
+    case 'StartingCardBranch':       return pc.side === side;
     // Robust default: ANY side-tagged choice belongs to the side it names, so
     // if that side is the AI, the AI owes it. This catches choice kinds the AI
     // can resolve but that aren't explicitly listed above — without it, such a
@@ -2115,6 +2116,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <UnderTheRadarReturnModal G={G} choice={G.pendingChoice}
           onAccept={(accept) => {
             const r = phases.resolveUnderTheRadarReturn(G, accept);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'StartingCardBranch'
+        && G.pendingChoice.side === humanSide && (
+        <StartingCardBranchModal G={G} choice={G.pendingChoice}
+          onAction={(action) => {
+            const r = phases.resolveStartingCardBranch(G, action);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -11479,6 +11492,47 @@ function SecretMissionPickModal({
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StartingCardBranchModal({
+  G, choice, onAction,
+}: {
+  G: GameState;
+  choice: { side: Side; cardId: string; canDraw: boolean };
+  onAction: (action: 'draw' | 'recruit') => void;
+}) {
+  const cardName = G.catalog.actions[choice.cardId]?.name ?? choice.cardId;
+  const color = sideColor(choice.side);
+  const recruitLabel = choice.cardId === 'early-promotion'
+    ? 'Recruit Admiral Motti, place Motti & Tarkin in an Imperial system'
+    : 'Lose 1 reputation, recruit Saw Gerrera';
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 520, width: '92%',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color, marginTop: 0 }}>{cardName} — choose</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+          Pick one effect:
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {choice.canDraw && (
+            <button className="tab-button" onClick={() => onAction('draw')} style={{ textAlign: 'left' }}>
+              Draw a starting action card
+            </button>
+          )}
+          <button className="tab-button active" onClick={() => onAction('recruit')} style={{ textAlign: 'left', fontWeight: 700 }}>
+            {recruitLabel}
+          </button>
         </div>
       </div>
     </div>

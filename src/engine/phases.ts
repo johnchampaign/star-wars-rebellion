@@ -4893,47 +4893,22 @@ function applyImmediateActionCardEffect(G: GameState, side: Side, cardId: string
       }});
       break;
     }
-    case 'early-promotion': {
-      // RAW: "Draw 1 starting card, or recruit Motti (S2 G1). Place Motti
-      // and Tarkin in any Imperial system." MVP scope: take the recruit
-      // branch (the more powerful effect almost always — pulling a new
-      // leader into the pool plus a Tarkin redeploy). Auto-picks the
-      // first Imperial-loyal or subjugated system as the placement target.
-      // The "draw a starting card" alternative branch and per-card system
-      // pick are TODOs once the engine has a starting-card-draw affordance.
-      if (leaderRecruitable(G, 'Empire', 'motti')) {
-        G.empire.leaderPool.push('motti' as LeaderId);
-        log(G, { kind: 'recruit-leader', side: 'Empire', payload: {
-          leaderId: 'motti', via: 'early-promotion',
-        }});
-      }
-      // Place Motti + Tarkin at the first Imperial system if we can find one.
-      const targetSys = Object.entries(G.map.systems)
-        .find(([_sid, ss]) => ss.loyalty === 'imperial' || ss.subjugated)?.[0];
-      if (targetSys) {
-        for (const lid of ['motti', 'tarkin'] as LeaderId[]) {
-          if (G.empire.leaderPool.includes(lid)) {
-            const i = G.empire.leaderPool.indexOf(lid);
-            G.empire.leaderPool.splice(i, 1);
-            M.placeLeader(G, 'Empire', lid, targetSys);
-          }
-        }
-      }
-      break;
-    }
+    case 'early-promotion':
     case 'rebel-extremist': {
-      // RAW: "Either draw another starting action card, or lose 1
-      // reputation and recruit Saw Gerrera (S1 G3)." MVP scope: take the
-      // recruit branch. Rebels lose 1 reputation and Saw enters the
-      // leader pool. The "draw another starting card" alternative is a
-      // TODO when the starting-card-draw UI lands.
-      M.loseReputation(G, 1);
-      if (leaderRecruitable(G, 'Rebel', 'saw-gerrera')) {
-        G.rebel.leaderPool.push('saw-gerrera' as LeaderId);
-        log(G, { kind: 'recruit-leader', side: 'Rebel', payload: {
-          leaderId: 'saw-gerrera', via: 'rebel-extremist',
-        }});
+      // RAW binary branch: draw a starting action card, OR take the recruit
+      // branch (Early Promotion → recruit Motti + place Motti & Tarkin;
+      // Rebel Extremist → lose 1 rep + recruit Saw Gerrera). Post a branch
+      // choice when the starting-action draw pile has a card; otherwise the
+      // draw branch is unavailable, so go straight to recruit.
+      const startingDeck = (side === 'Empire' ? G.empire : G.rebel).startingActionDeck ?? [];
+      if (startingDeck.length === 0) {
+        applyStartingCardRecruitBranch(G, cardId);
+        break;
       }
+      G.pendingChoice = { kind: 'StartingCardBranch', side, cardId, canDraw: true };
+      log(G, { kind: 'choice-request', side, payload: {
+        kind: 'StartingCardBranch', cardId, canDraw: true,
+      }});
       break;
     }
     case 'secret-facility':
@@ -4970,6 +4945,56 @@ function applyImmediateActionCardEffect(G: GameState, side: Side, cardId: string
       break;
     }
   }
+}
+
+/** Apply the RECRUIT branch of Early Promotion / Rebel Extremist (the
+ *  non-draw side of the binary). Shared by the auto path (empty starting
+ *  deck) and the branch resolver. */
+function applyStartingCardRecruitBranch(G: GameState, cardId: string): void {
+  if (cardId === 'early-promotion') {
+    // Recruit Motti, then place Motti + Tarkin at the first Imperial system.
+    if (leaderRecruitable(G, 'Empire', 'motti')) {
+      G.empire.leaderPool.push('motti' as LeaderId);
+      log(G, { kind: 'recruit-leader', side: 'Empire', payload: { leaderId: 'motti', via: 'early-promotion' } });
+    }
+    const targetSys = Object.entries(G.map.systems)
+      .find(([_sid, ss]) => ss.loyalty === 'imperial' || ss.subjugated)?.[0];
+    if (targetSys) {
+      for (const lid of ['motti', 'tarkin'] as LeaderId[]) {
+        const i = G.empire.leaderPool.indexOf(lid);
+        if (i >= 0) {
+          G.empire.leaderPool.splice(i, 1);
+          M.placeLeader(G, 'Empire', lid, targetSys);
+        }
+      }
+    }
+  } else if (cardId === 'rebel-extremist') {
+    M.loseReputation(G, 1);
+    if (leaderRecruitable(G, 'Rebel', 'saw-gerrera')) {
+      G.rebel.leaderPool.push('saw-gerrera' as LeaderId);
+      log(G, { kind: 'recruit-leader', side: 'Rebel', payload: { leaderId: 'saw-gerrera', via: 'rebel-extremist' } });
+    }
+  }
+}
+
+/** Resolve the Early Promotion / Rebel Extremist binary branch. `action`
+ *  is 'draw' (take 1 from the starting-action draw pile) or 'recruit'
+ *  (the Motti / Saw branch). */
+export function resolveStartingCardBranch(G: GameState, action: 'draw' | 'recruit'): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'StartingCardBranch') return { ok: false, reason: 'no-pending' };
+  const f = faction(G, pc.side);
+  if (action === 'draw') {
+    const deck = f.startingActionDeck ?? [];
+    if (deck.length === 0) return { ok: false, reason: 'starting-deck-empty' };
+    const drawn = deck.shift()!;
+    f.actionHand.push(drawn);
+    log(G, { kind: 'starting-card-draw', side: pc.side, payload: { cardId: drawn, via: pc.cardId } });
+  } else {
+    applyStartingCardRecruitBranch(G, pc.cardId);
+  }
+  G.pendingChoice = undefined;
+  return { ok: true };
 }
 
 /** Resolve the arming step for Secret Facility / Sweep the Area: stash the

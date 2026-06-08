@@ -162,6 +162,11 @@ export type FactionState = {
   actionDeck: string[];
   actionHand: string[];
   actionDiscard: string[]; // returned to the box, kept for analytics only
+  // Starting action cards not dealt to the opening hand. RoE "Early
+  // Promotion" / "Rebel Extremist" let a player draw 1 from this pile as an
+  // alternative to their recruit branch. Empty once exhausted. Present on
+  // both sides; only the RoE cards consume it.
+  startingActionDeck?: string[];
 
   missionDeck: string[];
   missionHand: string[];
@@ -644,6 +649,17 @@ export type ChoiceRequest =
       kind: 'UnderTheRadarReturn';
       side: Side; // 'Rebel'
       heldProbe: string;
+    }
+  | {
+      // RoE Early Promotion / Rebel Extremist binary branch: draw a starting
+      // action card, OR take the recruit branch (recruit Motti / Saw +
+      // side effects). `cardId` identifies which RoE card posted this.
+      kind: 'StartingCardBranch';
+      side: Side;
+      cardId: string; // 'early-promotion' | 'rebel-extremist'
+      // Whether the draw branch is available (the starting-action draw pile
+      // is non-empty). The recruit branch is always offered.
+      canDraw: boolean;
     }
   | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt

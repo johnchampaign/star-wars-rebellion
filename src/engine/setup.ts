@@ -436,6 +436,11 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   shuffle(rng, empireStartingActions);
   rebel.actionHand = rebelStartingActions.slice(0, 2);
   empire.actionHand = empireStartingActions.slice(0, 2);
+  // The un-dealt starting action cards form a draw pile. RoE Early
+  // Promotion / Rebel Extremist let a player draw 1 from it as an
+  // alternative to their recruit branch. (Base game never touches it.)
+  rebel.startingActionDeck = rebelStartingActions.slice(2);
+  empire.startingActionDeck = empireStartingActions.slice(2);
 
   rebel.actionDeck = shuffle(rng, Object.values(catalog.actions).filter((a) => a.side === 'Rebel' && !a.isStarting && inSet(a)).map((a) => a.id));
   empire.actionDeck = shuffle(rng, Object.values(catalog.actions).filter((a) => a.side === 'Empire' && !a.isStarting && inSet(a)).map((a) => a.id));
