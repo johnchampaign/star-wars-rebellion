@@ -15,7 +15,8 @@
       "Phase 5d-handlers Wave D: wired 4 RoE action cards (Trust in the Force, False Orders, Lord Vader's Orders, Baze's Loyalty). Lord Vader's Orders timing changed from Immediate to Assignment so it dispatches through the existing Assignment-card path.",
       "Phase 5d-handlers Wave E: wired 2 RoE Special-timing action cards (Track Them, Something to Fight For). Both use inline event triggers + offer modals.",
       "Phase 5d-handlers Wave F: wired 2 RoE Empire Special cards (Post Bounty, Ambitions of Power). Post Bounty introduces a new 'bounty' attachment ring; Ambitions of Power adds the FactionState.leaderPoolCapBonus field.",
-      "Phase 5d-handlers Wave G: wired 1 RoE action card (He Means Well). Adds the 'k2so' AttachmentKind; the ring grants +1 minor SpecOps and +1 minor Intel to the bearer. Phase 6 RoE rule \"minor skill icons count toward mission skill requirements\" lands alongside."
+      "Phase 5d-handlers Wave G: wired 1 RoE action card (He Means Well). Adds the 'k2so' AttachmentKind; the ring grants +1 minor SpecOps and +1 minor Intel to the bearer. Phase 6 RoE rule \"minor skill icons count toward mission skill requirements\" lands alongside.",
+      "Phase 5d-handlers Wave H: wired 1 RoE action card (Under the Radar) + the new play-immediate-action-card affordance (requestImmediateActionCardPlay / PlayImmediateActionCard / etc.). Under the Radar's MVP peeks the top 4 probes for the Rebel; the multi-turn \"keep one facedown and return later\" mechanic is a follow-up."
     ]
   },
   "actions": [
@@ -610,7 +611,7 @@
         "cassian-andor",
         "saw-gerrera"
       ],
-      "effectKey": "",
+      "effectKey": "under-the-radar",
       "rulesText": "Look at the top 4 probe cards. Keep 1 facedown and replace the others at the top or bottom of the deck in any order. At the start of your turn in the Command phase, you may return that probe card to the top of the probe deck.",
       "image": "",
       "set": "rote"

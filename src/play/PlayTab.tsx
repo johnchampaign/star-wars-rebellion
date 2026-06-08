@@ -198,6 +198,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'ResearchAndDevelopmentProjectPick': return pc.side === side;
     case 'RecruitActionCardPick':    return pc.side === side;
     case 'PlayAssignmentActionCard': return pc.side === side;
+    case 'PlayImmediateActionCard':  return pc.side === side;
     case 'ActionCardSystemPick':     return pc.side === side;
     case 'AttachRingPick':           return pc.side === side;
     case 'DeployUnitPick':           return pc.side === side;
@@ -1154,6 +1155,30 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
               </button>
             );
           })()}
+          {/* Immediate-action-card play button (RoE: Under the Radar etc.).
+              Shown during Assignment OR Command on the player's own turn
+              whenever a playable Immediate card is in hand. */}
+          {(G.phase === 'Assignment' || G.phase === 'Command')
+            && G.currentPlayer === humanSide
+            && !G.pendingChoice
+            && (() => {
+              const playable = phases.playableImmediateActionCards(G, humanSide);
+              if (playable.length === 0) return null;
+              return (
+                <button
+                  className="tab-button"
+                  onClick={() => {
+                    const r = phases.requestImmediateActionCardPlay(G, humanSide);
+                    if (!r.ok) alert(`Cannot play: ${r.reason}`);
+                    persist(); refresh();
+                  }}
+                  title={`${playable.length} playable Immediate card${playable.length === 1 ? '' : 's'}`}
+                  style={{ marginLeft: 6 }}
+                >
+                  Play immediate card ({playable.length})
+                </button>
+              );
+            })()}
         </span>
       </div>
 
@@ -1681,6 +1706,21 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           }}
           onCancel={() => {
             phases.cancelAssignmentActionCardPlay(G);
+            persist(); refresh();
+          }} />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'PlayImmediateActionCard'
+        && G.pendingChoice.side === humanSide && (
+        <PlayImmediateActionCardModal G={G} choice={G.pendingChoice}
+          onPick={(cid) => {
+            const r = phases.playImmediateActionCard(G, cid);
+            if (!r.ok) alert(`Cannot play: ${r.reason}`);
+            persist(); refresh();
+          }}
+          onCancel={() => {
+            phases.cancelImmediateActionCardPlay(G);
             persist(); refresh();
           }} />
       )}
@@ -9732,6 +9772,57 @@ function PlayAssignmentActionCardModal({
               >
                 <div style={{ fontWeight: 700, color: '#fff' }}>{card.name}</div>
                 <div style={{ fontSize: 11, color: '#aaa' }}>Leader: {leaderName}</div>
+                <div style={{ fontSize: 11, color: '#ccc', marginTop: 4, fontStyle: 'italic' }}>{card.rulesText}</div>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+          <button className="tab-button" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlayImmediateActionCardModal({
+  G, choice, onPick, onCancel,
+}: {
+  G: GameState;
+  choice: { kind: 'PlayImmediateActionCard'; side: Side; candidates: string[] };
+  onPick: (cardId: string) => void;
+  onCancel: () => void;
+}) {
+  const color = sideColor(choice.side);
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color, marginTop: 0 }}>Play an Immediate action card</h3>
+        <div style={{ color: '#aaa', fontSize: 13, marginBottom: 10 }}>
+          Pick one to play. Its effect resolves immediately and the card discards.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {choice.candidates.map((cid) => {
+            const card = G.catalog.actions[cid];
+            if (!card) return null;
+            const reqs = (card.leaderRequirement ?? [])
+              .map((lid) => G.catalog.leaders[lid]?.name ?? lid).join(' / ');
+            return (
+              <button
+                key={cid}
+                className="tab-button"
+                onClick={() => onPick(cid)}
+                style={{ textAlign: 'left', padding: '8px 10px' }}
+              >
+                <div style={{ fontWeight: 700, color: '#fff' }}>{card.name}</div>
+                <div style={{ fontSize: 11, color: '#aaa' }}>Requires: {reqs || '(none)'}</div>
                 <div style={{ fontSize: 11, color: '#ccc', marginTop: 4, fontStyle: 'italic' }}>{card.rulesText}</div>
               </button>
             );

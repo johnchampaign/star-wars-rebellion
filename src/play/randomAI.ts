@@ -1411,6 +1411,15 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'AmbitionsOfPowerOffer' && G.pendingChoice.side === side) {
     return phases.resolveAmbitionsOfPowerOffer(G, true).ok;
   }
+  // PlayImmediateActionCard (RoE): the AI never PROACTIVELY opens this
+  // modal (no requestImmediateActionCardPlay call in the AI driver yet),
+  // but if it somehow gets posted to it, just pick the first candidate.
+  // Most Immediate cards are strict upsides for the playing side.
+  if (G.pendingChoice && G.pendingChoice.kind === 'PlayImmediateActionCard' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    if (c.candidates.length === 0) return phases.cancelImmediateActionCardPlay(G).ok;
+    return phases.playImmediateActionCard(G, c.candidates[0]).ok;
+  }
   // Blindside: always accept (denies pool opposition; clear upside).
   if (G.pendingChoice && G.pendingChoice.kind === 'BlindsideOffer' && G.pendingChoice.side === side) {
     return phases.resolveBlindsideOffer(G, true).ok;

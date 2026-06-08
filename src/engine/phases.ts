@@ -4356,6 +4356,101 @@ export function cancelAssignmentActionCardPlay(G: GameState): { ok: boolean; rea
   return { ok: true };
 }
 
+// ===== RoE Immediate-action-card play affordance =============================
+//
+// Most Immediate cards in the base game are droid rings (resolved via the
+// AttachRingPick path during Assignment). RoE adds Immediate cards with
+// other effects — Under the Radar, Lord Vader's Orders, etc. — that need
+// a dedicated "play immediate card" path. The flow mirrors the Assignment
+// one: requestImmediateActionCardPlay posts a PlayImmediateActionCard
+// choice listing eligible cards; playImmediateActionCard applies the
+// chosen card's effect via applyImmediateActionCardEffect. The button is
+// shown to the player during their own turn (Assignment or Command) when
+// at least one Immediate card is playable.
+
+export function playableImmediateActionCards(G: GameState, side: Side): string[] {
+  const f = faction(G, side);
+  const out: string[] = [];
+  for (const cid of f.actionHand) {
+    const card = G.catalog.actions[cid];
+    if (!card) continue;
+    if (card.timing !== 'Immediate') continue;
+    // Droid rings (R2-D2 / C-3PO / K-2SO) go through AttachRingPick during
+    // an Assignment turn, NOT this play-immediate path.
+    if (DROID_RING_CARDS[cid]) continue;
+    // Leader requirement: at least one named leader must be in the pool.
+    const reqs = card.leaderRequirement ?? [];
+    if (reqs.length > 0 && !reqs.some((lid) => f.leaderPool.includes(lid))) continue;
+    out.push(cid);
+  }
+  return out;
+}
+
+export function requestImmediateActionCardPlay(G: GameState, side: Side): { ok: boolean; reason?: string } {
+  if (G.currentPlayer !== side) return { ok: false, reason: 'not-your-turn' };
+  if (G.pendingChoice) return { ok: false, reason: 'pending-choice' };
+  const candidates = playableImmediateActionCards(G, side);
+  if (candidates.length === 0) return { ok: false, reason: 'no-playable-immediate-cards' };
+  G.pendingChoice = { kind: 'PlayImmediateActionCard', side, candidates };
+  log(G, { kind: 'choice-request', side, payload: { kind: 'PlayImmediateActionCard', candidates } });
+  return { ok: true };
+}
+
+export function cancelImmediateActionCardPlay(G: GameState): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'PlayImmediateActionCard') return { ok: false, reason: 'no-pending' };
+  G.pendingChoice = undefined;
+  log(G, { kind: 'choice-cancel', side: pc.side, payload: { kind: 'PlayImmediateActionCard' } });
+  return { ok: true };
+}
+
+export function playImmediateActionCard(G: GameState, cardId: string): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'PlayImmediateActionCard') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(cardId)) return { ok: false, reason: 'not-a-candidate' };
+  const side = pc.side;
+  const f = faction(G, side);
+  const i = f.actionHand.indexOf(cardId);
+  if (i < 0) return { ok: false, reason: 'card-not-in-hand' };
+  f.actionHand.splice(i, 1);
+  f.actionDiscard.push(cardId);
+  G.pendingChoice = undefined;
+  log(G, { kind: 'action-card-play', side, payload: {
+    cardId, leaderId: null, systemId: null, timing: 'Immediate',
+  }});
+  applyImmediateActionCardEffect(G, side, cardId);
+  return { ok: true };
+}
+
+/** Per-card Immediate-action-card effect dispatch. New cards add a switch case. */
+function applyImmediateActionCardEffect(G: GameState, side: Side, cardId: string): void {
+  switch (cardId) {
+    case 'under-the-radar': {
+      // RAW: "Look at the top 4 probe cards. Keep 1 facedown, replace the
+      // others at the top or bottom of the deck in any order. At the start
+      // of your turn in the Command phase, you may return that probe card
+      // to the top of the probe deck."
+      //
+      // MVP scope: peek the top 4 probes and surface them to the Rebel via
+      // a notice (they learn the next 4 systems the Empire would probe).
+      // The "keep one facedown / optionally return it later" multi-turn
+      // state isn't built yet; this commit ships the information-gain
+      // part of the card. Adding the facedown-and-return mechanic is a
+      // follow-up.
+      const peek = G.probeDeck.slice(0, 4);
+      const names = peek.map((pid) => G.catalog.probes[pid]?.systemName ?? pid);
+      pushNotice(G, `utr-t${G.timeMarker}`, 'Under the Radar',
+        `Top 4 probe cards (next-up systems for the Empire's probes): ${names.join(', ')}.`);
+      log(G, { kind: 'under-the-radar-peek', side, payload: { probes: peek } });
+      break;
+    }
+    default: {
+      log(G, { kind: 'action-card-unknown', side, payload: { cardId, timing: 'Immediate' } });
+      break;
+    }
+  }
+}
+
 /** Per-card "needs a system pick?" + legal-system filter. */
 function legalSystemsForAssignmentCard(G: GameState, side: Side, cardId: string): SystemId[] | null {
   // "Boba Fett, Where?" — Rebel cannot use action cards at systems where

@@ -447,6 +447,17 @@ export type ChoiceRequest =
       candidates: string[]; // objective card ids in the discard pile
     }
   | {
+      // RoE Immediate-action-card play modal (the analogue of
+      // PlayAssignmentActionCard but for cards with timing === 'Immediate'
+      // that don't go through the droid-ring path). Empire/Rebel opens this
+      // via requestImmediateActionCardPlay during their own Command or
+      // Assignment turn; picking a card calls playImmediateActionCard,
+      // which dispatches to applyImmediateActionCardEffect.
+      kind: 'PlayImmediateActionCard';
+      side: Side;
+      candidates: string[]; // card ids
+    }
+  | {
       // Post Bounty (Empire/Jabba, RoE Special): after a Rebel mission fails,
       // may discard this card to attach a bounty ring to one of the Rebel
       // leaders that attempted it. If the bountied leader is later captured,
