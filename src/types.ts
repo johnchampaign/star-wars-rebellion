@@ -202,6 +202,21 @@ export type TacticCard = {
   rulesText: string;
   image: string;
   set?: ContentSet;
+  // ----- Cinematic Combat (RoE advanced tactic cards) -----
+  // These fields are present only on `cinematic: true` cards. Cinematic
+  // Combat (rules p.9) replaces the standard tactic deck with these
+  // side-specific advanced cards, each with a primary + secondary ability
+  // and (usually) a primary-unit prerequisite for the primary ability.
+  cinematic?: boolean;
+  side?: Side;                 // advanced cards are side-specific
+  // Primary ability requires at least 1 of this unit type in the system
+  // (the "unit icon" prerequisite, rules p.9). Undefined = no prereq.
+  primaryUnit?: string;        // unit type id, e.g. 'tie-fighter'
+  primaryText?: string;        // verbatim card text for the top (primary) ability
+  secondaryText?: string;      // verbatim card text for the bottom (secondary) ability
+  // Effect keys wired in Phase 7c; empty until then.
+  primaryEffectKey?: string;
+  secondaryEffectKey?: string;
 };
 
 export type ProbeCard = {

@@ -525,9 +525,13 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   const firstObj = objectiveDeck.shift();
   if (firstObj) rebel.objectiveHand!.push(firstObj);
 
-  // Tactic decks
-  const groundTacticDeck = shuffle(rng, expandTacticDeck(Object.values(catalog.tactics).filter((t) => t.theater === 'ground' && inSet(t))));
-  const spaceTacticDeck = shuffle(rng, expandTacticDeck(Object.values(catalog.tactics).filter((t) => t.theater === 'space' && inSet(t))));
+  // Standard tactic decks. Cinematic Combat advanced tactic cards
+  // (cinematic:true) NEVER go into these — they're the alternate-module
+  // deck (Phase 7b builds the cinematic combat machine and assembles them
+  // into separate side-specific decks). So a non-cinematic game (even with
+  // the expansion on) uses exactly the base tactic deck, unchanged.
+  const groundTacticDeck = shuffle(rng, expandTacticDeck(Object.values(catalog.tactics).filter((t) => t.theater === 'ground' && !t.cinematic && inSet(t))));
+  const spaceTacticDeck = shuffle(rng, expandTacticDeck(Object.values(catalog.tactics).filter((t) => t.theater === 'space' && !t.cinematic && inSet(t))));
 
   // ----- Assemble GameState -----
   const G: GameState = {
