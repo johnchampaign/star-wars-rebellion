@@ -1454,6 +1454,35 @@ function applyStartOfCombatActionCardEffect(G: GameState, c: CombatState, side: 
       }});
       return;
     }
+    case 'baze-s-loyalty': {
+      // RoE (Chirrut): "Destroy 2 health-worth of units." DestroyUpToHealth
+      // is the right UX but its resolver assumes mission/Assignment context
+      // (resumeMissionAfterChoice) — wiring it into the combat-start batch
+      // continuation needs new plumbing. For now, auto-destroy 2 health of
+      // the smallest enemy units in the combat system. Logged as a TODO so
+      // a follow-up can convert this to a real player pick once the
+      // BazesLoyaltyTarget choice + resumeCombat plumbing exists.
+      const opp: Side = side === 'Rebel' ? 'Empire' : 'Rebel';
+      const ss = G.map.systems[c.systemId];
+      const targets = (ss?.units ?? [])
+        .filter((u) => u.side === opp && G.catalog.unitTypes[u.typeId]?.health.color !== null)
+        .slice()
+        .sort((a, b) => (G.catalog.unitTypes[a.typeId]?.health.value ?? 0) - (G.catalog.unitTypes[b.typeId]?.health.value ?? 0));
+      let budget = 2;
+      const killed: string[] = [];
+      for (const u of targets) {
+        const h = G.catalog.unitTypes[u.typeId]?.health.value ?? 0;
+        if (h === 0 || h > budget) continue;
+        M.destroyUnit(G, u.instanceId, 'bazes-loyalty');
+        killed.push(u.typeId);
+        budget -= h;
+        if (budget === 0) break;
+      }
+      log(G, { kind: 'combat-action-card-effect', side, payload: {
+        card: cardId, applied: `auto-destroyed ${killed.length} unit(s): ${killed.join(',')}`,
+      }});
+      return;
+    }
     default: {
       log(G, { kind: 'combat-action-card-not-implemented', side, payload: { card: cardId } });
       return;
@@ -1499,6 +1528,15 @@ function hasStartOfCombatLegalTarget(G: GameState, c: CombatState, cardId: strin
       const hasRebelShip = units.some((u) =>
         u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'space');
       return hasDeathStar && hasRebelShip;
+    }
+    case 'baze-s-loyalty': {
+      // RoE: "Destroy 2 health-worth of units." Needs any enemy (Imperial)
+      // unit in the system that can be damaged.
+      return units.some((u) => {
+        if (u.side !== 'Empire') return false;
+        const t = G.catalog.unitTypes[u.typeId];
+        return t?.health.color !== null;
+      });
     }
     default:
       return true;

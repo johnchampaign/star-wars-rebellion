@@ -11,7 +11,8 @@
       "rulesText: copy verbatim from the card.",
       "Populated by scripts/populate-cards.py from user-provided reference materials (33 entries matched).",
       "Populated by scripts/populate-cards.py from user-provided reference materials (34 entries matched).",
-      "Phase 5d (data-only): appended 14 Rise of the Empire action cards tagged set: \"rote\". effectKey is empty pending handler bindings."
+      "Phase 5d (data-only): appended 14 Rise of the Empire action cards tagged set: \"rote\". effectKey is empty pending handler bindings.",
+      "Phase 5d-handlers Wave D: wired 4 RoE action cards (Trust in the Force, False Orders, Lord Vader's Orders, Baze's Loyalty). Lord Vader's Orders timing changed from Immediate to Assignment so it dispatches through the existing Assignment-card path."
     ]
   },
   "actions": [
@@ -520,11 +521,11 @@
       "name": "Lord Vader's Orders",
       "side": "Empire",
       "isStarting": false,
-      "timing": "Immediate",
+      "timing": "Assignment",
       "leaderRequirement": [
         "krennic"
       ],
-      "effectKey": "",
+      "effectKey": "lord-vader-s-orders",
       "rulesText": "Look at the top 3 objective cards and replace them on top of the deck in any order.",
       "image": "",
       "set": "rote"
@@ -564,7 +565,7 @@
       "isStarting": true,
       "timing": "Assignment",
       "leaderRequirement": [],
-      "effectKey": "",
+      "effectKey": "false-orders",
       "rulesText": "Play at the end of the Assignment phase. Choose 1 lone Imperial leader assigned to a mission. Return that leader to the leader pool and the mission to the Imperial hand.",
       "image": "",
       "set": "rote"
@@ -591,7 +592,7 @@
         "jyn-erso",
         "chirrut-imwe"
       ],
-      "effectKey": "",
+      "effectKey": "trust-in-the-force",
       "rulesText": "Place this leader in a subjugated system. Gain 1 loyalty and destroy 1 triangle ground unit in the system.",
       "image": "",
       "set": "rote"
@@ -620,7 +621,7 @@
       "leaderRequirement": [
         "chirrut-imwe"
       ],
-      "effectKey": "",
+      "effectKey": "baze-s-loyalty",
       "rulesText": "Destroy 2 health-worth of units.",
       "image": "",
       "set": "rote"

@@ -4251,11 +4251,20 @@ function legalSystemsForAssignmentCard(G: GameState, side: Side, cardId: string)
     case 'temporary-alliance': {
       return all.filter((sid) => G.map.systems[sid]?.loyalty === 'neutral');
     }
+    // RoE Wave-D additions.
+    case 'trust-in-the-force': {
+      // RAW: "Place this leader in a subjugated system. Gain 1 loyalty and
+      // destroy 1 triangle ground unit in system."
+      return all.filter((sid) => G.map.systems[sid]?.subjugated);
+    }
     // No system pick needed:
     case 'rebel-planning':           return null; // Rebel Base
     case 'proceeding-as-planned':    return null; // attached to project, not a system
     case 'our-most-desperate-hour':  return null; // attached to a mission card in hand
     case 'start-the-evacuation':     return null; // moves units; no leader-placement
+    // RoE Wave-D — no system pick:
+    case 'lord-vader-s-orders':      return null; // peeks Rebel objective deck
+    case 'false-orders':             return null; // operates on Empire's assigned missions
     default: return null;
   }
 }
@@ -4717,6 +4726,68 @@ function applyAssignmentActionCardEffect(
       log(G, { kind: 'choice-request', side: 'Empire', payload: {
         kind: 'ProceedingAsPlannedPick', leaderId: resolverLeader, count: projectCandidates.length,
       }});
+      break;
+    }
+    // ---------- Rise of the Empire — Wave D action cards ----------
+    case 'trust-in-the-force': {
+      // RAW: place leader in subjugated system (consumeCardAndPlaceLeader
+      // already did the placement). Gain 1 loyalty + destroy 1 triangle
+      // ground unit in that system.
+      if (!systemId) break;
+      M.gainLoyalty(G, 'Rebel', systemId, 1);
+      const ss = G.map.systems[systemId];
+      if (ss) {
+        const triangleGround = ss.units.find((u) => {
+          if (u.side !== 'Empire') return false;
+          const t = G.catalog.unitTypes[u.typeId];
+          return t?.theater === 'ground' && t?.tier === 'triangle';
+        });
+        if (triangleGround) {
+          M.destroyUnit(G, triangleGround.instanceId, 'trust-in-the-force');
+        }
+      }
+      break;
+    }
+    case 'false-orders': {
+      // RAW: choose 1 LONE Imperial leader currently assigned to a mission.
+      // Return that leader to the pool and the mission to Imperial hand.
+      // Auto-picks the first such mission. (RAW timing is "End of
+      // Assignment" — the Rebel should play it after Empire has assigned;
+      // playing it earlier yields nothing.)
+      const lone = G.empire.leadersOnMissions.find((m) => m.leaderIds.length === 1);
+      if (!lone) {
+        log(G, { kind: 'action-card-noop', side: 'Rebel', payload: {
+          cardId, reason: 'no-lone-imperial-assignment',
+        }});
+        break;
+      }
+      const lid = lone.leaderIds[0];
+      const mid = lone.missionId;
+      // Strip the assignment.
+      const idx = G.empire.leadersOnMissions.indexOf(lone);
+      if (idx >= 0) G.empire.leadersOnMissions.splice(idx, 1);
+      // Return leader to Empire pool.
+      if (!G.empire.leaderPool.includes(lid)) G.empire.leaderPool.push(lid);
+      // Return mission card to Empire hand.
+      G.empire.missionHand.push(mid);
+      log(G, { kind: 'false-orders', side: 'Rebel', payload: {
+        targetLeaderId: lid, missionId: mid,
+      }});
+      break;
+    }
+    case 'lord-vader-s-orders': {
+      // RAW: "Look at the top 3 objective cards and replace them on top of
+      // the deck in any order." Without a reorder UI yet, we peek and put
+      // them back in the same order (degenerate case of "any order").
+      // Empire sees what's coming; can't actually rearrange.
+      const deck = G.rebel.objectiveDeck;
+      if (!deck || deck.length === 0) break;
+      const n = Math.min(3, deck.length);
+      const peek = deck.slice(0, n);
+      log(G, { kind: 'lord-vader-s-orders-peek', side: 'Empire', payload: {
+        objectiveIds: [...peek],
+      }});
+      // (deck order unchanged — peek only)
       break;
     }
     default: {
