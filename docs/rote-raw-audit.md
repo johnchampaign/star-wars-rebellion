@@ -72,15 +72,24 @@ after merge.
   DEFERRED — the engine keys missions by unique id; a 2nd copy means a
   duplicate id in the project deck, which risks mission-resolution/codec logic.
   Needs a small duplicate-card mechanism (e.g. a count) before it's safe.
-- [ ] **#12 Auto-setup places the DSUC in an Imperial-loyalty system, not a
-  remote; doesn't remove the remote's probe card.**
-- [ ] **#13 Leader-pool 8-cap auto-eliminates tail-first** (RAW: player chooses
-  which 8 to keep). Known/documented.
-- [ ] **#14 Confrontation auto-selects the marked leader; "eliminate this card"
-  is a discard** (matters once deck-recycle #4 exists).
-- [ ] **#15 Auto-heuristics stand in for player choices** (deal-damage split,
-  reroll picks — blanks only vs RAW free choice, special-heal target,
-  shield-absorb amount).
+- [x] **#12 Auto-setup DSUC placement** (partial). RoE auto-setup now places the
+  DSUC + 4 TIE + 1 Stormtrooper in a chosen REMOTE system (p.8) instead of
+  round-robining the DSUC across Imperial-loyalty systems. Interactive half was
+  #163. NOT done: removing that remote's probe card from the probe deck
+  (separate deck logic, low value) — documented sub-deviation.
+- [x] **#14 Confrontation "eliminate this card."** Fixed the part that matters
+  now recycle (#4) exists: when its effect fires, the card is removed from the
+  recyclable discard so it can't return. Leader-selection stays auto (accepted
+  — see #15).
+- **#13 Leader-pool 8-cap auto-eliminates tail-first.** ACCEPTED deviation —
+  RAW lets the player choose which 8 to keep; the cap rarely triggers and
+  tail-elimination is deterministic. A keep-which-8 prompt is a UI feature, not
+  a correctness fix.
+- **#15 Auto-heuristics stand in for player choices** — deal-damage target/
+  split, which dice to reroll (blanks-only vs RAW free choice), special-heal
+  target, shield-absorb amount, Confrontation leader pick. ACCEPTED — the auto
+  choices are near-optimal; making each interactive is a large UI surface for
+  marginal benefit.
 
 ### From-game bugs (related)
 - [x] **#163 RoE setup: can't place the Death Star Under Construction on a

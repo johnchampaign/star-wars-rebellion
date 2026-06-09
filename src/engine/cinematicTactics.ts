@@ -692,6 +692,12 @@ export function resolveCinematicEndOfRound(G: GameState, c: CombatState): void {
     })[0];
     (G.cinematicMarkedForElimination ??= []).push(leaderId);
     log(G, { kind: 'cinematic-confrontation-mark', side: e.side, payload: { leaderId, systemId: c.systemId } });
+    // RoE: Confrontation says "…and eliminate this card." When its effect fires
+    // the card is removed from the game, NOT discarded — so it must not return
+    // when the deck recycles (#4). Pull it from the recyclable discard.
+    const reb = G.rebel;
+    const di = (reb.cinematicTacticDiscard ?? []).indexOf('cin-rebel-ground-confrontation');
+    if (di >= 0) reb.cinematicTacticDiscard!.splice(di, 1);
   }
   c.cinematicEndOfRound = queue.filter((e) => e.kind !== 'capture' && e.kind !== 'confrontation');
 }

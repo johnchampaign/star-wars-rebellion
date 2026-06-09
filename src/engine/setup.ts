@@ -350,6 +350,29 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
     const stormtroopersToPlace = empireUnitsToPlace.filter((t) => t === 'stormtrooper').length - imperialSystems.length;
     const remainingEmpire = empireUnitsToPlace.filter((t) => t !== 'stormtrooper')
       .concat(new Array(Math.max(0, stormtroopersToPlace)).fill('stormtrooper'));
+    // RoE setup (rulebook p.8): the Death Star Under Construction is placed in a
+    // chosen REMOTE system together with 4 TIE Fighters + 1 Stormtrooper — NOT
+    // round-robined across Imperial-loyalty systems. (Interactive setup already
+    // allows this via setupDeployUnit; this keeps the auto-setup RAW-faithful.
+    // The probe-card removal for that remote is a separate refinement, skipped.)
+    if (expansion.enabled) {
+      const dsucIdx = remainingEmpire.indexOf('death-star-under-construction');
+      const remote = Object.keys(catalog.systems).find(
+        (id) => catalog.systems[id]?.isRemote && map.systems[id] && !map.systems[id].destroyed,
+      );
+      if (dsucIdx >= 0 && remote) {
+        const take = (typeId: string): boolean => {
+          const i = remainingEmpire.indexOf(typeId);
+          if (i < 0) return false;
+          remainingEmpire.splice(i, 1);
+          map.systems[remote].units.push(mkInstance(typeId, 'Empire'));
+          return true;
+        };
+        take('death-star-under-construction');
+        for (let i = 0; i < 4; i++) take('tie-fighter');
+        take('stormtrooper');
+      }
+    }
     let idx = 0;
     for (const typeId of remainingEmpire) {
       const sys = imperialSystems[idx % imperialSystems.length];
