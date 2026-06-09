@@ -1306,7 +1306,7 @@ function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): vo
   const pa = c.pendingAttack!;
 
   // Build the full hit list (rolled hits + bonus damage from tactics).
-  type Hit = { color: 'red' | 'black' | null; face: 'hit' | 'direct-hit'; source?: string };
+  type Hit = { color: 'red' | 'black' | null; face: 'hit' | 'direct-hit'; source?: string; convertible?: boolean };
   const rawHits: Hit[] = [];
   for (const d of pa.dice) {
     if (d.face === 'hit' || d.face === 'direct-hit') {
@@ -1330,27 +1330,28 @@ function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): vo
     rawHits.push({ color: null, face: 'direct-hit' });
   }
 
-  // "Target the Star Destroyers" (Wedge) — Rebel space attack, convert up
-  // to 2 black hits to red so they can damage Star Destroyers / other
-  // red-health Imperial ships. RAW says "up to 2"; we auto-apply max since
-  // the player elected to play the card, and only edge-case red-health
-  // unit lists make conversion ever undesirable.
+  // "Target the Star Destroyers" (Wedge) — Rebel space attack. RAW: the
+  // player MAY treat up to 2 of their black hits as red. We previously
+  // force-converted the max, which wasted black hits the player wanted to
+  // keep on black-health ships (e.g. finishing a TIE after the Star
+  // Destroyer was already dead — player report #171). Instead, mark up to
+  // 2 black hits as `convertible`: isLegalTarget (below) lets a convertible
+  // black hit strike a red-health unit OR a black-health unit, so the
+  // attacker's per-hit damage-assignment picks BECOME the conversion
+  // choice. Capping the marks at 2 enforces the "up to 2" limit.
   if (c.flags?.targetTheStarDestroyersActive && pa.side === 'Rebel' && pa.theater === 'space') {
-    let converted = 0;
+    let marked = 0;
     for (const h of rawHits) {
-      if (converted >= 2) break;
-      if (h.color === 'black' && h.face === 'hit') {
-        h.color = 'red';
-        converted++;
-      }
+      if (marked >= 2) break;
+      if (h.color === 'black' && h.face === 'hit') { h.convertible = true; marked++; }
     }
-    if (converted > 0) {
+    if (marked > 0) {
       pa.tacticsPlayed.push({
         card: 'target-the-star-destroyers',
-        detail: `Rebel: converted ${converted} black hit${converted === 1 ? '' : 's'} to red.`,
+        detail: `Rebel: up to ${marked} black hit${marked === 1 ? '' : 's'} may strike red-health ships (your damage choice).`,
       });
       log(G, { kind: 'combat-action-card-applied', side: 'Rebel', payload: {
-        card: 'target-the-star-destroyers', convertedBlackToRed: converted, theater: pa.theater, round: c.round,
+        card: 'target-the-star-destroyers', convertibleBlackHits: marked, theater: pa.theater, round: c.round,
       }});
     }
   }
@@ -1389,6 +1390,9 @@ function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): vo
     if (!t || t.health.color === null) return false; // undamageable
     if (shieldBunkerProtects(u.typeId)) return false; // RoE Shield Bunker
     if (h.face === 'direct-hit') return true;
+    // Target the Star Destroyers: a convertible black hit may strike a
+    // red-health unit as if it were red (in addition to black-health units).
+    if (h.convertible && t.health.color === 'red') return true;
     return h.color !== null && t.health.color === h.color;
   };
 

@@ -8552,6 +8552,22 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
             );
           })}
         </div>
+        {(() => {
+          // Explain why any no-tactic leaders in the pool aren't offered here.
+          // RR (twice): "A leader that does not have tactic values cannot
+          // activate a system." They're mission specialists, not commanders —
+          // surfacing this stops the "why can't I use them?" confusion (#172).
+          const noTactic = f.leaderPool
+            .map((lid) => G.catalog.leaders[lid])
+            .filter((l): l is NonNullable<typeof l> => !!l && (l.tacticValues.space + l.tacticValues.ground) === 0);
+          if (noTactic.length === 0) return null;
+          return (
+            <div style={{ fontSize: 11, color: '#888', marginTop: 6, fontStyle: 'italic' }}>
+              {noTactic.map((l) => l.name).join(', ')} can&apos;t activate a system (no tactic values) —
+              use {noTactic.length === 1 ? 'them' : 'these'} for missions instead.
+            </div>
+          );
+        })()}
       </div>
 
       {/* Step 2: Target */}
