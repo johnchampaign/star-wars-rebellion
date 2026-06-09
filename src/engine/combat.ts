@@ -312,7 +312,13 @@ export function runCombat(G: GameState): void {
         break;
       }
       c.retreatDecidedThisRound = c.retreatDecidedThisRound ?? [];
-      for (const side of [other(c.attackerSide), c.attackerSide] as const) {
+      // Retreat order: base game is DEFENDER-first (rr pp.5-6); RoE Cinematic
+      // Combat is CURRENT-PLAYER (attacker)-first ("Retreat: Starting with the
+      // current player…", rulebook p.9).
+      const retreatOrder: Side[] = c.cinematic
+        ? [c.attackerSide, other(c.attackerSide)]
+        : [other(c.attackerSide), c.attackerSide];
+      for (const side of retreatOrder) {
         if (c.retreated.includes(side)) continue; // already retreated this combat
         if (c.retreatDecidedThisRound.includes(side)) continue; // already decided this round (declined or retreated)
         if (c.flags?.cannotRetreatThisRound?.[side]) continue; // No Escape (single-round)

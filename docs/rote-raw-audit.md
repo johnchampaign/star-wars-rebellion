@@ -40,9 +40,10 @@ after merge.
   `scoreRaidOutposts` to also require no Imperial ground units. Test added.
 
 ### Medium
-- [ ] **#7 Cinematic retreat order is defender-first; RAW cinematic is
-  current-player(attacker)-first** (p.9). `combat.ts` retreat step iterates
-  `[defender, attacker]` for all combat. Base game stays defender-first.
+- [x] **#7 Cinematic retreat order.** Fixed: the retreat step now uses
+  `[attacker, defender]` in cinematic combat (rulebook p.9 "Retreat: Starting
+  with the current player…") and keeps `[defender, attacker]` in base combat.
+  Test `scripts/test-cinematic-retreat-order.mjs`.
 - [ ] **#8 "Immediate" objectives activate at Refresh, not on draw** (Raid
   Outposts, Rebel Cell). RAW p.8: reveal/resolve when drawn into hand.
 - [ ] **#9 Dice-reduction vs the 5-die cap order.** RAW p.9: reductions apply
