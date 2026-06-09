@@ -536,6 +536,14 @@ function planAssignment(G: GameState, side: Side): Array<{ missionId: string; le
       sum += r.fit;
     }
     if (sum < cost) return null; // infeasible — skip
+    // Skip missions with NO legal target on the board right now. Assigning one
+    // just leaves a face-down mission the AI can't reveal in the Command phase,
+    // so it ends up passing while holding unplayable missions (player reports
+    // #102/#118/#123). The Command phase already gates reveals on this same
+    // check; mirror it at assignment time so we don't commit a leader to a
+    // dead mission in the first place.
+    const tgt = missionTargets(G, side, missionId);
+    if (!tgt.permissive && tgt.systemIds.length === 0) return null;
     // Base mission value + situational + leader bonuses minus the
     // opportunity cost of using N leaders (we'd rather a 1-leader plan
     // than a 2-leader one all else equal).
