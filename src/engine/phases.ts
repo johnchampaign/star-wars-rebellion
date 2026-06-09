@@ -4476,7 +4476,12 @@ export function legalUnitsForIcon(
       if (shape === 'circle')   return roe
         ? ['airspeeder', 'golan-arms-turret']
         : ['airspeeder'];
-      if (shape === 'square')   return []; // no base-game Rebel square ground
+      // Rebel ground SQUARE builds the base-game structures (Shield Generator,
+      // Ion Cannon) — they carry a ground-square build icon per the printed
+      // components, and Target the Shield Generators / the Defensive Position
+      // objective only make sense if the Rebel can build them (player #161).
+      // Available in base game too (3 SG + 3 IC ship in the base box).
+      if (shape === 'square')   return ['shield-generator', 'ion-cannon'];
     }
   } else {
     if (type === 'space') {
