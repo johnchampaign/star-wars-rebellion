@@ -6,7 +6,7 @@ import ResourcesTab from './devtabs/ResourcesTab';
 import PositionsTab from './devtabs/PositionsTab';
 import MaskTab from './devtabs/MaskTab';
 import SilhouetteTab from './devtabs/SilhouetteTab';
-import TokensTab from './devtabs/TokensTab';
+import TokensTab, { ROTE_TOKENS_CONFIG } from './devtabs/TokensTab';
 import LeadersTab from './devtabs/LeadersTab';
 import CardsTab from './devtabs/CardsTab';
 import ProbeTab from './devtabs/ProbeTab';
@@ -15,7 +15,7 @@ import Lobby from './online/Lobby';
 import OnlinePlay from './online/OnlinePlay';
 import { readOnlineInvite } from './online/gameClient';
 
-type TabId = 'play' | 'systems' | 'adjacency' | 'regions' | 'resources' | 'positions' | 'mask' | 'silhouette' | 'tokens' | 'leaders' | 'cards' | 'probe';
+type TabId = 'play' | 'systems' | 'adjacency' | 'regions' | 'resources' | 'positions' | 'mask' | 'silhouette' | 'tokens' | 'tokens-rote' | 'leaders' | 'cards' | 'probe';
 
 const DEV_TABS: { id: TabId; label: string }[] = [
   { id: 'systems', label: 'systems' },
@@ -26,6 +26,7 @@ const DEV_TABS: { id: TabId; label: string }[] = [
   { id: 'mask', label: 'mask' },
   { id: 'silhouette', label: 'silhouette' },
   { id: 'tokens', label: 'tokens' },
+  { id: 'tokens-rote', label: 'tokens (RoE)' },
   { id: 'leaders', label: 'leaders' },
   { id: 'cards', label: 'cards' },
   { id: 'probe', label: 'probe' },
@@ -114,6 +115,7 @@ export default function App() {
         {tab === 'mask' && <MaskTab />}
         {tab === 'silhouette' && <SilhouetteTab />}
         {tab === 'tokens' && <TokensTab />}
+        {tab === 'tokens-rote' && <TokensTab config={ROTE_TOKENS_CONFIG} />}
         {tab === 'leaders' && <LeadersTab />}
         {tab === 'cards' && <CardsTab />}
         {tab === 'probe' && <ProbeTab />}
