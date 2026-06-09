@@ -196,5 +196,51 @@ console.log('\n[ activateSystem auto-triggers combat ]');
   check('combat resolved via auto-trigger path', G.pendingCombat === undefined);
 }
 
+// ---------- Retreating units don't carry damage into the next combat (#164) ----------
+console.log('\n[ Combat: retreat clears damage ]');
+{
+  const G = createGame(data, {
+    seed: 204, forcedBaseSystem: 'sullust',
+    forcedRebelLoyalty: ['naboo', 'corellia', 'kashyyyk'],
+    forcedImperialLoyalty: ['alderaan', 'malastare', 'mygeeto', 'rodia', 'utapau'],
+  });
+  // Empire star destroyer (has a leader, so it can retreat) + an escort, vs a
+  // rebel x-wing to deal a hit. Manually stage: put a damaged SD in felucia,
+  // give it a leader, then retreat it and confirm damage clears.
+  M.deployUnit(G, 'Empire', 'star-destroyer', 'felucia');
+  M.deployUnit(G, 'Empire', 'star-destroyer', 'felucia');
+  M.deployUnit(G, 'Rebel', 'x-wing', 'felucia');
+  G.empire.leadersOnBoard['felucia'] = ['darth-vader'];
+  const sd = G.map.systems['felucia'].units.find((u) => u.typeId === 'star-destroyer');
+  sd.damage = 1; // simulate a hit taken in a prior round
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  // Drive combat but force the Empire to retreat at its first RetreatDecision.
+  for (let i = 0; i < 1000 && G.pendingCombat; i++) {
+    const c = G.pendingCombat ? G.pendingChoice : null;
+    if (!c) { combat.runCombat(G); continue; }
+    if (c.kind === 'RetreatDecision' && c.side === 'Empire') {
+      combat.resolveRetreatDecision(G, c.legalDestinations[0], c.leadersInSystem?.[0] ?? null);
+    } else if (c.kind === 'CombatAttackerTactics') {
+      combat.resolveCombatAttackerTactics(G, { concentrateFireCardId: null, damageBoostCardIds: [] });
+    } else if (c.kind === 'CombatDefenderTactics') {
+      combat.resolveCombatDefenderTactics(G, { blockCardIds: [], sacrificeCardIds: [] });
+    } else if (c.kind === 'SpecialDieSpend') {
+      combat.resolveSpecialDieSpend(G, { draws: c.specialCount, playCardIds: [] });
+    } else if (c.kind === 'CombatAssignDamage') {
+      combat.resolveCombatAssignDamage(G, c.hits.map(() => null));
+    } else if (c.kind === 'RetreatDecision') {
+      combat.resolveRetreatDecision(G, null, null);
+    } else { break; }
+  }
+  // Find the retreated star destroyer (now wherever it went) and check damage.
+  let retreatedSd = null;
+  for (const s of Object.values(G.map.systems)) {
+    const u = s.units.find((x) => x.typeId === 'star-destroyer' && x.side === 'Empire');
+    if (u && s !== G.map.systems['felucia']) { retreatedSd = u; break; }
+  }
+  check('retreating star destroyer cleared its damage', !retreatedSd || retreatedSd.damage === 0,
+    retreatedSd ? `damage=${retreatedSd.damage}` : 'no retreat happened');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

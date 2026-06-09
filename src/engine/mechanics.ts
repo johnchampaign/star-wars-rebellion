@@ -557,6 +557,11 @@ export function damageUnit(G: GameState, unitInstanceId: UnitInstanceId, amount:
 export function destroySystem(G: GameState, systemId: SystemId): void {
   const ss = G.map.systems[systemId];
   if (!ss) return;
+  // Idempotent: a system can only be destroyed once. Re-firing the superlaser
+  // on rubble is a no-op (player report #165: the Empire "double-tapped" an
+  // already-destroyed Cato Nemoidia). Without this, a second hit re-logged the
+  // destruction and re-ran the loyalty side effects.
+  if (ss.destroyed) return;
   ss.destroyed = true;
   // Destroy all Rebel ground units; Imperial ground units survive only if transport allows (rr p.7).
   // For simplicity here we just destroy all rebel ground; transport-capacity culling is a higher-level concern.

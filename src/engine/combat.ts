@@ -2250,6 +2250,14 @@ export function resolveRetreatDecision(
   // Move the units (carriers + any fighters/ground that fit). Nothing left
   // behind is destroyed — those units remain in the system.
   for (const uid of toMove) {
+    // Damage is mid-combat only. endCombat clears it on units still in the
+    // system, but retreating units leave first — clear it here so they don't
+    // carry stale damage into their NEXT battle (player report #164: a Star
+    // Destroyer that retreated showed up to the rematch already at 3 damage).
+    const inst = c.systemId === 'rebel-base-space'
+      ? G.map.rebelBaseSpace?.units.find((u) => u.instanceId === uid)
+      : G.map.systems[c.systemId]?.units.find((u) => u.instanceId === uid);
+    if (inst) inst.damage = 0;
     M.moveUnit(G, uid, c.systemId, destSystemId);
   }
   // RAW (rr p.5): one leader leads the retreat — move it to the destination.
