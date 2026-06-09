@@ -1246,7 +1246,7 @@ export type CombatState = {
   // (Tractor Beam) resolves after both theatres' attacks, before retreat;
   // `rogueOne` (Rogue One: "if 1+ units retreat this round, rescue a leader OR
   // remove a target marker") resolves AFTER the retreat step.
-  cinematicEndOfRound?: { side: Side; kind: 'capture' | 'rogueOne' }[];
+  cinematicEndOfRound?: { side: Side; kind: 'capture' | 'rogueOne' | 'confrontation' }[];
   // Guard so the end-of-round capture resolution runs once per round.
   cinematicEndOfRoundDoneRound?: number;
   // Set when an actual retreat (not a decline) happens this round — read by
@@ -1679,6 +1679,12 @@ export type GameState = {
   // engine appends when a Rebel objective is scored, player dismisses one at a
   // time. `via` describes how it scored (combat / refresh / death-star-plans).
   objectiveReports?: { objectiveId: string; reputation: number; via: string }[];
+
+  // RoE Cinematic Confrontation: Imperial leaders marked for elimination at the
+  // end of the current Command phase (the last Imperial ground unit was
+  // destroyed in a combat where the Rebel played Confrontation). Eliminated and
+  // cleared when the Command phase ends (start of enterRefreshPhase).
+  cinematicMarkedForElimination?: LeaderId[];
 
   // Refresh-phase summary, generated each time the refresh phase runs.
   // The UI shows a single modal with everything that happened (objective

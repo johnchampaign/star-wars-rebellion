@@ -3660,6 +3660,16 @@ function enterRefreshPhase(G: GameState): void {
   log(G, { kind: 'phase', payload: { phase: 'Refresh' } });
   const logStart = G.turnLog.length;
 
+  // RoE Cinematic Confrontation: eliminate Imperial leaders marked during this
+  // Command phase (their last ground unit fell while the Rebel held the card).
+  if (G.cinematicMarkedForElimination && G.cinematicMarkedForElimination.length > 0) {
+    for (const leaderId of G.cinematicMarkedForElimination) {
+      M.eliminateLeader(G, 'Empire', leaderId);
+      log(G, { kind: 'cinematic-confrontation-eliminate', side: 'Rebel', payload: { leaderId } });
+    }
+    G.cinematicMarkedForElimination = [];
+  }
+
   // Misdirection protection is a per-round flag — clear here.
   if (G.misdirectionProtected && G.misdirectionProtected.length > 0) {
     G.misdirectionProtected = [];

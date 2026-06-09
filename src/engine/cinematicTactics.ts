@@ -19,7 +19,7 @@
 // Card selection here is AUTO (a simple value heuristic). Phase 7d replaces
 // it with interactive selection for the human side.
 
-import type { GameState, Side, CombatState, Theater } from './types';
+import type { GameState, Side, CombatState, Theater, LeaderId } from './types';
 import * as M from './mechanics';
 import { log } from './log';
 
@@ -75,8 +75,12 @@ type RogueOneEffect = { kind: 'rogueOne' };
 // this card's theatre this round (Intercept / Imposing Presence / Deployment /
 // Rogue One secondaries — "[opp] ships/ground units cannot remove damage…").
 type SpecialLockEffect = { kind: 'specialLock' };
+// Confrontation primary: queued to end of round — if the last Imperial ground
+// unit was destroyed this round, mark an Imperial leader in the system for
+// elimination at end of the Command phase.
+type ConfrontationEffect = { kind: 'confrontation' };
 type UnwiredEffect = { kind: 'unwired' };
-type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | RemoveDamageEffect | CaptureEffect | CancelEffect | ShieldAbsorbEffect | ExtraCardEffect | RogueOneEffect | SpecialLockEffect | UnwiredEffect;
+type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | RemoveDamageEffect | CaptureEffect | CancelEffect | ShieldAbsorbEffect | ExtraCardEffect | RogueOneEffect | SpecialLockEffect | ConfrontationEffect | UnwiredEffect;
 
 const D = (amount: number, color?: 'red' | 'black'): DealEffect => ({ kind: 'deal', amount, color });
 const P = (red: number, black: number, special = 0, extra = false): PreventEffect => ({ kind: 'prevent', red, black, special, extra });
@@ -93,6 +97,7 @@ const ABSORB = (amount: number, structureTypeId: string): ShieldAbsorbEffect => 
 const EXTRA: ExtraCardEffect = { kind: 'extraCard' };
 const ROGUE: RogueOneEffect = { kind: 'rogueOne' };
 const LOCKSPECIAL: SpecialLockEffect = { kind: 'specialLock' };
+const CONFRONT: ConfrontationEffect = { kind: 'confrontation' };
 const U: UnwiredEffect = { kind: 'unwired' };
 
 // Per-card [top, bottom] abilities, keyed by the card id slug from
@@ -133,7 +138,7 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   'cin-rebel-ground-planetary-shield':       [ABSORB(3, 'shield-generator'), FIRST],
   'cin-rebel-ground-rogue-one':              [ROGUE, LOCKSPECIAL],
   'cin-rebel-ground-escape-plan':            [U /* retreat + cancel */, LOCK],
-  'cin-rebel-ground-confrontation':          [U /* mark-leader-for-elimination: needs end-of-Command-phase hook */, EXTRA],
+  'cin-rebel-ground-confrontation':          [CONFRONT, EXTRA],
 };
 
 /** Does a condDeal's condition currently hold? */
@@ -266,6 +271,14 @@ function abilityValue(G: GameState, c: CombatState, side: Side, theater: Theater
     // they might otherwise heal with ★ dice.
     const oppWounded = unitsOf(G, other(side), c.systemId, theater).some((u) => u.damage > 0);
     return oppWounded ? 0.7 : 0.2;
+  }
+  if (ab.kind === 'confrontation') {
+    // Worth more when the Empire's ground force here is small (likely to be
+    // wiped this round) and there's an Imperial leader to mark.
+    const empGround = unitsOf(G, 'Empire', c.systemId, 'ground').length;
+    const empLeaderHere = (G.empire.leadersOnBoard[c.systemId] ?? []).length > 0;
+    if (empGround === 0 || !empLeaderHere) return 0.2;
+    return empGround <= 2 ? 1.5 : 0.6;
   }
   return 0; // unwired
 }
@@ -445,6 +458,10 @@ export function applyCinematicAbility(
     const opp = other(side);
     (c.cinematicSpecialLock ??= {})[`${opp}:${theater}:${c.round}`] = true;
     logPlay({ specialLock: { side: opp, theater, round: c.round } });
+  } else if (ab.kind === 'confrontation') {
+    // Resolved at end of round (resolveCinematicEndOfRound).
+    (c.cinematicEndOfRound ??= []).push({ side, kind: 'confrontation' });
+    logPlay({ queued: 'confrontation-end-of-round' });
   } else {
     logPlay({ unwired: true });
   }
@@ -578,7 +595,37 @@ export function resolveCinematicEndOfRound(G: GameState, c: CombatState): void {
     M.captureLeader(G, leaderId);
     log(G, { kind: 'cinematic-tractor-beam-capture', side: e.side, payload: { leaderId, systemId: c.systemId } });
   }
-  c.cinematicEndOfRound = queue.filter((e) => e.kind !== 'capture');
+  for (const e of queue) {
+    if (e.kind !== 'confrontation') continue;
+    // "If the last Imperial ground unit is destroyed this round, mark 1 Imperial
+    // leader for elimination at the end of this Command phase." Condition:
+    // Empire now has 0 ground units here AND ≥1 Imperial ground unit was
+    // destroyed in this round's combat.
+    if (unitsOf(G, 'Empire', c.systemId, 'ground').length > 0) continue;
+    const roundReport = c.report.rounds.find((r) => r.round === c.round);
+    const destroyedImpGround = (roundReport?.attacks ?? []).some((a) =>
+      a.destroyed.some((d) => {
+        const t = G.catalog.unitTypes[d.typeId];
+        return t?.side === 'Empire' && t.theater === 'ground';
+      }),
+    );
+    if (!destroyedImpGround) continue;
+    // Mark the highest-tactic-value Imperial leader in the system (auto-select;
+    // most impactful elimination). If none present, nothing to mark.
+    const here = G.empire.leadersOnBoard[c.systemId] ?? [];
+    if (here.length === 0) {
+      log(G, { kind: 'cinematic-confrontation-no-leader', side: e.side, payload: { systemId: c.systemId } });
+      continue;
+    }
+    const leaderId = [...here].sort((a, b) => {
+      const va = (G.catalog.leaders[a]?.tacticValues.space ?? 0) + (G.catalog.leaders[a]?.tacticValues.ground ?? 0);
+      const vb = (G.catalog.leaders[b]?.tacticValues.space ?? 0) + (G.catalog.leaders[b]?.tacticValues.ground ?? 0);
+      return vb - va;
+    })[0];
+    (G.cinematicMarkedForElimination ??= []).push(leaderId);
+    log(G, { kind: 'cinematic-confrontation-mark', side: e.side, payload: { leaderId, systemId: c.systemId } });
+  }
+  c.cinematicEndOfRound = queue.filter((e) => e.kind !== 'capture' && e.kind !== 'confrontation');
 }
 
 /** Resolve queued post-retreat cinematic triggers (Rogue One). Called by

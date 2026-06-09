@@ -11,6 +11,7 @@ register();
 const { createGame } = await import('../src/engine/setup.ts');
 const M = await import('../src/engine/mechanics.ts');
 const combat = await import('../src/engine/combat.ts');
+const phases = await import('../src/engine/phases.ts');
 const { stepOnce } = await import('../src/play/randomAI.ts');
 const { autoPlayCinematicTactic, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, applyCinematicSpecialHeal } = await import('../src/engine/cinematicTactics.ts');
 
@@ -467,6 +468,41 @@ console.log('\n[ Cinematic: Intercept bottom locks Rebel-ship damage removal ]')
   const c = G.pendingCombat; c.round = 1;
   applyCinematicAbility(G, c, 'Empire', 'space', 'cin-empire-space-intercept', false); // BOT = special lock
   check('Intercept bottom locked Rebel space this round', c.cinematicSpecialLock?.['Rebel:space:1'] === true);
+}
+
+// ---- Deeper item 3: Confrontation marks + eliminates an Imperial leader ----
+console.log('\n[ Cinematic: Confrontation marks an Imperial leader, eliminated at Command end ]');
+{
+  const G = createGame(data, baseOpts(760));
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia');
+  M.deployUnit(G, 'Rebel', 'rebel-trooper', 'felucia');
+  G.empire.leadersOnBoard['felucia'] = ['general-veers'];
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  applyCinematicAbility(G, c, 'Rebel', 'ground', 'cin-rebel-ground-confrontation', true);
+  check('Confrontation queued an end-of-round trigger', (c.cinematicEndOfRound ?? []).some((e) => e.kind === 'confrontation'));
+  // Simulate the last Imperial ground unit being destroyed this round.
+  const st = G.map.systems['felucia'].units.find((u) => u.side === 'Empire' && u.typeId === 'stormtrooper');
+  G.map.systems['felucia'].units = G.map.systems['felucia'].units.filter((u) => u !== st);
+  const rr = c.report.rounds.find((r) => r.round === c.round) ?? (c.report.rounds.push({ round: c.round, attacks: [] }), c.report.rounds[c.report.rounds.length - 1]);
+  rr.attacks.push({ side: 'Rebel', theater: 'ground', destroyed: [{ typeId: 'stormtrooper', instanceId: st.instanceId }] });
+  resolveCinematicEndOfRound(G, c);
+  check('Imperial leader marked for elimination', (G.cinematicMarkedForElimination ?? []).includes('general-veers'));
+  check('leader not yet eliminated (waits for Command end)', !(G.empire.eliminatedLeaders ?? []).includes('general-veers'));
+}
+
+console.log('\n[ Cinematic: Confrontation does nothing if Imperial ground survives ]');
+{
+  const G = createGame(data, baseOpts(761));
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia');
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia');
+  M.deployUnit(G, 'Rebel', 'rebel-trooper', 'felucia');
+  G.empire.leadersOnBoard['felucia'] = ['general-veers'];
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  applyCinematicAbility(G, c, 'Rebel', 'ground', 'cin-rebel-ground-confrontation', true);
+  resolveCinematicEndOfRound(G, c); // Imperial still has ground units
+  check('no leader marked while Imperial ground survives', (G.cinematicMarkedForElimination ?? []).length === 0);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
