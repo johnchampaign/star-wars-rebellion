@@ -595,7 +595,7 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
 
 /** Roll dice for `side`, queue the attacker-tactics choice if appropriate.
  *  If no units to roll, marks the side done and returns. */
-function beginAttack(G: GameState, c: CombatState, side: Side, theater: Theater): void {
+export function beginAttack(G: GameState, c: CombatState, side: Side, theater: Theater): void {
   const myUnits = unitsOf(G, side, c.systemId, theater);
   if (myUnits.length === 0) {
     c.theaterAttackersDone!.push(side);
@@ -616,16 +616,13 @@ function beginAttack(G: GameState, c: CombatState, side: Side, theater: Theater)
     black += t.attack.black;
     green += t.attack.green;
   }
-  red = Math.min(5, red);
-  black = Math.min(5, black);
-  green = Math.min(3, green);
+  // RoE p.9: "An ability that reduces the number of dice rolled applies BEFORE
+  // the limit of 5 dice is applied." So apply the dice-reduction abilities
+  // (Prevent, According To My Design) to the RAW sums first; the 5/5/3 cap is
+  // applied AFTER them, just before rolling.
 
   // CINEMATIC COMBAT "Prevent N red/black" tactic effects reduce THIS side's
   // roll (the prevention was set against them by the opponent's tactic card).
-  // Applied after the 5/5 cap per RoE p.9 ("an ability that reduces dice
-  // applies before the limit of 5 is applied" — but since prevention is
-  // listed in whole dice and our caps rarely bind, post-cap is equivalent in
-  // practice; we floor at 0). Special-die prevention is deferred to 7c-2.
   if (c.cinematic) {
     const prev = takeCinematicPrevent(c, side);
     if (prev.red || prev.black) {
@@ -649,6 +646,12 @@ function beginAttack(G: GameState, c: CombatState, side: Side, theater: Theater)
     black -= blackCut;
     accordingToMyDesignReduction = { red: redCut, black: blackCut };
   }
+
+  // Per-attack cap: 5 red, 5 black, 3 green (rr p.4; RoE green per p.8). Applied
+  // AFTER the reductions above, per RoE p.9.
+  red = Math.min(5, red);
+  black = Math.min(5, black);
+  green = Math.min(3, green);
 
   // Roll dice.
   const dice: DieResult[] = [];

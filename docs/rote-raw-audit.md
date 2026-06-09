@@ -44,11 +44,21 @@ after merge.
   `[attacker, defender]` in cinematic combat (rulebook p.9 "Retreat: Starting
   with the current player…") and keeps `[defender, attacker]` in base combat.
   Test `scripts/test-cinematic-retreat-order.mjs`.
-- [ ] **#8 "Immediate" objectives activate at Refresh, not on draw** (Raid
-  Outposts, Rebel Cell). RAW p.8: reveal/resolve when drawn into hand.
-- [ ] **#9 Dice-reduction vs the 5-die cap order.** RAW p.9: reductions apply
-  BEFORE the 5-die cap. `beginAttack` caps first, then applies prevent /
-  "According to My Design" reductions.
+- [~] **#8 "Immediate" objectives activate at Refresh, not on draw**
+  (Raid Outposts, Rebel Cell). **DEFERRED.** RAW p.8 reveals/resolves on draw,
+  but `drawObjective` is a shared low-level mechanic used across the base game
+  (Heist, the Refresh draw step, setup, several effects). On-draw activation
+  would post placement choices — including an *opponent* choice for Raid
+  Outposts — from arbitrary draw contexts, risking pendingChoice conflicts that
+  could break base-game objective draws, all for a ~1-refresh timing nuance the
+  current Refresh-activation already handles functionally (markers placed,
+  scoring correct). Not worth the risk; left as a known timing deviation.
+- [x] **#9 Dice-reduction vs the 5-die cap order.** Fixed: `beginAttack` now
+  applies the dice-reduction abilities (cinematic Prevent, According To My
+  Design) to the raw sums first, then caps at 5/5/3 — RAW p.9 "an ability that
+  reduces the number of dice rolled applies BEFORE the limit of 5 is applied."
+  Test `scripts/test-dice-reduction-order.mjs` (8 raw red − 2 prevent = 6 →
+  capped 5, not the old min(5,8)−2 = 3).
 
 ### Low / verify
 - [ ] **#10 General "unit destroyed → remove the system's target markers" rule**
