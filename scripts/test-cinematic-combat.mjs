@@ -12,6 +12,7 @@ const { createGame } = await import('../src/engine/setup.ts');
 const M = await import('../src/engine/mechanics.ts');
 const combat = await import('../src/engine/combat.ts');
 const { stepOnce } = await import('../src/play/randomAI.ts');
+const { autoPlayCinematicTactic } = await import('../src/engine/cinematicTactics.ts');
 
 /** Drive a combat to completion: resolve every pending combat choice (add-
  *  leader, tactics, damage assignment, retreat) via the AI until pendingCombat
@@ -177,6 +178,48 @@ console.log('\n[ Cinematic 7c-2: gain-unit deploys a new unit ]');
   driveCombat(G);
   const gained = G.turnLog.filter((l) => l.kind === 'cinematic-tactic-play' && l.payload?.gained === 'tie-fighter');
   check('Reinforcements gained a TIE Fighter', gained.length > 0, `gains: ${gained.length}`);
+}
+
+// ---- 7c-3: deck lock — autoPlayCinematicTactic skips a locked side ----
+console.log('\n[ Cinematic 7c-3: deck lock skips a locked side ]');
+{
+  const G = createGame(data, baseOpts(710));
+  M.deployUnit(G, 'Empire', 'at-st', 'felucia');
+  M.deployUnit(G, 'Rebel', 'airspeeder', 'felucia');
+  M.deployUnit(G, 'Rebel', 'airspeeder', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  // Lock the Empire out of ground for this round, then attempt an auto-play.
+  c.cinematicDeckLock = { [`Empire:ground`]: c.round };
+  const before = (G.empire.cinematicTacticDiscard ?? []).length;
+  autoPlayCinematicTactic(G, c, 'Empire', 'ground');
+  const after = (G.empire.cinematicTacticDiscard ?? []).length;
+  check('locked side plays no card', after === before, `${after} vs ${before}`);
+  check('locked-skip event logged',
+    G.turnLog.some((l) => l.kind === 'cinematic-tactic-locked' && l.side === 'Empire'));
+  // Same side, but ground UNLOCKED — should now play (AT-ST present → Overrun).
+  c.cinematicDeckLock = {};
+  autoPlayCinematicTactic(G, c, 'Empire', 'ground');
+  check('unlocked side plays a card', (G.empire.cinematicTacticDiscard ?? []).length > before);
+}
+
+// ---- 7c-3: resolve-attacks-first flips the attack order in the report ----
+console.log('\n[ Cinematic 7c-3: resolve-first flips attack order ]');
+{
+  const G = createGame(data, baseOpts(711));
+  // Empire is the combat attacker. Force Rebel to resolve first in space.
+  M.deployUnit(G, 'Empire', 'star-destroyer', 'felucia');
+  M.deployUnit(G, 'Rebel', 'mon-cala-cruiser', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  c.cinematicResolveFirst = { space: 'Rebel' };
+  driveCombat(G);
+  // The first space attack recorded in round 1 should be the Rebel's, despite
+  // the Empire being the combat attacker.
+  const report = (G.combatReports ?? []).find((r) => r.systemId === 'felucia');
+  const firstSpaceAttack = report?.rounds?.[0]?.attacks?.find((a) => a.theater === 'space');
+  check('Rebel attacked first in space (resolve-first override)',
+    firstSpaceAttack?.side === 'Rebel', `first = ${firstSpaceAttack?.side}`);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

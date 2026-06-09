@@ -1186,6 +1186,15 @@ export type CombatState = {
   // Which (side, theatre) cinematic tactic sub-steps have been resolved this
   // round, so re-entry doesn't replay them.
   cinematicTacticDoneThisRound?: string[]; // entries like 'Rebel:space'
+  // RoE Cinematic "resolve attacks first" (Energy Shield / Armored Position /
+  // Draw Their Fire / Planetary Shield secondaries): the named side attacks
+  // FIRST in that theatre for the rest of the combat (overrides the default
+  // attacker-first order).
+  cinematicResolveFirst?: { space?: Side; ground?: Side };
+  // RoE Cinematic deck lock (Entrapment / Air Superiority / Outrun Them /
+  // Escape Plan secondaries): `${side}:${theatre}` -> the round through which
+  // that side is barred from playing a tactic card in that theatre.
+  cinematicDeckLock?: Record<string, number>;
   attackerHand: string[]; // tactic card ids
   defenderHand: string[];
   retreated: Side[]; // each side at most once

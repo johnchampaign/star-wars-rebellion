@@ -438,7 +438,8 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
     c.currentRoundReportIdx = idx;
   }
 
-  const order: Side[] = [c.attackerSide, other(c.attackerSide)];
+  // Tactic plays start with the current player (the combat's attacker).
+  const tacticOrder: Side[] = [c.attackerSide, other(c.attackerSide)];
 
   // CINEMATIC COMBAT tactic sub-step (RoE p.9): before the dice attacks, each
   // side (current player first) plays one advanced tactic card and resolves
@@ -448,13 +449,20 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
   // (damage-assignment pause) doesn't replay it.
   if (c.cinematic) {
     c.cinematicTacticDoneThisRound ??= [];
-    for (const side of order) {
+    for (const side of tacticOrder) {
       const key = `${side}:${theater}:${c.round}`;
       if (c.cinematicTacticDoneThisRound.includes(key)) continue;
       autoPlayCinematicTactic(G, c, side, theater);
       c.cinematicTacticDoneThisRound.push(key);
     }
   }
+
+  // Attack order: the combat's attacker attacks first by default. CINEMATIC
+  // "resolve attacks first" (RoE p.9) can override per theatre — read AFTER
+  // the tactic step so a card just played this theatre takes effect now.
+  let order: Side[] = [c.attackerSide, other(c.attackerSide)];
+  const first = c.cinematic ? c.cinematicResolveFirst?.[theater] : undefined;
+  if (first) order = [first, other(first)];
 
   for (const attacker of order) {
     if (G.isGameOver) break;

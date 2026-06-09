@@ -44,8 +44,14 @@ type DestroyEffect = { kind: 'destroy'; tier?: 'triangle'; unitClass?: 'structur
 // Gain a unit for the playing side (deployed into the system), optionally
 // also preventing the opponent's dice.
 type GainEffect = { kind: 'gain'; typeId: string; prevent?: { red: number; black: number; special: number } };
+// The OPPONENT resolves their attacks first in this theatre for the rest of
+// the combat (rules p.9 "During [theatre] battles this combat, [opp]
+// resolves attacks first").
+type ResolveFirstEffect = { kind: 'resolveFirst' };
+// The opponent can't play a tactic card in this theatre next round.
+type LockDeckEffect = { kind: 'lockDeck' };
 type UnwiredEffect = { kind: 'unwired' };
-type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | UnwiredEffect;
+type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | UnwiredEffect;
 
 const D = (amount: number, color?: 'red' | 'black'): DealEffect => ({ kind: 'deal', amount, color });
 const P = (red: number, black: number, special = 0): PreventEffect => ({ kind: 'prevent', red, black, special });
@@ -53,6 +59,8 @@ const CD = (amount: number, cond: CondDealEffect['cond'], color?: 'red' | 'black
 const TD = (amount: number, targetClass: TargetDealEffect['targetClass']): TargetDealEffect => ({ kind: 'targetDeal', amount, targetClass });
 const DESTROY = (opts: { tier?: 'triangle'; unitClass?: 'structure' }): DestroyEffect => ({ kind: 'destroy', ...opts });
 const GAIN = (typeId: string, prevent?: GainEffect['prevent']): GainEffect => ({ kind: 'gain', typeId, prevent });
+const FIRST: ResolveFirstEffect = { kind: 'resolveFirst' };
+const LOCK: LockDeckEffect = { kind: 'lockDeck' };
 const U: UnwiredEffect = { kind: 'unwired' };
 
 // Per-card [top, bottom] abilities, keyed by the card id slug from
@@ -64,16 +72,16 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   'cin-empire-space-tractor-beam':           [U /* end-of-round capture leader */, D(1, 'red')],
   'cin-empire-space-overwhelming-presence':  [P(2, 0, 1), P(2, 0)],
   'cin-empire-space-superlaser-blast':       [TD(5, 'capital'), D(1)],
-  'cin-empire-space-entrapment':             [U /* cancel card */, U /* lock space tactics */],
-  'cin-empire-space-energy-shield':          [U /* remove damage */, U /* resolve first */],
+  'cin-empire-space-entrapment':             [U /* cancel card */, LOCK],
+  'cin-empire-space-energy-shield':          [U /* remove damage */, FIRST],
   'cin-empire-space-intercept':              [DESTROY({ tier: 'triangle' }), U /* special lock */],
   // ---- Imperial Ground ----
   'cin-empire-ground-support-of-the-501st':  [DESTROY({ tier: 'triangle' }), D(1, 'black')],
   'cin-empire-ground-armored-patrol':        [P(2, 2), P(1, 1)],
   'cin-empire-ground-overrun':               [D(2), D(1)],
   'cin-empire-ground-target-the-generator':  [DESTROY({ unitClass: 'structure' }), D(1, 'red')],
-  'cin-empire-ground-air-superiority':       [U /* cancel card */, U /* lock ground tactics */],
-  'cin-empire-ground-armored-position':      [U /* redirect damage */, U /* resolve first */],
+  'cin-empire-ground-air-superiority':       [U /* cancel card */, LOCK],
+  'cin-empire-ground-armored-position':      [U /* redirect damage */, FIRST],
   'cin-empire-ground-bombardment':           [CD(2, 'no-shield-generator', 'black'), D(1)],
   'cin-empire-ground-imposing-presence':     [U /* special lock */, U /* extra card */],
   // ---- Rebel Space ----
@@ -82,17 +90,17 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   'cin-rebel-space-deployment':              [GAIN('rebel-trooper'), U /* special lock */],
   'cin-rebel-space-fleet-logistics':         [U /* prevent + extra card */, P(2, 0)],
   'cin-rebel-space-ion-blast':               [TD(1, 'capital'), D(1)],
-  'cin-rebel-space-outrun-them':             [U /* cancel card */, U /* lock space tactics */],
-  'cin-rebel-space-draw-their-fire':         [U /* remove damage */, U /* resolve first */],
+  'cin-rebel-space-outrun-them':             [U /* cancel card */, LOCK],
+  'cin-rebel-space-draw-their-fire':         [U /* remove damage */, FIRST],
   'cin-rebel-space-escort':                  [P(1, 1, 1), P(0, 2)],
   // ---- Rebel Ground ----
   'cin-rebel-ground-hold-them-back':         [DESTROY({ tier: 'triangle' }), D(1, 'black')],
   'cin-rebel-ground-take-it-down':           [D(2, 'red'), D(1, 'red')],
   'cin-rebel-ground-tow-cables':             [TD(4, 'at-walker'), D(1)],
   'cin-rebel-ground-take-cover':             [P(2, 2), P(1, 1)],
-  'cin-rebel-ground-planetary-shield':       [U /* redirect damage */, U /* resolve first */],
+  'cin-rebel-ground-planetary-shield':       [U /* redirect damage */, FIRST],
   'cin-rebel-ground-rogue-one':              [U /* rescue/remove marker */, U /* special lock */],
-  'cin-rebel-ground-escape-plan':            [U /* retreat + cancel */, U /* lock ground tactics */],
+  'cin-rebel-ground-escape-plan':            [U /* retreat + cancel */, LOCK],
   'cin-rebel-ground-confrontation':          [U /* mark leader */, U /* extra card */],
 };
 
@@ -165,7 +173,22 @@ function abilityValue(G: GameState, c: CombatState, side: Side, theater: Theater
     // Gaining a unit is always worthwhile; prevent part adds a little.
     return 1.5 + (ab.prevent ? (ab.prevent.red + ab.prevent.black) * 0.25 : 0);
   }
+  if (ab.kind === 'lockDeck') {
+    // Denying the opponent a card next round — modest, only if they still
+    // have units in this theatre to fight on with.
+    return unitsOf(G, other(side), c.systemId, theater).length > 0 ? 0.8 : 0;
+  }
+  if (ab.kind === 'resolveFirst') {
+    // Situational (changes attack order for the rest of combat). Low value
+    // so it's a last resort, but wired.
+    return bothHaveTheater(G, c, theater) ? 0.4 : 0;
+  }
   return 0; // unwired
+}
+
+function bothHaveTheater(G: GameState, c: CombatState, theater: Theater): boolean {
+  return unitsOf(G, 'Rebel', c.systemId, theater).length > 0
+      && unitsOf(G, 'Empire', c.systemId, theater).length > 0;
 }
 
 /** Resolve a deal-damage ability: assign `amount` damage one-at-a-time to the
@@ -220,6 +243,14 @@ function availableCards(G: GameState, side: Side, theater: Theater): string[] {
  *  prefers the top ability when its unit prerequisite is met. Moves the
  *  played card to the side's cinematic discard. */
 export function autoPlayCinematicTactic(G: GameState, c: CombatState, side: Side, theater: Theater): void {
+  // Deck lock (Entrapment / Air Superiority / Outrun Them / Escape Plan
+  // secondaries): the opponent locked this side out of this theatre for
+  // this round.
+  const lockedThrough = c.cinematicDeckLock?.[`${side}:${theater}`];
+  if (lockedThrough != null && c.round <= lockedThrough) {
+    log(G, { kind: 'cinematic-tactic-locked', side, payload: { theater, round: c.round } });
+    return;
+  }
   const f = side === 'Rebel' ? G.rebel : G.empire;
   let best: { cardId: string; useTop: boolean; ab: Ability; value: number } | null = null;
   for (const cardId of availableCards(G, side, theater)) {
@@ -264,6 +295,14 @@ export function autoPlayCinematicTactic(G: GameState, c: CombatState, side: Side
     M.deployUnit(G, side, ab.typeId, c.systemId);
     if (ab.prevent) resolvePrevent(c, side, { kind: 'prevent', ...ab.prevent });
     logPlay({ gained: ab.typeId, prevent: ab.prevent });
+  } else if (ab.kind === 'resolveFirst') {
+    // Opponent attacks first in this theatre for the rest of the combat.
+    (c.cinematicResolveFirst ??= {})[theater] = other(side);
+    logPlay({ resolveFirst: other(side) });
+  } else if (ab.kind === 'lockDeck') {
+    // Opponent can't play a card in this theatre next round.
+    (c.cinematicDeckLock ??= {})[`${other(side)}:${theater}`] = c.round + 1;
+    logPlay({ lockDeck: { side: other(side), theater, throughRound: c.round + 1 } });
   }
   // Discard the played card (does NOT reshuffle — gone for the game).
   (f.cinematicTacticDiscard ??= []).push(best.cardId);
