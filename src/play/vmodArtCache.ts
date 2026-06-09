@@ -306,7 +306,10 @@ export async function loadVmodFromFile(
     if (entry.dir) return;
     topLevelEntries.push({
       name: entry.name,
-      isPng: /\.png$/i.test(entry.name),
+      // "isPng" historically; now any cacheable image (PNG or JPG). Most
+      // SWR art is PNG, but v1.2e ships a few card faces (e.g. Subversion)
+      // as JPG, so we cache those too.
+      isPng: /\.(png|jpe?g)$/i.test(entry.name),
       isArchive: /\.(vmod|zip)$/i.test(entry.name),
     });
   });
@@ -318,7 +321,7 @@ export async function loadVmodFromFile(
   let pngEntries: JSZip.JSZipObject[] = [];
   zip.forEach((_path, entry) => {
     if (entry.dir) return;
-    if (!/\.png$/i.test(entry.name)) return;
+    if (!/\.(png|jpe?g)$/i.test(entry.name)) return;
     pngEntries.push(entry);
   });
 

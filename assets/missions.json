@@ -1006,7 +1006,7 @@
       "leaderPortrait": null,
       "effectKey": "subversion-new",
       "rulesText": "Oppose a Rebel mission (from the new RoE set). Place assigned leaders in that system. Roll 1 additional die to oppose the mission.",
-      "image": "Subversion.png",
+      "image": "Subversion Empire RotE.jpg",
       "set": "rote"
     },
     {
@@ -1021,7 +1021,7 @@
       "leaderPortrait": null,
       "effectKey": "subversion-original",
       "rulesText": "Oppose a Rebel mission (from the original base set). Place assigned leaders in that system. Roll 1 additional die to oppose the mission.",
-      "image": "Subversion_base.png",
+      "image": "Subversion Empire Core.jpg",
       "set": "rote"
     },
     {
