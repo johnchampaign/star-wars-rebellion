@@ -127,6 +127,18 @@ If you find yourself on a non-master branch unexpectedly:
    master rather than merging the whole branch — other branches may
    have unrelated work-in-progress that shouldn't go to master.
 
+## Commit + push after a fix (standing authorization)
+
+Once something is **fixed and verified** (typecheck clean at the known
+baseline, relevant tests/suites pass), commit and push it to `master`
+**without asking** — this is pre-authorized. Use a HEREDOC commit message
+summarizing by impact + the Co-Authored-By line; never `--amend` or
+`--force-push`; `git pull --no-edit origin master` before pushing
+(parallel sessions push to master too). This covers commit + `git push
+origin master`. It does NOT auto-authorize a Cloudflare **deploy** — that
+still waits for an explicit "ship/deploy/release" (see below) — nor does it
+license committing on a bad/unverified change.
+
 ## Deploys
 
 The user does NOT want to run deploy commands themselves. When they ask
