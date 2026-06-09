@@ -657,6 +657,19 @@ export function systemsWithTargetMarker(G: GameState, source: string): SystemId[
   return out;
 }
 
+/** RoE Raid Outposts: remove one of the card's target markers from `sysId` and
+ *  award the Rebel +1 reputation. Used both by the Refresh raid check (Rebel
+ *  ground unit present) and by Heist (which can grab a marker without units).
+ *  Returns true if a marker was removed. */
+export function removeRaidOutpostMarker(G: GameState, sysId: SystemId): boolean {
+  if (!hasTargetMarker(G, sysId, 'raid-outposts-2')) return false;
+  removeTargetMarker(G, sysId, 'raid-outposts-2', 'Rebel');
+  (G.objectiveReports ??= []).push({ objectiveId: 'raid-outposts-2', reputation: 1, via: 'refresh' });
+  log(G, { kind: 'raid-outposts-score', side: 'Rebel', payload: { systemId: sysId, reputation: 1 } });
+  gainReputation(G, 1);
+  return true;
+}
+
 /** RoE rules p.8 "LEADER POOL LIMIT": a player can have at most 8 leaders
  *  in their leader pool. Excess leaders are eliminated.
  *

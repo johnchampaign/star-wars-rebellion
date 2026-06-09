@@ -1931,7 +1931,9 @@ export function resolveHeistChoice(G: GameState, action: string): { ok: boolean;
   } else if (action.startsWith('remove:')) {
     const source = action.slice('remove:'.length);
     if (!pc.markerSources.includes(source)) return { ok: false, reason: 'marker-not-present' };
-    M.removeTargetMarker(G, pc.systemId, source, 'Rebel');
+    // Raid Outposts scores +1 when grabbed via Heist; other markers just lift.
+    if (source === 'raid-outposts-2') M.removeRaidOutpostMarker(G, pc.systemId);
+    else M.removeTargetMarker(G, pc.systemId, source, 'Rebel');
   } else {
     return { ok: false, reason: `bad-action:${action}` };
   }
@@ -3678,19 +3680,19 @@ function enterRefreshPhase(G: GameState): void {
     G.actionCardFlags.landoContingencyBonus = undefined;
   }
 
-  // Pre-step: persistent place-on-play objectives (Show No Fear) place/score
-  // before the one-shot objective step. Never pauses.
-  processPersistentObjectives(G);
+  // Pre-step: persistent RoE objectives (Show No Fear / Raid Outposts scoring,
+  // then Raid Outposts / Rebel Cell placement, then the Rebel Cell discard
+  // option). This resumable machine may PAUSE on a placement/discard choice
+  // (resolved via resolveRaidOutpostsPlace / resolveRebelCellPlace /
+  // resolveRebelCellDiscard, which re-enter and continue).
+  G.refreshPreStep = 0;
+  G.refreshRebelCellDiscardTaken = false;
+  if (advanceRefreshPreSteps(G, logStart)) return;
   if (G.isGameOver) return;
 
-  // Pre-step: resolve eligible StartOfRefresh objectives (rr p.10 — Rebel may
-  // play one objective at start of Refresh phase, just before step 1). If 2+
-  // objectives are eligible the Rebel chooses which to score (only one per
-  // refresh), so this may PAUSE and resume via resolvePlayObjectivePick().
-  if (refreshPlayStartOfRefreshObjectives(G, logStart)) return;
-  if (G.isGameOver) return;
-
-  continueRefreshAfterObjectives(G, logStart);
+  // Then the one-shot StartOfRefresh objective step (rr p.10 — Rebel may play
+  // one objective at start of Refresh). May PAUSE via resolvePlayObjectivePick.
+  runOneShotObjectivesThenContinue(G, logStart);
 }
 
 /** Steps 1–6 of the Refresh phase, after the start-of-refresh objective step.
@@ -3886,30 +3888,197 @@ export function applyObjectiveScoreSideEffect(G: GameState, objectiveId: string)
   }
 }
 
-/** Persistent place-on-play objectives, processed at the start of every Refresh
- *  before the one-shot objective step. Currently wires Show No Fear:
- *  - On first activation (objective in hand, no marker yet) place a target
- *    marker in the Rebel Base's system.
- *  - Each Refresh the marker is still present, gain 1 reputation.
- *  The marker is removed when the base relocates (see establishBase). The card
- *  itself stays in hand. rebel-cell-2 / raid-outposts-2 are deferred (5d-iii).
- *  Exported for tests. */
+/** Show No Fear (persistent): on first activation place a target marker at the
+ *  Rebel Base's system; each Refresh the marker stands, gain 1 reputation. The
+ *  marker is removed (and the spent card discarded) when the base relocates
+ *  (see establishBase). Exported for tests. Non-pausing. */
 export function processPersistentObjectives(G: GameState): void {
   const hand = G.rebel.objectiveHand ?? [];
   if (hand.includes('show-no-fear-3')) {
     const baseSys = G.rebelBaseSystemId;
     if (baseSys && !M.hasTargetMarker(G, baseSys, 'show-no-fear-3')
         && M.systemsWithTargetMarker(G, 'show-no-fear-3').length === 0) {
-      // First activation: place the marker at the Rebel Base's system.
       M.placeTargetMarker(G, baseSys, 'show-no-fear-3', 'Rebel');
     }
-    // Score 1 reputation per Refresh while any Show No Fear marker stands.
     if (M.systemsWithTargetMarker(G, 'show-no-fear-3').length > 0) {
       (G.objectiveReports ??= []).push({ objectiveId: 'show-no-fear-3', reputation: 1, via: 'refresh' });
       log(G, { kind: 'show-no-fear-score', side: 'Rebel', payload: { reputation: 1 } });
       M.gainReputation(G, 1);
     }
   }
+}
+
+/** Raid Outposts (persistent): for each of the card's target markers, if the
+ *  Rebel now has a GROUND unit in that remote system (the general RoE target-
+ *  marker rule), the Rebel "raids" the outpost — remove the marker and gain 1
+ *  reputation. Non-pausing. (Heist can also remove one; see the heist handler.)
+ *  Exported for tests. */
+export function scoreRaidOutposts(G: GameState): void {
+  if (!(G.rebel.objectiveHand ?? []).includes('raid-outposts-2')) return;
+  for (const sid of M.systemsWithTargetMarker(G, 'raid-outposts-2')) {
+    const hasRebelGround = (G.map.systems[sid]?.units ?? []).some(
+      (u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground',
+    );
+    if (!hasRebelGround) continue;
+    M.removeRaidOutpostMarker(G, sid); // removes marker + scores +1
+    if (G.isGameOver) return;
+  }
+}
+
+/** Has Raid Outposts been activated (its 2 markers placed)? Tracked via an
+ *  explicit flag because the markers are later removed as they score. */
+function persistentActivated(G: GameState, objectiveId: string): boolean {
+  return (G.rebel.activatedPersistentObjectives ?? []).includes(objectiveId);
+}
+function markPersistentActivated(G: GameState, objectiveId: string): void {
+  (G.rebel.activatedPersistentObjectives ??= []).push(objectiveId);
+}
+
+/** Resumable Refresh pre-step machine: runs the persistent-objective sequence
+ *  (Show No Fear + Raid Outposts scoring, then Raid Outposts / Rebel Cell
+ *  placement, then the Rebel Cell discard option) before the one-shot objective
+ *  step. Returns true if it posted a choice and PAUSED — the matching resolver
+ *  re-enters via advanceRefreshPreSteps to continue. The cursor on G survives
+ *  the pause so non-pausing scoring runs exactly once per Refresh. Exported
+ *  for tests. */
+export function advanceRefreshPreSteps(G: GameState, logStart: number): boolean {
+  G.refreshPreStep ??= 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    switch (G.refreshPreStep) {
+      case 0:
+        processPersistentObjectives(G); // Show No Fear place + score
+        if (G.isGameOver) return false;
+        G.refreshPreStep = 1; break;
+      case 1:
+        scoreRaidOutposts(G); // remove markers raided by Rebel ground units, score
+        if (G.isGameOver) return false;
+        G.refreshPreStep = 2; break;
+      case 2: {
+        const hand = G.rebel.objectiveHand ?? [];
+        if (hand.includes('raid-outposts-2') && !persistentActivated(G, 'raid-outposts-2')) {
+          const remotes = Object.keys(G.map.systems).filter(
+            (id) => G.catalog.systems[id]?.isRemote && !G.map.systems[id].destroyed,
+          );
+          if (remotes.length >= 2) {
+            G.pendingChoice = { kind: 'RaidOutpostsPlace', side: 'Empire', legal: remotes, count: 2, logStart };
+            log(G, { kind: 'choice-request', side: 'Empire', payload: { kind: 'RaidOutpostsPlace', count: 2 } });
+            return true;
+          }
+          // Can't place (fewer than 2 remotes) — treat as activated so we don't loop.
+          markPersistentActivated(G, 'raid-outposts-2');
+        }
+        G.refreshPreStep = 3; break;
+      }
+      case 3: {
+        const hand = G.rebel.objectiveHand ?? [];
+        if (hand.includes('rebel-cell-2') && !persistentActivated(G, 'rebel-cell-2')) {
+          const rebelSystems = Object.entries(G.map.systems)
+            .filter(([, ss]) => ss.loyalty === 'rebel' && !ss.destroyed)
+            .map(([id]) => id);
+          if (rebelSystems.length >= 1) {
+            G.pendingChoice = { kind: 'RebelCellPlace', side: 'Rebel', legal: rebelSystems, logStart };
+            log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'RebelCellPlace' } });
+            return true;
+          }
+        }
+        G.refreshPreStep = 4; break;
+      }
+      case 4: {
+        const hand = G.rebel.objectiveHand ?? [];
+        const markerPresent = M.systemsWithTargetMarker(G, 'rebel-cell-2').length > 0;
+        const discardable = hand.filter((id) => id !== 'rebel-cell-2');
+        if (hand.includes('rebel-cell-2') && markerPresent && discardable.length >= 1) {
+          G.pendingChoice = { kind: 'RebelCellDiscard', side: 'Rebel', legal: discardable, logStart };
+          log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'RebelCellDiscard', legal: discardable } });
+          return true;
+        }
+        G.refreshPreStep = 5; break;
+      }
+      default:
+        return false; // all pre-steps done
+    }
+  }
+}
+
+/** After pre-steps complete, run the one-shot StartOfRefresh objective step
+ *  (unless Rebel Cell's discard already replaced it this Refresh) and continue
+ *  the Refresh. Shared by enterRefreshPhase and the pre-step resolvers. */
+function runOneShotObjectivesThenContinue(G: GameState, logStart: number): void {
+  if (G.refreshRebelCellDiscardTaken) {
+    G.refreshRebelCellDiscardTaken = false;
+    continueRefreshAfterObjectives(G, logStart);
+    return;
+  }
+  if (refreshPlayStartOfRefreshObjectives(G, logStart)) return;
+  if (G.isGameOver) return;
+  continueRefreshAfterObjectives(G, logStart);
+}
+
+/** Resolve Raid Outposts placement: the Imperial picks `count` remote systems
+ *  to receive the card's target markers. */
+export function resolveRaidOutpostsPlace(
+  G: GameState, systemIds: SystemId[]
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'RaidOutpostsPlace') return { ok: false, reason: 'no-pending' };
+  const uniq = [...new Set(systemIds)];
+  if (uniq.length !== pc.count) return { ok: false, reason: 'wrong-count' };
+  if (!uniq.every((s) => pc.legal.includes(s))) return { ok: false, reason: 'illegal-system' };
+  const logStart = pc.logStart ?? G.turnLog.length;
+  for (const sid of uniq) M.placeTargetMarker(G, sid, 'raid-outposts-2', 'Empire');
+  markPersistentActivated(G, 'raid-outposts-2');
+  G.pendingChoice = undefined;
+  G.refreshPreStep = 3;
+  if (advanceRefreshPreSteps(G, logStart)) return { ok: true };
+  if (G.isGameOver) return { ok: true };
+  runOneShotObjectivesThenContinue(G, logStart);
+  return { ok: true };
+}
+
+/** Resolve Rebel Cell placement: the Rebel picks the Rebel system to mark. */
+export function resolveRebelCellPlace(
+  G: GameState, systemId: SystemId
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'RebelCellPlace') return { ok: false, reason: 'no-pending' };
+  if (!pc.legal.includes(systemId)) return { ok: false, reason: 'illegal-system' };
+  const logStart = pc.logStart ?? G.turnLog.length;
+  M.placeTargetMarker(G, systemId, 'rebel-cell-2', 'Rebel');
+  markPersistentActivated(G, 'rebel-cell-2');
+  G.pendingChoice = undefined;
+  G.refreshPreStep = 4;
+  if (advanceRefreshPreSteps(G, logStart)) return { ok: true };
+  if (G.isGameOver) return { ok: true };
+  runOneShotObjectivesThenContinue(G, logStart);
+  return { ok: true };
+}
+
+/** Resolve Rebel Cell's discard option: discard the chosen objective for +1
+ *  reputation, or decline (objectiveId = null). Taking it replaces playing a
+ *  one-shot objective this Refresh. */
+export function resolveRebelCellDiscard(
+  G: GameState, objectiveId: string | null
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'RebelCellDiscard') return { ok: false, reason: 'no-pending' };
+  const logStart = pc.logStart ?? G.turnLog.length;
+  if (objectiveId !== null) {
+    if (!pc.legal.includes(objectiveId)) return { ok: false, reason: 'illegal' };
+    const hand = G.rebel.objectiveHand ?? [];
+    const i = hand.indexOf(objectiveId);
+    if (i >= 0) hand.splice(i, 1);
+    (G.rebel.objectiveDiscard ??= []).push(objectiveId);
+    log(G, { kind: 'rebel-cell-discard', side: 'Rebel', payload: { discarded: objectiveId } });
+    (G.objectiveReports ??= []).push({ objectiveId: 'rebel-cell-2', reputation: 1, via: 'refresh' });
+    M.gainReputation(G, 1);
+    G.refreshRebelCellDiscardTaken = true;
+  }
+  G.pendingChoice = undefined;
+  G.refreshPreStep = 5;
+  if (G.isGameOver) return { ok: true };
+  runOneShotObjectivesThenContinue(G, logStart);
+  return { ok: true };
 }
 
 /** Resolve the player's start-of-refresh objective choice and resume the

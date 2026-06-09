@@ -186,6 +186,10 @@ export type FactionState = {
   objectiveDeck?: string[];
   objectiveHand?: string[];
   objectiveDiscard?: string[];
+  // RoE persistent place-on-play objectives (Rebel Cell, Raid Outposts) that
+  // have already placed their marker(s), so the Refresh pre-step doesn't
+  // re-prompt placement after the markers are later removed/scored.
+  activatedPersistentObjectives?: string[];
 
   // Empire-only
   probeHand?: string[];
@@ -220,6 +224,15 @@ export type ChoiceRequest =
   | { kind: 'DeployTarget'; unitTypeId: UnitTypeId; legal: SystemId[] }
   | { kind: 'PickProbeForNewBase'; cards: string[] }
   | { kind: 'PlayObjective'; side: Side; legal: string[]; window: 'combat' | 'refresh'; logStart?: number }
+  // RoE Rebel Cell — place the card's target marker in a chosen Rebel system.
+  | { kind: 'RebelCellPlace'; side: 'Rebel'; legal: SystemId[]; logStart?: number }
+  // RoE Rebel Cell — at Refresh, optionally discard 1 objective from hand to
+  // gain 1 reputation (instead of playing an objective). `legal` is the
+  // discardable objective-card ids; the player may also decline.
+  | { kind: 'RebelCellDiscard'; side: 'Rebel'; legal: string[]; logStart?: number }
+  // RoE Raid Outposts — the Imperial player places the card's 2 target markers
+  // in 2 chosen remote systems. `legal` is the eligible remote system ids.
+  | { kind: 'RaidOutpostsPlace'; side: 'Empire'; legal: SystemId[]; count: number; logStart?: number }
   | { kind: 'YesNo'; prompt: string }
   | { kind: 'ChooseActionCard'; from: string[] }
   | { kind: 'InfiltrationPick'; missionId: string; topId: string; bottomId: string }
@@ -1645,6 +1658,15 @@ export type GameState = {
   //   - pendingBuildPicks: ordered list of per-side build-pick packs still
   //     to resolve (Rebel first, then Empire). Each entry is queued as a
   //     BuildPick ChoiceRequest one at a time.
+  // RoE refresh pre-step cursor: drives the resumable sequence of persistent
+  // objective steps (Show No Fear / Raid Outposts scoring + placement / Rebel
+  // Cell placement + discard) that run before the one-shot objective step.
+  // Reset to 0 each enterRefreshPhase; survives the pause/resume of each
+  // placement/discard choice so scoring isn't repeated on resume.
+  refreshPreStep?: number;
+  // Set when the Rebel takes Rebel Cell's "discard for reputation" option this
+  // Refresh — it replaces playing a one-shot objective, so that step is skipped.
+  refreshRebelCellDiscardTaken?: boolean;
   refreshPaused?: {
     logStart: number;
     // Recruit-step picks queued before the build-step picks. Processed

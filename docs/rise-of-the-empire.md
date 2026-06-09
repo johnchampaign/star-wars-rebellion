@@ -38,13 +38,21 @@ they're this track's remaining work; general base-game bug fixes come after):
     establish-base path discards the spent card + clears the marker on
     relocation. Persistent objectives are skipped by the one-shot dispatcher.
   Tests in `scripts/test-roe-objectives.mjs` (26 checks pass).
-  **5d-iii TODO (2 cards needing interactive infra):**
-  - rebel-cell-2 — place a marker in a CHOSEN Rebel system + per-Refresh
-    "discard 1 objective to gain 1 reputation" cost (needs a placement choice
-    and a recurring discard-cost choice).
-  - raid-outposts-2 — the IMPERIAL player places 2 markers in remotes and the
-    Rebel scores when each is removed (needs opponent placement + a
-    marker-removal-triggered scoring hook).
+  **5d-iii DONE (the last 2 — full interactive + AI auto):** a resumable
+  Refresh pre-step machine (`advanceRefreshPreSteps`, cursor `refreshPreStep`)
+  runs persistent scoring then posts placement/discard choices, pausing and
+  resuming like the one-shot objective step.
+  - rebel-cell-2 — `RebelCellPlace` (Rebel picks a Rebel-loyalty system) on
+    first activation; then each Refresh while the marker stands a
+    `RebelCellDiscard` choice offers "discard 1 objective for +1 reputation
+    instead of playing one" (taking it skips the one-shot step that Refresh).
+  - raid-outposts-2 — `RaidOutpostsPlace` (the IMPERIAL player picks 2 remote
+    systems) on activation; the Rebel scores +1 when a marker is removed by a
+    Rebel ground unit reaching that remote (checked each Refresh) OR by Heist
+    (shared `mechanics.removeRaidOutpostMarker`). Removal trigger per the RoE
+    target-marker rule (ground-unit presence), confirmed by the user.
+  Tests: `scripts/test-roe-objectives-iii.mjs` (19 checks pass). All 12 RoE
+  objectives are now wired.
 - **3 Cinematic abilities** — Tractor Beam end-of-round capture,
   cancel-opponent-card, remove-damage (still `unwired`).
 - **Small gaps** — Old RoE starter-unit list (falls back to base) and

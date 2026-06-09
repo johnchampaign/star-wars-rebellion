@@ -1139,6 +1139,29 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       ? combat.resolveCombatObjectivePick(G, best).ok
       : phases.resolvePlayObjectivePick(G, best).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'RaidOutpostsPlace' && G.pendingChoice.side === side) {
+    // AI (Empire forced to place the Rebel's Raid Outposts markers): pick
+    // remotes the Rebel is least likely to reach — prefer ones without a
+    // Rebel ground unit, else the first legal ones. Deterministic.
+    const pc = G.pendingChoice;
+    const score = (sid: string) =>
+      (G.map.systems[sid]?.units ?? []).some((u) => u.side === 'Rebel') ? 1 : 0;
+    const picks = [...pc.legal].sort((a, b) => score(a) - score(b)).slice(0, pc.count);
+    return phases.resolveRaidOutpostsPlace(G, picks).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'RebelCellPlace' && G.pendingChoice.side === side) {
+    // AI: place the marker in the Rebel system with the most Rebel units (the
+    // most defensible), so it's likely to still be Rebel-held later.
+    const pc = G.pendingChoice;
+    const count = (sid: string) => (G.map.systems[sid]?.units ?? []).filter((u) => u.side === 'Rebel').length;
+    const best = [...pc.legal].sort((a, b) => count(b) - count(a))[0] ?? pc.legal[0];
+    return phases.resolveRebelCellPlace(G, best).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'RebelCellDiscard' && G.pendingChoice.side === side) {
+    // AI: don't burn objectives for 1 reputation by default — decline. (A
+    // smarter policy could discard a stuck/low-value objective.)
+    return phases.resolveRebelCellDiscard(G, null).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'MoreDangerousTheaterPick' && G.pendingChoice.side === side) {
     // AI: pick the deck with more remaining cards (avoid drawing 0 of 0).
     const theater: 'space' | 'ground' = G.groundTacticDeck.length >= G.spaceTacticDeck.length ? 'ground' : 'space';

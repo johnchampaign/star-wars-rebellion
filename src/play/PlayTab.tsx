@@ -173,6 +173,9 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'ReadyForActionLeaderPick': return pc.side === side;
     case 'DeathStarPlansAttempt':    return pc.side === side;
     case 'PlayObjective':            return pc.side === side;
+    case 'RaidOutpostsPlace':        return pc.side === side;
+    case 'RebelCellPlace':           return pc.side === side;
+    case 'RebelCellDiscard':         return pc.side === side;
     case 'RetreatDecision':          return pc.side === side;
     // Infiltration / Stolen Plans / Plan The Assault are always Rebel choices.
     case 'InfiltrationPick':         return side === 'Rebel';
@@ -1915,6 +1918,42 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
               && G.pendingChoice.window === 'combat'
               ? combat.resolveCombatObjectivePick(G, oid)
               : phases.resolvePlayObjectivePick(G, oid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'RaidOutpostsPlace'
+        && G.pendingChoice.side === humanSide && (
+        <RaidOutpostsPlaceModal G={G} choice={G.pendingChoice}
+          onPick={(systemIds) => {
+            const r = phases.resolveRaidOutpostsPlace(G, systemIds);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'RebelCellPlace'
+        && G.pendingChoice.side === humanSide && (
+        <RebelCellPlaceModal G={G} choice={G.pendingChoice}
+          onPick={(systemId) => {
+            const r = phases.resolveRebelCellPlace(G, systemId);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'RebelCellDiscard'
+        && G.pendingChoice.side === humanSide && (
+        <RebelCellDiscardModal G={G} choice={G.pendingChoice}
+          onPick={(objectiveId) => {
+            const r = phases.resolveRebelCellDiscard(G, objectiveId);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -11146,6 +11185,134 @@ function PlayObjectiveModal({
             );
           })}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- RoE Raid Outposts: Imperial places the card's 2 markers in remotes ---
+
+function RaidOutpostsPlaceModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'RaidOutpostsPlace'; side: Side; legal: string[]; count: number };
+  onPick: (systemIds: string[]) => void;
+}) {
+  const [sel, setSel] = useState<string[]>([]);
+  const toggle = (sid: string) => setSel((cur) =>
+    cur.includes(sid) ? cur.filter((s) => s !== sid) : cur.length < choice.count ? [...cur, sid] : cur);
+  const name = (sid: string) => G.catalog.systems[sid]?.name ?? sid;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 2600 }}>
+      <div style={{ background: '#15171c', border: '2px solid #e57373', borderRadius: 8, padding: 24,
+        maxWidth: 620, width: '92%', maxHeight: '88vh', overflowY: 'auto' }}>
+        <h3 style={{ color: '#e57373', marginTop: 0 }}>🎯 Raid Outposts — place target markers</h3>
+        <div style={{ color: '#cbc4b0', fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>
+          The Rebel played <b>Raid Outposts</b>. As the Imperial player you must place this card's
+          <b> {choice.count} target markers</b> in {choice.count} remote systems. The Rebel scores
+          1 reputation each time one is removed (by a Rebel ground unit reaching it, or a Heist).
+          Choose carefully — pick remotes the Rebels will struggle to reach.
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+          {choice.legal.map((sid) => {
+            const on = sel.includes(sid);
+            return (
+              <button key={sid} onClick={() => toggle(sid)} className="tab-button"
+                style={{ borderColor: on ? '#e57373' : '#444', background: on ? '#3a1f1f' : '#181818',
+                  padding: '8px 12px' }}>
+                {on ? '✓ ' : ''}{name(sid)}
+              </button>
+            );
+          })}
+        </div>
+        <button className="tab-button" disabled={sel.length !== choice.count}
+          onClick={() => onPick(sel)}
+          style={{ borderColor: '#e57373', opacity: sel.length === choice.count ? 1 : 0.5,
+            padding: '8px 16px', fontWeight: 700 }}>
+          Place {choice.count} markers ({sel.length}/{choice.count} chosen)
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ----- RoE Rebel Cell: place a marker in a chosen Rebel system -----
+
+function RebelCellPlaceModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'RebelCellPlace'; side: Side; legal: string[] };
+  onPick: (systemId: string) => void;
+}) {
+  const name = (sid: string) => G.catalog.systems[sid]?.name ?? sid;
+  const rebelUnits = (sid: string) => (G.map.systems[sid]?.units ?? []).filter((u) => u.side === 'Rebel').length;
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 2600 }}>
+      <div style={{ background: '#15171c', border: '2px solid #aed581', borderRadius: 8, padding: 24,
+        maxWidth: 620, width: '92%', maxHeight: '88vh', overflowY: 'auto' }}>
+        <h3 style={{ color: '#aed581', marginTop: 0 }}>🎯 Rebel Cell — place your target marker</h3>
+        <div style={{ color: '#cbc4b0', fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>
+          Place this card's target marker in any <b>Rebel-loyalty system</b>. While the marker stands,
+          at the start of each Refresh you may discard 1 objective card from your hand to gain 1
+          reputation (instead of playing an objective). Pick somewhere safe.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {choice.legal.map((sid) => (
+            <button key={sid} onClick={() => onPick(sid)} className="tab-button"
+              style={{ textAlign: 'left', borderColor: '#aed581', padding: '8px 14px' }}>
+              <b style={{ color: '#fff' }}>{name(sid)}</b>
+              <span style={{ color: '#9a937f', fontSize: 12, marginLeft: 8 }}>
+                ({rebelUnits(sid)} Rebel unit{rebelUnits(sid) === 1 ? '' : 's'})
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ----- RoE Rebel Cell: optional discard-an-objective-for-reputation -----
+
+function RebelCellDiscardModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { kind: 'RebelCellDiscard'; side: Side; legal: string[] };
+  onPick: (objectiveId: string | null) => void;
+}) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex',
+      alignItems: 'center', justifyContent: 'center', zIndex: 2600 }}>
+      <div style={{ background: '#15171c', border: '2px solid #aed581', borderRadius: 8, padding: 24,
+        maxWidth: 620, width: '92%', maxHeight: '88vh', overflowY: 'auto' }}>
+        <h3 style={{ color: '#aed581', marginTop: 0 }}>🛰️ Rebel Cell — discard for reputation?</h3>
+        <div style={{ color: '#cbc4b0', fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>
+          Your Rebel Cell marker still stands. <b>Instead of playing an objective this Refresh</b>,
+          you may discard 1 objective card from your hand to gain 1 reputation. This is optional.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+          {choice.legal.map((oid) => {
+            const card = G.catalog.objectives[oid];
+            return (
+              <button key={oid} onClick={() => onPick(oid)} className="tab-button"
+                style={{ textAlign: 'left', borderColor: '#aed581', padding: '8px 14px' }}>
+                <b style={{ color: '#fff' }}>{card?.name ?? oid}</b>
+                {card?.rulesText && (
+                  <div style={{ color: '#9a937f', fontSize: 12, marginTop: 2 }}>{card.rulesText}</div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <button className="tab-button" onClick={() => onPick(null)}
+          style={{ borderColor: '#ffd54a', padding: '8px 16px' }}>
+          Decline — keep my objectives and play normally
+        </button>
       </div>
     </div>
   );

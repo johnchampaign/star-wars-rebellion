@@ -1693,7 +1693,10 @@ const heist: EffectHandler = (G, ctx) => {
       return true;
     }
     if (markerSources.length === 1) {
-      M.removeTargetMarker(G, sysId, markerSources[0], 'Rebel');
+      // Raid Outposts scores +1 when one of its markers is removed (Heist can
+      // grab one without needing a ground unit); other markers just lift.
+      if (markerSources[0] === 'raid-outposts-2') M.removeRaidOutpostMarker(G, sysId);
+      else M.removeTargetMarker(G, sysId, markerSources[0], 'Rebel');
       return true;
     }
     // Multiple markers — pick which to remove.
