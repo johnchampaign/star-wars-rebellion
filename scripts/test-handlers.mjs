@@ -14,6 +14,7 @@ const { createGame } = await import('../src/engine/setup.ts');
 const phases = await import('../src/engine/phases.ts');
 const M = await import('../src/engine/mechanics.ts');
 const Handlers = await import('../src/engine/handlers/registry.ts');
+const { missionTargets } = await import('../src/engine/missionTargets.ts');
 
 function loadJson(p) { return JSON.parse(readFileSync(join(ROOT, 'assets', p), 'utf-8')); }
 const data = {
@@ -119,6 +120,29 @@ console.log('\n[ Rule by Fear ]');
   } else {
     check('imperial system found', false, 'no imperial system in setup');
   }
+}
+
+// ---------- Rule by Fear cannot target a destroyed system (#159) ----------
+console.log('\n[ Rule by Fear: destroyed system ]');
+{
+  const G = createGame(data, { seed: 312 });
+  // Find an Imperial system with an Empire unit, then destroy it.
+  const entry = Object.entries(G.map.systems).find(([, s]) =>
+    (s.loyalty === 'imperial' || s.subjugated) && s.units.some((u) => u.side === 'Empire'));
+  const [sysId] = entry;
+  M.destroySystem(G, sysId);
+  // A loyalty-gaining mission must NOT offer a destroyed system as a target —
+  // a destroyed planet can't gain loyalty (game shouldn't allow it; AI scores
+  // targets from this same list so it won't attempt it either).
+  const rbf = missionTargets(G, 'Empire', 'rule-by-fear');
+  check('rule-by-fear excludes destroyed system', !rbf.systemIds.includes(sysId), `still offered: ${sysId}`);
+  // Regression guard for #144: a non-loyalty combat/move mission may still
+  // target a destroyed system that holds ships.
+  const pta = missionTargets(G, 'Empire', 'plan-the-assault');
+  const stillHasImperialShip = G.map.systems[sysId].units.some(
+    (u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'space');
+  check('plan-the-assault still allows destroyed system with ships',
+    !stillHasImperialShip || pta.permissive || pta.systemIds.includes(sysId));
 }
 
 // ---------- Hit and Run (direct handler invocation) ----------
