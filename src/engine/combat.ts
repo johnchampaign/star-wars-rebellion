@@ -1427,15 +1427,26 @@ function discardCard(G: GameState, hand: string[], cardId: string): void {
 function applySpecialTacticEffect(G: GameState, c: CombatState, side: Side, cardId: string): void {
   const pa = c.pendingAttack!;
   if (cardId.includes('brilliant-strategy')) {
-    // "Draw 2 tactic cards from either deck, or 1 from each." MVP: draw 1
-    // from each (mixed-deck split). Side's hand grows by 2.
+    // "Draw 2 tactic cards from either deck, or 1 from each." When combat is
+    // happening in only ONE theater, the other deck's cards can't be played
+    // here — so take BOTH from the active deck instead of wasting a draw on a
+    // card that's dead for this fight. When both theaters are live, keep the
+    // 1-from-each split. (Player request.)
     const hand = side === c.attackerSide ? c.attackerHand : c.defenderHand;
-    const space = G.spaceTacticDeck.shift();
-    const ground = G.groundTacticDeck.shift();
-    if (space) hand.push(space);
-    if (ground) hand.push(ground);
-    pa.tacticsPlayed.push({ card: cardId, detail: `Brilliant Strategy: +${(space ? 1 : 0) + (ground ? 1 : 0)} cards` });
-    log(G, { kind: 'combat-tactic', side, payload: { card: cardId, drew: [space, ground].filter(Boolean) } });
+    const spaceActive = bothSidesHaveTheater(G, c.systemId, 'space');
+    const groundActive = bothSidesHaveTheater(G, c.systemId, 'ground');
+    const drawn: string[] = [];
+    const drawFrom = (deck: string[]) => { const d = deck.shift(); if (d) drawn.push(d); };
+    if (spaceActive && !groundActive) {
+      drawFrom(G.spaceTacticDeck); drawFrom(G.spaceTacticDeck);
+    } else if (groundActive && !spaceActive) {
+      drawFrom(G.groundTacticDeck); drawFrom(G.groundTacticDeck);
+    } else {
+      drawFrom(G.spaceTacticDeck); drawFrom(G.groundTacticDeck);
+    }
+    for (const d of drawn) hand.push(d);
+    pa.tacticsPlayed.push({ card: cardId, detail: `Brilliant Strategy: +${drawn.length} cards` });
+    log(G, { kind: 'combat-tactic', side, payload: { card: cardId, drew: drawn } });
     return;
   }
   if (cardId.includes('bombardment')) {
