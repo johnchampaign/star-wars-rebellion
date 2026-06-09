@@ -75,10 +75,16 @@ after merge.
   "when a unit is destroyed" reads as system-destruction here; the literal
   any-unit reading was rejected as too aggressive.) Test
   `scripts/test-system-destroy-markers.mjs`.
-- [ ] **#11 Construct Super Star Destroyer: 1 copy; RAW adds a 2nd.**
-  DEFERRED — the engine keys missions by unique id; a 2nd copy means a
-  duplicate id in the project deck, which risks mission-resolution/codec logic.
-  Needs a small duplicate-card mechanism (e.g. a count) before it's safe.
+- [x] **#11 Construct Super Star Destroyer copies — FALSE POSITIVE, no fix
+  needed.** The audit miscounted: it counted *catalog* entries (1, since the
+  catalog is keyed by unique id) instead of *deck* copies. The SSD mission
+  carries `projectCopies: 2`, and the project-deck builder expands that
+  (`flatMap(... Array.from({length: projectCopies}))`), so the Empire's project
+  deck already contains **2** copies in both base and RoE games. RAW ("replace…
+  **both copies** of Construct Super Star Destroyer") confirms the count is 2 in
+  both (the expansion swaps the art, not the count). Verified 2 copies in-deck.
+  Adding a duplicate catalog card would WRONGLY produce 3 copies — so the
+  correct action was to change nothing.
 - [x] **#12 Auto-setup DSUC placement** (partial). RoE auto-setup now places the
   DSUC + 4 TIE + 1 Stormtrooper in a chosen REMOTE system (p.8) instead of
   round-robining the DSUC across Imperial-loyalty systems. Interactive half was
