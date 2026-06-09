@@ -186,7 +186,7 @@ function attemptingLeadersAt(G: GameState, side: Side, systemId: SystemId, missi
 /** Split-by-major/minor skill count for a leader set on a single skill.
  *  Used both for mission skill-cost checks (sum) and dice rolls (the minor
  *  part rolls GREEN dice in RoE per rules p.8). */
-function totalSkill(G: GameState, leaderIds: LeaderId[], skill: string): { major: number; minor: number } {
+export function totalSkill(G: GameState, leaderIds: LeaderId[], skill: string): { major: number; minor: number } {
   let major = 0, minor = 0;
   for (const lid of leaderIds) {
     const ld = G.catalog.leaders[lid];

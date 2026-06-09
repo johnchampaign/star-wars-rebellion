@@ -32,7 +32,7 @@ import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
 import * as _combat from '../engine/combat';
 import { CombatBoardLive } from './CombatBoardLive';
 import { encode, decode, canEncode } from '../engine/codec';
-import type { GameState, Side } from '../engine/types';
+import type { GameState, Side, LeaderId } from '../engine/types';
 import type { RebellionAction } from '../adapter/rebellionAction';
 import { makeOnlinePhases, makeOnlineCombat } from '../online/onlineEngine';
 import type { System, MaskRect, ExpansionConfig } from '../types';
@@ -285,13 +285,10 @@ function hasAnyCommandAction(G: GameState, side: Side): boolean {
   for (const am of f.leadersOnMissions) {
     const card = G.catalog.missions[am.missionId];
     if (!card || !card.skill) continue;
-    let total = 0;
-    for (const lid of am.leaderIds) {
-      const ld = G.catalog.leaders[lid];
-      if (!ld) continue;
-      total += ld.skills[card.skill as keyof typeof ld.skills] ?? 0;
-    }
-    if (total >= card.skillCost) return true;
+    // Ring/minor-aware total (matches the engine reveal check) so a mission
+    // made revealable by minor or ring-granted icons (e.g. K-2SO) counts (#173).
+    const sc = phases.totalSkill(G, am.leaderIds, card.skill);
+    if (sc.major + sc.minor >= card.skillCost) return true;
   }
   return false;
 }
@@ -8360,12 +8357,15 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
               if (!card) return null;
               const isSel = revealMissionId === am.missionId;
               const leaderNames = am.leaderIds.map((lid) => G.catalog.leaders[lid]?.name ?? lid).join(' + ');
-              // Skill total
+              // Skill total — mirror the engine's reveal check: major + minor
+              // icons, where minor includes printed minors AND ring-granted
+              // bonuses (e.g. K-2SO from He Means Well). Summing only major
+              // here previously hid the ring/minor contribution (#173).
               const need = card.skill;
               let total = 0;
-              for (const lid of am.leaderIds) {
-                const ld = G.catalog.leaders[lid];
-                if (ld && need) total += ld.skills[need as keyof typeof ld.skills] ?? 0;
+              if (need) {
+                const sc = phases.totalSkill(G, am.leaderIds, need);
+                total = sc.major + sc.minor;
               }
               const meets = need ? total >= card.skillCost : true;
               // Portrait bonus: if the pictured leader is among the assigned
@@ -8956,10 +8956,8 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
             const cost = card?.skillCost ?? 0;
             let total = 0;
             if (skill) {
-              for (const lid of selectedLeaders) {
-                const ld = G.catalog.leaders[lid];
-                if (ld) total += ld.skills[skill as keyof typeof ld.skills] ?? 0;
-              }
+              const sc = phases.totalSkill(G, selectedLeaders as LeaderId[], skill);
+              total = sc.major + sc.minor;
             }
             const meets = !skill ? true : total >= cost;
             const empty = selectedLeaders.length === 0;
@@ -12708,7 +12706,10 @@ function MissionListPickModal({
             const art = m?.image ? getCachedArtUrlSync(m.image) : null;
             const skillName = (s?: string) => s === 'specOps' ? 'spec-ops' : (s ?? '');
             // Can the assigned leader meet this mission's skill requirement alone?
-            const have = ldr && m?.skill ? (ldr.skills[m.skill as keyof typeof ldr.skills] ?? 0) : 0;
+            // Ring/minor-aware (matches the engine reveal check) so K-2SO etc. count (#173).
+            const have = ldr && m?.skill
+              ? (() => { const sc = phases.totalSkill(G, [ldr.id] as LeaderId[], m.skill); return sc.major + sc.minor; })()
+              : 0;
             const shortfall = !!(ldr && m?.skill && m.skillCost > 0 && have < m.skillCost);
             // A leader pictured on the card grants +2 successes if that leader
             // resolves it (the "portrait bonus") — surface it so the player can
