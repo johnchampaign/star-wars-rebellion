@@ -27,7 +27,11 @@ console.log('[ scoreRaidOutposts: ground unit removes marker + scores ]');
 {
   const G = newG();
   G.rebel.objectiveHand = ['raid-outposts-2'];
-  const remotes = Object.keys(G.map.systems).filter((id) => G.catalog.systems[id]?.isRemote);
+  // Use remotes with NO Imperial units — RoE auto-setup now seeds the DSUC
+  // bundle (incl. a Stormtrooper) into a remote, and marker removal requires
+  // the opponent to have no ground units there (#6).
+  const remotes = Object.keys(G.map.systems).filter((id) =>
+    G.catalog.systems[id]?.isRemote && !G.map.systems[id].units.some((u) => u.side === 'Empire'));
   const [r1, r2] = remotes;
   G.map.systems[r1].targetMarkers = [{ source: 'raid-outposts-2', placedBy: 'Empire', placedAt: 0 }];
   G.map.systems[r2].targetMarkers = [{ source: 'raid-outposts-2', placedBy: 'Empire', placedAt: 0 }];
