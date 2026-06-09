@@ -31,6 +31,12 @@ const copies = [
   ['vmod_extracted/images/MarkerLoyaltyEmpire.png',      'markers/MarkerLoyaltyEmpire.png'],
   ['vmod_extracted/images/MarkerLoyaltySubjugated.png',  'markers/MarkerLoyaltySubjugated.png'],
   ['vmod_extracted/images/MarkerLoyaltyNeutral.png',     'markers/MarkerLoyaltyNeutral.png'],
+  // RoE target markers (shown on the board for the objective/mission cards
+  // that place them — Secure the Plans / Raid Outposts / Rebel Cell / Show No Fear)
+  ['vmod_extracted/images/MarkerSecureThePlans.png',     'markers/MarkerSecureThePlans.png'],
+  ['vmod_extracted/images/MarkerRaidOutposts.png',       'markers/MarkerRaidOutposts.png'],
+  ['vmod_extracted/images/MarkerRebelCell.png',          'markers/MarkerRebelCell.png'],
+  ['vmod_extracted/images/MarkerShowNoFear.png',         'markers/MarkerShowNoFear.png'],
   // Unit miniatures
   ['vmod_extracted/images/UnitTIE.png',                  'units/UnitTIE.png'],
   ['vmod_extracted/images/UnitAssaultCarrier.png',       'units/UnitAssaultCarrier.png'],

@@ -7092,8 +7092,9 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           const state = G.map.systems[s.id];
           if (!state) return null;
           // Coruscant + remote systems have no loyalty hex, but a sabotage
-          // badge still needs to be visible. Fall back to the planet position.
-          if (!s.loyaltyMarkerPos && !state.sabotage) return null;
+          // badge or RoE target marker still needs to be visible. Fall back to
+          // the planet position.
+          if (!s.loyaltyMarkerPos && !state.sabotage && !(state.targetMarkers?.length)) return null;
           // Match the VASSAL module exactly: it draws the 84x76 loyalty-token
           // image at native size centered on each loyaltyMarkerPos (which we
           // take verbatim from the module's buildFile). Rendered at native
@@ -7120,7 +7121,19 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           } else if (state.loyalty === 'imperial') {
             markers.push({ src: 'MarkerLoyaltyEmpire.png', offsetX: 0, offsetY: 0 });
           }
-          if (markers.length === 0 && !state.sabotage) return null;
+          // RoE target markers (Secure the Plans / Raid Outposts / Rebel Cell
+          // / Show No Fear) — render the table-top marker art, stacked below
+          // the loyalty/sabotage cluster so it never hides the loyalty disc.
+          const TARGET_MARKER_IMG: Record<string, string> = {
+            'secure-the-plans': 'MarkerSecureThePlans.png',
+            'raid-outposts-2': 'MarkerRaidOutposts.png',
+            'rebel-cell-2': 'MarkerRebelCell.png',
+            'show-no-fear-3': 'MarkerShowNoFear.png',
+          };
+          const tMarkers = (state.targetMarkers ?? [])
+            .map((m) => ({ src: TARGET_MARKER_IMG[m.source], source: m.source }))
+            .filter((m) => !!m.src);
+          if (markers.length === 0 && !state.sabotage && tMarkers.length === 0) return null;
           // Hover tooltip — lets the player read a system's loyalty at a glance,
           // INCLUDING what's hidden under a subjugation disc (#109 request).
           const sysName = s.name ?? s.id;
@@ -7169,6 +7182,32 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                   </g>
                 );
               })()}
+              {/* RoE target markers, stacked in a row below the hex/planet. */}
+              {tMarkers.map((tm, i) => {
+                const tW = 40 * BOARD_SCALE;
+                const tH = 40 * BOARD_SCALE;
+                const spacing = tW * 0.85;
+                const total = (tMarkers.length - 1) * spacing;
+                const tx = mx - total / 2 + i * spacing;
+                const ty = my + markerH / 2 + tH * 0.4;
+                const labels: Record<string, string> = {
+                  'secure-the-plans': 'Secure the Plans target marker',
+                  'raid-outposts-2': 'Raid Outposts target marker',
+                  'rebel-cell-2': 'Rebel Cell target marker',
+                  'show-no-fear-3': 'Show No Fear target marker',
+                };
+                return (
+                  <g key={`tmarker-${s.id}-${i}`}>
+                    <title>{`${s.name ?? s.id} — ${labels[tm.source] ?? 'target marker'}`}</title>
+                    <image
+                      href={vmodAssetUrl(tm.src, MARKER_IMAGE_BASE)}
+                      x={tx - tW / 2} y={ty - tH / 2}
+                      width={tW} height={tH}
+                      preserveAspectRatio="xMidYMid meet"
+                    />
+                  </g>
+                );
+              })}
             </g>
           );
         })}
