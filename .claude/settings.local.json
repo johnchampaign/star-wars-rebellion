@@ -16,6 +16,15 @@
       "Bash(gh label *)",
       "Bash(gh api *)",
       "Bash(gh issue *)",
+      "Bash(gh issue list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git rev-list:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
       "Bash(pdftotext -l 8 sw03_learn_to_play_web.pdf -)",
       "Bash(extract-text \"Rebellion_v3.xlsx\")",
       "Bash(cd \"C:\\\\Users\\\\johnc\\\\Claude Games\\\\Star Wars Rebellion\" && stat -c '%s %n' public/dev-assets/cards/ObjectiveLvl1CripplingBlow.png 2>&1 | head -2 && echo --- deployed --- && curl -sI 'https://star-wars-rebellion.pages.dev/dev-assets/cards/ObjectiveLvl1CripplingBlow.png' | grep -i 'content-length\\\\|content-type')",
@@ -54,7 +63,13 @@
       "Bash(perl -0pi -e 's/combat\\\\.runCombat\\\\\\(G\\\\\\);\\\\n\\(\\\\s*\\)check/combat.runCombat\\(G\\);\\\\n$1driveCombat\\(G\\);\\\\n$1check/g; s/\\(combat\\\\.runCombat\\\\\\(G\\\\\\);\\\\n\\)\\(\\\\s*\\)\\(\\\\/\\\\/ If Empire wins\\)/$1$2driveCombat\\(G\\);\\\\n$2$3/g; s/\\(combat\\\\.runCombat\\\\\\(G\\\\\\);\\\\n\\)\\(\\\\s*\\)\\(const survivors\\)/$1$2driveCombat\\(G\\);\\\\n$2$3/g' scripts/test-combat.mjs)",
       "Bash(gh pr create --base master --head ai-revealed-base-convergence --title 'AI: converge on revealed Rebel base; keep a base garrison' --body ' *)",
       "Bash(gh pr *)",
-      "Bash(cmd //c \"mklink /J node_modules \\\\\"C:\\\\Users\\\\johnc\\\\Claude Games\\\\Star Wars Rebellion\\\\node_modules\\\\\"\")"
+      "Bash(cmd //c \"mklink /J node_modules \\\\\"C:\\\\Users\\\\johnc\\\\Claude Games\\\\Star Wars Rebellion\\\\node_modules\\\\\"\")",
+      "Skill(update-config)",
+      "Skill(update-config:*)",
+      "Bash(cd \"/c/Users/johnc/Claude Games/Star Wars Rebellion/.claude/worktrees/rote-raw-fixes\" && sed -n '/export function damageUnit/,/^}/p' src/engine/mechanics.ts)",
+      "Bash(sed -n '/export function resolveRaidOutpostsPlace/,/^}/p' src/engine/phases.ts)",
+      "Bash(sed -n '/export function resolveRebelCellPlace/,/^}/p' src/engine/phases.ts)",
+      "Bash(sed -n '/function advanceCommandTurn/,/^  /p' src/engine/phases.ts)"
     ]
   }
 }
