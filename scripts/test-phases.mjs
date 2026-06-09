@@ -27,6 +27,23 @@ function check(name, ok, extra = '') {
   else { console.log(`  ✗ ${name}${extra ? ' — ' + extra : ''}`); fail++; }
 }
 
+// The Refresh phase is now interactive: it pauses on RecruitActionCardPick
+// (and RecruitLeaderPick when a card lists 2+ leaders), then on BuildPick for
+// completed builds. The phase only advances to the next round's Assignment once
+// those resolve. Drain them with sensible defaults (keep the first drawn card /
+// first leader / first legal unit type) so the test can observe the round
+// rollover. Engine behavior is correct; the test predates the interactive steps.
+function drainRefreshChoices(G) {
+  for (let i = 0; i < 50 && G.phase === 'Refresh' && G.pendingChoice; i++) {
+    const c = G.pendingChoice;
+    if (c.kind === 'RecruitActionCardPick') phases.resolveRecruitActionCardPick(G, c.drawnIds[0]);
+    else if (c.kind === 'RecruitLeaderPick') phases.resolveRecruitLeaderPick(G, c.candidates[0]);
+    else if (c.kind === 'BuildPick') phases.resolveBuildPicks(G, c.picks.map((p) => p.legalUnitTypes[0]));
+    else if (c.kind === 'DeployUnitPick') phases.resolveDeployUnitPick(G, c.candidates[0]);
+    else break; // unknown refresh choice — let the assertion surface it
+  }
+}
+
 // ---------- Assignment Phase ----------
 console.log('\n[ Assignment Phase ]');
 {
@@ -81,6 +98,7 @@ console.log('\n[ Refresh Phase ]');
   phases.skipAssignment(G, 'Rebel'); phases.skipAssignment(G, 'Empire');
   // Both pass immediately.
   phases.pass(G, 'Rebel'); phases.pass(G, 'Empire');
+  drainRefreshChoices(G); // resolve interactive recruit picks so the round rolls over
 
   check('Mon Mothma back in pool after refresh', G.rebel.leaderPool.includes('mon-mothma'));
   check('mission returned to hand', G.rebel.missionHand.includes(m));

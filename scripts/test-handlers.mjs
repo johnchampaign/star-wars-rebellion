@@ -29,6 +29,23 @@ function check(name, ok, extra = '') {
   else { console.log(`  ✗ ${name}${extra ? ' — ' + extra : ''}`); fail++; }
 }
 
+// revealMission no longer runs an attempt mission's effect synchronously: it
+// PAUSES on an OpposeMission choice so the opponent can decide whether to
+// oppose (the real opposition flow). For these unopposed-effect tests, decline
+// opposition (null) so the mission auto-succeeds and its effect fires.
+function declineOpposition(G) {
+  if (G.pendingChoice && G.pendingChoice.kind === 'OpposeMission') {
+    phases.resolveOpposition(G, null);
+  }
+}
+// Several "destroy units" effects now QUEUE a player pick ("…of your choice")
+// instead of auto-destroying. Resolve it by spending the budget greedily.
+function resolveDestroyChoice(G) {
+  if (G.pendingChoice && G.pendingChoice.kind === 'DestroyUpToHealth') {
+    phases.resolveDestroyUpToHealth(G, [...G.pendingChoice.candidates]);
+  }
+}
+
 // Set effectKey on each mission to the mission id (for these tests). Real
 // data extraction left effectKey empty — handlers look up by missionId when
 // effectKey is empty (see runMissionEffect).
@@ -56,6 +73,7 @@ console.log('\n[ Sabotage ]');
   phases.skipAssignment(G, 'Rebel'); phases.skipAssignment(G, 'Empire');
   const r = phases.revealMission(G, 'Rebel', 'sabotage', 'felucia');
   check('reveal Sabotage', r.ok, r.reason);
+  declineOpposition(G); // unopposed → effect fires
   check('sabotage marker placed on felucia', G.map.systems['felucia'].sabotage === true);
 }
 
@@ -68,6 +86,7 @@ console.log('\n[ Build Alliance ]');
   phases.skipAssignment(G, 'Rebel'); phases.skipAssignment(G, 'Empire');
   const before = G.map.systems['felucia'].loyalty;
   phases.revealMission(G, 'Rebel', 'build-alliance', 'felucia');
+  declineOpposition(G); // unopposed → effect fires
   const after = G.map.systems['felucia'].loyalty;
   check('felucia loyalty advances toward Rebel', after !== before, `${before} -> ${after}`);
 }
@@ -111,6 +130,7 @@ console.log('\n[ Hit and Run ]');
   const before = G.map.systems['yavin'].units.length;
   const ctx = Handlers.makeContext('Rebel', { kind: 'mission', id: 'hit-and-run' }, { targetSystemId: 'yavin' });
   Handlers.invokeByKey(G, 'hit-and-run', ctx);
+  resolveDestroyChoice(G); // "destroy up to 2 health of your choice" → pick them
   const after = G.map.systems['yavin'].units.length;
   check('hit-and-run destroyed units', after < before, `${before} -> ${after}`);
 }
@@ -130,6 +150,7 @@ console.log('\n[ Gather Intel ]');
   const rebelSys = Object.entries(G.map.systems).find(([, s]) => s.loyalty === 'rebel');
   if (rebelSys) {
     phases.revealMission(G, 'Empire', 'gather-intel', rebelSys[0]);
+    declineOpposition(G); // unopposed → effect fires
     const after = G.empire.probeHand?.length ?? 0;
     check('gather intel drew probe cards', after > before, `${before} -> ${after}`);
   } else {

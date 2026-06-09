@@ -29,6 +29,57 @@ function check(name, ok, extra = '') {
   else { console.log(`  ✗ ${name}${extra ? ' — ' + extra : ''}`); fail++; }
 }
 
+// Combat is now interactive: runCombat pauses on player choices (tactic-card
+// windows, special-die spend, damage assignment, retreat, Death Star Plans).
+// The choice resolvers re-enter runCombat themselves, so to play a combat to
+// the end we just resolve whatever combat choice is pending with a no-op
+// default (play no cards, decline retreat, assign each incoming hit to the
+// first live legal target). These tests predate the interactive combat board;
+// the engine behavior is correct. Returns when combat ends (or stalls on a
+// non-combat choice, so the assertion can surface it).
+function driveCombat(G) {
+  for (let i = 0; i < 1000 && G.pendingCombat; i++) {
+    const c = G.pendingChoice;
+    if (!c) { combat.runCombat(G); continue; }
+    switch (c.kind) {
+      case 'CombatAttackerTactics':
+        combat.resolveCombatAttackerTactics(G, { concentrateFireCardId: null, damageBoostCardIds: [] }); break;
+      case 'CombatDefenderTactics':
+        combat.resolveCombatDefenderTactics(G, { blockCardIds: [], sacrificeCardIds: [] }); break;
+      case 'SpecialDieSpend':
+        combat.resolveSpecialDieSpend(G, { draws: c.specialCount, playCardIds: [] }); break;
+      case 'CombatAddLeaderPick':
+        combat.resolveCombatAddLeaderPick(G, null); break;
+      case 'RetreatDecision':
+        combat.resolveRetreatDecision(G, null, null); break;
+      case 'DeathStarPlansAttempt':
+        combat.resolveDeathStarPlansAttempt(G, false); break;
+      case 'YodaReroll':
+        combat.resolveYodaReroll(G, null); break;
+      case 'CombatAssignDamage': {
+        const ss = G.map.systems[c.systemId] ?? G.map.rebelBaseSpace;
+        const queued = new Map();
+        const assignments = c.hits.map((_, hi) => {
+          for (const tid of (c.targetsByHit[hi] ?? [])) {
+            const u = ss?.units.find((x) => x.instanceId === tid);
+            if (!u) continue;
+            const t = G.catalog.unitTypes[u.typeId];
+            const remaining = (t?.health.value ?? 1) - (u.damage ?? 0) - (queued.get(tid) ?? 0);
+            if (remaining <= 0) continue;
+            queued.set(tid, (queued.get(tid) ?? 0) + 1);
+            return tid;
+          }
+          return null;
+        });
+        combat.resolveCombatAssignDamage(G, assignments);
+        break;
+      }
+      default:
+        return; // not a combat choice — let the assertion report the stall
+    }
+  }
+}
+
 // ---------- Basic: place units of both sides, force combat ----------
 console.log('\n[ Combat: stormtroopers vs rebel troopers ]');
 {
@@ -47,6 +98,7 @@ console.log('\n[ Combat: stormtroopers vs rebel troopers ]');
   combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
   check('pendingCombat set', G.pendingCombat?.systemId === 'felucia');
   combat.runCombat(G);
+  driveCombat(G);
   check('combat resolved', G.pendingCombat === undefined);
 
   const survivors = G.map.systems['felucia'].units;
@@ -75,6 +127,7 @@ console.log('\n[ Combat: black hits cannot kill red-health ships ]');
 
   combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
   combat.runCombat(G);
+  driveCombat(G);
   const survivors = G.map.systems['felucia'].units;
   const rebels = survivors.filter((u) => u.side === 'Rebel').length;
   const empires = survivors.filter((u) => u.side === 'Empire').length;
@@ -103,6 +156,7 @@ console.log('\n[ Combat: empire wins game by capturing revealed base ]');
 
   combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
   combat.runCombat(G);
+  driveCombat(G);
   // If Empire wins the ground fight, base falls.
   console.log(`    game over: ${G.isGameOver}, winner: ${G.winner}, reason: ${G.winReason}`);
   // The outcome is RNG-dependent but very likely Empire wins given the 3v1 imbalance.
@@ -138,6 +192,7 @@ console.log('\n[ activateSystem auto-triggers combat ]');
   // Now both sides are present. Manually trigger combat:
   combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
   combat.runCombat(G);
+  driveCombat(G);
   check('combat resolved via auto-trigger path', G.pendingCombat === undefined);
 }
 
