@@ -20,14 +20,15 @@ SIL_DIR.mkdir(parents=True, exist_ok=True)
 OUT = 200
 # (cx, cy, r) in the 900x600 sheet. Empire row then Rebel row.
 TOKENS = {
-    'tie-striker':       (150, 150, 80),
-    'assault-tank':      (350, 150, 80),
-    'shield-bunker':     (553, 150, 80),
-    'interdictor':       (762, 150, 80),
-    'u-wing':            (140, 440, 80),
-    'nebulon-b-frigate': (350, 440, 80),
-    'rebel-vanguard':    (560, 440, 80),
-    'golan-arms-turret': (785, 440, 80),
+    # Hand-marked via the "tokens (RoE)" dev tab and exported 2026-06-09.
+    'tie-striker':       (138, 163, 80),
+    'assault-tank':      (334, 164, 80),
+    'shield-bunker':     (531, 163, 80),
+    'interdictor':       (737, 163, 80),
+    'u-wing':            (128, 449, 80),
+    'nebulon-b-frigate': (331, 449, 80),
+    'rebel-vanguard':    (541, 449, 80),
+    'golan-arms-turret': (754, 445, 80),
 }
 
 src = Image.open(SRC).convert('RGBA')

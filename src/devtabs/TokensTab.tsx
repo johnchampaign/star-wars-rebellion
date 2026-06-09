@@ -61,14 +61,15 @@ export const BASE_TOKENS_CONFIG: TokensTabConfig = {
 // Rise of the Empire sheet — 8 tokens, 4 per faction row. Starting positions
 // are the auto-estimated crops; refine them here and re-export.
 const ROTE_DEFAULTS: Token[] = [
-  { typeId: 'tie-striker',       label: 'TIE Striker',       cx: 150, cy: 150, r: 80 },
-  { typeId: 'assault-tank',      label: 'Assault Tank',      cx: 350, cy: 150, r: 80 },
-  { typeId: 'shield-bunker',     label: 'Shield Bunker',     cx: 553, cy: 150, r: 80 },
-  { typeId: 'interdictor',       label: 'Interdictor',       cx: 762, cy: 150, r: 80 },
-  { typeId: 'u-wing',            label: 'U-Wing',            cx: 140, cy: 440, r: 80 },
-  { typeId: 'nebulon-b-frigate', label: 'Nebulon-B Frigate', cx: 350, cy: 440, r: 80 },
-  { typeId: 'rebel-vanguard',    label: 'Rebel Vanguard',    cx: 560, cy: 440, r: 80 },
-  { typeId: 'golan-arms-turret', label: 'Golan Arms Turret', cx: 785, cy: 440, r: 80 },
+  // Hand-marked via this tab and exported 2026-06-09.
+  { typeId: 'tie-striker',       label: 'TIE Striker',       cx: 138, cy: 163, r: 80 },
+  { typeId: 'assault-tank',      label: 'Assault Tank',      cx: 334, cy: 164, r: 80 },
+  { typeId: 'shield-bunker',     label: 'Shield Bunker',     cx: 531, cy: 163, r: 80 },
+  { typeId: 'interdictor',       label: 'Interdictor',       cx: 737, cy: 163, r: 80 },
+  { typeId: 'u-wing',            label: 'U-Wing',            cx: 128, cy: 449, r: 80 },
+  { typeId: 'nebulon-b-frigate', label: 'Nebulon-B Frigate', cx: 331, cy: 449, r: 80 },
+  { typeId: 'rebel-vanguard',    label: 'Rebel Vanguard',    cx: 541, cy: 449, r: 80 },
+  { typeId: 'golan-arms-turret', label: 'Golan Arms Turret', cx: 754, cy: 445, r: 80 },
 ];
 
 export const ROTE_TOKENS_CONFIG: TokensTabConfig = {
