@@ -81,11 +81,17 @@ function detectQualifiers(G: GameState, t: string): { preds: Pred[]; notes: stri
     }));
     notes.push('contains an Imperial ship');
   }
-  if (t.includes('contains an imperial unit') || t.includes('contains imperial units')) {
+  // "contains an Imperial unit" plus the RoE "with 1+ Imperial units" /
+  // "with an Imperial unit" phrasing (e.g. Covert Operations).
+  if (t.includes('contains an imperial unit') || t.includes('contains imperial units')
+      || t.includes('1+ imperial unit') || t.includes('1 or more imperial unit')
+      || t.includes('with an imperial unit') || t.includes('with imperial units')) {
     preds.push((id) => unitsAt(G, id).some((u) => u.side === 'Empire'));
     notes.push('contains an Imperial unit');
   }
-  if (t.includes('contains a rebel unit') || t.includes('contains rebel units')) {
+  if (t.includes('contains a rebel unit') || t.includes('contains rebel units')
+      || t.includes('1+ rebel unit') || t.includes('1 or more rebel unit')
+      || t.includes('with a rebel unit') || t.includes('with rebel units')) {
     preds.push((id) => unitsAt(G, id).some((u) => u.side === 'Rebel'));
     notes.push('contains a Rebel unit');
   }
