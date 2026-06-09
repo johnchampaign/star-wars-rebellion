@@ -98,27 +98,38 @@ function detectQualifiers(G: GameState, t: string): { preds: Pred[]; notes: stri
 
   // Named unit lists: "contains a Death Star", "contains a Death Star, Star
   // Destroyer or Super Star Destroyer", etc.
-  const namedMatch = t.match(/contains a (?:death star|star destroyer|super star destroyer|assault carrier|tie fighter|stormtrooper|at-at|at-st|x-wing|y-wing|corellian corvette|rebel transport|mon cala(?:mari)? cruiser|rebel trooper|airspeeder|shield generator|ion cannon)[^.]*/);
+  // "contains a <unit>" (base) and the RoE "Resolve on a <unit>" phrasing
+  // (Single Reactor Ignition, Imperial Might).
+  const namedMatch = t.match(/(?:contains|on) a (?:death star|dsuc|star destroyer|super star destroyer|assault carrier|tie fighter|tie striker|stormtrooper|at-at|at-st|assault tank|interdictor|shield bunker|x-wing|y-wing|u-wing|corellian corvette|rebel transport|mon cala(?:mari)? cruiser|nebulon-b frigate|rebel trooper|rebel vanguard|airspeeder|shield generator|golan arms turret|ion cannon)[^.]*/);
   if (namedMatch) {
     const phrase = namedMatch[0];
     const unitMap: Record<string, string> = {
       'super star destroyer':  'super-star-destroyer',
       'death star':            'death-star',
+      'dsuc':                  'death-star-under-construction',
       'star destroyer':        'star-destroyer',
       'assault carrier':       'assault-carrier',
       'tie fighter':           'tie-fighter',
+      'tie striker':           'tie-striker',
       'stormtrooper':          'stormtrooper',
       'at-st':                 'at-st',
       'at-at':                 'at-at',
+      'assault tank':          'assault-tank',
+      'interdictor':           'interdictor',
+      'shield bunker':         'shield-bunker',
       'x-wing':                'x-wing',
       'y-wing':                'y-wing',
+      'u-wing':                'u-wing',
       'corellian corvette':    'corellian-corvette',
       'rebel transport':       'rebel-transport',
       'mon calamari cruiser':  'mon-cala-cruiser',
       'mon cala cruiser':      'mon-cala-cruiser',
+      'nebulon-b frigate':     'nebulon-b-frigate',
       'rebel trooper':         'rebel-trooper',
+      'rebel vanguard':        'rebel-vanguard',
       'airspeeder':            'airspeeder',
       'shield generator':      'shield-generator',
+      'golan arms turret':     'golan-arms-turret',
       'ion cannon':            'ion-cannon',
     };
     const sorted = Object.entries(unitMap).sort((a, b) => b[0].length - a[0].length);
@@ -131,6 +142,11 @@ function detectQualifiers(G: GameState, t: string): { preds: Pred[]; notes: stri
         remain = remain.split(name).join('');
       }
     }
+    // "Resolve on a Death Star (not a DSUC)" — the parenthetical excludes the
+    // under-construction model that 'death star' auto-includes above.
+    if (t.includes('not a dsuc') || t.includes('not dsuc')) {
+      wanted.delete('death-star-under-construction');
+    }
     if (wanted.size > 0) {
       preds.push((id) => unitsAt(G, id).some((u) => wanted.has(u.typeId)));
       const human = [...wanted].map((tid) => G.catalog.unitTypes[tid]?.name ?? tid).join(', ');
@@ -140,11 +156,18 @@ function detectQualifiers(G: GameState, t: string): { preds: Pred[]; notes: stri
 
   // ----- "does not contain" qualifiers ------------------------------------
 
-  if (t.includes('does not contain a rebel unit')) {
+  if (t.includes('does not contain a rebel unit')
+      || t.includes('with no rebel units') || t.includes('no rebel units')) {
     preds.push((id) => !unitsAt(G, id).some((u) => u.side === 'Rebel'));
     notes.push('no Rebel units');
   }
-  if (t.includes('does not contain an imperial unit')) {
+  // RoE Deployment: "with no Rebel units or loyalty" — the loyalty half.
+  if (t.includes('no rebel units or loyalty')) {
+    preds.push((id) => G.map.systems[id]?.loyalty !== 'rebel');
+    notes.push('no Rebel loyalty');
+  }
+  if (t.includes('does not contain an imperial unit')
+      || t.includes('with no imperial units') || t.includes('no imperial units')) {
     preds.push((id) => !unitsAt(G, id).some((u) => u.side === 'Empire'));
     notes.push('no Imperial units');
   }
@@ -188,7 +211,17 @@ export function missionTargets(G: GameState, _side: Side, missionId: string): Ta
   if (t.includes('assign this leader to a starting mission')) {
     return { systemIds: allSystems(G), permissive: true, note: 'No system target (assignment-style mission).' };
   }
-  if (t.includes('against a captured leader') || t.includes('contains a captured leader')) {
+  // RoE oppose-timing missions (Subversion) and build-track missions
+  // (Interdictor Development) have no system target at all.
+  if (t.startsWith('oppose ')) {
+    return { systemIds: allSystems(G), permissive: true, note: 'No system target (opposes a mission).' };
+  }
+  if (t.includes('on build space')) {
+    return { systemIds: allSystems(G), permissive: true, note: 'No system target (resolves on the build track).' };
+  }
+  // "against a captured leader" / "contains a captured leader" (base) and the
+  // RoE "Attempt on a captured leader" / "on a captured leader's system".
+  if (t.includes('captured leader')) {
     // Per RAW: captured leaders stay at a system. The target is that system.
     const sysIds = new Set<SystemId>();
     for (const cap of G.empire.capturedLeaders ?? []) sysIds.add(cap.systemId);
@@ -230,12 +263,31 @@ export function missionTargets(G: GameState, _side: Side, missionId: string): Ta
       return !!ss && ss.loyalty === 'rebel';
     };
     noteParts.push('Rebel-loyalty marker');
-  } else if (t.includes('any rebel system')) {
+  } else if (t.includes('subjugated or rebel system')) {
+    // RoE Behind Enemy Lines: "Resolve on a subjugated or Rebel system."
+    basePred = (id) => {
+      const ss = G.map.systems[id];
+      return !!ss && (ss.subjugated || ss.loyalty === 'rebel');
+    };
+    noteParts.push('Subjugated or Rebel-loyalty');
+  } else if (t.includes('any rebel system')
+      || t.includes('on a rebel system') || t.includes('in a rebel system')) {
     basePred = (id) => {
       const ss = G.map.systems[id];
       return !!ss && ss.loyalty === 'rebel' && !ss.subjugated;
     };
     noteParts.push('Rebel-loyalty (not subjugated)');
+  } else if (t.includes('on an imperial system') || t.includes('in an imperial system')) {
+    // RoE phrasing of the base "any Imperial system" (glossary: loyalty OR
+    // subjugation; Coruscant always counts).
+    basePred = (id) => {
+      const ss = G.map.systems[id];
+      return !!ss && (ss.loyalty === 'imperial' || ss.subjugated || G.catalog.systems[id]?.isCoruscant === true);
+    };
+    noteParts.push('Imperial-loyalty or subjugated');
+  } else if (t.includes('on a sabotaged system') || t.includes('in a sabotaged system')) {
+    basePred = (id) => !!G.map.systems[id]?.sabotage;
+    noteParts.push('Sabotaged');
   } else if (t.includes('any neutral system')
       || t.includes('any system that has neutral loyalty')
       || t.includes('any system with neutral loyalty')) {
@@ -246,10 +298,12 @@ export function missionTargets(G: GameState, _side: Side, missionId: string): Ta
       return ss.loyalty === 'neutral' && !ss.subjugated;
     };
     noteParts.push('Neutral');
-  } else if (t.includes('any subjugated system')) {
+  } else if (t.includes('any subjugated system')
+      || t.includes('on a subjugated system') || t.includes('in a subjugated system')) {
     basePred = (id) => !!G.map.systems[id]?.subjugated;
     noteParts.push('Subjugated');
-  } else if (t.includes('any populous system')) {
+  } else if (t.includes('any populous system')
+      || t.includes('on a populous system') || t.includes('in a populous system')) {
     basePred = (id) => !G.catalog.systems[id]?.isRemote;
     noteParts.push('Populous (non-remote)');
   } else if (t.includes('a remote system') || t.includes('any remote system')) {
@@ -301,7 +355,7 @@ export function missionTargets(G: GameState, _side: Side, missionId: string): Ta
 
   // Did we detect *any* constraint?
   const haveBase = noteParts.length > 0 || quals.length > 0;
-  if (!haveBase && (t.includes('in any system') || t.includes('anywhere'))) {
+  if (!haveBase && (t.includes('in any system') || t.includes('on any system') || t.includes('anywhere'))) {
     return { systemIds: allSystems(G), permissive: false, note: 'Any system.' };
   }
   if (!haveBase) {
