@@ -352,7 +352,17 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
     if (systemId === 'rebel-base-space') return { ok: false, reason: 'empire-cannot-use-rebel-base' };
     const ss = G.map.systems[systemId];
     if (!ss) return { ok: false, reason: 'unknown-system' };
-    if (ss.loyalty !== 'imperial' && !ss.subjugated) {
+    const imperialControlled = ss.loyalty === 'imperial' || ss.subjugated;
+    // RoE setup (rulebook p.8): the Death Star Under Construction is placed in a
+    // chosen REMOTE system, and "any system that has a Death Star Under
+    // Construction" is then a legal target for Imperial units (so the 4 TIE
+    // Fighters + 1 Stormtrooper bundle can join it). Remotes have no loyalty
+    // marker, so without this the DSUC can't be positioned where RAW requires.
+    const roeRemoteOk = !!G.expansion?.enabled && (
+      (typeId === 'death-star-under-construction' && !!G.catalog.systems[systemId]?.isRemote)
+      || ss.units.some((u) => u.side === 'Empire' && u.typeId === 'death-star-under-construction')
+    );
+    if (!imperialControlled && !roeRemoteOk) {
       return { ok: false, reason: 'must-be-imperial-or-subjugated' };
     }
   } else {

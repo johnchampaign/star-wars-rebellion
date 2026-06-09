@@ -59,6 +59,15 @@ after merge.
   reroll picks — blanks only vs RAW free choice, special-heal target,
   shield-absorb amount).
 
+### From-game bugs (related)
+- [x] **#163 RoE setup: can't place the Death Star Under Construction on a
+  remote.** `setupDeployUnit` (and the deploy-picker UI) only allowed Empire
+  units on Imperial-loyalty/subjugated systems. Per rulebook p.8 the DSUC goes
+  in a chosen REMOTE system, and any system with a DSUC is then legal for
+  Imperial units. Fixed engine legality + UI legal-targets (gated on
+  `expansion.enabled`); test `scripts/test-rote-dsuc-setup.mjs`. (Also covers
+  the interactive half of audit #12.) **Closes #163 on merge+deploy.**
+
 ## Plan
 Quick, isolated wins first (#1, #6, #11), then the cinematic damage-timing
 cluster (#2/#3) and deck rules (#4/#5), then the rest. Each fix: gate so the

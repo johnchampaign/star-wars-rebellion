@@ -7974,18 +7974,28 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onReset, undoCount 
   // Legal targets
   const legalTargets: { id: string; name: string; note?: string }[] = [];
   if (side === 'Empire') {
+    const roe = !!G.expansion?.enabled;
     for (const [sysId, ss] of Object.entries(G.map.systems)) {
-      if (ss.loyalty === 'imperial' || ss.subjugated) {
-        const sysDef = G.catalog.systems[sysId];
-        const hasGround = ss.units.some((u) => {
-          const t = G.catalog.unitTypes[u.typeId];
-          return u.side === 'Empire' && t?.theater === 'ground';
-        });
-        legalTargets.push({
-          id: sysId, name: sysDef?.name ?? sysId,
-          note: hasGround ? undefined : 'needs ground unit',
-        });
-      }
+      const sysDef = G.catalog.systems[sysId];
+      const imperialControlled = ss.loyalty === 'imperial' || ss.subjugated;
+      // RoE setup (rulebook p.8): the Death Star Under Construction goes in a
+      // chosen REMOTE system, and any system that has a DSUC is then legal for
+      // Imperial units (so the 4 TIE + 1 Stormtrooper bundle can join it).
+      const hasDsuc = ss.units.some((u) => u.side === 'Empire' && u.typeId === 'death-star-under-construction');
+      const roeRemoteOk = roe && (
+        (selectedType === 'death-star-under-construction' && !!sysDef?.isRemote) || hasDsuc
+      );
+      if (!imperialControlled && !roeRemoteOk) continue;
+      const hasGround = ss.units.some((u) => {
+        const t = G.catalog.unitTypes[u.typeId];
+        return u.side === 'Empire' && t?.theater === 'ground';
+      });
+      legalTargets.push({
+        id: sysId, name: sysDef?.name ?? sysId,
+        note: !imperialControlled
+          ? (hasDsuc ? 'remote (DSUC here)' : 'remote — Death Star Under Construction')
+          : (hasGround ? undefined : 'needs ground unit'),
+      });
     }
   } else {
     legalTargets.push({ id: 'rebel-base-space', name: 'Rebel Base space', note: 'staging area (hidden)' });
