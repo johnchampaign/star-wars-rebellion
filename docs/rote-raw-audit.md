@@ -61,8 +61,13 @@ after merge.
   capped 5, not the old min(5,8)−2 = 3).
 
 ### Low / verify
-- [ ] **#10 General "unit destroyed → remove the system's target markers" rule**
-  (p.8) not implemented.
+- [x] **#10 Destroyed system removes its target markers** (p.8). Implemented
+  per the user's reading: when a SYSTEM is destroyed (Superlaser), all target
+  markers in it are removed and each removal effect resolves (Raid Outposts
+  scores the Rebel +1). Hooked in `mechanics.destroySystem`. (The printed
+  "when a unit is destroyed" reads as system-destruction here; the literal
+  any-unit reading was rejected as too aggressive.) Test
+  `scripts/test-system-destroy-markers.mjs`.
 - [ ] **#11 Construct Super Star Destroyer: 1 copy; RAW adds a 2nd.**
   DEFERRED — the engine keys missions by unique id; a 2nd copy means a
   duplicate id in the project deck, which risks mission-resolution/codec logic.

@@ -576,6 +576,13 @@ export function destroySystem(G: GameState, systemId: SystemId): void {
   // Loyalty/subjugation are removed on destroyed systems.
   ss.loyalty = 'neutral';
   ss.subjugated = false;
+  // RoE p.8: when a system is destroyed, all target markers in it are removed
+  // and each marker's removal effect is resolved (e.g. Raid Outposts scores the
+  // Rebel 1 reputation). Iterate a copy since removal mutates the list.
+  for (const m of [...(ss.targetMarkers ?? [])]) {
+    if (m.source === 'raid-outposts-2') removeRaidOutpostMarker(G, systemId);
+    else removeTargetMarker(G, systemId, m.source, m.placedBy);
+  }
   log(G, { kind: 'destroy-system', payload: { systemId } });
   applyInvariants(G, [systemId]);
 }
