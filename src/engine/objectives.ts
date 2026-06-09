@@ -111,6 +111,55 @@ export function objectiveConditionMet(G: GameState, objectiveId: string): boolea
       }
       return destroyed >= 1;
     }
+
+    // ----- Rise of the Empire objectives (Refresh-timed conditions) -----
+
+    case 'defensive-position-1': {
+      // A single on-board system (other than the off-board Rebel Base space,
+      // which is not in G.map.systems) contains 3+ Rebel structures.
+      for (const ss of Object.values(G.map.systems)) {
+        let structures = 0;
+        for (const u of ss.units) {
+          if (u.side !== 'Rebel') continue;
+          if (G.catalog.unitTypes[u.typeId]?.class === 'structure') structures++;
+        }
+        if (structures >= 3) return true;
+      }
+      return false;
+    }
+
+    case 'support-of-the-hutts-1': {
+      // 3+ systems in Nal Hutta's region have Rebel loyalty.
+      const region = G.catalog.systems['nal-hutta']?.region;
+      if (region === undefined) return false;
+      let count = 0;
+      for (const [id, ss] of Object.entries(G.map.systems)) {
+        if (G.catalog.systems[id]?.region !== region) continue;
+        if (ss.loyalty === 'rebel') count++;
+      }
+      return count >= 3;
+    }
+
+    case 'threaten-the-core-1': {
+      // 5+ Rebel units in and/or adjacent to Coruscant.
+      const scope = new Set<SystemId>(['coruscant', ...(G.catalog.adjacency['coruscant'] ?? [])]);
+      let units = 0;
+      for (const sid of scope) {
+        const ss = G.map.systems[sid];
+        if (!ss) continue;
+        units += ss.units.filter((u) => u.side === 'Rebel').length;
+      }
+      return units >= 5;
+    }
+
+    case 'uprising-3': {
+      // 9+ systems have Rebel loyalty.
+      let count = 0;
+      for (const ss of Object.values(G.map.systems)) {
+        if (ss.loyalty === 'rebel') count++;
+      }
+      return count >= 9;
+    }
   }
   return false;
 }
@@ -175,6 +224,38 @@ export function combatObjectivesTriggered(
   // space battle step, reveal this card to roll 3 dice; on direct-hit
   // play and destroy a Death Star in this system." Stochastic & destructive
   // — leave to a follow-up so we don't surprise players. NOT fired here.
+
+  // ----- Rise of the Empire combat objectives -----
+
+  // Per-theater "a battle was fought" = at least one damage-dealing attack in
+  // that theater this combat (mirrors the liberation-2 groundFought test).
+  const foughtIn = (theater: import('./types').Theater) =>
+    report.rounds.some((r) =>
+      r.attacks.some((a) => a.theater === theater && a.damageApplied > 0),
+    );
+
+  // decisive-victory-1 — win a space battle AND a ground battle in the same
+  // combat. Approximated as: Rebel won overall and both theaters saw a
+  // damage-dealing battle (same convention as liberation-2).
+  if (has('decisive-victory-1') && rebelWonOverall && foughtIn('space') && foughtIn('ground')) {
+    fired.push('decisive-victory-1');
+  }
+
+  // seize-control-2 — win a space or ground battle in a system that has a
+  // sabotage marker. (The card's optional "you may remove the marker" is a
+  // destructive side-effect left out of auto-play; scoring only.)
+  if (has('seize-control-2') && rebelWonOverall && !!G.map.systems[report.systemId]?.sabotage) {
+    fired.push('seize-control-2');
+  }
+
+  // raid-imperial-factory-3 — win a battle in a combat the Rebels INITIATED,
+  // in a system that has a resource icon.
+  if (
+    has('raid-imperial-factory-3') && rebelInitiated && rebelWonOverall &&
+    (G.catalog.systems[report.systemId]?.resources?.length ?? 0) > 0
+  ) {
+    fired.push('raid-imperial-factory-3');
+  }
 
   return fired;
 }

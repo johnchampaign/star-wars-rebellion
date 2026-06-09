@@ -179,7 +179,10 @@ export type MissionCard = {
   set?: ContentSet;
 };
 
-export type ObjectiveTiming = 'Combat' | 'StartOfRefresh' | 'Special' | '';
+// Base objectives use 'StartOfRefresh'; Rise of the Empire objectives use
+// 'Refresh' (same start-of-Refresh window) and 'Immediate' (place-on-play
+// persistent objectives — wired in the 5d-ii follow-up).
+export type ObjectiveTiming = 'Combat' | 'StartOfRefresh' | 'Refresh' | 'Immediate' | 'Special' | '';
 
 export type ObjectiveCard = {
   id: string;

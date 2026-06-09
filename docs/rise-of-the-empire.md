@@ -18,8 +18,19 @@ they're this track's remaining work; general base-game bug fixes come after):
   completed `death-star` is no longer in the RoE deploy list; it's seeded
   onto build-track space 3 (`empire.buildQueue[3]`) so it completes 3
   Refreshes in and swaps for the DSUC. Base game untouched.
-- **5d objectives** — the 12 RoE objective cards still score nothing
-  (blank effectKeys; wire via the stage-scoring path).
+- **5d objectives (PARTIAL)** — objectives score via the timing/condition
+  path (`objectives.ts`), NOT effectKeys. **5d-i DONE:** the 7 tractable
+  ones are wired — refresh-conditions (defensive-position-1,
+  support-of-the-hutts-1, threaten-the-core-1, uprising-3) in
+  `objectiveConditionMet`, and combat ones (decisive-victory-1,
+  seize-control-2, raid-imperial-factory-3) in `combatObjectivesTriggered`.
+  The refresh dispatcher now accepts RoE's 'Refresh' timing alongside base
+  'StartOfRefresh'. Tests: `scripts/test-roe-objectives.mjs` (17 pass).
+  **5d-ii TODO (5 cards needing new infra):** action-cost objectives
+  (the-long-war-1 = discard 2 other objectives; a-time-for-peace-2 =
+  destroy specific build-queue units) and persistent place-on-play
+  target-marker objectives (raid-outposts-2, rebel-cell-2, show-no-fear-3 —
+  marker placed when played, scores repeatedly each Refresh).
 - **3 Cinematic abilities** — Tractor Beam end-of-round capture,
   cancel-opponent-card, remove-damage (still `unwired`).
 - **Small gaps** — Old RoE starter-unit list (falls back to base) and

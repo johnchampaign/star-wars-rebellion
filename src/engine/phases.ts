@@ -3861,7 +3861,9 @@ function refreshPlayStartOfRefreshObjectives(G: GameState, logStart: number): bo
   const checkedNotMet: { id: string; name: string; rulesText?: string }[] = [];
   for (const id of hand) {
     const card = G.catalog.objectives[id];
-    if (!card || card.timing !== 'StartOfRefresh') continue;
+    // Base objectives use 'StartOfRefresh'; RoE objectives use 'Refresh' for
+    // the same start-of-Refresh window. Treat them as equivalent.
+    if (!card || (card.timing !== 'StartOfRefresh' && card.timing !== 'Refresh')) continue;
     if (!objectiveConditionMet(G, id)) {
       checkedNotMet.push({ id, name: card.name, rulesText: card.rulesText });
       continue;
