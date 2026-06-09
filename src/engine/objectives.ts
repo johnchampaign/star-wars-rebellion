@@ -160,8 +160,51 @@ export function objectiveConditionMet(G: GameState, objectiveId: string): boolea
       }
       return count >= 9;
     }
+
+    case 'the-long-war-1': {
+      // Playable if the Rebel can discard 2 OTHER objective cards from hand.
+      const others = (G.rebel.objectiveHand ?? []).filter((id) => id !== 'the-long-war-1');
+      return others.length >= 2;
+    }
+
+    case 'a-time-for-peace-2': {
+      // Playable if the Imperial build queue holds 2 triangle, 1 circle, and
+      // 1 square unit to destroy.
+      return timeForPeaceQueueTargets(G) !== null;
+    }
   }
   return false;
+}
+
+/** Persistent "place a target marker, then score each Refresh" objectives.
+ *  Handled outside the one-shot StartOfRefresh play flow (they stay in hand).
+ *  show-no-fear-3 is wired (processPersistentObjectives); rebel-cell-2 and
+ *  raid-outposts-2 are recognized here so the one-shot dispatcher skips them,
+ *  but their placement/scoring is the 5d-iii follow-up. */
+export const PERSISTENT_OBJECTIVES = new Set<string>([
+  'show-no-fear-3', 'rebel-cell-2', 'raid-outposts-2',
+]);
+
+/** For a-time-for-peace-2: locate 2 triangle + 1 circle + 1 square Imperial
+ *  units across the build queue. Returns the queue coordinates to destroy, or
+ *  null if the queue can't satisfy the requirement. Used both as the play
+ *  condition (non-null) and to perform the destruction. */
+export function timeForPeaceQueueTargets(
+  G: GameState,
+): { slot: 1 | 2 | 3; index: number; typeId: string }[] | null {
+  const need: Record<'triangle' | 'circle' | 'square', number> = { triangle: 2, circle: 1, square: 1 };
+  const picked: { slot: 1 | 2 | 3; index: number; typeId: string }[] = [];
+  for (const slot of [1, 2, 3] as const) {
+    const q = G.empire.buildQueue[slot] ?? [];
+    for (let index = 0; index < q.length; index++) {
+      const typeId = q[index];
+      const tier = G.catalog.unitTypes[typeId]?.tier as 'triangle' | 'circle' | 'square' | undefined;
+      if (!tier || need[tier] <= 0) continue;
+      need[tier]--;
+      picked.push({ slot, index, typeId });
+    }
+  }
+  return need.triangle === 0 && need.circle === 0 && need.square === 0 ? picked : null;
 }
 
 /** Evaluate combat-timed Rebel objectives against a just-finished combat.

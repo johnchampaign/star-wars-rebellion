@@ -25,12 +25,26 @@ they're this track's remaining work; general base-game bug fixes come after):
   `objectiveConditionMet`, and combat ones (decisive-victory-1,
   seize-control-2, raid-imperial-factory-3) in `combatObjectivesTriggered`.
   The refresh dispatcher now accepts RoE's 'Refresh' timing alongside base
-  'StartOfRefresh'. Tests: `scripts/test-roe-objectives.mjs` (17 pass).
-  **5d-ii TODO (5 cards needing new infra):** action-cost objectives
-  (the-long-war-1 = discard 2 other objectives; a-time-for-peace-2 =
-  destroy specific build-queue units) and persistent place-on-play
-  target-marker objectives (raid-outposts-2, rebel-cell-2, show-no-fear-3 —
-  marker placed when played, scores repeatedly each Refresh).
+  'StartOfRefresh'.
+  **5d-ii DONE (3 of the remaining 5):**
+  - the-long-war-1 — score side-effect discards 2 other objectives from hand
+    (`applyObjectiveScoreSideEffect`, auto-picks 2; a future UI prompt could
+    let the player choose which).
+  - a-time-for-peace-2 — condition via `timeForPeaceQueueTargets` (2 triangle
+    + 1 circle + 1 square on the Imperial build queue); score destroys them.
+  - show-no-fear-3 — persistent: `processPersistentObjectives` (run at each
+    Refresh start) places a target marker at the Rebel Base system on first
+    activation, gains 1 reputation per Refresh while it stands, and the
+    establish-base path discards the spent card + clears the marker on
+    relocation. Persistent objectives are skipped by the one-shot dispatcher.
+  Tests in `scripts/test-roe-objectives.mjs` (26 checks pass).
+  **5d-iii TODO (2 cards needing interactive infra):**
+  - rebel-cell-2 — place a marker in a CHOSEN Rebel system + per-Refresh
+    "discard 1 objective to gain 1 reputation" cost (needs a placement choice
+    and a recurring discard-cost choice).
+  - raid-outposts-2 — the IMPERIAL player places 2 markers in remotes and the
+    Rebel scores when each is removed (needs opponent placement + a
+    marker-removal-triggered scoring hook).
 - **3 Cinematic abilities** — Tractor Beam end-of-round capture,
   cancel-opponent-card, remove-damage (still `unwired`).
 - **Small gaps** — Old RoE starter-unit list (falls back to base) and

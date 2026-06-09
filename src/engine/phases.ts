@@ -16,7 +16,7 @@ import * as Handlers from './handlers/registry';
 import { missionTargets } from './missionTargets';
 import { PROJECT_ONLY_UNIT_IDS } from './units';
 import { rollDie, shuffle } from './rng';
-import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck, objectiveReturnsToHand, postPlayObjectiveChoice } from './objectives';
+import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck, objectiveReturnsToHand, postPlayObjectiveChoice, PERSISTENT_OBJECTIVES, timeForPeaceQueueTargets } from './objectives';
 
 /** Time-track turns on which the Rebel recruits a new leader, per the printed
  *  16-space board (turns 2-5). Single source of truth shared by the engine's
@@ -2530,6 +2530,20 @@ export function resolveRapidMobilizationBasePick(
     }
   }
 
+  // RoE Show No Fear: its target marker sits on the old base system and is
+  // removed when a new base is established. The objective is then spent —
+  // discard it from hand so it can't re-place its marker and resume scoring.
+  const snfSystems = M.systemsWithTargetMarker(G, 'show-no-fear-3');
+  if (snfSystems.length > 0) {
+    for (const sid of snfSystems) M.removeTargetMarker(G, sid, 'show-no-fear-3', 'Rebel');
+    const hand = G.rebel.objectiveHand ?? [];
+    const i = hand.indexOf('show-no-fear-3');
+    if (i >= 0) {
+      hand.splice(i, 1);
+      (G.rebel.objectiveDiscard ??= []).push('show-no-fear-3');
+    }
+  }
+
   G.rebelBaseSystemId = systemId;
   G.rebelBaseRevealed = false; // new base is placed facedown — hidden again.
   // Base relocated → reset searched-ruled-out knowledge to systems that still
@@ -3664,6 +3678,11 @@ function enterRefreshPhase(G: GameState): void {
     G.actionCardFlags.landoContingencyBonus = undefined;
   }
 
+  // Pre-step: persistent place-on-play objectives (Show No Fear) place/score
+  // before the one-shot objective step. Never pauses.
+  processPersistentObjectives(G);
+  if (G.isGameOver) return;
+
   // Pre-step: resolve eligible StartOfRefresh objectives (rr p.10 — Rebel may
   // play one objective at start of Refresh phase, just before step 1). If 2+
   // objectives are eligible the Rebel chooses which to score (only one per
@@ -3820,11 +3839,77 @@ function playRefreshObjective(G: GameState, objectiveId: string, rep: number): v
     G.rebel.objectiveDeck.push(objectiveId);
   }
   // Otherwise the card is returned to the game box (just removed from play).
+  // RoE action-cost objectives apply a side-effect when scored.
+  applyObjectiveScoreSideEffect(G, objectiveId);
   log(G, { kind: 'play-objective', side: 'Rebel', payload: {
     objectiveId, reputation: rep,
   }});
   (G.objectiveReports ??= []).push({ objectiveId, reputation: rep, via: 'refresh' });
   M.gainReputation(G, rep);
+}
+
+/** Side-effects applied when an RoE action-cost objective is scored. The card
+ *  has already been removed from hand by the caller. Exported for tests. */
+export function applyObjectiveScoreSideEffect(G: GameState, objectiveId: string): void {
+  if (objectiveId === 'the-long-war-1') {
+    // Discard 2 other objective cards from hand. Player choice in RAW; the
+    // card is opt-in so auto-discarding the first two others is acceptable
+    // for auto-play. (A future UI prompt could let the player pick which.)
+    const hand = G.rebel.objectiveHand ?? [];
+    const discarded: string[] = [];
+    for (let i = hand.length - 1; i >= 0 && discarded.length < 2; i--) {
+      discarded.push(hand.splice(i, 1)[0]);
+    }
+    if (!G.rebel.objectiveDiscard) G.rebel.objectiveDiscard = [];
+    G.rebel.objectiveDiscard.push(...discarded);
+    log(G, { kind: 'the-long-war-discard', side: 'Rebel', payload: { discarded } });
+  } else if (objectiveId === 'a-time-for-peace-2') {
+    // Destroy 2 triangle + 1 circle + 1 square Imperial units from the build
+    // queue. Remove high-index-first within each slot so earlier indices stay
+    // valid as we splice.
+    const targets = timeForPeaceQueueTargets(G);
+    if (targets) {
+      const destroyed: string[] = [];
+      const bySlot = new Map<1 | 2 | 3, number[]>();
+      for (const t of targets) {
+        const arr = bySlot.get(t.slot) ?? [];
+        arr.push(t.index);
+        bySlot.set(t.slot, arr);
+        destroyed.push(t.typeId);
+      }
+      for (const [slot, indices] of bySlot) {
+        indices.sort((a, b) => b - a);
+        for (const idx of indices) G.empire.buildQueue[slot].splice(idx, 1);
+      }
+      log(G, { kind: 'a-time-for-peace-destroy', side: 'Rebel', payload: { destroyed } });
+    }
+  }
+}
+
+/** Persistent place-on-play objectives, processed at the start of every Refresh
+ *  before the one-shot objective step. Currently wires Show No Fear:
+ *  - On first activation (objective in hand, no marker yet) place a target
+ *    marker in the Rebel Base's system.
+ *  - Each Refresh the marker is still present, gain 1 reputation.
+ *  The marker is removed when the base relocates (see establishBase). The card
+ *  itself stays in hand. rebel-cell-2 / raid-outposts-2 are deferred (5d-iii).
+ *  Exported for tests. */
+export function processPersistentObjectives(G: GameState): void {
+  const hand = G.rebel.objectiveHand ?? [];
+  if (hand.includes('show-no-fear-3')) {
+    const baseSys = G.rebelBaseSystemId;
+    if (baseSys && !M.hasTargetMarker(G, baseSys, 'show-no-fear-3')
+        && M.systemsWithTargetMarker(G, 'show-no-fear-3').length === 0) {
+      // First activation: place the marker at the Rebel Base's system.
+      M.placeTargetMarker(G, baseSys, 'show-no-fear-3', 'Rebel');
+    }
+    // Score 1 reputation per Refresh while any Show No Fear marker stands.
+    if (M.systemsWithTargetMarker(G, 'show-no-fear-3').length > 0) {
+      (G.objectiveReports ??= []).push({ objectiveId: 'show-no-fear-3', reputation: 1, via: 'refresh' });
+      log(G, { kind: 'show-no-fear-score', side: 'Rebel', payload: { reputation: 1 } });
+      M.gainReputation(G, 1);
+    }
+  }
 }
 
 /** Resolve the player's start-of-refresh objective choice and resume the
@@ -3864,6 +3949,9 @@ function refreshPlayStartOfRefreshObjectives(G: GameState, logStart: number): bo
     // Base objectives use 'StartOfRefresh'; RoE objectives use 'Refresh' for
     // the same start-of-Refresh window. Treat them as equivalent.
     if (!card || (card.timing !== 'StartOfRefresh' && card.timing !== 'Refresh')) continue;
+    // Persistent place-on-play objectives (Show No Fear etc.) stay in hand and
+    // score via processPersistentObjectives — not the one-shot play path.
+    if (PERSISTENT_OBJECTIVES.has(id)) continue;
     if (!objectiveConditionMet(G, id)) {
       checkedNotMet.push({ id, name: card.name, rulesText: card.rulesText });
       continue;

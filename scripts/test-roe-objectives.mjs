@@ -7,6 +7,7 @@ const { register } = await import('tsx/esm/api');
 register();
 const { createGame } = await import('../src/engine/setup.ts');
 const Obj = await import('../src/engine/objectives.ts');
+const Phases = await import('../src/engine/phases.ts');
 
 const loadJson = (p) => JSON.parse(readFileSync(join(ROOT, 'assets', p), 'utf-8'));
 const data = {
@@ -109,6 +110,78 @@ console.log('[ raid-imperial-factory-3: rebel-initiated win in resource system ]
   check('rebel did NOT initiate → not fired', !Obj.combatObjectivesTriggered(G, rDef).includes('raid-imperial-factory-3'));
   const rYes = report({ systemId: withRes, rounds: [{ attacks: [atk('ground', 1)] }] });
   check('rebel-initiated win in resource system → fired', Obj.combatObjectivesTriggered(G, rYes).includes('raid-imperial-factory-3'));
+}
+
+// ---- 5d-ii: action-cost objectives ----
+
+console.log('[ the-long-war-1: discard 2 other objectives ]');
+{
+  const G = newG();
+  G.rebel.objectiveHand = ['the-long-war-1', 'uprising-3'];
+  G.rebel.objectiveDiscard = [];
+  check('1 other → condition not met', !Obj.objectiveConditionMet(G, 'the-long-war-1'));
+  G.rebel.objectiveHand = ['the-long-war-1', 'uprising-3', 'decisive-victory-1', 'seize-control-2'];
+  check('3 others → condition met', Obj.objectiveConditionMet(G, 'the-long-war-1'));
+  // simulate the play path removing the card, then the side-effect
+  G.rebel.objectiveHand = G.rebel.objectiveHand.filter((id) => id !== 'the-long-war-1');
+  Phases.applyObjectiveScoreSideEffect(G, 'the-long-war-1');
+  check('exactly 2 discarded', (G.rebel.objectiveDiscard?.length ?? 0) === 2);
+  check('1 other objective remains in hand', G.rebel.objectiveHand.length === 1);
+}
+
+console.log('[ a-time-for-peace-2: destroy 2 triangle + 1 circle + 1 square in queue ]');
+{
+  const G = newG();
+  G.empire.buildQueue = { 1: [], 2: [], 3: [] };
+  // Not enough: only 1 triangle
+  G.empire.buildQueue[1] = ['tie-fighter', 'star-destroyer', 'assault-carrier'];
+  check('missing a triangle → not met', !Obj.objectiveConditionMet(G, 'a-time-for-peace-2'));
+  // Enough across slots: 2 triangle (tie-fighter, stormtrooper), 1 circle (at-st), 1 square (at-at) + extra
+  G.empire.buildQueue[1] = ['tie-fighter', 'star-destroyer'];      // triangle, square
+  G.empire.buildQueue[2] = ['stormtrooper', 'at-st'];              // triangle, circle
+  G.empire.buildQueue[3] = ['at-at', 'tie-fighter'];               // square, triangle (extra)
+  check('2T+1C+1S present → met', Obj.objectiveConditionMet(G, 'a-time-for-peace-2'));
+  const before = G.empire.buildQueue[1].length + G.empire.buildQueue[2].length + G.empire.buildQueue[3].length;
+  Phases.applyObjectiveScoreSideEffect(G, 'a-time-for-peace-2');
+  const after = G.empire.buildQueue[1].length + G.empire.buildQueue[2].length + G.empire.buildQueue[3].length;
+  check('exactly 4 units removed from queue', before - after === 4);
+  // one tie-fighter (triangle) should remain (we only needed 2 triangle)
+  const remainingTriangles = [...G.empire.buildQueue[1], ...G.empire.buildQueue[2], ...G.empire.buildQueue[3]]
+    .filter((t) => G.catalog.unitTypes[t]?.tier === 'triangle').length;
+  check('1 extra triangle left behind', remainingTriangles === 1);
+}
+
+// ---- 5d-ii: persistent Show No Fear ----
+
+console.log('[ show-no-fear-3: place at base, score each refresh, removed on relocation ]');
+{
+  const G = newG();
+  G.rebel.objectiveHand = ['show-no-fear-3'];
+  const base = G.rebelBaseSystemId;
+  const rep0 = G.reputationMarker;
+  Phases.processPersistentObjectives(G);
+  check('marker placed at Rebel Base system', hasMarker(G, base));
+  check('first refresh scored +1 reputation', G.reputationMarker === rep0 - 1);
+  Phases.processPersistentObjectives(G);
+  check('second refresh scored another +1', G.reputationMarker === rep0 - 2);
+  // simulate base relocation: remove marker AND discard the spent card
+  for (const sid of markerSystems(G)) removeMarker(G, sid);
+  G.rebel.objectiveHand = G.rebel.objectiveHand.filter((id) => id !== 'show-no-fear-3');
+  const repAfter = G.reputationMarker;
+  Phases.processPersistentObjectives(G);
+  check('after relocation (spent) → no re-placement', markerSystems(G).length === 0);
+  check('after relocation → no further scoring', G.reputationMarker === repAfter);
+}
+
+function hasMarker(G, sid) {
+  return !!G.map.systems[sid]?.targetMarkers?.some((m) => m.source === 'show-no-fear-3');
+}
+function markerSystems(G) {
+  return Object.keys(G.map.systems).filter((sid) => hasMarker(G, sid));
+}
+function removeMarker(G, sid) {
+  const ss = G.map.systems[sid];
+  ss.targetMarkers = (ss.targetMarkers ?? []).filter((m) => m.source !== 'show-no-fear-3');
 }
 
 // ---- Base game unaffected: RoE conditions absent from base catalog ----
