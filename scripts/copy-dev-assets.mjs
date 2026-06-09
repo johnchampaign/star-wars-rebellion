@@ -37,6 +37,10 @@ const copies = [
   ['vmod_extracted/images/MarkerRaidOutposts.png',       'markers/MarkerRaidOutposts.png'],
   ['vmod_extracted/images/MarkerRebelCell.png',          'markers/MarkerRebelCell.png'],
   ['vmod_extracted/images/MarkerShowNoFear.png',         'markers/MarkerShowNoFear.png'],
+  // Sabotage token (board) + reputation/turn track markers
+  ['vmod_extracted/images/MarkerSabotage.png',           'markers/MarkerSabotage.png'],
+  ['vmod_extracted/images/MarkerReputation.png',         'markers/MarkerReputation.png'],
+  ['vmod_extracted/images/MarkerTurn.png',               'markers/MarkerTurn.png'],
   // Unit miniatures
   ['vmod_extracted/images/UnitTIE.png',                  'units/UnitTIE.png'],
   ['vmod_extracted/images/UnitAssaultCarrier.png',       'units/UnitAssaultCarrier.png'],

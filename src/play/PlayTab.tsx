@@ -7161,24 +7161,25 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                 />
               ))}
               {state.sabotage && (() => {
-                // Sabotage badge — pure SVG (no asset). In the physical game the
-                // marker covers the system's RESOURCE icons (sabotage disables
-                // production). We don't store per-resource-icon pixel coords (the
-                // icons are baked into the printed map art), so place it on the
-                // loyalty/production cluster (loyaltyMarkerPos) — the closest
-                // proxy, right by the resource + build banner. No "SABOTAGE" text
-                // label (it overlapped the planet name — reporter MightyFaben).
-                // The hover/detail preview still strikes each resource icon
-                // individually for the precise read.
-                const badgeR = 14;
-                const bx = mx;
-                const by = my;
+                // Sabotage token — the table-top marker art (MarkerSabotage.png
+                // from the .vmod). In the physical game it covers the system's
+                // RESOURCE icons (sabotage disables production). We don't store
+                // per-resource-icon pixel coords (they're baked into the printed
+                // map art), so place it on the loyalty/production cluster
+                // (loyaltyMarkerPos) — the closest proxy, by the resource + build
+                // banner. The hover/detail preview still strikes each resource
+                // icon individually for the precise read.
+                const sW = 30 * BOARD_SCALE;
+                const sH = 30 * BOARD_SCALE;
                 return (
                   <g>
-                    <circle cx={bx} cy={by} r={badgeR}
-                      style={{ fill: 'rgba(180,20,20,0.95)', stroke: '#ff8a80', strokeWidth: 1.5 }} />
-                    <text x={bx} y={by + 5} textAnchor="middle"
-                      style={{ fill: '#fff', fontSize: 16, fontWeight: 700 }}>⚠</text>
+                    <title>{`${sysName} — sabotaged (production disabled)`}</title>
+                    <image
+                      href={vmodAssetUrl('MarkerSabotage.png', MARKER_IMAGE_BASE)}
+                      x={mx - sW / 2} y={my - sH / 2}
+                      width={sW} height={sH}
+                      preserveAspectRatio="xMidYMid meet"
+                    />
                   </g>
                 );
               })()}
@@ -9090,19 +9091,21 @@ function TurnTrack({ G }: { G: GameState }) {
               <div style={{ fontSize: 9, marginTop: 2, color: isCurrent ? '#444' : '#888' }}>
                 {hasRecruit && hasBuild ? 'R+B' : hasRecruit ? 'R' : hasBuild ? 'B' : '—'}
               </div>
+              {/* Turn marker — the table-top token on the current turn cell. */}
+              {isCurrent && (
+                <img
+                  src={vmodAssetUrl('MarkerTurn.png', MARKER_IMAGE_BASE)}
+                  alt="" title="Turn marker"
+                  style={{ position: 'absolute', top: -7, left: -7, width: 18, height: 18 }}
+                />
+              )}
+              {/* Reputation marker — the table-top token on the reputation cell. */}
               {isReputation && (
-                <div
-                  title="Reputation marker"
-                  style={{
-                    position: 'absolute', top: -6, right: -6,
-                    background: '#aae0ff', color: '#000', borderRadius: '50%',
-                    width: 18, height: 18, fontSize: 10, fontWeight: 700,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: '1px solid #0c0d10',
-                  }}
-                >
-                  ★
-                </div>
+                <img
+                  src={vmodAssetUrl('MarkerReputation.png', MARKER_IMAGE_BASE)}
+                  alt="" title="Reputation marker"
+                  style={{ position: 'absolute', top: -7, right: -7, width: 18, height: 18 }}
+                />
               )}
             </div>
           );
