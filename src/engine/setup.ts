@@ -92,12 +92,12 @@ const REBEL_STARTING_UNITS_RoE_NEW: { typeId: string; count: number }[] = [
   { typeId: 'airspeeder', count: 2 },
 ];
 
-// Old RoE starter list (the original "Rise of the Empire - Old Starter
-// Units" VASSAL setup) is TODO — transcribe from the OLD deployment card
-// when needed. Until then, `expansion.newStarterUnits === false` (with
-// expansion enabled) falls back to the base starter list.
+// A Rise of the Empire game always uses the "New Starter Units" deployment
+// (rulebook p.8 — the official RoE setup). The deprecated VASSAL "Old Starter
+// Units" variant is not implemented; there is no toggle. Base game uses the
+// base starter list.
 function pickStartingUnits(expansion: ExpansionConfig, side: 'Empire' | 'Rebel') {
-  if (expansion.enabled && expansion.newStarterUnits) {
+  if (expansion.enabled) {
     return side === 'Empire'
       ? IMPERIAL_STARTING_UNITS_RoE_NEW
       : REBEL_STARTING_UNITS_RoE_NEW;
@@ -215,14 +215,13 @@ export function resolveExpansion(input?: Partial<ExpansionConfig>): ExpansionCon
   if (!enabled) {
     return {
       enabled: false,
-      roeUnits: false, newStarterUnits: false, roeMissions: false,
+      roeUnits: false, roeMissions: false,
       cinematicCombat: false,
     };
   }
   return {
     enabled: true,
     roeUnits: input?.roeUnits ?? true,
-    newStarterUnits: input?.newStarterUnits ?? true,
     roeMissions: input?.roeMissions ?? true,
     cinematicCombat: input?.cinematicCombat ?? false,
   };
@@ -324,7 +323,7 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
 
   // Expand starting unit lists into flat per-unit arrays. The list itself
   // depends on the RoE config (see pickStartingUnits — "New Starter Units"
-  // when expansion.enabled && newStarterUnits, base list otherwise).
+  // when expansion.enabled, base list otherwise).
   const empireUnitsToPlace: string[] = [];
   for (const stack of pickStartingUnits(expansion, 'Empire')) {
     for (let i = 0; i < stack.count; i++) empireUnitsToPlace.push(stack.typeId);
@@ -426,9 +425,9 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   // board (deployed via the starting-unit list) AND the completed Death Star
   // on build-track space 3, i.e. 3 Refreshes from completion. When it reaches
   // slot 1 the existing completion logic (phases.ts) swaps it in for the DSUC
-  // on its system. Gated to the same path that uses the RoE-new starter list,
-  // so the base game (and the RoE-old/base fallback) keeps an empty queue.
-  if (expansion.enabled && expansion.newStarterUnits) {
+  // on its system. Gated to the RoE setup, so the base game keeps an empty
+  // queue and its prior board.
+  if (expansion.enabled) {
     empire.buildQueue[3].push('death-star');
   }
 

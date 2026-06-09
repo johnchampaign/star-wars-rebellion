@@ -130,7 +130,6 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
             <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
               {([
                 ['roeUnits', 'RoE units'],
-                ['newStarterUnits', 'New starter units'],
                 ['roeMissions', 'RoE missions'],
                 ['cinematicCombat', 'Cinematic Combat'],
               ] as const).map(([k, label]) => (

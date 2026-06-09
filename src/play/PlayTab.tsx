@@ -13315,11 +13315,6 @@ function ExpansionPanel({ cfg, onChange }: {
             RoE units
           </label>
           <label style={labelStyle}>
-            <input type="checkbox" checked={cfg.newStarterUnits}
-              onChange={(e) => onChange({ newStarterUnits: e.target.checked })} />
-            New starter units
-          </label>
-          <label style={labelStyle}>
             <input type="checkbox" checked={cfg.roeMissions}
               onChange={(e) => onChange({ roeMissions: e.target.checked })} />
             RoE missions

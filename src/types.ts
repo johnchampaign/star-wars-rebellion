@@ -82,8 +82,6 @@ export type ExpansionConfig = {
   enabled: boolean;
   /** Swap base unit roster + supply for the RoE roster. */
   roeUnits: boolean;
-  /** Use the New Starter Units deployment list (vs the Old RoE list). */
-  newStarterUnits: boolean;
   /** Swap base mission deck for the RoE deck (starting/project always in). */
   roeMissions: boolean;
   /** Use the optional Cinematic Combat module. */

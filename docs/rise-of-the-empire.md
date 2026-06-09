@@ -55,17 +55,19 @@ they're this track's remaining work; general base-game bug fixes come after):
   objectives are now wired.
 - **3 Cinematic abilities** — Tractor Beam end-of-round capture,
   cancel-opponent-card, remove-damage (still `unwired`).
-- **Small gaps**:
+- ~~**Small gaps**~~ **DONE**:
   - ~~mission-roll green dice from leader minor skills~~ **DONE** — already
     live: `rollMissionDice` (phases.ts) rolls `min(minor, 3)` GREEN dice when
     `expansion.enabled`, fed the real minor-skill count by the opposed-roll
     path (`totalAllSkills`/`totalSkill` → `attSkillSplit.minor`). Went live
     once 5c populated leader `minorSkills`. Base game still rolls 0 green.
-  - Old RoE starter-unit list — still falls back to the base starter list
-    when `newStarterUnits` is off. The "New Starter Units" (rulebook p.8) is
-    the official RoE setup variant and IS implemented; the VASSAL "Old
-    Starter Units" save is a deprecated pre-revision deployment. Decision
-    pending with the user on whether to transcribe it or keep base fallback.
+  - ~~Old RoE starter-unit list~~ **RESOLVED — toggle removed.** Per user
+    decision, a RoE game always uses the "New Starter Units" (rulebook p.8,
+    the official setup); the deprecated VASSAL "Old Starter Units" variant is
+    not implemented. The `newStarterUnits` config field + both UI checkboxes
+    (hotseat + Lobby) were removed; `pickStartingUnits` and the #155 Death
+    Star-on-build-track seeding now key off `expansion.enabled` alone. Base
+    game keeps the base starter list, byte-identical.
 
 Separately, 4 pre-existing **base-game** handler-test failures (sabotage,
 build-alliance loyalty, hit-and-run, gather-intel) are unrelated to RoTE
