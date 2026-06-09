@@ -394,8 +394,35 @@ function topUsable(G: GameState, c: CombatState, side: Side, theater: Theater, c
 /** Advanced-card play options to offer `side` for the interactive modal:
  *  all available cards for this theatre, each flagged with whether its top
  *  ability is usable. Empty when locked or nothing available. */
+/** RoE p.8: "after you use the last tactic card from your deck, return all
+ *  cards from its discard pile to your deck (except the card you just
+ *  resolved)." When a side's advanced deck for this theatre is empty (every
+ *  card discarded), recycle the discard back into the deck, keeping only the
+ *  most-recently-resolved card in the discard. Idempotent — a no-op unless the
+ *  deck is genuinely empty. */
+export function recycleCinematicDeck(G: GameState, side: Side, theater: Theater): void {
+  if (availableCards(G, side, theater).length > 0) return; // deck not empty
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  const disc = f.cinematicTacticDiscard ?? [];
+  const theaterCards = disc.filter((id) => {
+    const t = G.catalog.tactics[id];
+    return t?.cinematic && t.side === side && t.theater === theater;
+  });
+  if (theaterCards.length <= 1) return; // nothing meaningful to recycle
+  const keep = theaterCards[theaterCards.length - 1]; // the just-resolved card stays
+  f.cinematicTacticDiscard = disc.filter((id) => {
+    const t = G.catalog.tactics[id];
+    const thisTheater = t?.cinematic && t.side === side && t.theater === theater;
+    return !thisTheater || id === keep;
+  });
+  log(G, { kind: 'cinematic-deck-recycle', side, payload: {
+    theater, kept: keep, recycled: theaterCards.length - 1,
+  }});
+}
+
 export function cinematicSelectOptions(G: GameState, c: CombatState, side: Side, theater: Theater) {
   if (isCinematicLocked(c, side, theater)) return [];
+  recycleCinematicDeck(G, side, theater); // refill the deck if it just emptied
   return availableCards(G, side, theater)
     .filter((cardId) => ABILITIES[cardId])
     .map((cardId) => {

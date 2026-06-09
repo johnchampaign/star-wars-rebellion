@@ -27,12 +27,15 @@ after merge.
   — RAW's "destroyed by a tactic card → doesn't roll dice but still matches
   unit icons" nuance is separate and obscure; deferring it would let the unit
   roll dice. Test: `scripts/test-cinematic-damage-timing.mjs`.
-- [ ] **#4 Cinematic tactic deck never recycles.** RAW p.8: when the deck
-  empties, return the discard (except the just-played card) to the deck. We
-  treat discards as gone for the game.
-- [ ] **#5 "Must play a card each round" not enforced.** RAW p.8: each player
-  must play (discard) 1 advanced tactic card each round; may decline its
-  abilities. Our UI lets a side play nothing.
+- [x] **#4 Cinematic tactic deck never recycles.** Fixed: `recycleCinematicDeck`
+  (run when options are built) — when a side's theatre deck is empty (all cards
+  discarded), the discard returns to the deck, keeping only the last-resolved
+  card in the discard (RAW p.8). Idempotent.
+- [x] **#5 "Must play a card each round" not enforced.** Fixed: declining now
+  plays (discards) one of the offered cards with no ability resolved
+  (`noAbility` selection; auto-picks a card — the discard recycles anyway). A
+  side always has a card to play (recycle guarantees it), so play is mandatory.
+  UI relabelled ("Resolve no ability (discard a card)").
 - [x] **#6 Raid Outposts removal ignores opponent-ground requirement.** Fixed
   `scoreRaidOutposts` to also require no Imperial ground units. Test added.
 

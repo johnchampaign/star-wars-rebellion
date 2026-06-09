@@ -1821,8 +1821,9 @@ function CinematicTacticSelectPanel({ G, choice, onPersist }: {
     <div>
       <div style={{ fontSize: 13, marginBottom: 6 }}>
         <b>{choice.side} — play an advanced tactic card ({choice.theater}, round {choice.round})</b>{' '}
-        Choose a card, then pick its top or bottom ability. Played cards are discarded
-        (not reshuffled). You may decline to play.
+        You must play one card each round; pick its top or bottom ability, or decline
+        the ability (the card is still discarded). Played cards are discarded (the deck
+        recycles once it empties).
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
         {choice.options.map((opt) => {
@@ -1861,7 +1862,7 @@ function CinematicTacticSelectPanel({ G, choice, onPersist }: {
         })}
       </div>
       <button onClick={() => submit(null, false)} style={btn('#ffd54a')}>
-        Don't play a card this round
+        Resolve no ability (discard a card)
       </button>
     </div>
   );

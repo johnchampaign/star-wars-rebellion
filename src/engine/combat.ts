@@ -511,6 +511,16 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
         continue;
       }
       const sel = c.cinematicSelections[key];
+      // Must-play with no ability (RoE p.8): the card is still played (discarded)
+      // but resolves none of its abilities. Checked before the escape-plan path
+      // so a no-ability play of Escape Plan doesn't trigger its retreat.
+      if (sel?.noAbility) {
+        const f = side === 'Rebel' ? G.rebel : G.empire;
+        (f.cinematicTacticDiscard ??= []).push(sel.cardId);
+        c.cinematicTacticDoneThisRound.push(key);
+        log(G, { kind: 'cinematic-tactic-no-ability', side, payload: { theater, round: c.round, card: sel.cardId } });
+        continue;
+      }
       // Escape Plan primary: "You may immediately retreat. If you do, cancel the
       // Imperial tactic card." Discard the card, waive transport, mark this side
       // done, and post a mid-tactic retreat choice. resolveRetreatDecision sets
@@ -1997,7 +2007,19 @@ export function resolveCinematicTacticSelect(
 
   // BASE selection — STORE it; do NOT apply yet. runCombat re-enters runTheater,
   // which collects the other side's choice and then resolves both in order.
-  (c.cinematicSelections ??= {})[key] = cardId === null ? null : { cardId, useTop };
+  // RoE p.8: each player MUST play (discard) a card each round; you may decline
+  // its abilities. So a "decline" (null cardId) when cards are available becomes
+  // a no-ability discard of one of the offered cards (auto-picked — the first
+  // option; the discard recycles later anyway, so which one barely matters).
+  let selection: { cardId: string; useTop: boolean; noAbility?: boolean } | null;
+  if (cardId !== null) {
+    selection = { cardId, useTop };
+  } else if (pc.options.length > 0) {
+    selection = { cardId: pc.options[0].cardId, useTop: false, noAbility: true };
+  } else {
+    selection = null; // genuinely no card available even after recycle
+  }
+  (c.cinematicSelections ??= {})[key] = selection;
   G.pendingChoice = undefined;
   runCombat(G);
   return { ok: true };

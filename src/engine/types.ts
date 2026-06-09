@@ -1269,7 +1269,10 @@ export type CombatState = {
   // theatre/round, collected BEFORE either resolves (keyed `${side}:${theatre}:
   // ${round}`; null = chose to skip). Once both are in, they resolve in order
   // (the defender resolves first if their card uses "cancel" — rulebook).
-  cinematicSelections?: Record<string, { cardId: string; useTop: boolean } | null>;
+  // `noAbility` = the side must play (discard) a card but resolves none of its
+  // abilities (RoE p.8: "you may choose not to resolve its abilities and discard
+  // the card"). null = genuinely no card available (after deck recycle).
+  cinematicSelections?: Record<string, { cardId: string; useTop: boolean; noAbility?: boolean } | null>;
   attackerHand: string[]; // tactic card ids
   defenderHand: string[];
   retreated: Side[]; // each side at most once
