@@ -5,6 +5,27 @@ expansion config; when fully off, every `set: 'rote'`-tagged catalog entry is
 filtered out at `createGame` so base play is byte-identical. Future fixes can
 target base-only / rote-only / both via the `set` tag.
 
+## Status: feature-complete; remainder deferred to the bug-fix backlog
+
+As of 2026-06-08 the major feature work is done (architecture, toggle UI,
+units, green dice, leaders, missions [5b], action cards [5d], all rules
+modules, and full Cinematic Combat incl. interactive selection [7d]). The
+remaining items are small/isolated and have been **moved into the general
+Rebellion bug-fix backlog** to be picked up in the other session — they no
+longer block "RoTE done":
+
+- **#155** — RoE Death Star starting setup wrong (Empire gets a completed
+  Death Star on top of the under-construction one). Real setup defect.
+- **5d objectives** — the 12 RoE objective cards still score nothing
+  (blank effectKeys; wire via the stage-scoring path).
+- **3 Cinematic abilities** — Tractor Beam end-of-round capture,
+  cancel-opponent-card, remove-damage (still `unwired`).
+- **Small gaps** — Old RoE starter-unit list (falls back to base) and
+  mission-roll green dice from leader minor skills.
+
+All four are tracked as background-task chips. The phase notes below remain
+the detailed record.
+
 ## Confirmed scope (user decisions)
 
 - **Granular toggles** (not one master switch). The expansion config is:
