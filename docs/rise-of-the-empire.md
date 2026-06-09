@@ -53,11 +53,13 @@ they're this track's remaining work; general base-game bug fixes come after):
     target-marker rule (ground-unit presence), confirmed by the user.
   Tests: `scripts/test-roe-objectives-iii.mjs` (19 checks pass). All 12 RoE
   objectives are now wired.
-- ~~**3 Cinematic abilities**~~ **DONE** — Tractor Beam end-of-round capture,
-  cancel-opponent-card, and remove-damage are wired (see Phase 7 notes
-  below). The few remaining `unwired` cinematic abilities are other exotic
-  types (redirect-damage, play-an-extra-card, special-die locks, Rogue One /
-  Confrontation conditionals), not the three the user prioritized.
+- ~~**Cinematic abilities**~~ **ALL DONE** — every advanced-tactic-card
+  ability is wired (7e/7f/7g): the prioritized three (Tractor Beam capture,
+  cancel, remove-damage), shield-absorb, play-extra-card, and the deeper set
+  (Rogue One, green-die damage removal + the 4 special-dice locks,
+  Confrontation cross-phase elimination, the simultaneous-selection cancel
+  model, Escape Plan, Deployment's ground-battle clause). 63/63 cinematic
+  tests. See the Phase 7 notes below.
 - ~~**Small gaps**~~ **DONE**:
   - ~~mission-roll green dice from leader minor skills~~ **DONE** — already
     live: `rollMissionDice` (phases.ts) rolls `min(minor, 3)` GREEN dice when
@@ -385,11 +387,9 @@ New mechanics that need engine work, not just data:
      hook in `combat.ts`: if the Empire has a Star Destroyer and the Rebels
      have no ships, capture 1 Rebel leader); `cancel` (Entrapment / Air
      Superiority / Outrun Them — sets `CombatState.cinematicCancel` so the
-     opponent's tactic play that round/theatre is skipped). NOTE: cancel only
-     bites when the canceller plays BEFORE the opponent (sequential
-     resolution: combat attacker plays first), so an attacker can pre-empt the
-     defender but not vice-versa — a true simultaneous-selection model would
-     need a collect-then-resolve restructure. 24/24 cinematic tests pass.
+     opponent's tactic play that round/theatre is skipped). 24/24 cinematic
+     tests pass. (The attacker-only-cancel limitation noted here was lifted in
+     7g item 4 below — the simultaneous model now lets a defender cancel too.)
    - **7f: shield-absorb + play-extra-card. DONE.** `shieldAbsorb` (Armored
      Position / Planetary Shield primaries) moves up to 3 accumulated damage
      off the side's ground units onto its Shield Bunker / Generator (which
@@ -399,14 +399,43 @@ New mechanics that need engine work, not just data:
      `resolveCinematicTacticSelect` consumes a grant from
      `CombatState.cinematicExtraPlays` and re-offers the side instead of
      marking it done. 30/30 cinematic tests pass.
-   - **Still `unwired`** (depend on unmodelled mechanics or cross-phase hooks):
-     the "[opp] cannot remove damage with special dice this round" locks
-     (Intercept / Imposing Presence top / Deployment / Rogue One bottoms) — a
-     no-op because green-die damage-removal isn't modelled; Rogue One top
-     (retreat-conditional rescue / remove-marker); Confrontation top
-     (last-ground-unit-destroyed → mark a leader for end-of-Command-phase
-     elimination); Escape Plan top (immediate retreat + cancel); Deployment
-     top's "resolve a ground battle this round" clause.
+   - **7g: the deeper items. DONE — all 6.** Grounded in the actual RoE
+     rulebook (`StarWarsRebellion_v2.5.pdf` pp.8-9), not guessed.
+     1. **Rogue One top** — queued to a new POST-retreat step
+        (`resolveCinematicRetreatTriggers`, run after the retreat step in
+        `runCombat`); if any unit retreated this round, posts a `RogueOneChoice`
+        to rescue a captured leader OR remove a target marker.
+        `retreatHappenedThisRound` flag added.
+     2. **Green-die damage removal + the 4 special-dice locks** — the rulebook
+        "Removing damage" action: each ★ die removes 1 damage from a own unit
+        whose health colour matches the die's colour. In cinematic combat ★ has
+        no other use, so `applyCinematicSpecialHeal` auto-applies it in
+        `beginAttack`. The 4 locks (Intercept / Imposing Presence / Deployment /
+        Rogue One bottoms) set `CombatState.cinematicSpecialLock` and skip the
+        heal for the locked side/theatre — no longer no-ops.
+     3. **Confrontation top** — end-of-round: if the last Imperial ground unit
+        was destroyed this round, marks the top Imperial leader in the system
+        (`GameState.cinematicMarkedForElimination`); `enterRefreshPhase` (the
+        Command→Refresh boundary) eliminates marked leaders.
+     4. **Simultaneous selection + cancel ordering** — the tactic sub-step now
+        COLLECTS both sides' choices (`cinematicSelections`) before resolving,
+        and resolves the defender first if their card is a cancel (rulebook
+        "Canceling cards"). A cancelled card is still discarded. So a defender
+        can now cancel the attacker (the prior 7e limitation is gone). Extras
+        stay on an immediate-apply path (`extra` flag on the choice).
+     5. **Escape Plan top** — "immediately retreat; if you do, cancel the
+        Imperial tactic card." Counts as a cancel for ordering; on resolve it
+        posts an immediate retreat (shared `postRetreatChoice`) with
+        `flags.escapePlanCancel`; `resolveRetreatDecision` sets the cancel iff
+        the side actually retreats.
+     6. **Deployment top's "resolve a ground battle this round"** — already
+        structurally satisfied: the GAIN deploys a Rebel ground unit during the
+        space tactic step and the round runs space→ground, so the gained unit
+        fights the upcoming ground sub-step. Verified; no code needed.
+     63/63 cinematic tests pass.
+   - **Remaining `unwired`:** none of substance. Every cinematic advanced-tactic
+     ability is now wired (or, for Deployment's ground-battle clause, satisfied
+     structurally).
 
 Each phase ships as a working slice; base game is never at risk.
 

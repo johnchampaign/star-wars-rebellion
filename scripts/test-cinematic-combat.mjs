@@ -570,5 +570,25 @@ console.log('\n[ Cinematic: Escape Plan retreats the Rebel and cancels the Imper
   check('Escape Plan went to the Rebel discard', (G.rebel.cinematicTacticDiscard ?? []).includes('cin-rebel-ground-escape-plan'));
 }
 
+// ---- Deeper item 6: Deployment gains a ground unit → ground battle this round
+console.log('\n[ Cinematic: Deployment gains a ground unit, enabling a ground battle ]');
+{
+  const G = createGame(data, baseOpts(790));
+  M.deployUnit(G, 'Empire', 'star-destroyer', 'felucia'); // space contest
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia');   // Imperial ground (no Rebel ground yet)
+  M.deployUnit(G, 'Rebel', 'u-wing', 'felucia');          // Deployment prereq + space
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  const rebelGroundBefore = G.map.systems['felucia'].units.filter((u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground').length;
+  check('no Rebel ground before Deployment', rebelGroundBefore === 0);
+  applyCinematicAbility(G, c, 'Rebel', 'space', 'cin-rebel-space-deployment', true); // top = gain triangle ground
+  const rebelGroundAfter = G.map.systems['felucia'].units.filter((u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground').length;
+  check('Deployment gained a Rebel ground unit', rebelGroundAfter === 1);
+  // Ground is now contested (Empire stormtrooper vs the gained Rebel unit), so
+  // the round's ground sub-step (run after space) will resolve a ground battle.
+  const empGround = G.map.systems['felucia'].units.some((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground');
+  check('ground theatre now contested → a ground battle resolves this round', rebelGroundAfter > 0 && empGround);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
