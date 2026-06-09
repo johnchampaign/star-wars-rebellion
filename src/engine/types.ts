@@ -743,6 +743,36 @@ export type ChoiceRequest =
       candidates: LeaderId[];
     }
   | {
+      // RoE Cinematic Combat (#15) — once-per-attack reroll. After the side
+      // rolls, it MAY reroll up to `allowance` (its leader's tactic value)
+      // of its own dice. `faces`/`colors` describe the rolled dice by index;
+      // `suggested` = the default pick (blanks first, up to allowance). The
+      // resolver rerolls the chosen indices. Choosing none keeps the roll.
+      kind: 'CinematicReroll';
+      side: Side;
+      theater: Theater;
+      systemId: SystemId;
+      allowance: number;
+      faces: string[];
+      colors: DieColor[];
+      suggested: number[];
+    }
+  | {
+      // RoE Cinematic Combat (#15) — "Removing damage": after rolling, the
+      // side may discard each ★ (special) die to remove 1 damage from one of
+      // its units whose health colour matches the die's colour. `budget` =
+      // red/black ★ available; `candidates` = its wounded matching-colour units
+      // in the theatre; `suggested` = the default allocation (most-damaged
+      // first). The resolver applies the chosen allocation (≤ budget per colour).
+      kind: 'CinematicHeal';
+      side: Side;
+      theater: Theater;
+      systemId: SystemId;
+      budget: { red: number; black: number };
+      candidates: { instanceId: string; typeId: string; color: 'red' | 'black'; damage: number }[];
+      suggested: { instanceId: string; amount: number }[];
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated
@@ -1310,7 +1340,7 @@ export type CombatState = {
   pendingAttack?: {
     side: Side;          // who's currently attacking
     theater: Theater;
-    phase: 'awaitingYodaReroll' | 'awaitingR2D2Flip' | 'awaitingOneInAMillion' | 'awaitingSpecialSpend' | 'awaitingAttackerTactics' | 'awaitingDefenderTactics' | 'awaitingDamageAssignment';
+    phase: 'awaitingYodaReroll' | 'awaitingR2D2Flip' | 'awaitingOneInAMillion' | 'awaitingCinematicReroll' | 'awaitingCinematicHeal' | 'awaitingSpecialSpend' | 'awaitingAttackerTactics' | 'awaitingDefenderTactics' | 'awaitingDamageAssignment';
     dice: DieResult[];   // current dice (may be modified by reroll)
     attackerUnits: number;
     bonusDamage: number; // accumulated from damage-boost tactics
@@ -1329,6 +1359,12 @@ export type CombatState = {
     // True once the One In A Million window has been resolved for this
     // attack so re-entry doesn't re-prompt the Rebel.
     oneInAMillionResolved?: boolean;
+    // RoE Cinematic Combat (#15): true once the once-per-attack reroll window
+    // (pick up to the leader's tactic value of dice to reroll) and the
+    // ★-spend "Removing damage" heal window have each been resolved for this
+    // attack, so re-entry after another pause doesn't re-prompt.
+    cinematicRerollResolved?: boolean;
+    cinematicHealResolved?: boolean;
     // Set when entering 'awaitingDamageAssignment'. Frozen list of hits
     // the attacker must assign (post-blocks), and the legal targets per
     // hit (computed when the choice is queued).

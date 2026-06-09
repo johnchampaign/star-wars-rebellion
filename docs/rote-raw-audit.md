@@ -113,10 +113,22 @@ after merge.
     `resolveConfrontationLeaderPick` marks the pick + eliminates the card. AI
     marks the strongest. UI: `ConfrontationLeaderPanel` in CombatBoardLive.
     Test `scripts/test-confrontation-leader-pick.mjs`.
-  - [ ] **Reroll** (pick which dice, default = blanks) — `beginAttack`.
-  - [ ] **Remove-Damage heal target** (default = most-damaged) — `beginAttack`.
+  - [x] **Reroll** (pick which dice; default = blanks, up to the leader's
+    tactic value). Now a `CinematicReroll` pause point in
+    `advanceAttackToTactics` (moved out of `beginAttack`); the player toggles
+    dice, the AI takes the suggested default.
+    `resolveCinematicReroll`. UI: `CinematicRerollPanel`.
+  - [x] **Remove-Damage heal target** (which units the ★ heal; default =
+    most-damaged matching-colour first). Now a `CinematicHeal` pause point
+    after the reroll window; the player allocates ★ per unit (budgeted by
+    colour), the AI takes the suggested default. `resolveCinematicHeal`. UI:
+    `CinematicHealPanel`. Both tested in
+    `scripts/test-cinematic-reroll-heal.mjs` (incl. a full AI-vs-AI cinematic
+    combat that terminates with the handlers auto-resolving).
   - DEFERRED (auto near-optimal, documented): deal-damage target/split,
-    shield-absorb amount (both inside `applyCinematicAbility`).
+    shield-absorb amount (both inside `applyCinematicAbility`, which would need
+    a mid-resolution pause/resume restructure — option A, not taken).
+  - **Option B complete.**
 
 ### From-game bugs (related)
 - [x] **#163 RoE setup: can't place the Death Star Under Construction on a

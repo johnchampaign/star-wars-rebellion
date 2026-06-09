@@ -1093,6 +1093,14 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     // sorted strongest-first) — the most impactful elimination.
     return combat.resolveConfrontationLeaderPick(G, G.pendingChoice.candidates[0]).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'CinematicReroll' && G.pendingChoice.side === side) {
+    // AI: take the suggested reroll (blanks first, up to the allowance).
+    return combat.resolveCinematicReroll(G, [...G.pendingChoice.suggested]).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'CinematicHeal' && G.pendingChoice.side === side) {
+    // AI: take the suggested ★-spend (most-damaged matching-colour units first).
+    return combat.resolveCinematicHeal(G, G.pendingChoice.suggested.map((s) => ({ ...s }))).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'CombatAddLeaderPick' && G.pendingChoice.side === side) {
     // AI: always add the highest-tactic-value pool leader. Captures are bad
     // but missing the tactic-card draws is worse for a side that has units

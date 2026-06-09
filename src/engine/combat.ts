@@ -15,7 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, applyCinematicSpecialHeal, isCancelCard, isEscapePlanAbility } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -661,37 +661,11 @@ export function beginAttack(G: GameState, c: CombatState, side: Side, theater: T
   for (let i = 0; i < black; i++) dice.push(rollDie(G.rng, 'black' as DieColor));
   for (let i = 0; i < green; i++) dice.push(rollDie(G.rng, 'green' as DieColor));
 
-  // CINEMATIC COMBAT reroll (RoE p.9): "Once per attack, you can reroll a
-  // number of your dice up to your leader's tactic value (highest relevant
-  // value if multiple leaders)." Phase 7b auto-applies it: reroll the
-  // blanks first (the dice most worth rerolling) up to that allowance. The
-  // standard combat path does NOT do this — leaders there determine tactic-
-  // card draws instead.
-  if (c.cinematic) {
-    const allowance = leaderTacticValueIn(G, side, c.systemId, theater);
-    if (allowance > 0) {
-      let rerolled = 0;
-      for (let i = 0; i < dice.length && rerolled < allowance; i++) {
-        if (dice[i].face === 'blank') {
-          dice[i] = rollDie(G.rng, dice[i].color);
-          rerolled++;
-        }
-      }
-      if (rerolled > 0) {
-        log(G, { kind: 'cinematic-reroll', side, payload: {
-          theater, round: c.round, rerolled, allowance,
-        }});
-      }
-    }
-    // "Removing damage" combat action (rulebook p.8): spend ★ dice to remove
-    // damage from your own matching-colour units this theatre. ★ has no other
-    // use in cinematic combat, so auto-apply (unless special-locked here).
-    const redSpecials = dice.filter((d) => d.face === 'special' && d.color === 'red').length;
-    const blackSpecials = dice.filter((d) => d.face === 'special' && d.color === 'black').length;
-    if (redSpecials + blackSpecials > 0) {
-      applyCinematicSpecialHeal(G, c, side, theater, { red: redSpecials, black: blackSpecials });
-    }
-  }
+  // CINEMATIC COMBAT reroll (RoE p.9, "Once per attack, reroll up to your
+  // leader's tactic value of dice") and the "Removing damage" ★-spend
+  // (rulebook p.8) are now INTERACTIVE pause points in advanceAttackToTactics
+  // (#15) — the side chooses which dice to reroll and how to spend its ★, with
+  // a near-optimal default pre-selected. The AI takes the default.
 
   // Stash the in-flight attack. The phase will be set by advanceAttackToTactics
   // based on which pre-tactic pause point (Yoda / Special) applies first.
@@ -727,6 +701,80 @@ export function beginAttack(G: GameState, c: CombatState, side: Side, theater: T
 function advanceAttackToTactics(G: GameState, c: CombatState): void {
   const pa = c.pendingAttack;
   if (!pa) return;
+
+  // 0a) CINEMATIC reroll (RoE p.9) — the rolling side may reroll up to its
+  //     leader's tactic value of its own dice. Interactive (#15): default =
+  //     blanks first, up to the allowance; the player may pick any dice (or
+  //     none). The AI takes the suggested default.
+  if (c.cinematic && !pa.cinematicRerollResolved) {
+    const allowance = leaderTacticValueIn(G, pa.side, c.systemId, pa.theater);
+    if (allowance > 0 && pa.dice.length > 0) {
+      const suggested = pa.dice
+        .map((d, i) => (d.face === 'blank' ? i : -1))
+        .filter((i) => i >= 0)
+        .slice(0, allowance);
+      pa.phase = 'awaitingCinematicReroll';
+      G.pendingChoice = {
+        kind: 'CinematicReroll',
+        side: pa.side, theater: pa.theater, systemId: c.systemId,
+        allowance,
+        faces: pa.dice.map((d) => d.face),
+        colors: pa.dice.map((d) => d.color),
+        suggested,
+      };
+      log(G, { kind: 'choice-request', side: pa.side, payload: {
+        kind: 'CinematicReroll', allowance, dice: pa.dice.length,
+      }});
+      return;
+    }
+    pa.cinematicRerollResolved = true;
+  }
+
+  // 0b) CINEMATIC "Removing damage" ★-spend (rulebook p.8) — after the (post-
+  //     reroll) roll is final, the side may discard each ★ to remove 1 damage
+  //     from a matching-colour own unit in this theatre. Interactive (#15):
+  //     default = most-damaged first; the player may reassign or skip. Skipped
+  //     when special-locked here this round. The AI takes the suggested default.
+  if (c.cinematic && pa.cinematicRerollResolved && !pa.cinematicHealResolved) {
+    const locked = !!c.cinematicSpecialLock?.[`${pa.side}:${pa.theater}:${c.round}`];
+    const budget = {
+      red: locked ? 0 : pa.dice.filter((d) => d.face === 'special' && d.color === 'red').length,
+      black: locked ? 0 : pa.dice.filter((d) => d.face === 'special' && d.color === 'black').length,
+    };
+    if (budget.red + budget.black > 0) {
+      const candidates = unitsOf(G, pa.side, c.systemId, pa.theater)
+        .filter((u) => u.damage > 0)
+        .map((u) => ({ u, color: G.catalog.unitTypes[u.typeId]?.health.color as 'red' | 'black' | undefined }))
+        .filter((x) => x.color === 'red' || x.color === 'black')
+        .map((x) => ({ instanceId: x.u.instanceId, typeId: x.u.typeId, color: x.color as 'red' | 'black', damage: x.u.damage }));
+      if (candidates.length > 0) {
+        // Suggested allocation: per colour, most-damaged first, 1 point at a time.
+        const suggested: { instanceId: string; amount: number }[] = [];
+        for (const color of ['red', 'black'] as const) {
+          let b = budget[color];
+          const wounded = candidates.filter((x) => x.color === color).sort((a, z) => z.damage - a.damage)
+            .map((x) => ({ instanceId: x.instanceId, remaining: x.damage }));
+          while (b > 0 && wounded.some((w) => w.remaining > 0)) {
+            const w = wounded.find((w) => w.remaining > 0)!;
+            const ex = suggested.find((s) => s.instanceId === w.instanceId);
+            if (ex) ex.amount += 1; else suggested.push({ instanceId: w.instanceId, amount: 1 });
+            w.remaining -= 1; b -= 1;
+          }
+        }
+        pa.phase = 'awaitingCinematicHeal';
+        G.pendingChoice = {
+          kind: 'CinematicHeal',
+          side: pa.side, theater: pa.theater, systemId: c.systemId,
+          budget, candidates, suggested,
+        };
+        log(G, { kind: 'choice-request', side: pa.side, payload: {
+          kind: 'CinematicHeal', redStars: budget.red, blackStars: budget.black, wounded: candidates.length,
+        }});
+        return;
+      }
+    }
+    pa.cinematicHealResolved = true;
+  }
 
   // 1) Yoda reroll — Rebel only, once per round, requires Yoda holder
   //    at the system, requires at least one blank die.
@@ -936,6 +984,78 @@ export function resolveYodaReroll(
     c.yodaRerollUsedRound = c.round;
     G.yodaRerollUsedThisRound = true;
   }
+  G.pendingChoice = undefined;
+  advanceAttackToTactics(G, c);
+  return { ok: true };
+}
+
+/** Resolve the RoE Cinematic once-per-attack reroll (#15). `indices` = the
+ *  dice positions to reroll (≤ the leader's tactic-value allowance); an empty
+ *  array keeps the roll. The dice reroll in place (same colour). */
+export function resolveCinematicReroll(
+  G: GameState, indices: number[]
+): { ok: boolean; reason?: string } {
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  const pa = c.pendingAttack;
+  if (!pa || pa.phase !== 'awaitingCinematicReroll') return { ok: false, reason: 'no-reroll-phase' };
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'CinematicReroll') return { ok: false, reason: 'no-choice' };
+  const uniq = [...new Set(indices)];
+  if (uniq.length > pc.allowance) return { ok: false, reason: 'over-allowance' };
+  for (const i of uniq) {
+    if (i < 0 || i >= pa.dice.length) return { ok: false, reason: `bad-index:${i}` };
+  }
+  for (const i of uniq) pa.dice[i] = rollDie(G.rng, pa.dice[i].color);
+  if (uniq.length > 0) {
+    log(G, { kind: 'cinematic-reroll', side: pa.side, payload: {
+      theater: pa.theater, round: c.round, rerolled: uniq.length, allowance: pc.allowance,
+    }});
+  }
+  pa.cinematicRerollResolved = true;
+  G.pendingChoice = undefined;
+  advanceAttackToTactics(G, c);
+  return { ok: true };
+}
+
+/** Resolve the RoE Cinematic "Removing damage" ★-spend (#15). `allocation`
+ *  maps own wounded matching-colour units to the damage to remove (the sum
+ *  per colour must not exceed the ★ budget; each amount ≤ that unit's damage).
+ *  An empty allocation spends no ★. */
+export function resolveCinematicHeal(
+  G: GameState, allocation: { instanceId: string; amount: number }[]
+): { ok: boolean; reason?: string } {
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  const pa = c.pendingAttack;
+  if (!pa || pa.phase !== 'awaitingCinematicHeal') return { ok: false, reason: 'no-heal-phase' };
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'CinematicHeal') return { ok: false, reason: 'no-choice' };
+  const spent = { red: 0, black: 0 };
+  // Validate before applying (atomic): every target is a listed candidate, the
+  // amount fits the unit's current damage, and per-colour totals fit the budget.
+  for (const a of allocation) {
+    if (a.amount <= 0) continue;
+    const cand = pc.candidates.find((x) => x.instanceId === a.instanceId);
+    if (!cand) return { ok: false, reason: `not-a-candidate:${a.instanceId}` };
+    if (a.amount > cand.damage) return { ok: false, reason: `over-damage:${a.instanceId}` };
+    spent[cand.color] += a.amount;
+  }
+  if (spent.red > pc.budget.red || spent.black > pc.budget.black) {
+    return { ok: false, reason: 'over-budget' };
+  }
+  let healed = 0;
+  for (const a of allocation) {
+    if (a.amount <= 0) continue;
+    const u = unitsOf(G, pa.side, c.systemId, pa.theater).find((x) => x.instanceId === a.instanceId);
+    if (u) { u.damage = Math.max(0, u.damage - a.amount); healed += a.amount; }
+  }
+  if (healed > 0) {
+    log(G, { kind: 'cinematic-remove-damage', side: pa.side, payload: {
+      theater: pa.theater, round: c.round, removed: healed,
+    }});
+  }
+  pa.cinematicHealResolved = true;
   G.pendingChoice = undefined;
   advanceAttackToTactics(G, c);
   return { ok: true };
