@@ -1644,6 +1644,11 @@ export type GameState = {
     Empire: UnitTypeId[];
   };
   rebelDeployTarget?: SystemId | null;
+  // RoE only (rules p.8): the single remote system the Empire chose to hold its
+  // Death Star Under Construction (+ companion units). Once chosen, it is the
+  // ONE remote system Empire starting units may be placed in (in addition to
+  // Imperial-loyalty / subjugated systems). Null in base-game setup.
+  empireDeployTarget?: SystemId | null;
 
   // 5 candidate base-location systems shown to the Rebel during Setup (rr p.15
   // step 9). When set, the Rebel must call pickRebelBase before deployment

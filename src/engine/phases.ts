@@ -352,7 +352,22 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
     if (systemId === 'rebel-base-space') return { ok: false, reason: 'empire-cannot-use-rebel-base' };
     const ss = G.map.systems[systemId];
     if (!ss) return { ok: false, reason: 'unknown-system' };
-    if (ss.loyalty !== 'imperial' && !ss.subjugated) {
+    const def = G.catalog.systems[systemId];
+    const isImperialSys = ss.loyalty === 'imperial' || ss.subjugated;
+    const isDsuc = typeId === 'death-star-under-construction';
+    if (G.expansion?.enabled && def?.isRemote) {
+      // RoE (rules p.8): the Empire chooses ONE remote system to hold its Death
+      // Star Under Construction + companion units. Once chosen, that is the only
+      // remote system its starting units may go to. (Mirrors rebelDeployTarget.)
+      if (G.empireDeployTarget && G.empireDeployTarget !== systemId) {
+        return { ok: false, reason: `empire-already-chose-${G.empireDeployTarget}` };
+      }
+      G.empireDeployTarget = systemId;
+    } else if (isDsuc) {
+      // The DSUC may only be placed on the chosen remote system, never on an
+      // Imperial-loyalty / subjugated world.
+      return { ok: false, reason: 'dsuc-must-be-remote' };
+    } else if (!isImperialSys) {
       return { ok: false, reason: 'must-be-imperial-or-subjugated' };
     }
   } else {
@@ -401,6 +416,22 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
       .filter(([, ss]) => ss.loyalty === 'imperial' || ss.subjugated)
       .map(([id]) => id);
     if (imperialSystems.length === 0) return { ok: false, reason: 'no-imperial-systems' };
+
+    // RoE (rules p.8): the Death Star Under Construction (+ 4 TIE Fighters +
+    // 1 Stormtrooper) must go on one chosen remote system. Seed that first so
+    // auto-fill doesn't try to place the DSUC on an Imperial world (illegal).
+    if (G.expansion?.enabled && remaining.includes('death-star-under-construction')) {
+      const remote = G.empireDeployTarget
+        ?? Object.entries(G.map.systems).find(([id]) => G.catalog.systems[id]?.isRemote)?.[0];
+      if (remote) {
+        G.empireDeployTarget = remote;
+        for (const typeId of ['death-star-under-construction', 'tie-fighter', 'tie-fighter',
+          'tie-fighter', 'tie-fighter', 'stormtrooper']) {
+          const i = remaining.indexOf(typeId);
+          if (i >= 0) { G.map.systems[remote].units.push(mkSetupInstance(typeId, 'Empire')); remaining.splice(i, 1); }
+        }
+      }
+    }
 
     // First: ensure each Imperial system has ≥1 ground unit (rr p.15).
     // Find systems that currently lack ground; deploy a triangle ground unit there.
