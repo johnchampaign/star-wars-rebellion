@@ -149,5 +149,35 @@ console.log('\n[ Cinematic: discard persists across combats ]');
     `first=${afterFirst.length} second=${afterSecond.length}`);
 }
 
+// ---- 7c-2: destroy-without-rolling (Support of the 501st: destroy 1 triangle) ----
+console.log('\n[ Cinematic 7c-2: destroy-without-rolling kills a triangle unit ]');
+{
+  const G = createGame(data, baseOpts(705));
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia');
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia');
+  M.deployUnit(G, 'Rebel', 'rebel-trooper', 'felucia');
+  M.deployUnit(G, 'Rebel', 'rebel-trooper', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  driveCombat(G);
+  const destroyLog = G.turnLog.filter((l) => l.kind === 'cinematic-tactic-play'
+    && l.payload?.cardId === 'cin-empire-ground-support-of-the-501st' && l.payload?.destroyed);
+  check('Support of the 501st destroyed a triangle unit (no roll)', destroyLog.length > 0,
+    `plays: ${destroyLog.length}`);
+  check('combat resolved', G.pendingCombat === undefined);
+}
+
+// ---- 7c-2: gain-unit (Reinforcements: gain a TIE Fighter) ----
+console.log('\n[ Cinematic 7c-2: gain-unit deploys a new unit ]');
+{
+  const G = createGame(data, baseOpts(706));
+  M.deployUnit(G, 'Empire', 'assault-carrier', 'felucia');
+  M.deployUnit(G, 'Rebel', 'x-wing', 'felucia');
+  M.deployUnit(G, 'Rebel', 'x-wing', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  driveCombat(G);
+  const gained = G.turnLog.filter((l) => l.kind === 'cinematic-tactic-play' && l.payload?.gained === 'tie-fighter');
+  check('Reinforcements gained a TIE Fighter', gained.length > 0, `gains: ${gained.length}`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
