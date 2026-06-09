@@ -59,7 +59,7 @@ const REBEL_STARTING_UNITS_BASE: { typeId: string; count: number }[] = [
 // queue slot 3, and (b) the remaining roster deployed across Imperial
 // systems. We collapse both into a single per-unit list — the existing
 // auto-setup distributes; the interactive setup leaves placement to the
-// Imperial player. Totals: 12 TIE Fighters (4+8), 13 Stormtroopers (1+12),
+// Imperial player. Totals: 12 TIE Fighters (4+8), 6 Stormtroopers (1+5),
 // 3 Assault Carriers, 3 Star Destroyers, 2 TIE Strikers, 4 AT-STs,
 // 2 Assault Tanks, 1 AT-AT, 1 DSUC deployed on the board. The completed
 // Death Star is NOT deployed — per RoE setup it starts on build-track
@@ -72,7 +72,7 @@ const IMPERIAL_STARTING_UNITS_RoE_NEW: { typeId: string; count: number }[] = [
   { typeId: 'assault-carrier', count: 3 },
   { typeId: 'tie-fighter', count: 12 },
   { typeId: 'tie-striker', count: 2 },
-  { typeId: 'stormtrooper', count: 13 },
+  { typeId: 'stormtrooper', count: 6 },
   { typeId: 'at-st', count: 4 },
   { typeId: 'assault-tank', count: 2 },
   { typeId: 'at-at', count: 1 },

@@ -3918,18 +3918,25 @@ export function processPersistentObjectives(G: GameState): void {
   }
 }
 
-/** Raid Outposts (persistent): for each of the card's target markers, if the
- *  Rebel now has a GROUND unit in that remote system (the general RoE target-
- *  marker rule), the Rebel "raids" the outpost — remove the marker and gain 1
+/** Raid Outposts (persistent): for each of the card's target markers, the Rebel
+ *  "raids" the outpost when it satisfies the general RoE target-marker removal
+ *  rule (rulebook p.8) — the Rebel has a GROUND unit in the system AND the
+ *  opponent has NO ground units there. Then remove the marker and gain 1
  *  reputation. Non-pausing. (Heist can also remove one; see the heist handler.)
  *  Exported for tests. */
 export function scoreRaidOutposts(G: GameState): void {
   if (!(G.rebel.objectiveHand ?? []).includes('raid-outposts-2')) return;
   for (const sid of M.systemsWithTargetMarker(G, 'raid-outposts-2')) {
-    const hasRebelGround = (G.map.systems[sid]?.units ?? []).some(
+    const units = G.map.systems[sid]?.units ?? [];
+    const hasRebelGround = units.some(
       (u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground',
     );
-    if (!hasRebelGround) continue;
+    // RAW: you only remove a target marker if your opponent has NO ground units
+    // in the system.
+    const hasEmpireGround = units.some(
+      (u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground',
+    );
+    if (!hasRebelGround || hasEmpireGround) continue;
     M.removeRaidOutpostMarker(G, sid); // removes marker + scores +1
     if (G.isGameOver) return;
   }

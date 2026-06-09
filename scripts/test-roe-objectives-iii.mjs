@@ -44,6 +44,13 @@ console.log('[ scoreRaidOutposts: ground unit removes marker + scores ]');
   G.map.systems[r2].units.push(unit('x-wing', 'Rebel'));
   Phases.scoreRaidOutposts(G);
   check('space unit does not raid (marker stays)', markerSys(G, 'raid-outposts-2').includes(r2));
+  // RAW: opponent ground present blocks removal even with a Rebel ground unit.
+  G.map.systems[r2].units.push(unit('rebel-trooper', 'Rebel'));   // Rebel ground now present
+  G.map.systems[r2].units.push(unit('stormtrooper', 'Empire'));   // but so is Imperial ground
+  const repBefore = G.reputationMarker;
+  Phases.scoreRaidOutposts(G);
+  check('Imperial ground present → marker NOT removed', markerSys(G, 'raid-outposts-2').includes(r2));
+  check('Imperial ground present → no reputation scored', G.reputationMarker === repBefore);
 }
 
 // ---- Pre-step machine walk: posts each choice in order ----
