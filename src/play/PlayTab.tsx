@@ -7988,27 +7988,35 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onReset, undoCount 
   const legalTargets: { id: string; name: string; note?: string }[] = [];
   if (side === 'Empire') {
     const roe = !!G.expansion?.enabled;
-    for (const [sysId, ss] of Object.entries(G.map.systems)) {
-      const sysDef = G.catalog.systems[sysId];
-      const imperialControlled = ss.loyalty === 'imperial' || ss.subjugated;
-      // RoE setup (rulebook p.8): the Death Star Under Construction goes in a
-      // chosen REMOTE system, and any system that has a DSUC is then legal for
-      // Imperial units (so the 4 TIE + 1 Stormtrooper bundle can join it).
-      const hasDsuc = ss.units.some((u) => u.side === 'Empire' && u.typeId === 'death-star-under-construction');
-      const roeRemoteOk = roe && (
-        (selectedType === 'death-star-under-construction' && !!sysDef?.isRemote) || hasDsuc
-      );
-      if (!imperialControlled && !roeRemoteOk) continue;
-      const hasGround = ss.units.some((u) => {
-        const t = G.catalog.unitTypes[u.typeId];
-        return u.side === 'Empire' && t?.theater === 'ground';
-      });
-      legalTargets.push({
-        id: sysId, name: sysDef?.name ?? sysId,
-        note: !imperialControlled
-          ? (hasDsuc ? 'remote (DSUC here)' : 'remote — Death Star Under Construction')
-          : (hasGround ? undefined : 'needs ground unit'),
-      });
+    const placingDsuc = selectedType === 'death-star-under-construction';
+    // The Death Star Under Construction may only go on the chosen remote system;
+    // all other units go on Imperial-loyalty / subjugated worlds (and may also
+    // reinforce the remote that holds the DSUC — RoE rules p.8).
+    if (!placingDsuc) {
+      for (const [sysId, ss] of Object.entries(G.map.systems)) {
+        if (ss.loyalty === 'imperial' || ss.subjugated) {
+          const sysDef = G.catalog.systems[sysId];
+          const hasGround = ss.units.some((u) => {
+            const t = G.catalog.unitTypes[u.typeId];
+            return u.side === 'Empire' && t?.theater === 'ground';
+          });
+          legalTargets.push({
+            id: sysId, name: sysDef?.name ?? sysId,
+            note: hasGround ? undefined : 'needs ground unit',
+          });
+        }
+      }
+    }
+    if (roe) {
+      if (G.empireDeployTarget) {
+        const sysDef = G.catalog.systems[G.empireDeployTarget];
+        legalTargets.push({ id: G.empireDeployTarget, name: sysDef?.name ?? G.empireDeployTarget, note: 'Death Star site' });
+      } else {
+        for (const [sysId] of Object.entries(G.map.systems)) {
+          const sysDef = G.catalog.systems[sysId];
+          if (sysDef?.isRemote) legalTargets.push({ id: sysId, name: sysDef?.name ?? sysId, note: 'choose as Death Star site' });
+        }
+      }
     }
   } else {
     legalTargets.push({ id: 'rebel-base-space', name: 'Rebel Base space', note: 'staging area (hidden)' });
@@ -8037,7 +8045,9 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onReset, undoCount 
         <strong style={{ color, fontSize: 15 }}>Setup — {side} unit deployment</strong>
         <span style={{ color: '#888', fontSize: 12 }}>
           {pending.length} unit{pending.length === 1 ? '' : 's'} left to place.{' '}
-          {side === 'Empire' && '(Place in Imperial-loyalty or subjugated systems; every Imperial system needs ≥1 ground unit.)'}
+          {side === 'Empire' && (G.expansion?.enabled
+            ? '(Place in Imperial-loyalty or subjugated systems; every Imperial system needs ≥1 ground unit. The Death Star Under Construction goes on one chosen remote system.)'
+            : '(Place in Imperial-loyalty or subjugated systems; every Imperial system needs ≥1 ground unit.)')}
           {side === 'Rebel' && '(Rebel Base space and/or one populous system of your choice — neutral or Rebel-loyal.)'}
         </span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>

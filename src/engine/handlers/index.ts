@@ -1151,7 +1151,7 @@ const demolition: EffectHandler = (G, ctx) => {
       });
       if (idx >= 0) {
         const removed = G.empire.buildQueue[slot].splice(idx, 1)[0];
-        // Log via a generic mechanism would be nice; skip for now.
+        log(G, { kind: 'build-queue-destroy', side: 'Rebel', payload: { slot, typeId: removed, via: 'demolition' } });
         break;
       }
     }

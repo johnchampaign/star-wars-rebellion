@@ -39,7 +39,22 @@
       "Bash(pdfinfo StarWarsRebellion_v2.5.pdf)",
       "Bash(pdfinfo MissionReference_RotE_Final.pdf)",
       "Bash(file images/Reference*.png)",
-      "Bash(identify images/Reference*.png)"
+      "Bash(identify images/Reference*.png)",
+      "Bash(pdfinfo Star_Wars_Rebellion.pdf)",
+      "Bash(pip install *)",
+      "Bash(pdftoppm -r 400 Leader_Pool_RotE.pdf _lpchart -png)",
+      "Bash(sed -i 's/runMissionEffect\\(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId\\\\[\\\\], pm.targetLeaderId\\)/runMissionEffect\\(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId, pm.successMargin\\)/g' src/engine/phases.ts)",
+      "Read(//c/c/Users/johnc/Claude Games/Star Wars Rebellion/src/engine/**)",
+      "Bash(rm scripts/_dbg-cin.mjs)",
+      "Read(//c/c/Users/johnc/Claude Games/Star Wars Rebellion/src/play/**)",
+      "Bash(cd \"/c/Users/johnc/Claude Games/Star Wars Rebellion\" && grep -n \"7d\\\\|7c-3\\\\|Phase 7\" docs/rise-of-the-empire.md | head)",
+      "Bash(cd \"/c/Users/johnc/Claude Games/Star Wars Rebellion\" && ls scripts/ | grep -i \"rote\\\\|roe\\\\|mission\\\\|subvers\\\\|wave\" ; echo \"---\"; ls scripts/test-*.mjs 2>/dev/null)",
+      "Bash(perl -0pi -e \"s/  M\\\\.deployUnit\\\\\\(G, 'Rebel', 'u-wing', 'felucia'\\\\\\);\\\\n  M\\\\.deployUnit\\\\\\(G, 'Empire', 'stormtrooper', 'felucia'\\\\\\);/  M.deployUnit\\(G, 'Rebel', 'u-wing', 'felucia'\\);\\\\n  M.deployUnit\\(G, 'Rebel', 'rebel-trooper', 'felucia'\\);\\\\n  M.deployUnit\\(G, 'Empire', 'stormtrooper', 'felucia'\\);/g\" scripts/test-cinematic-combat.mjs)",
+      "Bash(perl -0pi -e ' *)",
+      "Bash(perl -0pi -e 's/combat\\\\.runCombat\\\\\\(G\\\\\\);\\\\n\\(\\\\s*\\)check/combat.runCombat\\(G\\);\\\\n$1driveCombat\\(G\\);\\\\n$1check/g; s/\\(combat\\\\.runCombat\\\\\\(G\\\\\\);\\\\n\\)\\(\\\\s*\\)\\(\\\\/\\\\/ If Empire wins\\)/$1$2driveCombat\\(G\\);\\\\n$2$3/g; s/\\(combat\\\\.runCombat\\\\\\(G\\\\\\);\\\\n\\)\\(\\\\s*\\)\\(const survivors\\)/$1$2driveCombat\\(G\\);\\\\n$2$3/g' scripts/test-combat.mjs)",
+      "Bash(gh pr create --base master --head ai-revealed-base-convergence --title 'AI: converge on revealed Rebel base; keep a base garrison' --body ' *)",
+      "Bash(gh pr *)",
+      "Bash(cmd //c \"mklink /J node_modules \\\\\"C:\\\\Users\\\\johnc\\\\Claude Games\\\\Star Wars Rebellion\\\\node_modules\\\\\"\")"
     ]
   }
 }

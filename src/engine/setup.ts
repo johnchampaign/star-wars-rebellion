@@ -337,18 +337,39 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
 
   let pendingDeployment: GameState['pendingDeployment'] = undefined;
   let rebelDeployTarget: GameState['rebelDeployTarget'] = null;
+  let empireDeployTarget: GameState['empireDeployTarget'] = null;
   let initialPhase: Phase = 'Assignment';
 
   if (autoSetup) {
     // Backward-compatible automatic deployment (used by tests and existing flows).
     const imperialSystems = [...imperialLoyaltySystems];
+    // RoE (rules p.8): the Empire chooses one remote system and places its
+    // Death Star Under Construction + 4 TIE Fighters + 1 Stormtrooper there.
+    // Pull those units out of the pool and seed the chosen remote first; the
+    // rest distribute across Imperial systems as before. Base game has no DSUC,
+    // so `empirePool` is just `empireUnitsToPlace` and nothing changes here.
+    let empirePool = empireUnitsToPlace;
+    if (expansion.enabled && empireUnitsToPlace.includes('death-star-under-construction')) {
+      const remotes = Object.values(catalog.systems).filter((s) => s.isRemote).map((s) => s.id);
+      if (remotes.length > 0) {
+        empireDeployTarget = remotes[nextIntForSetup(rng, remotes.length)];
+        const companions = ['death-star-under-construction', 'tie-fighter', 'tie-fighter',
+          'tie-fighter', 'tie-fighter', 'stormtrooper'];
+        const pool = [...empireUnitsToPlace];
+        for (const typeId of companions) {
+          const i = pool.indexOf(typeId);
+          if (i >= 0) { map.systems[empireDeployTarget].units.push(mkInstance(typeId, 'Empire')); pool.splice(i, 1); }
+        }
+        empirePool = pool;
+      }
+    }
     // Guarantee ≥1 ground unit per Imperial system (rr p.15): place a stormtrooper first.
     imperialSystems.forEach((sysId) => {
       map.systems[sysId].units.push(mkInstance('stormtrooper', 'Empire'));
     });
     // Reduce the remaining stormtroopers by the number we already placed.
-    const stormtroopersToPlace = empireUnitsToPlace.filter((t) => t === 'stormtrooper').length - imperialSystems.length;
-    const remainingEmpire = empireUnitsToPlace.filter((t) => t !== 'stormtrooper')
+    const stormtroopersToPlace = empirePool.filter((t) => t === 'stormtrooper').length - imperialSystems.length;
+    const remainingEmpire = empirePool.filter((t) => t !== 'stormtrooper')
       .concat(new Array(Math.max(0, stormtroopersToPlace)).fill('stormtrooper'));
     // RoE setup (rulebook p.8): the Death Star Under Construction is placed in a
     // chosen REMOTE system together with 4 TIE Fighters + 1 Stormtrooper — NOT
@@ -601,6 +622,7 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
 
     pendingDeployment,
     rebelDeployTarget,
+    empireDeployTarget,
     pendingRebelBasePick,
   };
 

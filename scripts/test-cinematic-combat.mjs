@@ -486,7 +486,14 @@ console.log('\n[ Cinematic: Confrontation marks an Imperial leader, eliminated a
   G.map.systems['felucia'].units = G.map.systems['felucia'].units.filter((u) => u !== st);
   const rr = c.report.rounds.find((r) => r.round === c.round) ?? (c.report.rounds.push({ round: c.round, attacks: [] }), c.report.rounds[c.report.rounds.length - 1]);
   rr.attacks.push({ side: 'Rebel', theater: 'ground', destroyed: [{ typeId: 'stormtrooper', instanceId: st.instanceId }] });
-  resolveCinematicEndOfRound(G, c);
+  const paused = resolveCinematicEndOfRound(G, c);
+  // RAW (#15): the Rebel now CHOOSES which Imperial leader to mark — the
+  // end-of-round hook pauses with a ConfrontationLeaderPick instead of
+  // auto-marking. With one Imperial leader present, it's the sole candidate.
+  check('Confrontation pauses for the Rebel leader-pick', paused === true
+    && G.pendingChoice?.kind === 'ConfrontationLeaderPick'
+    && G.pendingChoice.candidates.includes('general-veers'));
+  combat.resolveConfrontationLeaderPick(G, 'general-veers');
   check('Imperial leader marked for elimination', (G.cinematicMarkedForElimination ?? []).includes('general-veers'));
   check('leader not yet eliminated (waits for Command end)', !(G.empire.eliminatedLeaders ?? []).includes('general-veers'));
 }
