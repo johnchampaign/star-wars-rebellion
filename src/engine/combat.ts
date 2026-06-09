@@ -15,7 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, applyCinematicSpecialHeal } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -601,6 +601,14 @@ function beginAttack(G: GameState, c: CombatState, side: Side, theater: Theater)
           theater, round: c.round, rerolled, allowance,
         }});
       }
+    }
+    // "Removing damage" combat action (rulebook p.8): spend ★ dice to remove
+    // damage from your own matching-colour units this theatre. ★ has no other
+    // use in cinematic combat, so auto-apply (unless special-locked here).
+    const redSpecials = dice.filter((d) => d.face === 'special' && d.color === 'red').length;
+    const blackSpecials = dice.filter((d) => d.face === 'special' && d.color === 'black').length;
+    if (redSpecials + blackSpecials > 0) {
+      applyCinematicSpecialHeal(G, c, side, theater, { red: redSpecials, black: blackSpecials });
     }
   }
 

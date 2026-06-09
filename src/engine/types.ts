@@ -1256,6 +1256,11 @@ export type CombatState = {
   // Logistics / Confrontation): `${side}:${theatre}:${round}` -> count of
   // additional tactic plays that side may make this round in this theatre.
   cinematicExtraPlays?: Record<string, number>;
+  // RoE Cinematic special-die damage-removal lock (Intercept / Imposing
+  // Presence / Deployment / Rogue One bottoms): `${side}:${theatre}:${round}`
+  // -> true means that side may NOT spend ★ dice to remove damage from its
+  // units of that theatre this round (rules: "Removing damage" combat action).
+  cinematicSpecialLock?: Record<string, boolean>;
   attackerHand: string[]; // tactic card ids
   defenderHand: string[];
   retreated: Side[]; // each side at most once

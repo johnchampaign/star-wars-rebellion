@@ -71,8 +71,12 @@ type ExtraCardEffect = { kind: 'extraCard' };
 // Rogue One primary: queued to AFTER the retreat step — if any unit retreated
 // this round, the Rebel rescues a captured leader OR removes a target marker.
 type RogueOneEffect = { kind: 'rogueOne' };
+// Bar the opponent from spending ★ dice to remove damage from its units of
+// this card's theatre this round (Intercept / Imposing Presence / Deployment /
+// Rogue One secondaries — "[opp] ships/ground units cannot remove damage…").
+type SpecialLockEffect = { kind: 'specialLock' };
 type UnwiredEffect = { kind: 'unwired' };
-type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | RemoveDamageEffect | CaptureEffect | CancelEffect | ShieldAbsorbEffect | ExtraCardEffect | RogueOneEffect | UnwiredEffect;
+type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | RemoveDamageEffect | CaptureEffect | CancelEffect | ShieldAbsorbEffect | ExtraCardEffect | RogueOneEffect | SpecialLockEffect | UnwiredEffect;
 
 const D = (amount: number, color?: 'red' | 'black'): DealEffect => ({ kind: 'deal', amount, color });
 const P = (red: number, black: number, special = 0, extra = false): PreventEffect => ({ kind: 'prevent', red, black, special, extra });
@@ -88,6 +92,7 @@ const CANCEL: CancelEffect = { kind: 'cancel' };
 const ABSORB = (amount: number, structureTypeId: string): ShieldAbsorbEffect => ({ kind: 'shieldAbsorb', amount, structureTypeId });
 const EXTRA: ExtraCardEffect = { kind: 'extraCard' };
 const ROGUE: RogueOneEffect = { kind: 'rogueOne' };
+const LOCKSPECIAL: SpecialLockEffect = { kind: 'specialLock' };
 const U: UnwiredEffect = { kind: 'unwired' };
 
 // Per-card [top, bottom] abilities, keyed by the card id slug from
@@ -101,7 +106,7 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   'cin-empire-space-superlaser-blast':       [TD(5, 'capital'), D(1)],
   'cin-empire-space-entrapment':             [CANCEL, LOCK],
   'cin-empire-space-energy-shield':          [REMOVE(2), FIRST],
-  'cin-empire-space-intercept':              [DESTROY({ tier: 'triangle' }), U /* special-die lock: no-op (unmodelled) */],
+  'cin-empire-space-intercept':              [DESTROY({ tier: 'triangle' }), LOCKSPECIAL],
   // ---- Imperial Ground ----
   'cin-empire-ground-support-of-the-501st':  [DESTROY({ tier: 'triangle' }), D(1, 'black')],
   'cin-empire-ground-armored-patrol':        [P(2, 2), P(1, 1)],
@@ -110,11 +115,11 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   'cin-empire-ground-air-superiority':       [CANCEL, LOCK],
   'cin-empire-ground-armored-position':      [ABSORB(3, 'shield-bunker'), FIRST],
   'cin-empire-ground-bombardment':           [CD(2, 'no-shield-generator', 'black'), D(1)],
-  'cin-empire-ground-imposing-presence':     [U /* special-die lock: no-op (green-die damage-removal unmodelled) */, EXTRA],
+  'cin-empire-ground-imposing-presence':     [LOCKSPECIAL, EXTRA],
   // ---- Rebel Space ----
   'cin-rebel-space-rogue-squadron-support':  [D(2, 'black'), D(1, 'black')],
   'cin-rebel-space-bombing-run':             [D(2, 'red'), D(1, 'red')],
-  'cin-rebel-space-deployment':              [GAIN('rebel-trooper'), U /* special-die lock: no-op (unmodelled) */],
+  'cin-rebel-space-deployment':              [GAIN('rebel-trooper'), LOCKSPECIAL],
   'cin-rebel-space-fleet-logistics':         [P(2, 0, 0, true), P(2, 0)],
   'cin-rebel-space-ion-blast':               [TD(1, 'capital'), D(1)],
   'cin-rebel-space-outrun-them':             [CANCEL, LOCK],
@@ -126,7 +131,7 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   'cin-rebel-ground-tow-cables':             [TD(4, 'at-walker'), D(1)],
   'cin-rebel-ground-take-cover':             [P(2, 2), P(1, 1)],
   'cin-rebel-ground-planetary-shield':       [ABSORB(3, 'shield-generator'), FIRST],
-  'cin-rebel-ground-rogue-one':              [ROGUE, U /* special-die lock: no-op (unmodelled) */],
+  'cin-rebel-ground-rogue-one':              [ROGUE, LOCKSPECIAL],
   'cin-rebel-ground-escape-plan':            [U /* retreat + cancel */, LOCK],
   'cin-rebel-ground-confrontation':          [U /* mark-leader-for-elimination: needs end-of-Command-phase hook */, EXTRA],
 };
@@ -255,6 +260,12 @@ function abilityValue(G: GameState, c: CombatState, side: Side, theater: Theater
     const haveRescue = (G.empire.capturedLeaders ?? []).length > 0;
     const haveMarker = (G.map.systems[c.systemId]?.targetMarkers ?? []).length > 0;
     return haveRescue || haveMarker ? 1 : 0.2;
+  }
+  if (ab.kind === 'specialLock') {
+    // Worth a little if the opponent has wounded units of this theatre that
+    // they might otherwise heal with ★ dice.
+    const oppWounded = unitsOf(G, other(side), c.systemId, theater).some((u) => u.damage > 0);
+    return oppWounded ? 0.7 : 0.2;
   }
   return 0; // unwired
 }
@@ -429,6 +440,11 @@ export function applyCinematicAbility(
     // Resolved after the retreat step (resolveCinematicRetreatTriggers).
     (c.cinematicEndOfRound ??= []).push({ side, kind: 'rogueOne' });
     logPlay({ queued: 'rogue-one-post-retreat' });
+  } else if (ab.kind === 'specialLock') {
+    // Bar the opponent from ★-removing damage from its theatre units this round.
+    const opp = other(side);
+    (c.cinematicSpecialLock ??= {})[`${opp}:${theater}:${c.round}`] = true;
+    logPlay({ specialLock: { side: opp, theater, round: c.round } });
   } else {
     logPlay({ unwired: true });
   }
@@ -466,6 +482,40 @@ function resolveRemoveDamage(
     u.damage -= take; budget -= take; removed += take;
   }
   return removed;
+}
+
+/** RoE "Removing damage" combat action (rulebook p.8): after a side rolls its
+ *  attack dice in cinematic combat, it may discard each ★ (special) die to
+ *  remove 1 damage from one of its units whose health colour matches the die's
+ *  colour. In cinematic combat ★ has no other use (no special-spend tactic
+ *  cards), so we auto-spend: heal the most-damaged matching-colour unit in this
+ *  theatre first. Skips if that side is special-locked here this round
+ *  (Intercept / Imposing Presence / Deployment / Rogue One). Returns the damage
+ *  removed. Green ★ cannot match a unit's health colour, so only red/black
+ *  count. Exported for combat.ts. */
+export function applyCinematicSpecialHeal(
+  G: GameState, c: CombatState, side: Side, theater: Theater,
+  specials: { red: number; black: number },
+): number {
+  if (c.cinematicSpecialLock?.[`${side}:${theater}:${c.round}`]) return 0;
+  let healed = 0;
+  for (const color of ['red', 'black'] as const) {
+    let budget = specials[color];
+    if (budget <= 0) continue;
+    // Most-damaged matching-colour own units in this theatre, closest-to-death
+    // first (greatest benefit from saving them).
+    const wounded = unitsOf(G, side, c.systemId, theater)
+      .filter((u) => u.damage > 0 && G.catalog.unitTypes[u.typeId]?.health.color === color)
+      .sort((a, b) => b.damage - a.damage);
+    for (const u of wounded) {
+      while (budget > 0 && u.damage > 0) { u.damage -= 1; budget -= 1; healed += 1; }
+      if (budget <= 0) break;
+    }
+  }
+  if (healed > 0) {
+    log(G, { kind: 'cinematic-remove-damage', side, payload: { theater, round: c.round, removed: healed } });
+  }
+  return healed;
 }
 
 /** Grant the side one extra tactic play this round in this theatre (Imposing

@@ -12,7 +12,7 @@ const { createGame } = await import('../src/engine/setup.ts');
 const M = await import('../src/engine/mechanics.ts');
 const combat = await import('../src/engine/combat.ts');
 const { stepOnce } = await import('../src/play/randomAI.ts');
-const { autoPlayCinematicTactic, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers } = await import('../src/engine/cinematicTactics.ts');
+const { autoPlayCinematicTactic, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, applyCinematicSpecialHeal } = await import('../src/engine/cinematicTactics.ts');
 
 /** Drive a combat to completion: resolve every pending combat choice (add-
  *  leader, tactics, damage assignment, retreat) via the AI until pendingCombat
@@ -416,6 +416,57 @@ console.log('\n[ Cinematic: Rogue One — retreat → remove a target marker ]')
   combat.resolveRogueOneChoice(G, 'marker:secure-the-plans');
   check('target marker removed from felucia',
     !(G.map.systems['felucia'].targetMarkers ?? []).some((m) => m.source === 'secure-the-plans'));
+}
+
+// ---- Deeper item 2: ★ special-die damage removal + locks ----
+console.log('\n[ Cinematic: ★ dice remove damage from matching-colour units ]');
+{
+  const G = createGame(data, baseOpts(750));
+  M.deployUnit(G, 'Empire', 'at-st', 'felucia');   // black health
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia'); // red health
+  M.deployUnit(G, 'Rebel', 'rebel-trooper', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  const units = G.map.systems['felucia'].units;
+  const atst = units.find((u) => u.typeId === 'at-st');
+  const trooper = units.find((u) => u.side === 'Empire' && u.typeId === 'stormtrooper');
+  atst.damage = 2; trooper.damage = 1; // at-st = black health, stormtrooper = red health
+  // 1 red ★ + 1 black ★ — heals one matching-colour unit each.
+  const healed = applyCinematicSpecialHeal(G, c, 'Empire', 'ground', { red: 1, black: 1 });
+  check('removed 2 total damage (1 red-match + 1 black-match)', healed === 2, `healed ${healed}`);
+  check('AT-ST (black health) healed 1 by the black ★', atst.damage === 1, `at-st ${atst.damage}`);
+  check('Stormtrooper (red health) healed 1 by the red ★', trooper.damage === 0, `trooper ${trooper.damage}`);
+}
+
+console.log('\n[ Cinematic: special-lock blocks the heal ]');
+{
+  const G = createGame(data, baseOpts(751));
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia');
+  M.deployUnit(G, 'Rebel', 'rebel-trooper', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat; c.round = 1;
+  const trooper = G.map.systems['felucia'].units.find((u) => u.side === 'Empire' && u.typeId === 'stormtrooper');
+  trooper.damage = 2;
+  const tColor = G.catalog.unitTypes['stormtrooper'].health.color;
+  // Lock Empire ground this round, then try to heal.
+  c.cinematicSpecialLock = { 'Empire:ground:1': true };
+  const healed = applyCinematicSpecialHeal(G, c, 'Empire', 'ground', { red: 2, black: 2 });
+  check('locked side heals nothing', healed === 0 && trooper.damage === 2, `healed ${healed}`);
+  // Unlock and confirm it would have healed (sanity), using the matching colour.
+  delete c.cinematicSpecialLock['Empire:ground:1'];
+  const healed2 = applyCinematicSpecialHeal(G, c, 'Empire', 'ground', { red: tColor === 'red' ? 2 : 0, black: tColor === 'black' ? 2 : 0 });
+  check('unlocked side heals', healed2 === 2 && trooper.damage === 0);
+}
+
+console.log('\n[ Cinematic: Intercept bottom locks Rebel-ship damage removal ]');
+{
+  const G = createGame(data, baseOpts(752));
+  M.deployUnit(G, 'Empire', 'star-destroyer', 'felucia');
+  M.deployUnit(G, 'Rebel', 'mon-cala-cruiser', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat; c.round = 1;
+  applyCinematicAbility(G, c, 'Empire', 'space', 'cin-empire-space-intercept', false); // BOT = special lock
+  check('Intercept bottom locked Rebel space this round', c.cinematicSpecialLock?.['Rebel:space:1'] === true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
