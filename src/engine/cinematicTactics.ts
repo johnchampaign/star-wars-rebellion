@@ -300,14 +300,22 @@ function bothHaveTheater(G: GameState, c: CombatState, theater: Theater): boolea
 
 /** Resolve a deal-damage ability: assign `amount` damage one-at-a-time to the
  *  cheapest-to-kill eligible enemy unit (colour-matched; uncoloured hits any
- *  red/black-health unit). Destroys units that reach lethal immediately. */
+ *  red/black-health unit). Per RoE cinematic rules (p.8) the damage is only
+ *  lethal at the END of the theatre round, so a unit that reaches lethal is
+ *  STAGED (added to c.theaterStaged), not destroyed now — the owner may save it
+ *  with a Remove-Damage action this round, and finalizeTheaterDestructions
+ *  re-checks before destroying. Already-staged units are skipped so the damage
+ *  spreads to the next target ("a card that deals more than 1 damage can be
+ *  split among multiple units"). */
 function resolveDeal(G: GameState, c: CombatState, side: Side, theater: Theater, eff: DealEffect): number {
   let dealt = 0;
+  const staged = (c.theaterStaged ??= []);
   for (let i = 0; i < eff.amount; i++) {
     const candidates = unitsOf(G, other(side), c.systemId, theater).filter((u) => {
       const t = G.catalog.unitTypes[u.typeId];
       if (!t || t.health.color === null) return false; // invulnerable (Death Star)
       if (eff.color && t.health.color !== eff.color) return false;
+      if (staged.includes(u.instanceId)) return false; // already doomed this theatre
       return true;
     });
     if (candidates.length === 0) break;
@@ -320,7 +328,7 @@ function resolveDeal(G: GameState, c: CombatState, side: Side, theater: Theater,
     const target = candidates[0];
     const dead = M.damageUnit(G, target.instanceId, 1);
     dealt++;
-    if (dead) M.destroyUnit(G, target.instanceId, 'cinematic-tactic-damage');
+    if (dead) staged.push(target.instanceId); // destroyed at end of round, not now
   }
   return dealt;
 }
@@ -386,8 +394,35 @@ function topUsable(G: GameState, c: CombatState, side: Side, theater: Theater, c
 /** Advanced-card play options to offer `side` for the interactive modal:
  *  all available cards for this theatre, each flagged with whether its top
  *  ability is usable. Empty when locked or nothing available. */
+/** RoE p.8: "after you use the last tactic card from your deck, return all
+ *  cards from its discard pile to your deck (except the card you just
+ *  resolved)." When a side's advanced deck for this theatre is empty (every
+ *  card discarded), recycle the discard back into the deck, keeping only the
+ *  most-recently-resolved card in the discard. Idempotent — a no-op unless the
+ *  deck is genuinely empty. */
+export function recycleCinematicDeck(G: GameState, side: Side, theater: Theater): void {
+  if (availableCards(G, side, theater).length > 0) return; // deck not empty
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  const disc = f.cinematicTacticDiscard ?? [];
+  const theaterCards = disc.filter((id) => {
+    const t = G.catalog.tactics[id];
+    return t?.cinematic && t.side === side && t.theater === theater;
+  });
+  if (theaterCards.length <= 1) return; // nothing meaningful to recycle
+  const keep = theaterCards[theaterCards.length - 1]; // the just-resolved card stays
+  f.cinematicTacticDiscard = disc.filter((id) => {
+    const t = G.catalog.tactics[id];
+    const thisTheater = t?.cinematic && t.side === side && t.theater === theater;
+    return !thisTheater || id === keep;
+  });
+  log(G, { kind: 'cinematic-deck-recycle', side, payload: {
+    theater, kept: keep, recycled: theaterCards.length - 1,
+  }});
+}
+
 export function cinematicSelectOptions(G: GameState, c: CombatState, side: Side, theater: Theater) {
   if (isCinematicLocked(c, side, theater)) return [];
+  recycleCinematicDeck(G, side, theater); // refill the deck if it just emptied
   return availableCards(G, side, theater)
     .filter((cardId) => ABILITIES[cardId])
     .map((cardId) => {
@@ -606,13 +641,16 @@ function resolveShieldAbsorb(
   return moved;
 }
 
-/** Resolve queued end-of-round CAPTURE effects (Tractor Beam). Deterministic,
- *  no pause. Called by combat.ts after both theatres' attacks, before retreat.
- *  Leaves non-capture entries (Rogue One) in the queue for the post-retreat
- *  pass. */
-export function resolveCinematicEndOfRound(G: GameState, c: CombatState): void {
+/** Resolve queued end-of-round CAPTURE effects (Tractor Beam, deterministic)
+ *  and CONFRONTATION (which PAUSES for the Rebel to pick the leader to mark).
+ *  Called by combat.ts after both theatres' attacks, before retreat. Captures
+ *  resolve first; then Confrontation, which may post a `ConfrontationLeaderPick`
+ *  choice and return `true` (paused). Leaves non-capture/non-confrontation
+ *  entries (Rogue One) in the queue for the post-retreat pass. Returns `true`
+ *  iff it posted a choice (caller must pause). */
+export function resolveCinematicEndOfRound(G: GameState, c: CombatState): boolean {
   const queue = c.cinematicEndOfRound;
-  if (!queue || queue.length === 0) return;
+  if (!queue || queue.length === 0) return false;
   for (const e of queue) {
     if (e.kind !== 'capture') continue;
     // Only the Empire captures (capturedLeaders is Empire-only; Tractor Beam is
@@ -650,15 +688,24 @@ export function resolveCinematicEndOfRound(G: GameState, c: CombatState): void {
       log(G, { kind: 'cinematic-confrontation-no-leader', side: e.side, payload: { systemId: c.systemId } });
       continue;
     }
-    const leaderId = [...here].sort((a, b) => {
+    // RAW: the Rebel CHOOSES which Imperial leader to mark. Pause for the pick
+    // (candidates listed strongest-first as a suggestion). Clear the resolved
+    // capture/confrontation entries from the queue NOW (before the early
+    // return) so they don't re-fire next round; the resolver
+    // (`resolveConfrontationLeaderPick`) marks the chosen leader, eliminates
+    // the card from the recyclable discard, and re-enters combat.
+    const candidates = [...here].sort((a, b) => {
       const va = (G.catalog.leaders[a]?.tacticValues.space ?? 0) + (G.catalog.leaders[a]?.tacticValues.ground ?? 0);
       const vb = (G.catalog.leaders[b]?.tacticValues.space ?? 0) + (G.catalog.leaders[b]?.tacticValues.ground ?? 0);
       return vb - va;
-    })[0];
-    (G.cinematicMarkedForElimination ??= []).push(leaderId);
-    log(G, { kind: 'cinematic-confrontation-mark', side: e.side, payload: { leaderId, systemId: c.systemId } });
+    });
+    c.cinematicEndOfRound = queue.filter((q) => q.kind !== 'capture' && q.kind !== 'confrontation');
+    G.pendingChoice = { kind: 'ConfrontationLeaderPick', side: 'Rebel', systemId: c.systemId, candidates };
+    log(G, { kind: 'cinematic-confrontation-choose', side: e.side, payload: { systemId: c.systemId, candidates } });
+    return true;
   }
   c.cinematicEndOfRound = queue.filter((e) => e.kind !== 'capture' && e.kind !== 'confrontation');
+  return false;
 }
 
 /** Resolve queued post-retreat cinematic triggers (Rogue One). Called by
@@ -705,7 +752,9 @@ function resolveTargetDeal(G: GameState, c: CombatState, side: Side, theater: Th
   });
   const target = candidates[0];
   const dead = M.damageUnit(G, target.instanceId, eff.amount);
-  if (dead) M.destroyUnit(G, target.instanceId, 'cinematic-targeted-damage');
+  // RoE cinematic: stage for end-of-round destruction rather than destroying
+  // now (finalizeTheaterDestructions re-checks, so a heal this round can save).
+  if (dead) (c.theaterStaged ??= []).push(target.instanceId);
   return eff.amount;
 }
 

@@ -202,6 +202,12 @@ export type FactionState = {
 
 export type Phase = 'Setup' | 'Assignment' | 'Command' | 'Refresh' | 'GameOver';
 
+// How the engine resumes after an "Immediate" objective's placement choice
+// (Raid Outposts / Rebel Cell), which can be drawn in different contexts:
+//   'command'     — drawn during a Command-phase action (resume advanceCommandTurn)
+//   'refresh-draw'— drawn during the Refresh draw step (resume the rest of Refresh)
+export type ImmediateResume = 'command' | 'refresh-draw';
+
 export type ChoiceRequest =
   | { kind: 'AssignLeaders'; missionId: string; min: 1; max: 1 | 2 }
   | { kind: 'ChooseSystem'; legal: SystemId[]; allowSkip: boolean }
@@ -225,14 +231,16 @@ export type ChoiceRequest =
   | { kind: 'PickProbeForNewBase'; cards: string[] }
   | { kind: 'PlayObjective'; side: Side; legal: string[]; window: 'combat' | 'refresh'; logStart?: number }
   // RoE Rebel Cell — place the card's target marker in a chosen Rebel system.
-  | { kind: 'RebelCellPlace'; side: 'Rebel'; legal: SystemId[]; logStart?: number }
+  // `resumeKind` = how the engine resumes after placement (the Immediate
+  // objective can be drawn during the Command phase or the Refresh draw step).
+  | { kind: 'RebelCellPlace'; side: 'Rebel'; legal: SystemId[]; logStart?: number; resumeKind?: ImmediateResume }
   // RoE Rebel Cell — at Refresh, optionally discard 1 objective from hand to
   // gain 1 reputation (instead of playing an objective). `legal` is the
   // discardable objective-card ids; the player may also decline.
   | { kind: 'RebelCellDiscard'; side: 'Rebel'; legal: string[]; logStart?: number }
   // RoE Raid Outposts — the Imperial player places the card's 2 target markers
   // in 2 chosen remote systems. `legal` is the eligible remote system ids.
-  | { kind: 'RaidOutpostsPlace'; side: 'Empire'; legal: SystemId[]; count: number; logStart?: number }
+  | { kind: 'RaidOutpostsPlace'; side: 'Empire'; legal: SystemId[]; count: number; logStart?: number; resumeKind?: ImmediateResume }
   | { kind: 'YesNo'; prompt: string }
   | { kind: 'ChooseActionCard'; from: string[] }
   | { kind: 'InfiltrationPick'; missionId: string; topId: string; bottomId: string }
@@ -542,6 +550,15 @@ export type ChoiceRequest =
       currentCap: number;
     }
   | {
+      // RoE Leader Pool Limit (p.8): over the 8-leader cap, the player CHOOSES
+      // which leader to eliminate (one per choice; re-posts until at cap).
+      // `candidates` = the leaders in the pool; `overBy` = how many still over.
+      kind: 'LeaderPoolEliminate';
+      side: Side;
+      candidates: LeaderId[];
+      overBy: number;
+    }
+  | {
       // Discredit Rebellion (Empire/Motti, RoE): Rebel chooses to remove
       // ALL sabotage markers on the board OR to roll dice (1 normally,
       // 2 if Motti assigned). On any success on the roll, Rebels lose 1
@@ -713,6 +730,47 @@ export type ChoiceRequest =
       systemId: SystemId;
       rescuable: LeaderId[];
       markerSources: string[];
+    }
+  | {
+      // RoE Cinematic — Confrontation (Rebel ground): the last Imperial ground
+      // unit was destroyed this round, so the Rebel marks 1 Imperial leader in
+      // the system for elimination at end of Command phase. The Rebel chooses
+      // which (RAW); `candidates` = Imperial leader ids in the system, listed
+      // strongest-first as a suggestion. The AI picks the highest-value.
+      kind: 'ConfrontationLeaderPick';
+      side: 'Rebel';
+      systemId: SystemId;
+      candidates: LeaderId[];
+    }
+  | {
+      // RoE Cinematic Combat (#15) — once-per-attack reroll. After the side
+      // rolls, it MAY reroll up to `allowance` (its leader's tactic value)
+      // of its own dice. `faces`/`colors` describe the rolled dice by index;
+      // `suggested` = the default pick (blanks first, up to allowance). The
+      // resolver rerolls the chosen indices. Choosing none keeps the roll.
+      kind: 'CinematicReroll';
+      side: Side;
+      theater: Theater;
+      systemId: SystemId;
+      allowance: number;
+      faces: string[];
+      colors: DieColor[];
+      suggested: number[];
+    }
+  | {
+      // RoE Cinematic Combat (#15) — "Removing damage": after rolling, the
+      // side may discard each ★ (special) die to remove 1 damage from one of
+      // its units whose health colour matches the die's colour. `budget` =
+      // red/black ★ available; `candidates` = its wounded matching-colour units
+      // in the theatre; `suggested` = the default allocation (most-damaged
+      // first). The resolver applies the chosen allocation (≤ budget per colour).
+      kind: 'CinematicHeal';
+      side: Side;
+      theater: Theater;
+      systemId: SystemId;
+      budget: { red: number; black: number };
+      candidates: { instanceId: string; typeId: string; color: 'red' | 'black'; damage: number }[];
+      suggested: { instanceId: string; amount: number }[];
     }
   | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
@@ -1269,7 +1327,10 @@ export type CombatState = {
   // theatre/round, collected BEFORE either resolves (keyed `${side}:${theatre}:
   // ${round}`; null = chose to skip). Once both are in, they resolve in order
   // (the defender resolves first if their card uses "cancel" — rulebook).
-  cinematicSelections?: Record<string, { cardId: string; useTop: boolean } | null>;
+  // `noAbility` = the side must play (discard) a card but resolves none of its
+  // abilities (RoE p.8: "you may choose not to resolve its abilities and discard
+  // the card"). null = genuinely no card available (after deck recycle).
+  cinematicSelections?: Record<string, { cardId: string; useTop: boolean; noAbility?: boolean } | null>;
   attackerHand: string[]; // tactic card ids
   defenderHand: string[];
   retreated: Side[]; // each side at most once
@@ -1279,7 +1340,7 @@ export type CombatState = {
   pendingAttack?: {
     side: Side;          // who's currently attacking
     theater: Theater;
-    phase: 'awaitingYodaReroll' | 'awaitingR2D2Flip' | 'awaitingOneInAMillion' | 'awaitingSpecialSpend' | 'awaitingAttackerTactics' | 'awaitingDefenderTactics' | 'awaitingDamageAssignment';
+    phase: 'awaitingYodaReroll' | 'awaitingR2D2Flip' | 'awaitingOneInAMillion' | 'awaitingCinematicReroll' | 'awaitingCinematicHeal' | 'awaitingSpecialSpend' | 'awaitingAttackerTactics' | 'awaitingDefenderTactics' | 'awaitingDamageAssignment';
     dice: DieResult[];   // current dice (may be modified by reroll)
     attackerUnits: number;
     bonusDamage: number; // accumulated from damage-boost tactics
@@ -1298,6 +1359,12 @@ export type CombatState = {
     // True once the One In A Million window has been resolved for this
     // attack so re-entry doesn't re-prompt the Rebel.
     oneInAMillionResolved?: boolean;
+    // RoE Cinematic Combat (#15): true once the once-per-attack reroll window
+    // (pick up to the leader's tactic value of dice to reroll) and the
+    // ★-spend "Removing damage" heal window have each been resolved for this
+    // attack, so re-entry after another pause doesn't re-prompt.
+    cinematicRerollResolved?: boolean;
+    cinematicHealResolved?: boolean;
     // Set when entering 'awaitingDamageAssignment'. Frozen list of hits
     // the attacker must assign (post-blocks), and the legal targets per
     // hit (computed when the choice is queued).

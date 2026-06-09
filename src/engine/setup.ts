@@ -59,7 +59,7 @@ const REBEL_STARTING_UNITS_BASE: { typeId: string; count: number }[] = [
 // queue slot 3, and (b) the remaining roster deployed across Imperial
 // systems. We collapse both into a single per-unit list — the existing
 // auto-setup distributes; the interactive setup leaves placement to the
-// Imperial player. Totals: 12 TIE Fighters (4+8), 13 Stormtroopers (1+12),
+// Imperial player. Totals: 12 TIE Fighters (4+8), 6 Stormtroopers (1+5),
 // 3 Assault Carriers, 3 Star Destroyers, 2 TIE Strikers, 4 AT-STs,
 // 2 Assault Tanks, 1 AT-AT, 1 DSUC deployed on the board. The completed
 // Death Star is NOT deployed — per RoE setup it starts on build-track
@@ -72,7 +72,7 @@ const IMPERIAL_STARTING_UNITS_RoE_NEW: { typeId: string; count: number }[] = [
   { typeId: 'assault-carrier', count: 3 },
   { typeId: 'tie-fighter', count: 12 },
   { typeId: 'tie-striker', count: 2 },
-  { typeId: 'stormtrooper', count: 13 },
+  { typeId: 'stormtrooper', count: 6 },
   { typeId: 'at-st', count: 4 },
   { typeId: 'assault-tank', count: 2 },
   { typeId: 'at-at', count: 1 },
@@ -371,6 +371,29 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
     const stormtroopersToPlace = empirePool.filter((t) => t === 'stormtrooper').length - imperialSystems.length;
     const remainingEmpire = empirePool.filter((t) => t !== 'stormtrooper')
       .concat(new Array(Math.max(0, stormtroopersToPlace)).fill('stormtrooper'));
+    // RoE setup (rulebook p.8): the Death Star Under Construction is placed in a
+    // chosen REMOTE system together with 4 TIE Fighters + 1 Stormtrooper — NOT
+    // round-robined across Imperial-loyalty systems. (Interactive setup already
+    // allows this via setupDeployUnit; this keeps the auto-setup RAW-faithful.
+    // The probe-card removal for that remote is a separate refinement, skipped.)
+    if (expansion.enabled) {
+      const dsucIdx = remainingEmpire.indexOf('death-star-under-construction');
+      const remote = Object.keys(catalog.systems).find(
+        (id) => catalog.systems[id]?.isRemote && map.systems[id] && !map.systems[id].destroyed,
+      );
+      if (dsucIdx >= 0 && remote) {
+        const take = (typeId: string): boolean => {
+          const i = remainingEmpire.indexOf(typeId);
+          if (i < 0) return false;
+          remainingEmpire.splice(i, 1);
+          map.systems[remote].units.push(mkInstance(typeId, 'Empire'));
+          return true;
+        };
+        take('death-star-under-construction');
+        for (let i = 0; i < 4; i++) take('tie-fighter');
+        take('stormtrooper');
+      }
+    }
     let idx = 0;
     for (const typeId of remainingEmpire) {
       const sys = imperialSystems[idx % imperialSystems.length];

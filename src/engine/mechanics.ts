@@ -576,6 +576,13 @@ export function destroySystem(G: GameState, systemId: SystemId): void {
   // Loyalty/subjugation are removed on destroyed systems.
   ss.loyalty = 'neutral';
   ss.subjugated = false;
+  // RoE p.8: when a system is destroyed, all target markers in it are removed
+  // and each marker's removal effect is resolved (e.g. Raid Outposts scores the
+  // Rebel 1 reputation). Iterate a copy since removal mutates the list.
+  for (const m of [...(ss.targetMarkers ?? [])]) {
+    if (m.source === 'raid-outposts-2') removeRaidOutpostMarker(G, systemId);
+    else removeTargetMarker(G, systemId, m.source, m.placedBy);
+  }
   log(G, { kind: 'destroy-system', payload: { systemId } });
   applyInvariants(G, [systemId]);
 }
@@ -686,8 +693,8 @@ export function removeRaidOutpostMarker(G: GameState, sysId: SystemId): boolean 
  *  pendingChoice. Phase 6 MVP — see docs/rise-of-the-empire.md.
  *
  *  No-op when expansion.enabled is false (base game has no cap). */
-export function enforceLeaderPoolCap(G: GameState, side: Side): void {
-  if (!G.expansion?.enabled) return;
+export function enforceLeaderPoolCap(G: GameState, side: Side): boolean {
+  if (!G.expansion?.enabled) return false;
   const f = faction(G, side);
   const cap = 8 + (f.leaderPoolCapBonus ?? 0);
 
@@ -719,17 +726,29 @@ export function enforceLeaderPoolCap(G: GameState, side: Side): void {
       log(G, { kind: 'choice-request', side: 'Empire', payload: {
         kind: 'AmbitionsOfPowerOffer', poolSize: f.leaderPool.length, cap,
       }});
-      return; // resolver re-runs the cap after answering
+      return true; // resolver re-runs the cap after answering
     }
   }
 
-  while (f.leaderPool.length > cap) {
-    const eliminated = f.leaderPool.pop();
-    if (!eliminated) break;
-    if (!f.eliminatedLeaders) f.eliminatedLeaders = [];
-    f.eliminatedLeaders.push(eliminated);
-    log(G, { kind: 'leader-pool-cap-eliminate', side, payload: { leaderId: eliminated, poolSizeBeforeCap: cap + 1 } });
+  // RoE p.8: the player CHOOSES which leader(s) to eliminate. Post a
+  // LeaderPoolEliminate choice (one leader per choice, re-posted until at cap),
+  // unless another choice is already pending (e.g. the other side's cap, or an
+  // Ambitions offer) — guarded so we never clobber a pending choice. Returns
+  // true if a choice was posted (the caller leaves it for the controller to
+  // resolve; the resolver re-runs the cap to continue / finish).
+  if (f.leaderPool.length > cap && !G.pendingChoice) {
+    G.pendingChoice = {
+      kind: 'LeaderPoolEliminate',
+      side,
+      candidates: [...f.leaderPool],
+      overBy: f.leaderPool.length - cap,
+    };
+    log(G, { kind: 'choice-request', side, payload: {
+      kind: 'LeaderPoolEliminate', overBy: f.leaderPool.length - cap, poolSize: f.leaderPool.length,
+    }});
+    return true;
   }
+  return false;
 }
 
 /** Move a leader that is already on the board from one system to another,

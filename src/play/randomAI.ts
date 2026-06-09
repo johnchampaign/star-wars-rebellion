@@ -1088,6 +1088,19 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       : `marker:${pc.markerSources[0]}`;
     return combat.resolveRogueOneChoice(G, action).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'ConfrontationLeaderPick' && G.pendingChoice.side === side) {
+    // AI: mark the highest-tactic-value Imperial leader (candidates are already
+    // sorted strongest-first) — the most impactful elimination.
+    return combat.resolveConfrontationLeaderPick(G, G.pendingChoice.candidates[0]).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'CinematicReroll' && G.pendingChoice.side === side) {
+    // AI: take the suggested reroll (blanks first, up to the allowance).
+    return combat.resolveCinematicReroll(G, [...G.pendingChoice.suggested]).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'CinematicHeal' && G.pendingChoice.side === side) {
+    // AI: take the suggested ★-spend (most-damaged matching-colour units first).
+    return combat.resolveCinematicHeal(G, G.pendingChoice.suggested.map((s) => ({ ...s }))).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'CombatAddLeaderPick' && G.pendingChoice.side === side) {
     // AI: always add the highest-tactic-value pool leader. Captures are bad
     // but missing the tactic-card draws is worse for a side that has units
@@ -1484,6 +1497,20 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   // mid-game (action cards refresh; eliminated leaders don't).
   if (G.pendingChoice && G.pendingChoice.kind === 'AmbitionsOfPowerOffer' && G.pendingChoice.side === side) {
     return phases.resolveAmbitionsOfPowerOffer(G, true).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'LeaderPoolEliminate' && G.pendingChoice.side === side) {
+    // RoE leader-pool cap: eliminate the LOWEST-value leader (keep the best 8).
+    // Value = combined tactic values + total skill icons (major + minor).
+    const value = (lid: string): number => {
+      const l = G.catalog.leaders[lid];
+      if (!l) return 0;
+      const tac = (l.tacticValues?.space ?? 0) + (l.tacticValues?.ground ?? 0);
+      const sk = Object.values(l.skills ?? {}).reduce((a, b) => a + (b ?? 0), 0);
+      const minor = Object.values(l.minorSkills ?? {}).reduce((a, b) => a + (b ?? 0), 0);
+      return tac + sk + minor;
+    };
+    const worst = [...G.pendingChoice.candidates].sort((a, b) => value(a) - value(b))[0];
+    return phases.resolveLeaderPoolEliminate(G, worst).ok;
   }
   // Early Promotion / Rebel Extremist branch (RoE): take the recruit
   // branch — a new leader (Motti / Saw) in the pool is generally stronger

@@ -227,6 +227,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'SomethingToFightForOffer': return pc.side === side;
     case 'PostBountyOffer':          return pc.side === side;
     case 'AmbitionsOfPowerOffer':    return pc.side === side;
+    case 'LeaderPoolEliminate':      return pc.side === side;
     case 'DiscreditRebellionChoice': return pc.side === side;
     case 'SecretMissionPick':        return pc.side === side;
     case 'MissionRecruitLeaderPick': return pc.side === side;
@@ -2107,6 +2108,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <AmbitionsOfPowerOfferModal choice={G.pendingChoice}
           onAccept={(accept) => {
             const r = phases.resolveAmbitionsOfPowerOffer(G, accept);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'LeaderPoolEliminate'
+        && G.pendingChoice.side === humanSide && (
+        <LeaderPoolEliminateModal G={G} choice={G.pendingChoice}
+          onPick={(leaderId) => {
+            const r = phases.resolveLeaderPoolEliminate(G, leaderId);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -11997,6 +12010,65 @@ function AmbitionsOfPowerOfferModal({
           <button className="tab-button" onClick={() => onAccept(false)}>
             Keep, accept elimination
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LeaderPoolEliminateModal({
+  G, choice, onPick,
+}: {
+  G: GameState;
+  choice: { side: Side; candidates: string[]; overBy: number };
+  onPick: (leaderId: string) => void;
+}) {
+  const skillTotal = (lid: string): number => {
+    const l = G.catalog.leaders[lid];
+    if (!l) return 0;
+    const sk = Object.values(l.skills ?? {}).reduce((a, b) => a + ((b as number) ?? 0), 0);
+    const minor = Object.values((l as { minorSkills?: Record<string, number> }).minorSkills ?? {}).reduce((a, b) => a + ((b as number) ?? 0), 0);
+    return sk + minor;
+  };
+  // Show weakest-first so the suggested cut is obvious — but the choice is yours.
+  const ordered = [...choice.candidates].sort((a, b) => {
+    const la = G.catalog.leaders[a], lb = G.catalog.leaders[b];
+    const va = (la?.tacticValues?.space ?? 0) + (la?.tacticValues?.ground ?? 0) + skillTotal(a);
+    const vb = (lb?.tacticValues?.space ?? 0) + (lb?.tacticValues?.ground ?? 0) + skillTotal(b);
+    return va - vb;
+  });
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${sideColor(choice.side)}`, borderRadius: 6,
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color: sideColor(choice.side), marginTop: 0 }}>
+          {choice.side} — leader pool over the limit
+        </h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+          Your pool exceeds the cap of 8 by {choice.overBy}. Choose a leader to eliminate
+          (you keep the rest). {choice.overBy > 1 && 'You will be asked again until you are at 8.'}
+          {' '}They’re listed weakest-first as a suggestion — the choice is yours.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {ordered.map((lid) => {
+            const l = G.catalog.leaders[lid];
+            const sp = l?.tacticValues?.space ?? 0, gr = l?.tacticValues?.ground ?? 0;
+            return (
+              <button key={lid} className="tab-button" onClick={() => onPick(lid)}
+                style={{ textAlign: 'left', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ fontWeight: 700, color: '#fff' }}>{l?.name ?? lid}</span>
+                <span style={{ color: '#9a937f', fontSize: 11 }}>
+                  tactics {sp}/{gr} · {skillTotal(lid)} skill icons
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>
