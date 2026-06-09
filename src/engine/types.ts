@@ -1237,6 +1237,10 @@ export type CombatState = {
   cinematicEndOfRound?: { side: Side; kind: 'capture' }[];
   // Guard so the end-of-round resolution runs once per round.
   cinematicEndOfRoundDoneRound?: number;
+  // RoE Cinematic "you may play an extra card" (Imposing Presence / Fleet
+  // Logistics / Confrontation): `${side}:${theatre}:${round}` -> count of
+  // additional tactic plays that side may make this round in this theatre.
+  cinematicExtraPlays?: Record<string, number>;
   attackerHand: string[]; // tactic card ids
   defenderHand: string[];
   retreated: Side[]; // each side at most once

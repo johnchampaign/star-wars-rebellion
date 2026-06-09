@@ -34,7 +34,7 @@ function unitsOf(G: GameState, side: Side, sysId: string, theater: Theater) {
 }
 
 type DealEffect = { kind: 'deal'; amount: number; color?: 'red' | 'black' };
-type PreventEffect = { kind: 'prevent'; red: number; black: number; special: number };
+type PreventEffect = { kind: 'prevent'; red: number; black: number; special: number; extra?: boolean };
 // Conditional deal — only deals if the named condition holds.
 type CondDealEffect = { kind: 'condDeal'; amount: number; color?: 'red' | 'black'; cond: 'more-fighters' | 'no-shield-generator' };
 // Targeted deal — assigns damage to a specific class of enemy unit.
@@ -61,11 +61,18 @@ type CaptureEffect = { kind: 'capture' };
 // Air Superiority / Outrun Them primaries). Only bites if the canceller plays
 // before the opponent (sequential resolution — see combat.ts runTheater).
 type CancelEffect = { kind: 'cancel' };
+// Shield absorb (Armored Position / Planetary Shield primaries): move up to
+// `amount` accumulated damage from your own GROUND units onto one shield
+// structure (Shield Bunker / Shield Generator), which soaks it.
+type ShieldAbsorbEffect = { kind: 'shieldAbsorb'; amount: number; structureTypeId: string };
+// You may play one extra tactic card this round in this theatre (Imposing
+// Presence / Confrontation secondaries — standalone).
+type ExtraCardEffect = { kind: 'extraCard' };
 type UnwiredEffect = { kind: 'unwired' };
-type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | RemoveDamageEffect | CaptureEffect | CancelEffect | UnwiredEffect;
+type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | RemoveDamageEffect | CaptureEffect | CancelEffect | ShieldAbsorbEffect | ExtraCardEffect | UnwiredEffect;
 
 const D = (amount: number, color?: 'red' | 'black'): DealEffect => ({ kind: 'deal', amount, color });
-const P = (red: number, black: number, special = 0): PreventEffect => ({ kind: 'prevent', red, black, special });
+const P = (red: number, black: number, special = 0, extra = false): PreventEffect => ({ kind: 'prevent', red, black, special, extra });
 const CD = (amount: number, cond: CondDealEffect['cond'], color?: 'red' | 'black'): CondDealEffect => ({ kind: 'condDeal', amount, color, cond });
 const TD = (amount: number, targetClass: TargetDealEffect['targetClass']): TargetDealEffect => ({ kind: 'targetDeal', amount, targetClass });
 const DESTROY = (opts: { tier?: 'triangle'; unitClass?: 'structure' }): DestroyEffect => ({ kind: 'destroy', ...opts });
@@ -75,6 +82,8 @@ const LOCK: LockDeckEffect = { kind: 'lockDeck' };
 const REMOVE = (amount: number, exceptTypeId?: string): RemoveDamageEffect => ({ kind: 'removeDamage', amount, exceptTypeId });
 const CAPTURE: CaptureEffect = { kind: 'capture' };
 const CANCEL: CancelEffect = { kind: 'cancel' };
+const ABSORB = (amount: number, structureTypeId: string): ShieldAbsorbEffect => ({ kind: 'shieldAbsorb', amount, structureTypeId });
+const EXTRA: ExtraCardEffect = { kind: 'extraCard' };
 const U: UnwiredEffect = { kind: 'unwired' };
 
 // Per-card [top, bottom] abilities, keyed by the card id slug from
@@ -88,21 +97,21 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   'cin-empire-space-superlaser-blast':       [TD(5, 'capital'), D(1)],
   'cin-empire-space-entrapment':             [CANCEL, LOCK],
   'cin-empire-space-energy-shield':          [REMOVE(2), FIRST],
-  'cin-empire-space-intercept':              [DESTROY({ tier: 'triangle' }), U /* special lock */],
+  'cin-empire-space-intercept':              [DESTROY({ tier: 'triangle' }), U /* special-die lock: no-op (unmodelled) */],
   // ---- Imperial Ground ----
   'cin-empire-ground-support-of-the-501st':  [DESTROY({ tier: 'triangle' }), D(1, 'black')],
   'cin-empire-ground-armored-patrol':        [P(2, 2), P(1, 1)],
   'cin-empire-ground-overrun':               [D(2), D(1)],
   'cin-empire-ground-target-the-generator':  [DESTROY({ unitClass: 'structure' }), D(1, 'red')],
   'cin-empire-ground-air-superiority':       [CANCEL, LOCK],
-  'cin-empire-ground-armored-position':      [U /* redirect damage */, FIRST],
+  'cin-empire-ground-armored-position':      [ABSORB(3, 'shield-bunker'), FIRST],
   'cin-empire-ground-bombardment':           [CD(2, 'no-shield-generator', 'black'), D(1)],
-  'cin-empire-ground-imposing-presence':     [U /* special lock */, U /* extra card */],
+  'cin-empire-ground-imposing-presence':     [U /* special-die lock: no-op (green-die damage-removal unmodelled) */, EXTRA],
   // ---- Rebel Space ----
   'cin-rebel-space-rogue-squadron-support':  [D(2, 'black'), D(1, 'black')],
   'cin-rebel-space-bombing-run':             [D(2, 'red'), D(1, 'red')],
-  'cin-rebel-space-deployment':              [GAIN('rebel-trooper'), U /* special lock */],
-  'cin-rebel-space-fleet-logistics':         [U /* prevent + extra card */, P(2, 0)],
+  'cin-rebel-space-deployment':              [GAIN('rebel-trooper'), U /* special-die lock: no-op (unmodelled) */],
+  'cin-rebel-space-fleet-logistics':         [P(2, 0, 0, true), P(2, 0)],
   'cin-rebel-space-ion-blast':               [TD(1, 'capital'), D(1)],
   'cin-rebel-space-outrun-them':             [CANCEL, LOCK],
   'cin-rebel-space-draw-their-fire':         [REMOVE(2, 'nebulon-b-frigate'), FIRST],
@@ -112,10 +121,10 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   'cin-rebel-ground-take-it-down':           [D(2, 'red'), D(1, 'red')],
   'cin-rebel-ground-tow-cables':             [TD(4, 'at-walker'), D(1)],
   'cin-rebel-ground-take-cover':             [P(2, 2), P(1, 1)],
-  'cin-rebel-ground-planetary-shield':       [U /* redirect damage */, FIRST],
+  'cin-rebel-ground-planetary-shield':       [ABSORB(3, 'shield-generator'), FIRST],
   'cin-rebel-ground-rogue-one':              [U /* rescue/remove marker */, U /* special lock */],
   'cin-rebel-ground-escape-plan':            [U /* retreat + cancel */, LOCK],
-  'cin-rebel-ground-confrontation':          [U /* mark leader */, U /* extra card */],
+  'cin-rebel-ground-confrontation':          [U /* mark-leader-for-elimination: needs end-of-Command-phase hook */, EXTRA],
 };
 
 /** Does a condDeal's condition currently hold? */
@@ -219,6 +228,21 @@ function abilityValue(G: GameState, c: CombatState, side: Side, theater: Theater
     const tooLate = (c.cinematicTacticDoneThisRound ?? []).includes(oppKey);
     if (tooLate) return 0;
     return availableCards(G, opp, theater).length > 0 ? 1.2 : 0.2;
+  }
+  if (ab.kind === 'shieldAbsorb') {
+    // Worth it only if we have the shield structure AND wounded ground units.
+    const ss = G.map.systems[c.systemId];
+    const hasStructure = (ss?.units ?? []).some((u) => u.side === side && u.typeId === ab.structureTypeId);
+    if (!hasStructure) return 0;
+    const healable = (ss?.units ?? [])
+      .filter((u) => u.side === side && u.typeId !== ab.structureTypeId
+        && G.catalog.unitTypes[u.typeId]?.theater === 'ground')
+      .reduce((s, u) => s + u.damage, 0);
+    return healable > 0 ? Math.min(healable, ab.amount) + 0.5 : 0;
+  }
+  if (ab.kind === 'extraCard') {
+    // Only worth playing if there's at least one OTHER card to chain into.
+    return availableCards(G, side, theater).length > 1 ? 0.6 : 0;
   }
   return 0; // unwired
 }
@@ -350,7 +374,8 @@ export function applyCinematicAbility(
     logPlay({ dealt: resolveDeal(G, c, side, theater, ab) });
   } else if (ab.kind === 'prevent') {
     resolvePrevent(c, side, ab);
-    logPlay({ prevent: { red: ab.red, black: ab.black, special: ab.special } });
+    if (ab.extra) grantExtraCard(c, side, theater);
+    logPlay({ prevent: { red: ab.red, black: ab.black, special: ab.special }, extra: !!ab.extra });
   } else if (ab.kind === 'condDeal') {
     const ok = condHolds(G, c, side, theater, ab.cond);
     logPlay({ condDealt: ok ? resolveDeal(G, c, side, theater, { kind: 'deal', amount: ab.amount, color: ab.color }) : 0, cond: ab.cond, condMet: ok });
@@ -383,6 +408,11 @@ export function applyCinematicAbility(
     const tooLate = (c.cinematicTacticDoneThisRound ?? []).includes(oppKey);
     if (!tooLate) (c.cinematicCancel ??= {})[oppKey] = true;
     logPlay({ cancel: { side: opp, theater, applied: !tooLate, note: tooLate ? 'opponent already resolved' : undefined } });
+  } else if (ab.kind === 'shieldAbsorb') {
+    logPlay({ absorbed: resolveShieldAbsorb(G, side, c.systemId, ab) });
+  } else if (ab.kind === 'extraCard') {
+    grantExtraCard(c, side, theater);
+    logPlay({ extra: true });
   } else {
     logPlay({ unwired: true });
   }
@@ -420,6 +450,44 @@ function resolveRemoveDamage(
     u.damage -= take; budget -= take; removed += take;
   }
   return removed;
+}
+
+/** Grant the side one extra tactic play this round in this theatre (Imposing
+ *  Presence / Fleet Logistics / Confrontation). The combat tactic loop reads
+ *  cinematicExtraPlays and re-offers the side. */
+function grantExtraCard(c: CombatState, side: Side, theater: Theater): void {
+  const key = `${side}:${theater}:${c.round}`;
+  (c.cinematicExtraPlays ??= {})[key] = (c.cinematicExtraPlays[key] ?? 0) + 1;
+}
+
+/** Shield absorb (Armored Position / Planetary Shield): move up to `amount`
+ *  accumulated damage from the side's OTHER ground units onto its shield
+ *  structure, healing the units. The structure soaks it (and is destroyed if
+ *  the damage reaches its health). Auto-resolves to maximise ground healing.
+ *  Returns the damage moved. */
+function resolveShieldAbsorb(
+  G: GameState, side: Side, sysId: string, eff: ShieldAbsorbEffect,
+): number {
+  const ss = G.map.systems[sysId];
+  if (!ss) return 0;
+  const structure = ss.units.find((u) => u.side === side && u.typeId === eff.structureTypeId);
+  if (!structure) return 0;
+  const wounded = ss.units
+    .filter((u) => u.side === side && u.instanceId !== structure.instanceId
+      && G.catalog.unitTypes[u.typeId]?.theater === 'ground' && u.damage > 0)
+    .sort((a, b) => b.damage - a.damage);
+  let budget = eff.amount, moved = 0;
+  for (const u of wounded) {
+    if (budget <= 0) break;
+    const take = Math.min(u.damage, budget);
+    u.damage -= take; budget -= take; moved += take;
+  }
+  if (moved > 0) {
+    structure.damage += moved;
+    const maxHp = G.catalog.unitTypes[eff.structureTypeId]?.health.value ?? Infinity;
+    if (structure.damage >= maxHp) M.destroyUnit(G, structure.instanceId, 'cinematic-shield-absorb');
+  }
+  return moved;
 }
 
 /** Resolve queued end-of-round cinematic effects (Tractor Beam capture).

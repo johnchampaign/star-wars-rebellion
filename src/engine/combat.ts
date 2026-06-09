@@ -1882,7 +1882,17 @@ export function resolveCinematicTacticSelect(
   } else {
     log(G, { kind: 'cinematic-tactic-skip', side: pc.side, payload: { theater: pc.theater, round: pc.round } });
   }
-  (c.cinematicTacticDoneThisRound ??= []).push(`${pc.side}:${pc.theater}:${pc.round}`);
+  // "You may play an extra card" (Imposing Presence / Fleet Logistics /
+  // Confrontation): if this side has a granted extra play and actually played
+  // a card, consume one grant and DON'T mark them done — the tactic loop will
+  // re-offer them. Declining (cardId null) forfeits any remaining extras.
+  const key = `${pc.side}:${pc.theater}:${pc.round}`;
+  const extras = c.cinematicExtraPlays?.[key] ?? 0;
+  if (cardId !== null && extras > 0) {
+    c.cinematicExtraPlays![key] = extras - 1;
+  } else {
+    (c.cinematicTacticDoneThisRound ??= []).push(key);
+  }
   G.pendingChoice = undefined;
   runCombat(G);
   return { ok: true };

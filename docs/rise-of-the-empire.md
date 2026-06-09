@@ -390,9 +390,23 @@ New mechanics that need engine work, not just data:
      resolution: combat attacker plays first), so an attacker can pre-empt the
      defender but not vice-versa — a true simultaneous-selection model would
      need a collect-then-resolve restructure. 24/24 cinematic tests pass.
-     Still `unwired` (other exotic types, not in the prioritized 3):
-     redirect-damage, play-an-extra-card, special-die locks, Rogue One /
-     Confrontation conditionals.
+   - **7f: shield-absorb + play-extra-card. DONE.** `shieldAbsorb` (Armored
+     Position / Planetary Shield primaries) moves up to 3 accumulated damage
+     off the side's ground units onto its Shield Bunker / Generator (which
+     soaks it, and dies if it reaches its health). `extraCard` (Imposing
+     Presence / Confrontation secondaries; Fleet Logistics primary = prevent +
+     extra) grants an additional tactic play that round/theatre — combat's
+     `resolveCinematicTacticSelect` consumes a grant from
+     `CombatState.cinematicExtraPlays` and re-offers the side instead of
+     marking it done. 30/30 cinematic tests pass.
+   - **Still `unwired`** (depend on unmodelled mechanics or cross-phase hooks):
+     the "[opp] cannot remove damage with special dice this round" locks
+     (Intercept / Imposing Presence top / Deployment / Rogue One bottoms) — a
+     no-op because green-die damage-removal isn't modelled; Rogue One top
+     (retreat-conditional rescue / remove-marker); Confrontation top
+     (last-ground-unit-destroyed → mark a leader for end-of-Command-phase
+     elimination); Escape Plan top (immediate retreat + cancel); Deployment
+     top's "resolve a ground battle this round" clause.
 
 Each phase ships as a working slice; base game is never at risk.
 

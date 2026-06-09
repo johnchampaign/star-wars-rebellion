@@ -302,5 +302,67 @@ console.log('\n[ Cinematic 7e: Entrapment cancels the opponent card ]');
     c.cinematicCancel?.['Rebel:space:1'] === true);
 }
 
+// ---- 7f: Shield absorb (Armored Position / Planetary Shield) ----
+console.log('\n[ Cinematic 7f: Armored Position absorbs ground damage into the Shield Bunker ]');
+{
+  const G = createGame(data, baseOpts(730));
+  M.deployUnit(G, 'Empire', 'shield-bunker', 'felucia');
+  M.deployUnit(G, 'Empire', 'at-st', 'felucia');
+  M.deployUnit(G, 'Empire', 'at-st', 'felucia');
+  M.deployUnit(G, 'Rebel', 'rebel-trooper', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  const units = G.map.systems['felucia'].units;
+  const bunker = units.find((u) => u.typeId === 'shield-bunker');
+  const walkers = units.filter((u) => u.typeId === 'at-st');
+  walkers[0].damage = 2; walkers[1].damage = 2; // 4 total wounded
+  bunker.damage = 0;
+  applyCinematicAbility(G, c, 'Empire', 'ground', 'cin-empire-ground-armored-position', true);
+  const groundDmgAfter = walkers.reduce((s, u) => s + u.damage, 0);
+  check('moved up to 3 damage off the AT-STs (4 → 1)', groundDmgAfter === 1, `ground dmg = ${groundDmgAfter}`);
+  check('Shield Bunker soaked the 3 damage', bunker.damage === 3, `bunker dmg = ${bunker.damage}`);
+}
+
+console.log('\n[ Cinematic 7f: Planetary Shield needs a Shield Generator present ]');
+{
+  const G = createGame(data, baseOpts(731));
+  M.deployUnit(G, 'Rebel', 'rebel-trooper', 'felucia'); // no Shield Generator
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  const trooper = G.map.systems['felucia'].units.find((u) => u.typeId === 'rebel-trooper');
+  trooper.damage = 1;
+  applyCinematicAbility(G, c, 'Rebel', 'ground', 'cin-rebel-ground-planetary-shield', true);
+  check('no Shield Generator → nothing absorbed (trooper still wounded)', trooper.damage === 1);
+}
+
+// ---- 7f: "play an extra card" grants a second tactic play ----
+console.log('\n[ Cinematic 7f: Imposing Presence grants an extra tactic play ]');
+{
+  const G = createGame(data, baseOpts(732));
+  M.deployUnit(G, 'Empire', 'at-st', 'felucia');
+  M.deployUnit(G, 'Rebel', 'rebel-trooper', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  c.round = 1;
+  const before = c.cinematicExtraPlays?.['Empire:ground:1'] ?? 0;
+  applyCinematicAbility(G, c, 'Empire', 'ground', 'cin-empire-ground-imposing-presence', false); // BOT = extra card
+  const after = c.cinematicExtraPlays?.['Empire:ground:1'] ?? 0;
+  check('Imposing Presence (bottom) granted +1 extra play', after === before + 1, `${after} vs ${before}`);
+}
+
+console.log('\n[ Cinematic 7f: Fleet Logistics top = prevent + extra play ]');
+{
+  const G = createGame(data, baseOpts(733));
+  M.deployUnit(G, 'Rebel', 'mon-cala-cruiser', 'felucia');
+  M.deployUnit(G, 'Empire', 'star-destroyer', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  c.round = 1;
+  applyCinematicAbility(G, c, 'Rebel', 'space', 'cin-rebel-space-fleet-logistics', true); // TOP
+  check('Fleet Logistics top granted an extra play', (c.cinematicExtraPlays?.['Rebel:space:1'] ?? 0) === 1);
+  check('Fleet Logistics top also set a prevent', (c.cinematicPrevent?.Empire?.red ?? 0) >= 2);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
