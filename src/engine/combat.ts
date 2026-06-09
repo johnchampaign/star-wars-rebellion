@@ -1380,7 +1380,7 @@ function pushAttackReport(G: GameState, c: CombatState, blocksApplied: number, d
 }
 
 /** Apply this theater step's staged destructions and attribute to reports. */
-function finalizeTheaterDestructions(G: GameState, c: CombatState, theater: Theater): void {
+export function finalizeTheaterDestructions(G: GameState, c: CombatState, theater: Theater): void {
   const staged = c.theaterStaged ?? [];
   if (staged.length === 0) return;
   const bucketIdx = c.currentRoundReportIdx;
@@ -1388,7 +1388,16 @@ function finalizeTheaterDestructions(G: GameState, c: CombatState, theater: Thea
   for (const unitId of staged) {
     if (G.isGameOver) break;
     const u = ss.units.find((x) => x.instanceId === unitId);
-    const typeId = u?.typeId ?? 'unknown';
+    if (!u) continue; // already gone (e.g. retreated)
+    // RoE cinematic (rulebook p.8): a unit is only destroyed at the end of the
+    // theatre's combat round if its damage STILL equals/exceeds its health — a
+    // Remove-Damage combat action or a heal tactic (Energy Shield / Draw Their
+    // Fire / shield-absorb) earlier this round can pull it back below lethal and
+    // save it. Re-check here rather than trusting the at-staging-time snapshot.
+    // (In standard combat there are no in-round heals, so this is equivalent.)
+    const maxHp = G.catalog.unitTypes[u.typeId]?.health.value;
+    if (maxHp !== undefined && u.damage < maxHp) continue; // healed below lethal — survives
+    const typeId = u.typeId;
     M.destroyUnit(G, unitId, 'combat');
     if (bucketIdx !== undefined && c.report.rounds[bucketIdx]) {
       const lastAttack = c.report.rounds[bucketIdx].attacks

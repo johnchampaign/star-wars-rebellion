@@ -13,16 +13,20 @@ after merge.
 ### High — clear RAW violations affecting play
 - [x] **#1 Imperial starting Stormtroopers: 13 → 6.** Fixed
   `IMPERIAL_STARTING_UNITS_RoE_NEW` (setup.ts). Verified RoE=6, base=12.
-- [ ] **#2 "Removing damage" can't save a lethally-damaged unit.** RAW p.8:
-  units aren't destroyed until end of the theatre round, so a heal can rescue
-  them. `combat.ts` stages a unit for destruction the instant damage ≥ health
-  (~1346-1348) and `finalizeTheaterDestructions` destroys the staged list
-  without re-checking current damage — a unit healed below lethal is still
-  destroyed. Fix: finalize should re-check `damage >= health` at finalize time.
-- [ ] **#3 Cinematic tactic-card damage destroys immediately.**
-  `cinematicTactics.ts` resolveDeal/resolveTargetDeal/resolveDestroy call
-  `M.destroyUnit` on the spot. RAW defers lethal to end of theatre round (see
-  #2). Should stage, not destroy.
+- [x] **#2 "Removing damage" can't save a lethally-damaged unit.** Fixed:
+  `finalizeTheaterDestructions` now re-checks `damage >= health` at end of the
+  theatre round before destroying a staged unit, so a Remove-Damage heal (or
+  Energy Shield / Draw Their Fire / shield-absorb) that pulls it below lethal
+  saves it. Equivalent in standard combat (no in-round heals).
+- [x] **#3 Cinematic tactic-card damage destroys immediately.** Fixed:
+  `resolveDeal` / `resolveTargetDeal` now STAGE a unit that reaches lethal
+  (add to `c.theaterStaged`) instead of destroying it now; finalize handles it
+  at end of round. `resolveDeal` also skips already-doomed units so damage
+  spreads ("split among multiple units"). NOTE: the direct **DESTROY** effect
+  (`resolveDestroy`, e.g. Support of the 501st) is intentionally left immediate
+  — RAW's "destroyed by a tactic card → doesn't roll dice but still matches
+  unit icons" nuance is separate and obscure; deferring it would let the unit
+  roll dice. Test: `scripts/test-cinematic-damage-timing.mjs`.
 - [ ] **#4 Cinematic tactic deck never recycles.** RAW p.8: when the deck
   empties, return the discard (except the just-played card) to the deck. We
   treat discards as gone for the game.

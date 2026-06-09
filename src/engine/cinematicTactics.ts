@@ -300,14 +300,22 @@ function bothHaveTheater(G: GameState, c: CombatState, theater: Theater): boolea
 
 /** Resolve a deal-damage ability: assign `amount` damage one-at-a-time to the
  *  cheapest-to-kill eligible enemy unit (colour-matched; uncoloured hits any
- *  red/black-health unit). Destroys units that reach lethal immediately. */
+ *  red/black-health unit). Per RoE cinematic rules (p.8) the damage is only
+ *  lethal at the END of the theatre round, so a unit that reaches lethal is
+ *  STAGED (added to c.theaterStaged), not destroyed now — the owner may save it
+ *  with a Remove-Damage action this round, and finalizeTheaterDestructions
+ *  re-checks before destroying. Already-staged units are skipped so the damage
+ *  spreads to the next target ("a card that deals more than 1 damage can be
+ *  split among multiple units"). */
 function resolveDeal(G: GameState, c: CombatState, side: Side, theater: Theater, eff: DealEffect): number {
   let dealt = 0;
+  const staged = (c.theaterStaged ??= []);
   for (let i = 0; i < eff.amount; i++) {
     const candidates = unitsOf(G, other(side), c.systemId, theater).filter((u) => {
       const t = G.catalog.unitTypes[u.typeId];
       if (!t || t.health.color === null) return false; // invulnerable (Death Star)
       if (eff.color && t.health.color !== eff.color) return false;
+      if (staged.includes(u.instanceId)) return false; // already doomed this theatre
       return true;
     });
     if (candidates.length === 0) break;
@@ -320,7 +328,7 @@ function resolveDeal(G: GameState, c: CombatState, side: Side, theater: Theater,
     const target = candidates[0];
     const dead = M.damageUnit(G, target.instanceId, 1);
     dealt++;
-    if (dead) M.destroyUnit(G, target.instanceId, 'cinematic-tactic-damage');
+    if (dead) staged.push(target.instanceId); // destroyed at end of round, not now
   }
   return dealt;
 }
@@ -705,7 +713,9 @@ function resolveTargetDeal(G: GameState, c: CombatState, side: Side, theater: Th
   });
   const target = candidates[0];
   const dead = M.damageUnit(G, target.instanceId, eff.amount);
-  if (dead) M.destroyUnit(G, target.instanceId, 'cinematic-targeted-damage');
+  // RoE cinematic: stage for end-of-round destruction rather than destroying
+  // now (finalizeTheaterDestructions re-checks, so a heal this round can save).
+  if (dead) (c.theaterStaged ??= []).push(target.instanceId);
   return eff.amount;
 }
 
