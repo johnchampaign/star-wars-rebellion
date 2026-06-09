@@ -1485,6 +1485,20 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'AmbitionsOfPowerOffer' && G.pendingChoice.side === side) {
     return phases.resolveAmbitionsOfPowerOffer(G, true).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'LeaderPoolEliminate' && G.pendingChoice.side === side) {
+    // RoE leader-pool cap: eliminate the LOWEST-value leader (keep the best 8).
+    // Value = combined tactic values + total skill icons (major + minor).
+    const value = (lid: string): number => {
+      const l = G.catalog.leaders[lid];
+      if (!l) return 0;
+      const tac = (l.tacticValues?.space ?? 0) + (l.tacticValues?.ground ?? 0);
+      const sk = Object.values(l.skills ?? {}).reduce((a, b) => a + (b ?? 0), 0);
+      const minor = Object.values(l.minorSkills ?? {}).reduce((a, b) => a + (b ?? 0), 0);
+      return tac + sk + minor;
+    };
+    const worst = [...G.pendingChoice.candidates].sort((a, b) => value(a) - value(b))[0];
+    return phases.resolveLeaderPoolEliminate(G, worst).ok;
+  }
   // Early Promotion / Rebel Extremist branch (RoE): take the recruit
   // branch — a new leader (Motti / Saw) in the pool is generally stronger
   // than a random starting action card.

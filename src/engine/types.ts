@@ -550,6 +550,15 @@ export type ChoiceRequest =
       currentCap: number;
     }
   | {
+      // RoE Leader Pool Limit (p.8): over the 8-leader cap, the player CHOOSES
+      // which leader to eliminate (one per choice; re-posts until at cap).
+      // `candidates` = the leaders in the pool; `overBy` = how many still over.
+      kind: 'LeaderPoolEliminate';
+      side: Side;
+      candidates: LeaderId[];
+      overBy: number;
+    }
+  | {
       // Discredit Rebellion (Empire/Motti, RoE): Rebel chooses to remove
       // ALL sabotage markers on the board OR to roll dice (1 normally,
       // 2 if Motti assigned). On any success on the roll, Rebels lose 1

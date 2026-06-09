@@ -2954,9 +2954,30 @@ export function resolveAmbitionsOfPowerOffer(G: GameState, accept: boolean): { o
     log(G, { kind: 'ambitions-of-power-skipped', side: 'Empire', payload: {} });
   }
   G.pendingChoice = undefined;
-  // Re-enter the cap enforcement — on accept the bonus may now cover the
-  // pool; on decline the elimination loop runs as before.
+  // Re-enter the cap enforcement — on accept the bonus may now cover the pool;
+  // on decline it posts the LeaderPoolEliminate choice.
   M.enforceLeaderPoolCap(G, 'Empire');
+  return { ok: true };
+}
+
+/** Resolve the RoE leader-pool elimination choice: remove the chosen leader
+ *  from the pool (RoE p.8 — the player picks which to eliminate), then re-run
+ *  the cap so it re-posts if the side is still over, or chains to the other
+ *  side. */
+export function resolveLeaderPoolEliminate(G: GameState, leaderId: LeaderId): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'LeaderPoolEliminate') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'not-a-candidate' };
+  const side = pc.side;
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  const idx = f.leaderPool.indexOf(leaderId);
+  if (idx >= 0) f.leaderPool.splice(idx, 1);
+  (f.eliminatedLeaders ??= []).push(leaderId);
+  log(G, { kind: 'leader-pool-cap-eliminate', side, payload: { leaderId, chosen: true } });
+  G.pendingChoice = undefined;
+  // Re-run this side's cap (re-posts if still over); if now at the cap, run the
+  // other side's (which may have been deferred while this choice was pending).
+  M.enforceLeaderPoolCap(G, side) || M.enforceLeaderPoolCap(G, side === 'Rebel' ? 'Empire' : 'Rebel');
   return { ok: true };
 }
 
@@ -3775,11 +3796,14 @@ function finishRefreshAfterBuild(G: GameState, logStart: number): void {
 function finishRefreshAfterDeploy(G: GameState, logStart: number): void {
   if (G.isGameOver) return;
   // RoE leader-pool cap (rules p.8): a player can have at most 8 leaders in
-  // their pool. Refresh is the natural enforcement point — leaders return
-  // from missions/board in step 1 and any recruit lands in step 5, so by the
-  // end of refresh the pool reflects the round's accumulation. Excess
-  // leaders are eliminated (tail-first; pick-which-to-keep UI is a follow-up).
-  // No-op when expansion.enabled is false.
+  // their pool. Refresh is the natural enforcement point — leaders return from
+  // missions/board in step 1 and any recruit lands in step 5. Over the cap, the
+  // player CHOOSES which leader to eliminate: enforceLeaderPoolCap posts a
+  // LeaderPoolEliminate choice (resolved during Assignment, like the Ambitions
+  // offer) and the resolver re-runs the cap until both sides are at the limit.
+  // The second call is a no-op while the first side's choice is pending (the
+  // !pendingChoice guard); the resolver chains to the other side. No-op when
+  // expansion.enabled is false.
   M.enforceLeaderPoolCap(G, 'Rebel');
   M.enforceLeaderPoolCap(G, 'Empire');
   buildRefreshReport(G, logStart);

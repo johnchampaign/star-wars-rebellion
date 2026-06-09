@@ -94,10 +94,13 @@ after merge.
   now recycle (#4) exists: when its effect fires, the card is removed from the
   recyclable discard so it can't return. Leader-selection stays auto (accepted
   — see #15).
-- **#13 Leader-pool 8-cap auto-eliminates tail-first.** ACCEPTED deviation —
-  RAW lets the player choose which 8 to keep; the cap rarely triggers and
-  tail-elimination is deterministic. A keep-which-8 prompt is a UI feature, not
-  a correctness fix.
+- [x] **#13 Leader-pool 8-cap — player now chooses which to eliminate.** DONE
+  (no longer a deviation). Over the cap, `enforceLeaderPoolCap` posts a
+  `LeaderPoolEliminate` choice (one leader per choice, re-posted/chained until
+  both sides are at 8), resolved like the Ambitions offer. The human picks via
+  a modal (leaders listed weakest-first as a suggestion); the AI drops the
+  LOWEST-value leader (combined tactic values + total skill icons). Test
+  `scripts/test-leader-pool-cap.mjs`.
 - **#15 Auto-heuristics stand in for player choices** — deal-damage target/
   split, which dice to reroll (blanks-only vs RAW free choice), special-heal
   target, shield-absorb amount, Confrontation leader pick. ACCEPTED — the auto
