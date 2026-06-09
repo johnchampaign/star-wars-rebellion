@@ -101,11 +101,22 @@ after merge.
   a modal (leaders listed weakest-first as a suggestion); the AI drops the
   LOWEST-value leader (combined tactic values + total skill icons). Test
   `scripts/test-leader-pool-cap.mjs`.
-- **#15 Auto-heuristics stand in for player choices** — deal-damage target/
-  split, which dice to reroll (blanks-only vs RAW free choice), special-heal
-  target, shield-absorb amount, Confrontation leader pick. ACCEPTED — the auto
-  choices are near-optimal; making each interactive is a large UI surface for
-  marginal benefit.
+- **#15 Auto-heuristics → interactive player choices (in progress).** The user
+  chose option **B**: make the three choices that fit existing pause points
+  interactive (default pre-selected, player may override); leave the two that
+  live inside `applyCinematicAbility` (deal-damage split, shield-absorb amount)
+  as documented near-optimal auto-defaults.
+  - [x] **Confrontation leader pick.** The Rebel now CHOOSES which Imperial
+    leader to mark for elimination (was auto highest-value). The end-of-round
+    hook (`resolveCinematicEndOfRound`) now PAUSES with a
+    `ConfrontationLeaderPick` (candidates strongest-first as a suggestion);
+    `resolveConfrontationLeaderPick` marks the pick + eliminates the card. AI
+    marks the strongest. UI: `ConfrontationLeaderPanel` in CombatBoardLive.
+    Test `scripts/test-confrontation-leader-pick.mjs`.
+  - [ ] **Reroll** (pick which dice, default = blanks) — `beginAttack`.
+  - [ ] **Remove-Damage heal target** (default = most-damaged) — `beginAttack`.
+  - DEFERRED (auto near-optimal, documented): deal-damage target/split,
+    shield-absorb amount (both inside `applyCinematicAbility`).
 
 ### From-game bugs (related)
 - [x] **#163 RoE setup: can't place the Death Star Under Construction on a

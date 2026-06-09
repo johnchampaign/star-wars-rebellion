@@ -1088,6 +1088,11 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       : `marker:${pc.markerSources[0]}`;
     return combat.resolveRogueOneChoice(G, action).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'ConfrontationLeaderPick' && G.pendingChoice.side === side) {
+    // AI: mark the highest-tactic-value Imperial leader (candidates are already
+    // sorted strongest-first) — the most impactful elimination.
+    return combat.resolveConfrontationLeaderPick(G, G.pendingChoice.candidates[0]).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'CombatAddLeaderPick' && G.pendingChoice.side === side) {
     // AI: always add the highest-tactic-value pool leader. Captures are bad
     // but missing the tactic-card draws is worse for a side that has units

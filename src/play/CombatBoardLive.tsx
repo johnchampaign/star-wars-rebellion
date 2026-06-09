@@ -222,6 +222,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
     pc?.kind === 'CombatAddLeaderPick'   ? pc.side :
     pc?.kind === 'CinematicTacticSelect' ? pc.side :
     pc?.kind === 'RogueOneChoice'        ? pc.side :
+    pc?.kind === 'ConfrontationLeaderPick' ? pc.side :
     pc?.kind === 'RetreatDecision'       ? pc.side : null;
   const isHumanDecision = decisionSide === humanSide;
   // Online, the opponent is a remote human (or a SERVER-driven AI seat) — either
@@ -617,6 +618,9 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
         )}
         {pc?.kind === 'RogueOneChoice' && isHumanDecision && (
           <RogueOneChoicePanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'ConfrontationLeaderPick' && isHumanDecision && (
+          <ConfrontationLeaderPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'RetreatDecision' && isHumanDecision && (
           <RetreatPanel G={G} choice={pc} onPersist={onPersist} />
@@ -1895,6 +1899,40 @@ function RogueOneChoicePanel({ G, choice, onPersist }: {
             Remove “{src}” marker
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function ConfrontationLeaderPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'ConfrontationLeaderPick' }>;
+  onPersist: () => void;
+}) {
+  const submit = (leaderId: string) => {
+    const r = combat.resolveConfrontationLeaderPick(G, leaderId as never);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>Confrontation</b> — the last Imperial ground unit here was destroyed.
+        Mark <i>1 Imperial leader</i> in this system for elimination at the end of
+        the Command phase. <span style={{ opacity: 0.7 }}>(Strongest first — your call.)</span>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {choice.candidates.map((lid) => {
+          const ldr = G.catalog.leaders[lid];
+          const sp = ldr?.tacticValues.space ?? 0;
+          const gr = ldr?.tacticValues.ground ?? 0;
+          return (
+            <button key={lid} onClick={() => submit(lid)} style={btn('#dc8078')}>
+              Mark {ldr?.name ?? lid}{' '}
+              <span style={{ fontSize: 10, opacity: 0.7 }}>(space {sp} / ground {gr})</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );

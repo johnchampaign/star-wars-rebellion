@@ -641,13 +641,16 @@ function resolveShieldAbsorb(
   return moved;
 }
 
-/** Resolve queued end-of-round CAPTURE effects (Tractor Beam). Deterministic,
- *  no pause. Called by combat.ts after both theatres' attacks, before retreat.
- *  Leaves non-capture entries (Rogue One) in the queue for the post-retreat
- *  pass. */
-export function resolveCinematicEndOfRound(G: GameState, c: CombatState): void {
+/** Resolve queued end-of-round CAPTURE effects (Tractor Beam, deterministic)
+ *  and CONFRONTATION (which PAUSES for the Rebel to pick the leader to mark).
+ *  Called by combat.ts after both theatres' attacks, before retreat. Captures
+ *  resolve first; then Confrontation, which may post a `ConfrontationLeaderPick`
+ *  choice and return `true` (paused). Leaves non-capture/non-confrontation
+ *  entries (Rogue One) in the queue for the post-retreat pass. Returns `true`
+ *  iff it posted a choice (caller must pause). */
+export function resolveCinematicEndOfRound(G: GameState, c: CombatState): boolean {
   const queue = c.cinematicEndOfRound;
-  if (!queue || queue.length === 0) return;
+  if (!queue || queue.length === 0) return false;
   for (const e of queue) {
     if (e.kind !== 'capture') continue;
     // Only the Empire captures (capturedLeaders is Empire-only; Tractor Beam is
@@ -685,21 +688,24 @@ export function resolveCinematicEndOfRound(G: GameState, c: CombatState): void {
       log(G, { kind: 'cinematic-confrontation-no-leader', side: e.side, payload: { systemId: c.systemId } });
       continue;
     }
-    const leaderId = [...here].sort((a, b) => {
+    // RAW: the Rebel CHOOSES which Imperial leader to mark. Pause for the pick
+    // (candidates listed strongest-first as a suggestion). Clear the resolved
+    // capture/confrontation entries from the queue NOW (before the early
+    // return) so they don't re-fire next round; the resolver
+    // (`resolveConfrontationLeaderPick`) marks the chosen leader, eliminates
+    // the card from the recyclable discard, and re-enters combat.
+    const candidates = [...here].sort((a, b) => {
       const va = (G.catalog.leaders[a]?.tacticValues.space ?? 0) + (G.catalog.leaders[a]?.tacticValues.ground ?? 0);
       const vb = (G.catalog.leaders[b]?.tacticValues.space ?? 0) + (G.catalog.leaders[b]?.tacticValues.ground ?? 0);
       return vb - va;
-    })[0];
-    (G.cinematicMarkedForElimination ??= []).push(leaderId);
-    log(G, { kind: 'cinematic-confrontation-mark', side: e.side, payload: { leaderId, systemId: c.systemId } });
-    // RoE: Confrontation says "…and eliminate this card." When its effect fires
-    // the card is removed from the game, NOT discarded — so it must not return
-    // when the deck recycles (#4). Pull it from the recyclable discard.
-    const reb = G.rebel;
-    const di = (reb.cinematicTacticDiscard ?? []).indexOf('cin-rebel-ground-confrontation');
-    if (di >= 0) reb.cinematicTacticDiscard!.splice(di, 1);
+    });
+    c.cinematicEndOfRound = queue.filter((q) => q.kind !== 'capture' && q.kind !== 'confrontation');
+    G.pendingChoice = { kind: 'ConfrontationLeaderPick', side: 'Rebel', systemId: c.systemId, candidates };
+    log(G, { kind: 'cinematic-confrontation-choose', side: e.side, payload: { systemId: c.systemId, candidates } });
+    return true;
   }
   c.cinematicEndOfRound = queue.filter((e) => e.kind !== 'capture' && e.kind !== 'confrontation');
+  return false;
 }
 
 /** Resolve queued post-retreat cinematic triggers (Rogue One). Called by

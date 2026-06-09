@@ -732,6 +732,17 @@ export type ChoiceRequest =
       markerSources: string[];
     }
   | {
+      // RoE Cinematic — Confrontation (Rebel ground): the last Imperial ground
+      // unit was destroyed this round, so the Rebel marks 1 Imperial leader in
+      // the system for elimination at end of Command phase. The Rebel chooses
+      // which (RAW); `candidates` = Imperial leader ids in the system, listed
+      // strongest-first as a suggestion. The AI picks the highest-value.
+      kind: 'ConfrontationLeaderPick';
+      side: 'Rebel';
+      systemId: SystemId;
+      candidates: LeaderId[];
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated

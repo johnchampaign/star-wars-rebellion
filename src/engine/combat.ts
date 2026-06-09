@@ -286,7 +286,9 @@ export function runCombat(G: GameState): void {
     // attacks have resolved by here; run once per round.
     if (c.cinematic && c.cinematicEndOfRoundDoneRound !== c.round) {
       c.cinematicEndOfRoundDoneRound = c.round;
-      resolveCinematicEndOfRound(G, c);
+      // May PAUSE for the Confrontation leader-pick (Rebel chooses which
+      // Imperial leader to mark); resolveConfrontationLeaderPick re-enters.
+      if (resolveCinematicEndOfRound(G, c)) return;
     }
 
     // Structure rule (rr p.4 IV) — checked at the END of each combat round,
@@ -2057,6 +2059,27 @@ export function resolveRogueOneChoice(
   } else {
     return { ok: false, reason: `bad-action:${action}` };
   }
+  G.pendingChoice = undefined;
+  runCombat(G);
+  return { ok: true };
+}
+
+/** Resolve the RoE Cinematic Confrontation leader pick — the Rebel chooses
+ *  which Imperial leader (in the combat system) to mark for elimination at the
+ *  end of the Command phase. Marks the chosen leader, eliminates the card from
+ *  the recyclable discard (RAW "…and eliminate this card." #14), and re-enters
+ *  combat. */
+export function resolveConfrontationLeaderPick(
+  G: GameState, leaderId: LeaderId
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'ConfrontationLeaderPick') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'not-a-candidate' };
+  (G.cinematicMarkedForElimination ??= []).push(leaderId);
+  log(G, { kind: 'cinematic-confrontation-mark', side: 'Rebel', payload: { leaderId, systemId: pc.systemId } });
+  // Eliminate the card from the recyclable discard so it can't return (#4/#14).
+  const di = (G.rebel.cinematicTacticDiscard ?? []).indexOf('cin-rebel-ground-confrontation');
+  if (di >= 0) G.rebel.cinematicTacticDiscard!.splice(di, 1);
   G.pendingChoice = undefined;
   runCombat(G);
   return { ok: true };
