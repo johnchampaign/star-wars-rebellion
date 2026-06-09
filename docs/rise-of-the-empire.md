@@ -53,8 +53,11 @@ they're this track's remaining work; general base-game bug fixes come after):
     target-marker rule (ground-unit presence), confirmed by the user.
   Tests: `scripts/test-roe-objectives-iii.mjs` (19 checks pass). All 12 RoE
   objectives are now wired.
-- **3 Cinematic abilities** — Tractor Beam end-of-round capture,
-  cancel-opponent-card, remove-damage (still `unwired`).
+- ~~**3 Cinematic abilities**~~ **DONE** — Tractor Beam end-of-round capture,
+  cancel-opponent-card, and remove-damage are wired (see Phase 7 notes
+  below). The few remaining `unwired` cinematic abilities are other exotic
+  types (redirect-damage, play-an-extra-card, special-die locks, Rogue One /
+  Confrontation conditionals), not the three the user prioritized.
 - ~~**Small gaps**~~ **DONE**:
   - ~~mission-roll green dice from leader minor skills~~ **DONE** — already
     live: `rollMissionDice` (phases.ts) rolls `min(minor, 3)` GREEN dice when
@@ -375,6 +378,21 @@ New mechanics that need engine work, not just data:
      `CinematicTacticSelectPanel` in `CombatBoardLive.tsx`; the AI
      auto-resolves via `pickBestCinematicPlay`. Engine resolver:
      `combat.resolveCinematicTacticSelect`. 16/16 cinematic tests pass.
+   - **7e: the 3 prioritized exotic abilities. DONE.** In
+     `cinematicTactics.ts`: `removeDamage` (Energy Shield / Draw Their Fire —
+     heal up to N accumulated damage from own theatre units, Draw Their Fire
+     skips Nebulon-B); `capture` (Tractor Beam — queued to a new end-of-round
+     hook in `combat.ts`: if the Empire has a Star Destroyer and the Rebels
+     have no ships, capture 1 Rebel leader); `cancel` (Entrapment / Air
+     Superiority / Outrun Them — sets `CombatState.cinematicCancel` so the
+     opponent's tactic play that round/theatre is skipped). NOTE: cancel only
+     bites when the canceller plays BEFORE the opponent (sequential
+     resolution: combat attacker plays first), so an attacker can pre-empt the
+     defender but not vice-versa — a true simultaneous-selection model would
+     need a collect-then-resolve restructure. 24/24 cinematic tests pass.
+     Still `unwired` (other exotic types, not in the prioritized 3):
+     redirect-damage, play-an-extra-card, special-die locks, Rogue One /
+     Confrontation conditionals.
 
 Each phase ships as a working slice; base game is never at risk.
 

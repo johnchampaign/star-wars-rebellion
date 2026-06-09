@@ -50,8 +50,19 @@ type GainEffect = { kind: 'gain'; typeId: string; prevent?: { red: number; black
 type ResolveFirstEffect = { kind: 'resolveFirst' };
 // The opponent can't play a tactic card in this theatre next round.
 type LockDeckEffect = { kind: 'lockDeck' };
+// Remove up to `amount` accumulated damage from your own units in this
+// theatre (Energy Shield / Draw Their Fire primaries). `exceptTypeId` skips a
+// unit type (Draw Their Fire excludes Nebulon-B Frigates).
+type RemoveDamageEffect = { kind: 'removeDamage'; amount: number; exceptTypeId?: string };
+// End-of-round capture (Tractor Beam primary): if you have a Star Destroyer
+// and the opponent has no ships, capture 1 enemy leader in the combat.
+type CaptureEffect = { kind: 'capture' };
+// Cancel the opponent's tactic card this round in this theatre (Entrapment /
+// Air Superiority / Outrun Them primaries). Only bites if the canceller plays
+// before the opponent (sequential resolution — see combat.ts runTheater).
+type CancelEffect = { kind: 'cancel' };
 type UnwiredEffect = { kind: 'unwired' };
-type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | UnwiredEffect;
+type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | RemoveDamageEffect | CaptureEffect | CancelEffect | UnwiredEffect;
 
 const D = (amount: number, color?: 'red' | 'black'): DealEffect => ({ kind: 'deal', amount, color });
 const P = (red: number, black: number, special = 0): PreventEffect => ({ kind: 'prevent', red, black, special });
@@ -61,6 +72,9 @@ const DESTROY = (opts: { tier?: 'triangle'; unitClass?: 'structure' }): DestroyE
 const GAIN = (typeId: string, prevent?: GainEffect['prevent']): GainEffect => ({ kind: 'gain', typeId, prevent });
 const FIRST: ResolveFirstEffect = { kind: 'resolveFirst' };
 const LOCK: LockDeckEffect = { kind: 'lockDeck' };
+const REMOVE = (amount: number, exceptTypeId?: string): RemoveDamageEffect => ({ kind: 'removeDamage', amount, exceptTypeId });
+const CAPTURE: CaptureEffect = { kind: 'capture' };
+const CANCEL: CancelEffect = { kind: 'cancel' };
 const U: UnwiredEffect = { kind: 'unwired' };
 
 // Per-card [top, bottom] abilities, keyed by the card id slug from
@@ -69,18 +83,18 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   // ---- Imperial Space ----
   'cin-empire-space-swarm-tactics':          [CD(1, 'more-fighters'), D(1, 'black')],
   'cin-empire-space-reinforcements':         [GAIN('tie-fighter', { red: 0, black: 2, special: 0 }), P(0, 2)],
-  'cin-empire-space-tractor-beam':           [U /* end-of-round capture leader */, D(1, 'red')],
+  'cin-empire-space-tractor-beam':           [CAPTURE, D(1, 'red')],
   'cin-empire-space-overwhelming-presence':  [P(2, 0, 1), P(2, 0)],
   'cin-empire-space-superlaser-blast':       [TD(5, 'capital'), D(1)],
-  'cin-empire-space-entrapment':             [U /* cancel card */, LOCK],
-  'cin-empire-space-energy-shield':          [U /* remove damage */, FIRST],
+  'cin-empire-space-entrapment':             [CANCEL, LOCK],
+  'cin-empire-space-energy-shield':          [REMOVE(2), FIRST],
   'cin-empire-space-intercept':              [DESTROY({ tier: 'triangle' }), U /* special lock */],
   // ---- Imperial Ground ----
   'cin-empire-ground-support-of-the-501st':  [DESTROY({ tier: 'triangle' }), D(1, 'black')],
   'cin-empire-ground-armored-patrol':        [P(2, 2), P(1, 1)],
   'cin-empire-ground-overrun':               [D(2), D(1)],
   'cin-empire-ground-target-the-generator':  [DESTROY({ unitClass: 'structure' }), D(1, 'red')],
-  'cin-empire-ground-air-superiority':       [U /* cancel card */, LOCK],
+  'cin-empire-ground-air-superiority':       [CANCEL, LOCK],
   'cin-empire-ground-armored-position':      [U /* redirect damage */, FIRST],
   'cin-empire-ground-bombardment':           [CD(2, 'no-shield-generator', 'black'), D(1)],
   'cin-empire-ground-imposing-presence':     [U /* special lock */, U /* extra card */],
@@ -90,8 +104,8 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   'cin-rebel-space-deployment':              [GAIN('rebel-trooper'), U /* special lock */],
   'cin-rebel-space-fleet-logistics':         [U /* prevent + extra card */, P(2, 0)],
   'cin-rebel-space-ion-blast':               [TD(1, 'capital'), D(1)],
-  'cin-rebel-space-outrun-them':             [U /* cancel card */, LOCK],
-  'cin-rebel-space-draw-their-fire':         [U /* remove damage */, FIRST],
+  'cin-rebel-space-outrun-them':             [CANCEL, LOCK],
+  'cin-rebel-space-draw-their-fire':         [REMOVE(2, 'nebulon-b-frigate'), FIRST],
   'cin-rebel-space-escort':                  [P(1, 1, 1), P(0, 2)],
   // ---- Rebel Ground ----
   'cin-rebel-ground-hold-them-back':         [DESTROY({ tier: 'triangle' }), D(1, 'black')],
@@ -182,6 +196,29 @@ function abilityValue(G: GameState, c: CombatState, side: Side, theater: Theater
     // Situational (changes attack order for the rest of combat). Low value
     // so it's a last resort, but wired.
     return bothHaveTheater(G, c, theater) ? 0.4 : 0;
+  }
+  if (ab.kind === 'removeDamage') {
+    // Worth it only if our own units in this theatre actually carry damage.
+    const repairable = unitsOf(G, side, c.systemId, theater)
+      .filter((u) => u.typeId !== ab.exceptTypeId)
+      .reduce((s, u) => s + Math.min(u.damage, ab.amount), 0);
+    return repairable > 0 ? Math.min(repairable, ab.amount) + 0.5 : 0;
+  }
+  if (ab.kind === 'capture') {
+    // High value when the end-of-round condition is close: we have a Star
+    // Destroyer here and there's an enemy leader to grab.
+    const haveSD = unitsOf(G, side, c.systemId, 'space').some((u) => u.typeId === 'star-destroyer');
+    const enemyLeaders = ((other(side) === 'Rebel' ? G.rebel : G.empire).leadersOnBoard[c.systemId] ?? []).length;
+    return haveSD && enemyLeaders > 0 ? 3 : 0;
+  }
+  if (ab.kind === 'cancel') {
+    // Cancelling the opponent's play is valuable, but only if they actually
+    // have a card to play here and haven't resolved yet.
+    const opp = other(side);
+    const oppKey = `${opp}:${theater}:${c.round}`;
+    const tooLate = (c.cinematicTacticDoneThisRound ?? []).includes(oppKey);
+    if (tooLate) return 0;
+    return availableCards(G, opp, theater).length > 0 ? 1.2 : 0.2;
   }
   return 0; // unwired
 }
@@ -331,6 +368,21 @@ export function applyCinematicAbility(
   } else if (ab.kind === 'lockDeck') {
     (c.cinematicDeckLock ??= {})[`${other(side)}:${theater}`] = c.round + 1;
     logPlay({ lockDeck: { side: other(side), theater, throughRound: c.round + 1 } });
+  } else if (ab.kind === 'removeDamage') {
+    logPlay({ removedDamage: resolveRemoveDamage(G, side, c.systemId, theater, ab) });
+  } else if (ab.kind === 'capture') {
+    // Deferred to end of round — the condition (you have a Star Destroyer, the
+    // opponent has no ships) is an end-of-round state. Queue it.
+    (c.cinematicEndOfRound ??= []).push({ side, kind: 'capture' });
+    logPlay({ queued: 'end-of-round-capture' });
+  } else if (ab.kind === 'cancel') {
+    // Cancel the opponent's tactic play this round in this theatre. Only bites
+    // if they haven't resolved yet (sequential order: attacker plays first).
+    const opp = other(side);
+    const oppKey = `${opp}:${theater}:${c.round}`;
+    const tooLate = (c.cinematicTacticDoneThisRound ?? []).includes(oppKey);
+    if (!tooLate) (c.cinematicCancel ??= {})[oppKey] = true;
+    logPlay({ cancel: { side: opp, theater, applied: !tooLate, note: tooLate ? 'opponent already resolved' : undefined } });
   } else {
     logPlay({ unwired: true });
   }
@@ -349,6 +401,49 @@ export function autoPlayCinematicTactic(G: GameState, c: CombatState, side: Side
   const pick = pickBestCinematicPlay(G, c, side, theater);
   if (!pick) return;
   applyCinematicAbility(G, c, side, theater, pick.cardId, pick.useTop);
+}
+
+/** Remove up to `amount` accumulated damage from the playing side's own units
+ *  in this theatre (Energy Shield / Draw Their Fire). Spends the budget on the
+ *  most-damaged units first; `exceptTypeId` is skipped (Draw Their Fire
+ *  excludes Nebulon-B Frigates). Returns the total damage healed. */
+function resolveRemoveDamage(
+  G: GameState, side: Side, sysId: string, theater: Theater, eff: RemoveDamageEffect,
+): number {
+  const own = unitsOf(G, side, sysId, theater)
+    .filter((u) => u.typeId !== eff.exceptTypeId && u.damage > 0)
+    .sort((a, b) => b.damage - a.damage);
+  let budget = eff.amount, removed = 0;
+  for (const u of own) {
+    if (budget <= 0) break;
+    const take = Math.min(u.damage, budget);
+    u.damage -= take; budget -= take; removed += take;
+  }
+  return removed;
+}
+
+/** Resolve queued end-of-round cinematic effects (Tractor Beam capture).
+ *  Called once per round by combat.ts after both theatres' attacks resolve,
+ *  before the round advances. */
+export function resolveCinematicEndOfRound(G: GameState, c: CombatState): void {
+  const queue = c.cinematicEndOfRound;
+  if (!queue || queue.length === 0) return;
+  for (const e of queue) {
+    if (e.kind !== 'capture') continue;
+    // Only the Empire captures (capturedLeaders is Empire-only; Tractor Beam is
+    // an Imperial card). Condition: the player has a Star Destroyer in space and
+    // the opponent has no ships left in the system.
+    if (e.side !== 'Empire') continue;
+    const haveSD = unitsOf(G, e.side, c.systemId, 'space').some((u) => u.typeId === 'star-destroyer');
+    const oppShips = unitsOf(G, other(e.side), c.systemId, 'space').length;
+    if (!haveSD || oppShips > 0) continue;
+    const leaders = G.rebel.leadersOnBoard[c.systemId] ?? [];
+    if (leaders.length === 0) continue;
+    const leaderId = leaders[0];
+    M.captureLeader(G, leaderId);
+    log(G, { kind: 'cinematic-tractor-beam-capture', side: e.side, payload: { leaderId, systemId: c.systemId } });
+  }
+  c.cinematicEndOfRound = [];
 }
 
 /** Targeted deal — assign `amount` damage to the cheapest-to-kill enemy unit

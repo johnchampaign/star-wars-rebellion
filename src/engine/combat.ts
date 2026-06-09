@@ -15,7 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -282,6 +282,13 @@ export function runCombat(G: GameState): void {
       c.roundTheatersDone.push('ground');
     }
 
+    // RoE Cinematic end-of-round effects (Tractor Beam capture). Both theatres'
+    // attacks have resolved by here; run once per round.
+    if (c.cinematic && c.cinematicEndOfRoundDoneRound !== c.round) {
+      c.cinematicEndOfRoundDoneRound = c.round;
+      resolveCinematicEndOfRound(G, c);
+    }
+
     // Structure rule (rr p.4 IV) — checked at the END of each combat round,
     // not only when combat naturally terminates. If a side's only remaining
     // ground units are structures and the opponent still has ground units,
@@ -454,6 +461,13 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
     for (const side of tacticOrder) {
       const key = `${side}:${theater}:${c.round}`;
       if (c.cinematicTacticDoneThisRound.includes(key)) continue;
+      // Cancelled by the opponent's Entrapment / Air Superiority / Outrun Them
+      // (played earlier this round in this theatre) — skip this side's play.
+      if (c.cinematicCancel?.[key]) {
+        c.cinematicTacticDoneThisRound.push(key);
+        log(G, { kind: 'cinematic-tactic-cancelled', side, payload: { theater, round: c.round } });
+        continue;
+      }
       const options = cinematicSelectOptions(G, c, side, theater);
       if (options.length === 0) {
         // Nothing to choose — skip without a pause.

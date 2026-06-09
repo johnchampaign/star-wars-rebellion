@@ -1226,6 +1226,17 @@ export type CombatState = {
   // Escape Plan secondaries): `${side}:${theatre}` -> the round through which
   // that side is barred from playing a tactic card in that theatre.
   cinematicDeckLock?: Record<string, number>;
+  // RoE Cinematic card-cancel (Entrapment / Air Superiority / Outrun Them
+  // primaries): `${side}:${theatre}:${round}` -> true means that side's tactic
+  // play THIS round in this theatre is cancelled (skipped). Set when the
+  // opponent plays a cancel card before them.
+  cinematicCancel?: Record<string, boolean>;
+  // RoE Cinematic end-of-round effects queued during the round (Tractor Beam
+  // primary: "at the end of the round … capture 1 leader"). Resolved once both
+  // theatres' attacks are done, before the round advances.
+  cinematicEndOfRound?: { side: Side; kind: 'capture' }[];
+  // Guard so the end-of-round resolution runs once per round.
+  cinematicEndOfRoundDoneRound?: number;
   attackerHand: string[]; // tactic card ids
   defenderHand: string[];
   retreated: Side[]; // each side at most once

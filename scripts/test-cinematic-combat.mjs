@@ -12,7 +12,7 @@ const { createGame } = await import('../src/engine/setup.ts');
 const M = await import('../src/engine/mechanics.ts');
 const combat = await import('../src/engine/combat.ts');
 const { stepOnce } = await import('../src/play/randomAI.ts');
-const { autoPlayCinematicTactic } = await import('../src/engine/cinematicTactics.ts');
+const { autoPlayCinematicTactic, applyCinematicAbility, resolveCinematicEndOfRound } = await import('../src/engine/cinematicTactics.ts');
 
 /** Drive a combat to completion: resolve every pending combat choice (add-
  *  leader, tactics, damage assignment, retreat) via the AI until pendingCombat
@@ -220,6 +220,86 @@ console.log('\n[ Cinematic 7c-3: resolve-first flips attack order ]');
   const firstSpaceAttack = report?.rounds?.[0]?.attacks?.find((a) => a.theater === 'space');
   check('Rebel attacked first in space (resolve-first override)',
     firstSpaceAttack?.side === 'Rebel', `first = ${firstSpaceAttack?.side}`);
+}
+
+// ---- 7e: Energy Shield / Draw Their Fire remove accumulated damage ----
+console.log('\n[ Cinematic 7e: remove-damage heals own ships ]');
+{
+  const G = createGame(data, baseOpts(720));
+  M.deployUnit(G, 'Empire', 'star-destroyer', 'felucia');
+  M.deployUnit(G, 'Rebel', 'mon-cala-cruiser', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  const sd = G.map.systems['felucia'].units.find((u) => u.side === 'Empire' && u.typeId === 'star-destroyer');
+  sd.damage = 3;
+  applyCinematicAbility(G, c, 'Empire', 'space', 'cin-empire-space-energy-shield', true);
+  check('Energy Shield removed up to 2 damage (3 → 1)', sd.damage === 1, `damage = ${sd.damage}`);
+}
+
+console.log('\n[ Cinematic 7e: Draw Their Fire excludes Nebulon-B ]');
+{
+  const G = createGame(data, baseOpts(721));
+  M.deployUnit(G, 'Rebel', 'nebulon-b-frigate', 'felucia');
+  M.deployUnit(G, 'Rebel', 'mon-cala-cruiser', 'felucia');
+  M.deployUnit(G, 'Empire', 'star-destroyer', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  const neb = G.map.systems['felucia'].units.find((u) => u.typeId === 'nebulon-b-frigate');
+  const mc = G.map.systems['felucia'].units.find((u) => u.typeId === 'mon-cala-cruiser');
+  neb.damage = 2; mc.damage = 2;
+  applyCinematicAbility(G, c, 'Rebel', 'space', 'cin-rebel-space-draw-their-fire', true);
+  check('Draw Their Fire healed the Mon Cal cruiser (2 → 0)', mc.damage === 0, `mc = ${mc.damage}`);
+  check('Draw Their Fire skipped the Nebulon-B (still 2)', neb.damage === 2, `neb = ${neb.damage}`);
+}
+
+// ---- 7e: Tractor Beam end-of-round capture ----
+console.log('\n[ Cinematic 7e: Tractor Beam captures a leader at end of round ]');
+{
+  const G = createGame(data, baseOpts(722));
+  M.deployUnit(G, 'Empire', 'star-destroyer', 'felucia');
+  M.deployUnit(G, 'Rebel', 'mon-cala-cruiser', 'felucia'); // space contest so combat begins
+  G.rebel.leadersOnBoard['felucia'] = ['han-solo'];
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  const capturedBefore = (G.empire.capturedLeaders ?? []).length;
+  applyCinematicAbility(G, c, 'Empire', 'space', 'cin-empire-space-tractor-beam', true);
+  check('Tractor Beam queued an end-of-round effect', (c.cinematicEndOfRound ?? []).length === 1);
+  // Simulate the Rebel fleet being wiped this round (end-of-round condition).
+  G.map.systems['felucia'].units = G.map.systems['felucia'].units.filter((u) => u.typeId !== 'mon-cala-cruiser');
+  resolveCinematicEndOfRound(G, c);
+  const capturedAfter = (G.empire.capturedLeaders ?? []).length;
+  check('Empire captured a Rebel leader (SD present, Rebels have no ships)',
+    capturedAfter === capturedBefore + 1, `${capturedAfter} vs ${capturedBefore}`);
+  check('captured leader is Han Solo', (G.empire.capturedLeaders ?? []).some((cl) => cl.leaderId === 'han-solo'));
+}
+
+console.log('\n[ Cinematic 7e: Tractor Beam does NOT capture when Rebels still have ships ]');
+{
+  const G = createGame(data, baseOpts(723));
+  M.deployUnit(G, 'Empire', 'star-destroyer', 'felucia');
+  M.deployUnit(G, 'Rebel', 'mon-cala-cruiser', 'felucia'); // Rebel ship present
+  G.rebel.leadersOnBoard['felucia'] = ['han-solo'];
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  const before = (G.empire.capturedLeaders ?? []).length;
+  applyCinematicAbility(G, c, 'Empire', 'space', 'cin-empire-space-tractor-beam', true);
+  resolveCinematicEndOfRound(G, c);
+  check('no capture while a Rebel ship remains', (G.empire.capturedLeaders ?? []).length === before);
+}
+
+// ---- 7e: Entrapment cancels the opponent's tactic play this round ----
+console.log('\n[ Cinematic 7e: Entrapment cancels the opponent card ]');
+{
+  const G = createGame(data, baseOpts(724));
+  M.deployUnit(G, 'Empire', 'star-destroyer', 'felucia');
+  M.deployUnit(G, 'Rebel', 'mon-cala-cruiser', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  c.round = 1;
+  // Empire (attacker, plays first) cancels the Rebel's space play this round.
+  applyCinematicAbility(G, c, 'Empire', 'space', 'cin-empire-space-entrapment', true);
+  check('Entrapment set the Rebel space cancel flag for this round',
+    c.cinematicCancel?.['Rebel:space:1'] === true);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
