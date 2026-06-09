@@ -15,7 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
-import { autoPlayCinematicTactic, takeCinematicPrevent } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -442,18 +442,31 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
   const tacticOrder: Side[] = [c.attackerSide, other(c.attackerSide)];
 
   // CINEMATIC COMBAT tactic sub-step (RoE p.9): before the dice attacks, each
-  // side (current player first) plays one advanced tactic card and resolves
-  // its primary/secondary ability — deal-damage hits land now, prevent
-  // effects accumulate for the upcoming rolls. Auto-played in Phase 7c-1
-  // (interactive selection is Phase 7d). Tracked so a mid-theatre resume
-  // (damage-assignment pause) doesn't replay it.
+  // side (current player first) selects one advanced tactic card to play and
+  // resolves its primary/secondary ability — deal-damage hits land now,
+  // prevent effects accumulate for the upcoming rolls. Each side gets a
+  // CinematicTacticSelect choice (the human picks via a modal; the AI auto-
+  // picks). Sides with no available cards (locked, or all spent) are skipped
+  // without a pause. Tracked per (side, theatre, round) so a damage-
+  // assignment resume doesn't replay it.
   if (c.cinematic) {
     c.cinematicTacticDoneThisRound ??= [];
     for (const side of tacticOrder) {
       const key = `${side}:${theater}:${c.round}`;
       if (c.cinematicTacticDoneThisRound.includes(key)) continue;
-      autoPlayCinematicTactic(G, c, side, theater);
-      c.cinematicTacticDoneThisRound.push(key);
+      const options = cinematicSelectOptions(G, c, side, theater);
+      if (options.length === 0) {
+        // Nothing to choose — skip without a pause.
+        c.cinematicTacticDoneThisRound.push(key);
+        continue;
+      }
+      G.pendingChoice = {
+        kind: 'CinematicTacticSelect', side, theater, round: c.round, options,
+      };
+      log(G, { kind: 'choice-request', side, payload: {
+        kind: 'CinematicTacticSelect', theater, round: c.round, options: options.length,
+      }});
+      return; // paused — resolveCinematicTacticSelect marks done + re-enters
     }
   }
 
@@ -1832,6 +1845,32 @@ export function resolveReadyForActionLeaderPick(
   const finished = processStartOfCombatBatch(G, c);
   if (!finished) return { ok: true };
   advanceStartOfCombatAfterSideDone(G, c, batchSide);
+  return { ok: true };
+}
+
+/** Resolve a CINEMATIC tactic-card selection (RoE p.9). `cardId === null`
+ *  skips (play no card this theatre this round). Otherwise the chosen card's
+ *  primary (useTop) or secondary ability resolves and the card is discarded.
+ *  Marks the (side, theatre, round) sub-step done and re-enters runCombat,
+ *  which moves to the next side or the dice attacks. */
+export function resolveCinematicTacticSelect(
+  G: GameState, cardId: string | null, useTop: boolean
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'CinematicTacticSelect') return { ok: false, reason: 'no-pending' };
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  if (cardId !== null) {
+    const opt = pc.options.find((o) => o.cardId === cardId);
+    if (!opt) return { ok: false, reason: `not-an-option:${cardId}` };
+    if (useTop && !opt.primaryUsable) return { ok: false, reason: 'primary-not-usable' };
+    applyCinematicAbility(G, c, pc.side, pc.theater, cardId, useTop);
+  } else {
+    log(G, { kind: 'cinematic-tactic-skip', side: pc.side, payload: { theater: pc.theater, round: pc.round } });
+  }
+  (c.cinematicTacticDoneThisRound ??= []).push(`${pc.side}:${pc.theater}:${pc.round}`);
+  G.pendingChoice = undefined;
+  runCombat(G);
   return { ok: true };
 }
 

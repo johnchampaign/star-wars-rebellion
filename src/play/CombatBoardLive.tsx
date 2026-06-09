@@ -220,6 +220,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
     pc?.kind === 'TargetTheGeneratorPick' ? pc.side :
     pc?.kind === 'ReadyForActionLeaderPick' ? pc.side :
     pc?.kind === 'CombatAddLeaderPick'   ? pc.side :
+    pc?.kind === 'CinematicTacticSelect' ? pc.side :
     pc?.kind === 'RetreatDecision'       ? pc.side : null;
   const isHumanDecision = decisionSide === humanSide;
   // Online, the opponent is a remote human (or a SERVER-driven AI seat) — either
@@ -609,6 +610,9 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
         )}
         {pc?.kind === 'CombatAddLeaderPick' && isHumanDecision && (
           <CombatAddLeaderPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'CinematicTacticSelect' && isHumanDecision && (
+          <CinematicTacticSelectPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'RetreatDecision' && isHumanDecision && (
           <RetreatPanel G={G} choice={pc} onPersist={onPersist} />
@@ -1796,6 +1800,68 @@ function ReadyForActionPanel({ G, choice, onPersist }: {
 }
 
 // ---------- Combat step 1: optional "add a leader from pool" ----------
+
+function CinematicTacticSelectPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'CinematicTacticSelect' }>;
+  onPersist: () => void;
+}) {
+  const [picked, setPicked] = useState<string | null>(null);
+  const submit = (cardId: string | null, useTop: boolean) => {
+    const r = combat.resolveCinematicTacticSelect(G, cardId, useTop);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    setPicked(null);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>{choice.side} — play an advanced tactic card ({choice.theater}, round {choice.round})</b>{' '}
+        Choose a card, then pick its top or bottom ability. Played cards are discarded
+        (not reshuffled). You may decline to play.
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+        {choice.options.map((opt) => {
+          const sel = picked === opt.cardId;
+          return (
+            <div
+              key={opt.cardId}
+              style={{
+                border: `1px solid ${sel ? '#80dc78' : '#444'}`,
+                borderRadius: 6, padding: 8, minWidth: 180, maxWidth: 240,
+                background: sel ? '#1b2a1b' : '#181818', cursor: 'pointer',
+              }}
+              onClick={() => setPicked(sel ? null : opt.cardId)}
+            >
+              <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4 }}>{opt.name}</div>
+              <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>
+                <div><b>Top:</b> {opt.primaryText}{!opt.primaryUsable && <span style={{ color: '#e07b7b' }}> (prereq not met)</span>}</div>
+                <div><b>Bottom:</b> {opt.secondaryText}</div>
+              </div>
+              {sel && (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button
+                    disabled={!opt.primaryUsable}
+                    onClick={(e) => { e.stopPropagation(); submit(opt.cardId, true); }}
+                    style={{ ...btn(opt.primaryUsable ? '#80dc78' : '#555'), opacity: opt.primaryUsable ? 1 : 0.5 }}
+                  >
+                    Play top
+                  </button>
+                  <button onClick={(e) => { e.stopPropagation(); submit(opt.cardId, false); }} style={btn('#80b0dc')}>
+                    Play bottom
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <button onClick={() => submit(null, false)} style={btn('#ffd54a')}>
+        Don't play a card this round
+      </button>
+    </div>
+  );
+}
 
 function CombatAddLeaderPanel({ G, choice, onPersist }: {
   G: GameState;

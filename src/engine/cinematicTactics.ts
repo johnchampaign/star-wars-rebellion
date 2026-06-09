@@ -242,42 +242,72 @@ function availableCards(G: GameState, side: Side, theater: Theater): string[] {
  *  skip if nothing useful). Picks the highest-value resolvable ability,
  *  prefers the top ability when its unit prerequisite is met. Moves the
  *  played card to the side's cinematic discard. */
-export function autoPlayCinematicTactic(G: GameState, c: CombatState, side: Side, theater: Theater): void {
-  // Deck lock (Entrapment / Air Superiority / Outrun Them / Escape Plan
-  // secondaries): the opponent locked this side out of this theatre for
-  // this round.
+/** Is `side` locked out of playing a tactic card in `theater` this round?
+ *  (Entrapment / Air Superiority / Outrun Them / Escape Plan secondaries.) */
+export function isCinematicLocked(c: CombatState, side: Side, theater: Theater): boolean {
   const lockedThrough = c.cinematicDeckLock?.[`${side}:${theater}`];
-  if (lockedThrough != null && c.round <= lockedThrough) {
-    log(G, { kind: 'cinematic-tactic-locked', side, payload: { theater, round: c.round } });
-    return;
-  }
-  const f = side === 'Rebel' ? G.rebel : G.empire;
-  let best: { cardId: string; useTop: boolean; ab: Ability; value: number } | null = null;
+  return lockedThrough != null && c.round <= lockedThrough;
+}
+
+/** Is a card's TOP (primary) ability resolvable — its primaryUnit present? */
+function topUsable(G: GameState, c: CombatState, side: Side, theater: Theater, cardId: string): boolean {
+  const card = G.catalog.tactics[cardId];
+  if (!card?.primaryUnit) return true;
+  return unitsOf(G, side, c.systemId, theater).some((u) => u.typeId === card.primaryUnit)
+    || (G.map.systems[c.systemId]?.units ?? []).some((u) => u.side === side && u.typeId === card.primaryUnit);
+}
+
+/** Advanced-card play options to offer `side` for the interactive modal:
+ *  all available cards for this theatre, each flagged with whether its top
+ *  ability is usable. Empty when locked or nothing available. */
+export function cinematicSelectOptions(G: GameState, c: CombatState, side: Side, theater: Theater) {
+  if (isCinematicLocked(c, side, theater)) return [];
+  return availableCards(G, side, theater)
+    .filter((cardId) => ABILITIES[cardId])
+    .map((cardId) => {
+      const card = G.catalog.tactics[cardId];
+      return {
+        cardId,
+        name: card?.name ?? cardId,
+        primaryText: card?.primaryText ?? '',
+        secondaryText: card?.secondaryText ?? '',
+        primaryUsable: topUsable(G, c, side, theater, cardId),
+      };
+    });
+}
+
+/** The AI's best play (highest-value resolvable ability) for `side`, or null
+ *  to skip. Used by the random AI to resolve a CinematicTacticSelect. */
+export function pickBestCinematicPlay(
+  G: GameState, c: CombatState, side: Side, theater: Theater,
+): { cardId: string; useTop: boolean } | null {
+  if (isCinematicLocked(c, side, theater)) return null;
+  let best: { cardId: string; useTop: boolean; value: number } | null = null;
   for (const cardId of availableCards(G, side, theater)) {
     const abilities = ABILITIES[cardId];
     if (!abilities) continue;
-    const card = G.catalog.tactics[cardId];
     const [top, bottom] = abilities;
-    // Top ability needs the primary unit present in the system.
-    const topOk = !card?.primaryUnit
-      || unitsOf(G, side, c.systemId, theater).some((u) => u.typeId === card.primaryUnit)
-      || (G.map.systems[c.systemId]?.units ?? []).some((u) => u.side === side && u.typeId === card.primaryUnit);
-    const options: { useTop: boolean; ab: Ability }[] = [];
-    if (topOk) options.push({ useTop: true, ab: top });
-    options.push({ useTop: false, ab: bottom });
-    for (const opt of options) {
+    const opts: { useTop: boolean; ab: Ability }[] = [];
+    if (topUsable(G, c, side, theater, cardId)) opts.push({ useTop: true, ab: top });
+    opts.push({ useTop: false, ab: bottom });
+    for (const opt of opts) {
       const v = abilityValue(G, c, side, theater, opt.ab);
-      if (v > 0 && (!best || v > best.value)) {
-        best = { cardId, useTop: opt.useTop, ab: opt.ab, value: v };
-      }
+      if (v > 0 && (!best || v > best.value)) best = { cardId, useTop: opt.useTop, value: v };
     }
   }
-  if (!best) return; // nothing worth playing — keep cards (they don't reshuffle)
+  return best ? { cardId: best.cardId, useTop: best.useTop } : null;
+}
 
-  // Resolve the chosen ability.
-  const ab = best.ab;
+/** Apply a chosen advanced-card ability (top/bottom) and discard the card. */
+export function applyCinematicAbility(
+  G: GameState, c: CombatState, side: Side, theater: Theater, cardId: string, useTop: boolean,
+): void {
+  const abilities = ABILITIES[cardId];
+  if (!abilities) return;
+  const ab = useTop ? abilities[0] : abilities[1];
+  const f = side === 'Rebel' ? G.rebel : G.empire;
   const logPlay = (extra: Record<string, unknown>) => log(G, { kind: 'cinematic-tactic-play', side, payload: {
-    cardId: best!.cardId, ability: best!.useTop ? 'primary' : 'secondary', theater, ...extra,
+    cardId, ability: useTop ? 'primary' : 'secondary', theater, ...extra,
   }});
   if (ab.kind === 'deal') {
     logPlay({ dealt: resolveDeal(G, c, side, theater, ab) });
@@ -285,8 +315,8 @@ export function autoPlayCinematicTactic(G: GameState, c: CombatState, side: Side
     resolvePrevent(c, side, ab);
     logPlay({ prevent: { red: ab.red, black: ab.black, special: ab.special } });
   } else if (ab.kind === 'condDeal') {
-    // condHolds was already true (abilityValue > 0). Deal as a normal deal.
-    logPlay({ condDealt: resolveDeal(G, c, side, theater, { kind: 'deal', amount: ab.amount, color: ab.color }), cond: ab.cond });
+    const ok = condHolds(G, c, side, theater, ab.cond);
+    logPlay({ condDealt: ok ? resolveDeal(G, c, side, theater, { kind: 'deal', amount: ab.amount, color: ab.color }) : 0, cond: ab.cond, condMet: ok });
   } else if (ab.kind === 'targetDeal') {
     logPlay({ targetDealt: resolveTargetDeal(G, c, side, theater, ab) });
   } else if (ab.kind === 'destroy') {
@@ -296,16 +326,29 @@ export function autoPlayCinematicTactic(G: GameState, c: CombatState, side: Side
     if (ab.prevent) resolvePrevent(c, side, { kind: 'prevent', ...ab.prevent });
     logPlay({ gained: ab.typeId, prevent: ab.prevent });
   } else if (ab.kind === 'resolveFirst') {
-    // Opponent attacks first in this theatre for the rest of the combat.
     (c.cinematicResolveFirst ??= {})[theater] = other(side);
     logPlay({ resolveFirst: other(side) });
   } else if (ab.kind === 'lockDeck') {
-    // Opponent can't play a card in this theatre next round.
     (c.cinematicDeckLock ??= {})[`${other(side)}:${theater}`] = c.round + 1;
     logPlay({ lockDeck: { side: other(side), theater, throughRound: c.round + 1 } });
+  } else {
+    logPlay({ unwired: true });
   }
   // Discard the played card (does NOT reshuffle — gone for the game).
-  (f.cinematicTacticDiscard ??= []).push(best.cardId);
+  (f.cinematicTacticDiscard ??= []).push(cardId);
+}
+
+/** Auto-play one advanced tactic card for `side` (non-interactive path:
+ *  tests + AI fallback). Picks the AI's best and applies it; skips if
+ *  nothing worth playing or the side is locked. */
+export function autoPlayCinematicTactic(G: GameState, c: CombatState, side: Side, theater: Theater): void {
+  if (isCinematicLocked(c, side, theater)) {
+    log(G, { kind: 'cinematic-tactic-locked', side, payload: { theater, round: c.round } });
+    return;
+  }
+  const pick = pickBestCinematicPlay(G, c, side, theater);
+  if (!pick) return;
+  applyCinematicAbility(G, c, side, theater, pick.cardId, pick.useTop);
 }
 
 /** Targeted deal — assign `amount` damage to the cheapest-to-kill enemy unit

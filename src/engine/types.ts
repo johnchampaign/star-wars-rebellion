@@ -669,6 +669,24 @@ export type ChoiceRequest =
       canDraw: boolean;
     }
   | {
+      // RoE Cinematic Combat: this side picks one advanced tactic card to
+      // play in this theatre this round (resolving its primary or secondary
+      // ability), or skips. Posted by runTheater before the dice attacks.
+      kind: 'CinematicTacticSelect';
+      side: Side;
+      theater: 'space' | 'ground';
+      round: number;
+      options: {
+        cardId: string;
+        name: string;
+        primaryText: string;
+        secondaryText: string;
+        // Whether the primary (top) ability is resolvable — its primaryUnit
+        // is present in the system. The secondary is always resolvable.
+        primaryUsable: boolean;
+      }[];
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated

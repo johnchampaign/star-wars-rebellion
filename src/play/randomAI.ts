@@ -22,6 +22,7 @@
 import type { GameState, Side, LeaderId, SystemId } from '../engine/types';
 import * as phases from '../engine/phases';
 import * as combat from '../engine/combat';
+import { pickBestCinematicPlay } from '../engine/cinematicTactics';
 import { missionTargets } from '../engine/missionTargets';
 
 // AI randomness. Defaults to Math.random (live app), but the tournament
@@ -1046,6 +1047,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'CombatStartActionCards' && G.pendingChoice.side === side) {
     return handleCombatStartActionCards(G);
+  }
+  // RoE Cinematic tactic selection: pick the AI's best play (or skip).
+  if (G.pendingChoice && G.pendingChoice.kind === 'CinematicTacticSelect' && G.pendingChoice.side === side) {
+    const c = G.pendingCombat;
+    if (!c) return combat.resolveCinematicTacticSelect(G, null, false).ok;
+    const pick = pickBestCinematicPlay(G, c, side, G.pendingChoice.theater);
+    return combat.resolveCinematicTacticSelect(G, pick?.cardId ?? null, pick?.useTop ?? false).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'CombatAddLeaderPick' && G.pendingChoice.side === side) {
     // AI: always add the highest-tactic-value pool leader. Captures are bad

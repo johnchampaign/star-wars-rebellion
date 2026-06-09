@@ -281,6 +281,14 @@ New mechanics that need engine work, not just data:
        deploy.
 7. **Cinematic Combat** — the alternate combat module (advanced tactic cards,
    per-round draw/assign flow), gated on `cinematicCombat`. In scope.
+   - 7a–7c: engine subsystem + 29/32 abilities wired, leaders→rerolls,
+     persistent discards, auto-play. DONE.
+   - **7d: interactive tactic selection. DONE.** Combat now POSTs a
+     `CinematicTacticSelect` choice each side/theater/round; the human
+     picks a card + top/bottom ability (or declines) via
+     `CinematicTacticSelectPanel` in `CombatBoardLive.tsx`; the AI
+     auto-resolves via `pickBestCinematicPlay`. Engine resolver:
+     `combat.resolveCinematicTacticSelect`. 16/16 cinematic tests pass.
 
 Each phase ships as a working slice; base game is never at risk.
 
