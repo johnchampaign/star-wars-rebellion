@@ -202,6 +202,12 @@ export type FactionState = {
 
 export type Phase = 'Setup' | 'Assignment' | 'Command' | 'Refresh' | 'GameOver';
 
+// How the engine resumes after an "Immediate" objective's placement choice
+// (Raid Outposts / Rebel Cell), which can be drawn in different contexts:
+//   'command'     — drawn during a Command-phase action (resume advanceCommandTurn)
+//   'refresh-draw'— drawn during the Refresh draw step (resume the rest of Refresh)
+export type ImmediateResume = 'command' | 'refresh-draw';
+
 export type ChoiceRequest =
   | { kind: 'AssignLeaders'; missionId: string; min: 1; max: 1 | 2 }
   | { kind: 'ChooseSystem'; legal: SystemId[]; allowSkip: boolean }
@@ -225,14 +231,16 @@ export type ChoiceRequest =
   | { kind: 'PickProbeForNewBase'; cards: string[] }
   | { kind: 'PlayObjective'; side: Side; legal: string[]; window: 'combat' | 'refresh'; logStart?: number }
   // RoE Rebel Cell — place the card's target marker in a chosen Rebel system.
-  | { kind: 'RebelCellPlace'; side: 'Rebel'; legal: SystemId[]; logStart?: number }
+  // `resumeKind` = how the engine resumes after placement (the Immediate
+  // objective can be drawn during the Command phase or the Refresh draw step).
+  | { kind: 'RebelCellPlace'; side: 'Rebel'; legal: SystemId[]; logStart?: number; resumeKind?: ImmediateResume }
   // RoE Rebel Cell — at Refresh, optionally discard 1 objective from hand to
   // gain 1 reputation (instead of playing an objective). `legal` is the
   // discardable objective-card ids; the player may also decline.
   | { kind: 'RebelCellDiscard'; side: 'Rebel'; legal: string[]; logStart?: number }
   // RoE Raid Outposts — the Imperial player places the card's 2 target markers
   // in 2 chosen remote systems. `legal` is the eligible remote system ids.
-  | { kind: 'RaidOutpostsPlace'; side: 'Empire'; legal: SystemId[]; count: number; logStart?: number }
+  | { kind: 'RaidOutpostsPlace'; side: 'Empire'; legal: SystemId[]; count: number; logStart?: number; resumeKind?: ImmediateResume }
   | { kind: 'YesNo'; prompt: string }
   | { kind: 'ChooseActionCard'; from: string[] }
   | { kind: 'InfiltrationPick'; missionId: string; topId: string; bottomId: string }

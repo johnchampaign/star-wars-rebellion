@@ -672,6 +672,11 @@ export function pass(G: GameState, side: Side): { ok: boolean; reason?: string }
  *  Before transitioning to Refresh, drain any pending Rapid Mobilization
  *  end-of-phase choices (RAW: those resolve after both players pass). */
 function advanceCommandTurn(G: GameState): void {
+  // RoE: an Immediate objective drawn during this action (Heist, Covert
+  // Operation, Rebel Planning, or the setup draw caught on turn 1) reveals and
+  // resolves now — pause for its placement before advancing. The resolver
+  // re-enters advanceCommandTurn to chain / advance.
+  if (flushImmediateObjectiveActivations(G, 'command')) return;
   if (G.passedThisCommand.length >= 2) {
     // RoE Sweep the Area auto-reveal fires at end-of-Command-phase (right
     // before Refresh kicks off).
@@ -3731,7 +3736,16 @@ function continueRefreshAfterObjectives(G: GameState, logStart: number): void {
   // Step 4: Draw objective
   M.drawObjective(G, 1);
   if (G.isGameOver) return;
+  // RoE: an Immediate objective just drawn (Raid Outposts / Rebel Cell) reveals
+  // and resolves now — pause for its placement choice, resume at step 5.
+  if (flushImmediateObjectiveActivations(G, 'refresh-draw')) return;
 
+  continueRefreshAfterObjectiveDraw(G, logStart);
+}
+
+/** Refresh steps 5-6, after the objective draw (split out so an Immediate
+ *  objective's placement choice can pause between step 4 and step 5). */
+function continueRefreshAfterObjectiveDraw(G: GameState, logStart: number): void {
   // Step 5: Advance time marker (may trigger recruit / build)
   M.advanceTime(G);
   if (G.isGameOver) return;
@@ -3958,7 +3972,51 @@ function persistentActivated(G: GameState, objectiveId: string): boolean {
   return (G.rebel.activatedPersistentObjectives ?? []).includes(objectiveId);
 }
 function markPersistentActivated(G: GameState, objectiveId: string): void {
-  (G.rebel.activatedPersistentObjectives ??= []).push(objectiveId);
+  const list = (G.rebel.activatedPersistentObjectives ??= []);
+  if (!list.includes(objectiveId)) list.push(objectiveId);
+}
+
+/** RoE p.8: an objective card with "Immediate" at the top is revealed and
+ *  resolved when DRAWN into the Rebel's hand. The two Immediate objectives —
+ *  Raid Outposts (the Imperial places 2 markers in remotes) and Rebel Cell
+ *  (the Rebel places 1 marker in a Rebel system) — place their target markers.
+ *  This scans the hand for an un-activated Immediate objective and posts its
+ *  placement choice (tagged with `resumeKind` so the resolver knows how to
+ *  continue). Returns true if it posted a choice (the caller must pause/return).
+ *  Called at the top of advanceCommandTurn (Command-phase + setup draws) and
+ *  after the Refresh draw step. Activates one at a time; chains via the
+ *  resolver. */
+export function flushImmediateObjectiveActivations(G: GameState, resumeKind: import('./types').ImmediateResume): boolean {
+  if (G.pendingChoice) return false; // never stack on an open choice
+  const hand = G.rebel.objectiveHand ?? [];
+  // Raid Outposts — the IMPERIAL player places 2 markers in remote systems.
+  if (hand.includes('raid-outposts-2') && !persistentActivated(G, 'raid-outposts-2')) {
+    const remotes = Object.keys(G.map.systems).filter(
+      (id) => G.catalog.systems[id]?.isRemote && !G.map.systems[id].destroyed,
+    );
+    if (remotes.length >= 2) {
+      markPersistentActivated(G, 'raid-outposts-2');
+      G.pendingChoice = { kind: 'RaidOutpostsPlace', side: 'Empire', legal: remotes, count: 2, logStart: G.turnLog.length, resumeKind };
+      log(G, { kind: 'choice-request', side: 'Empire', payload: { kind: 'RaidOutpostsPlace', count: 2 } });
+      return true;
+    }
+    // Fewer than 2 remotes (essentially never): revealed but can't place.
+    markPersistentActivated(G, 'raid-outposts-2');
+  }
+  // Rebel Cell — the Rebel places 1 marker in a Rebel-loyalty system. If none
+  // exists yet, leave un-activated and retry at the next flush.
+  if (hand.includes('rebel-cell-2') && !persistentActivated(G, 'rebel-cell-2')) {
+    const rebelSystems = Object.entries(G.map.systems)
+      .filter(([, ss]) => ss.loyalty === 'rebel' && !ss.destroyed)
+      .map(([id]) => id);
+    if (rebelSystems.length >= 1) {
+      markPersistentActivated(G, 'rebel-cell-2');
+      G.pendingChoice = { kind: 'RebelCellPlace', side: 'Rebel', legal: rebelSystems, logStart: G.turnLog.length, resumeKind };
+      log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'RebelCellPlace' } });
+      return true;
+    }
+  }
+  return false;
 }
 
 /** Resumable Refresh pre-step machine: runs the persistent-objective sequence
@@ -3982,36 +4040,8 @@ export function advanceRefreshPreSteps(G: GameState, logStart: number): boolean 
         if (G.isGameOver) return false;
         G.refreshPreStep = 2; break;
       case 2: {
-        const hand = G.rebel.objectiveHand ?? [];
-        if (hand.includes('raid-outposts-2') && !persistentActivated(G, 'raid-outposts-2')) {
-          const remotes = Object.keys(G.map.systems).filter(
-            (id) => G.catalog.systems[id]?.isRemote && !G.map.systems[id].destroyed,
-          );
-          if (remotes.length >= 2) {
-            G.pendingChoice = { kind: 'RaidOutpostsPlace', side: 'Empire', legal: remotes, count: 2, logStart };
-            log(G, { kind: 'choice-request', side: 'Empire', payload: { kind: 'RaidOutpostsPlace', count: 2 } });
-            return true;
-          }
-          // Can't place (fewer than 2 remotes) — treat as activated so we don't loop.
-          markPersistentActivated(G, 'raid-outposts-2');
-        }
-        G.refreshPreStep = 3; break;
-      }
-      case 3: {
-        const hand = G.rebel.objectiveHand ?? [];
-        if (hand.includes('rebel-cell-2') && !persistentActivated(G, 'rebel-cell-2')) {
-          const rebelSystems = Object.entries(G.map.systems)
-            .filter(([, ss]) => ss.loyalty === 'rebel' && !ss.destroyed)
-            .map(([id]) => id);
-          if (rebelSystems.length >= 1) {
-            G.pendingChoice = { kind: 'RebelCellPlace', side: 'Rebel', legal: rebelSystems, logStart };
-            log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'RebelCellPlace' } });
-            return true;
-          }
-        }
-        G.refreshPreStep = 4; break;
-      }
-      case 4: {
+        // Rebel Cell's recurring "discard 1 objective to gain 1 reputation"
+        // (placement now happens on draw — flushImmediateObjectiveActivations).
         const hand = G.rebel.objectiveHand ?? [];
         const markerPresent = M.systemsWithTargetMarker(G, 'rebel-cell-2').length > 0;
         const discardable = hand.filter((id) => id !== 'rebel-cell-2');
@@ -4020,7 +4050,7 @@ export function advanceRefreshPreSteps(G: GameState, logStart: number): boolean 
           log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'RebelCellDiscard', legal: discardable } });
           return true;
         }
-        G.refreshPreStep = 5; break;
+        G.refreshPreStep = 3; break;
       }
       default:
         return false; // all pre-steps done
@@ -4053,14 +4083,25 @@ export function resolveRaidOutpostsPlace(
   if (uniq.length !== pc.count) return { ok: false, reason: 'wrong-count' };
   if (!uniq.every((s) => pc.legal.includes(s))) return { ok: false, reason: 'illegal-system' };
   const logStart = pc.logStart ?? G.turnLog.length;
+  const resumeKind = pc.resumeKind ?? 'command';
   for (const sid of uniq) M.placeTargetMarker(G, sid, 'raid-outposts-2', 'Empire');
   markPersistentActivated(G, 'raid-outposts-2');
   G.pendingChoice = undefined;
-  G.refreshPreStep = 3;
-  if (advanceRefreshPreSteps(G, logStart)) return { ok: true };
-  if (G.isGameOver) return { ok: true };
-  runOneShotObjectivesThenContinue(G, logStart);
+  resumeAfterImmediateObjective(G, resumeKind, logStart);
   return { ok: true };
+}
+
+/** Resume after an Immediate objective's placement choice resolves, dispatching
+ *  on where it was drawn. */
+function resumeAfterImmediateObjective(G: GameState, resumeKind: import('./types').ImmediateResume, logStart: number): void {
+  if (G.isGameOver) return;
+  if (resumeKind === 'refresh-draw') {
+    continueRefreshAfterObjectiveDraw(G, logStart);
+  } else {
+    // 'command' — re-enter advanceCommandTurn, which re-flushes any further
+    // un-activated Immediate objective, then advances the turn.
+    advanceCommandTurn(G);
+  }
 }
 
 /** Resolve Rebel Cell placement: the Rebel picks the Rebel system to mark. */
@@ -4071,13 +4112,11 @@ export function resolveRebelCellPlace(
   if (!pc || pc.kind !== 'RebelCellPlace') return { ok: false, reason: 'no-pending' };
   if (!pc.legal.includes(systemId)) return { ok: false, reason: 'illegal-system' };
   const logStart = pc.logStart ?? G.turnLog.length;
+  const resumeKind = pc.resumeKind ?? 'command';
   M.placeTargetMarker(G, systemId, 'rebel-cell-2', 'Rebel');
   markPersistentActivated(G, 'rebel-cell-2');
   G.pendingChoice = undefined;
-  G.refreshPreStep = 4;
-  if (advanceRefreshPreSteps(G, logStart)) return { ok: true };
-  if (G.isGameOver) return { ok: true };
-  runOneShotObjectivesThenContinue(G, logStart);
+  resumeAfterImmediateObjective(G, resumeKind, logStart);
   return { ok: true };
 }
 

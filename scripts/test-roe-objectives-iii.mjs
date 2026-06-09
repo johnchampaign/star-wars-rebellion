@@ -57,37 +57,47 @@ console.log('[ scoreRaidOutposts: ground unit removes marker + scores ]');
   check('Imperial ground present → no reputation scored', G.reputationMarker === repBefore);
 }
 
-// ---- Pre-step machine walk: posts each choice in order ----
-console.log('[ advanceRefreshPreSteps: posts placement/discard choices in order ]');
+// ---- #8: Immediate objectives activate ON DRAW (flush posts placement) ----
+console.log('[ #8: Immediate objectives activate on draw, chaining via the flush ]');
 {
   const G = newG();
-  G.rebel.objectiveHand = ['raid-outposts-2', 'rebel-cell-2', 'show-no-fear-3', 'uprising-3'];
-  // ensure at least one Rebel-loyalty system exists for rebel-cell placement
-  const someSys = Object.keys(G.map.systems)[0];
+  G.rebel.objectiveHand = ['raid-outposts-2', 'rebel-cell-2', 'uprising-3'];
+  // a Rebel-loyalty (populous) system for Rebel Cell placement
+  const someSys = Object.keys(G.map.systems).find((id) => !G.catalog.systems[id]?.isRemote);
   G.map.systems[someSys].loyalty = 'rebel';
-  G.refreshPreStep = 0;
+  // minimal Command-phase context so the 'command' resume (advanceCommandTurn) is benign
+  G.phase = 'Command'; G.passedThisCommand = []; G.currentPlayer = 'Rebel';
 
-  let paused = Phases.advanceRefreshPreSteps(G, 0);
-  check('pauses on Raid Outposts placement first', paused && G.pendingChoice?.kind === 'RaidOutpostsPlace');
-  check('Raid Outposts placement is an Empire choice of 2', G.pendingChoice?.side === 'Empire' && G.pendingChoice?.count === 2);
-  check('Show No Fear scored during pre-steps (rep improved)', G.reputationMarker < 0 || true);
-
-  // Resolve raid placement (this runs the resolver + continues the chain)
-  const remotes = G.pendingChoice.legal.slice(0, 2);
-  Phases.resolveRaidOutpostsPlace(G, remotes);
+  const paused = Phases.flushImmediateObjectiveActivations(G, 'command');
+  check('flush posts Raid Outposts placement (Empire, count 2) first',
+    paused && G.pendingChoice?.kind === 'RaidOutpostsPlace' && G.pendingChoice.side === 'Empire' && G.pendingChoice.count === 2);
+  Phases.resolveRaidOutpostsPlace(G, G.pendingChoice.legal.slice(0, 2));
   check('Raid Outposts markers placed on 2 remotes', markerSys(G, 'raid-outposts-2').length === 2);
   check('Raid Outposts marked activated', (G.rebel.activatedPersistentObjectives ?? []).includes('raid-outposts-2'));
+  // Resolving chained via advanceCommandTurn → flush → next Immediate objective.
+  check('chained to Rebel Cell placement (Rebel choice)',
+    G.pendingChoice?.kind === 'RebelCellPlace' && G.pendingChoice.side === 'Rebel');
+  Phases.resolveRebelCellPlace(G, G.pendingChoice.legal[0]);
+  check('Rebel Cell marker placed', markerSys(G, 'rebel-cell-2').length === 1);
+  check('Rebel Cell marked activated', (G.rebel.activatedPersistentObjectives ?? []).includes('rebel-cell-2'));
+  // No more Immediate objectives → flush is a no-op now.
+  check('flush is a no-op once both are activated', !Phases.flushImmediateObjectiveActivations(G, 'command'));
+}
 
-  // After raid placement, the chain should have advanced to a later choice
-  // (Rebel Cell placement) or beyond. If it paused on Rebel Cell placement:
-  if (G.pendingChoice?.kind === 'RebelCellPlace') {
-    check('next pause is Rebel Cell placement (Rebel choice)', G.pendingChoice.side === 'Rebel');
-    Phases.resolveRebelCellPlace(G, G.pendingChoice.legal[0]);
-    check('Rebel Cell marker placed', markerSys(G, 'rebel-cell-2').length === 1);
-    check('Rebel Cell marked activated', (G.rebel.activatedPersistentObjectives ?? []).includes('rebel-cell-2'));
-  } else {
-    check('chain advanced past Rebel Cell placement', true);
-  }
+console.log('[ #8: refresh-draw resume dispatches to the rest of Refresh ]');
+{
+  const G = newG();
+  G.phase = 'Refresh';
+  G.rebel.objectiveHand = ['raid-outposts-2', 'uprising-3'];
+  const remotes = Object.keys(G.map.systems).filter((id) => G.catalog.systems[id]?.isRemote && !G.map.systems[id].destroyed);
+  // Simulate the placement posted from the Refresh draw step.
+  G.pendingChoice = { kind: 'RaidOutpostsPlace', side: 'Empire', legal: remotes, count: 2, logStart: 0, resumeKind: 'refresh-draw' };
+  const r = Phases.resolveRaidOutpostsPlace(G, remotes.slice(0, 2));
+  check('refresh-draw placement resolved ok', r.ok);
+  check('markers placed on 2 remotes', markerSys(G, 'raid-outposts-2').length === 2);
+  // The resume ran the rest of Refresh (advance time / recruit / build); it did
+  // NOT leave the Raid Outposts placement pending.
+  check('refresh continued (no lingering placement choice)', G.pendingChoice?.kind !== 'RaidOutpostsPlace');
 }
 
 // ---- Rebel Cell discard resolver: discard for +1 reputation ----

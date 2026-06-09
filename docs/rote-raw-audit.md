@@ -44,15 +44,22 @@ after merge.
   `[attacker, defender]` in cinematic combat (rulebook p.9 "Retreat: Starting
   with the current player…") and keeps `[defender, attacker]` in base combat.
   Test `scripts/test-cinematic-retreat-order.mjs`.
-- [~] **#8 "Immediate" objectives activate at Refresh, not on draw**
-  (Raid Outposts, Rebel Cell). **DEFERRED.** RAW p.8 reveals/resolves on draw,
-  but `drawObjective` is a shared low-level mechanic used across the base game
-  (Heist, the Refresh draw step, setup, several effects). On-draw activation
-  would post placement choices — including an *opponent* choice for Raid
-  Outposts — from arbitrary draw contexts, risking pendingChoice conflicts that
-  could break base-game objective draws, all for a ~1-refresh timing nuance the
-  current Refresh-activation already handles functionally (markers placed,
-  scoring correct). Not worth the risk; left as a known timing deviation.
+- [x] **#8 "Immediate" objectives activate on draw** (Raid Outposts, Rebel
+  Cell). DONE — RAW p.8 reveals/resolves on draw. New
+  `flushImmediateObjectiveActivations(G, resumeKind)` scans the Rebel's hand for
+  an un-activated Immediate objective and posts its placement choice (Imperial
+  for Raid Outposts, Rebel for Rebel Cell), tagged with how to resume. Hooked at
+  the **top of `advanceCommandTurn`** (the universal Command-phase "action done"
+  seam — catches Heist / Covert Operation / Rebel Planning, and the setup draw
+  at turn 1's first action) and **right after the Refresh draw step** (split
+  `continueRefreshAfterObjectives` → `…AfterObjectiveDraw` so the placement
+  pauses between steps 4 and 5). The placement resolvers dispatch on `resumeKind`
+  (`command` → re-enter `advanceCommandTurn`, which chains the next Immediate
+  objective then advances; `refresh-draw` → the rest of Refresh). Placement was
+  removed from the refresh pre-steps (scoring stays). Tests in
+  `scripts/test-roe-objectives-iii.mjs`. NOTE: yes, this is the "more
+  complicated interaction" — e.g. the Empire is prompted to place Raid Outposts
+  markers mid-Rebel-turn — which is what RAW wants.
 - [x] **#9 Dice-reduction vs the 5-die cap order.** Fixed: `beginAttack` now
   applies the dice-reduction abilities (cinematic Prevent, According To My
   Design) to the raw sums first, then caps at 5/5/3 — RAW p.9 "an ability that
