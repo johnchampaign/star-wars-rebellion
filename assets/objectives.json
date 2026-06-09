@@ -171,7 +171,7 @@
       "timing": "Combat",
       "effectKey": "",
       "rulesText": "Win a space battle and a ground battle in the same combat.",
-      "image": "",
+      "image": "Decisive Victory_Clear.png",
       "set": "rote"
     },
     {
@@ -182,7 +182,7 @@
       "timing": "Refresh",
       "effectKey": "",
       "rulesText": "A single system (other than the Rebel Base space) contains 3 Rebel structures.",
-      "image": "",
+      "image": "Defensive Position_Clear.png",
       "set": "rote"
     },
     {
@@ -193,7 +193,7 @@
       "timing": "Refresh",
       "effectKey": "",
       "rulesText": "3 or more systems in Nal Hutta's region have Rebel loyalty.",
-      "image": "",
+      "image": "Support of the Hutts_Clear.png",
       "set": "rote"
     },
     {
@@ -204,7 +204,7 @@
       "timing": "Refresh",
       "effectKey": "",
       "rulesText": "Discard 2 other objective cards from your hand.",
-      "image": "",
+      "image": "The Long War_Clear.png",
       "set": "rote"
     },
     {
@@ -215,7 +215,7 @@
       "timing": "Refresh",
       "effectKey": "",
       "rulesText": "5 or more Rebel units are in and/or adjacent to Coruscant.",
-      "image": "",
+      "image": "Threaten the Core_Clear.png",
       "set": "rote"
     },
     {
@@ -226,7 +226,7 @@
       "timing": "Refresh",
       "effectKey": "",
       "rulesText": "Destroy 2 triangle, 1 circle, and 1 square unit on the Imperial build queue.",
-      "image": "",
+      "image": "A Time for Peace_Clear.png",
       "set": "rote"
     },
     {
@@ -237,7 +237,7 @@
       "timing": "Immediate",
       "effectKey": "",
       "rulesText": "Imperial player places 1 target marker in each of 2 remote systems. Rebel gains 1 reputation each time a marker is removed (potential 1–2 total).",
-      "image": "",
+      "image": "Raid Outposts_Clear.png",
       "set": "rote"
     },
     {
@@ -248,7 +248,7 @@
       "timing": "Immediate",
       "effectKey": "",
       "rulesText": "Place a target marker in a Rebel system. If the marker is still there at the start of each Refresh phase, discard 1 objective card to gain 1 reputation.",
-      "image": "",
+      "image": "Rebel Cell_Clear.png",
       "set": "rote"
     },
     {
@@ -259,7 +259,7 @@
       "timing": "Combat",
       "effectKey": "",
       "rulesText": "Win a space or ground battle in a system with a sabotage marker. You may then remove the marker.",
-      "image": "",
+      "image": "Seize Control_Clear.png",
       "set": "rote"
     },
     {
@@ -270,7 +270,7 @@
       "timing": "Combat",
       "effectKey": "",
       "rulesText": "Win a battle in a combat the Rebels initiated, in a system with a resource icon.",
-      "image": "",
+      "image": "Raid Imperial Factory_Clear.png",
       "set": "rote"
     },
     {
@@ -281,7 +281,7 @@
       "timing": "Refresh",
       "effectKey": "",
       "rulesText": "Place a target marker in the Rebel Base's system. Remove it when a new base is established. If the marker is still present at the start of each Refresh phase, gain 1 reputation.",
-      "image": "",
+      "image": "Show no Fear_Clear.png",
       "set": "rote"
     },
     {
@@ -292,7 +292,7 @@
       "timing": "Refresh",
       "effectKey": "",
       "rulesText": "Play if 9 or more systems have Rebel loyalty.",
-      "image": "",
+      "image": "Uprising_Clear.png",
       "set": "rote"
     }
   ]

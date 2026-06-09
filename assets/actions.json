@@ -477,7 +477,7 @@
       "leaderRequirement": [],
       "effectKey": "early-promotion",
       "rulesText": "Draw 1 starting card, or recruit Motti (Space 2, Ground 1). Place Motti and Tarkin in any Imperial system.",
-      "image": "",
+      "image": "Early Promotion.png",
       "set": "rote"
     },
     {
@@ -489,7 +489,7 @@
       "leaderRequirement": [],
       "effectKey": "track-them",
       "rulesText": "After a Rebel unit retreats from combat, choose an Imperial leader in the combat's system and return them to the leader pool.",
-      "image": "",
+      "image": "Track Them.png",
       "set": "rote"
     },
     {
@@ -504,7 +504,7 @@
       ],
       "effectKey": "ambitions-of-power",
       "rulesText": "Play if you have more than 8 leaders in your leader pool. Your leader pool limit is increased by 1 for the rest of the game.",
-      "image": "",
+      "image": "Ambitions of Power.png",
       "set": "rote"
     },
     {
@@ -519,7 +519,7 @@
       ],
       "effectKey": "secret-facility",
       "rulesText": "Place 1 of your probe cards facedown under this card. On your turn in the Command phase, reveal it to place 1 Shield Bunker and 1 triangle ground unit in that system. Resolve any combat. Doesn't require Krennic or Krennic's Finest.",
-      "image": "",
+      "image": "Secret Facility.png",
       "set": "rote"
     },
     {
@@ -533,7 +533,7 @@
       ],
       "effectKey": "lord-vader-s-orders",
       "rulesText": "Look at the top 3 objective cards and replace them on top of the deck in any order.",
-      "image": "",
+      "image": "Lord Vader's Order.png",
       "set": "rote"
     },
     {
@@ -547,7 +547,7 @@
       ],
       "effectKey": "post-bounty",
       "rulesText": "Use after a leader fails a mission in this leader's system. Attach a bounty ring to 1 un-ringed leader. When that leader is captured, Rebels lose 1 reputation.",
-      "image": "",
+      "image": "Post Bounty.png",
       "set": "rote"
     },
     {
@@ -561,7 +561,7 @@
       ],
       "effectKey": "sweep-the-area",
       "rulesText": "Place 1 of your probe cards facedown under this card. At the end of any Command phase, reveal it to capture 1 leader in that system (doesn't require Krennic's Finest). Move the captured leader to the closest system containing Imperial units.",
-      "image": "",
+      "image": "Sweep the Area.png",
       "set": "rote"
     },
     {
@@ -573,7 +573,7 @@
       "leaderRequirement": [],
       "effectKey": "false-orders",
       "rulesText": "Play at the end of the Assignment phase. Choose 1 lone Imperial leader assigned to a mission. Return that leader to the leader pool and the mission to the Imperial hand.",
-      "image": "",
+      "image": "False Orders.png",
       "set": "rote"
     },
     {
@@ -585,7 +585,7 @@
       "leaderRequirement": [],
       "effectKey": "rebel-extremist",
       "rulesText": "Either draw another starting action card, OR lose 1 reputation and recruit Saw Gerrera (Space 1, Ground 3).",
-      "image": "",
+      "image": "Rebel Extremist.png",
       "set": "rote"
     },
     {
@@ -600,7 +600,7 @@
       ],
       "effectKey": "trust-in-the-force",
       "rulesText": "Place this leader in a subjugated system. Gain 1 loyalty and destroy 1 triangle ground unit in the system.",
-      "image": "",
+      "image": "Trust in the Force.png",
       "set": "rote"
     },
     {
@@ -615,7 +615,7 @@
       ],
       "effectKey": "under-the-radar",
       "rulesText": "Look at the top 4 probe cards. Keep 1 facedown and replace the others at the top or bottom of the deck in any order. At the start of your turn in the Command phase, you may return that probe card to the top of the probe deck.",
-      "image": "",
+      "image": "Under the Radar.png",
       "set": "rote"
     },
     {
@@ -629,7 +629,7 @@
       ],
       "effectKey": "baze-s-loyalty",
       "rulesText": "Destroy 2 health-worth of units.",
-      "image": "",
+      "image": "Baze's Loyalty.png",
       "set": "rote"
     },
     {
@@ -643,7 +643,7 @@
       ],
       "effectKey": "he-means-well",
       "rulesText": "Add a K-2SO ring to a non-ringed leader. That leader gains minor SpecOps and minor Intel icons.",
-      "image": "",
+      "image": "He Means Well.png",
       "set": "rote"
     },
     {
@@ -657,7 +657,7 @@
       ],
       "effectKey": "something-to-fight-for",
       "rulesText": "After you win a battle, choose a discarded objective card and place it on top of the deck.",
-      "image": "",
+      "image": "Something to fight for.png",
       "set": "rote"
     }
   ]
