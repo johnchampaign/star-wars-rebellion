@@ -39,10 +39,11 @@ let whitelistKept = 0;
 // in the deploy. Match by prefix so a whole directory can be allowed
 // with one entry.
 const WHITELIST_PREFIXES = [
-  'units/token/',           // 18 per-unit token portraits cropped from
-                            // the author's own composite sheet (see
-                            // scripts/extract-unit-tokens.py).
-  'unit-tokens-sheet.png',  // the composite sheet itself
+  'units/token/',           // 26 per-unit token portraits (18 base + 8 RoE)
+                            // cropped from the author's own composite sheets
+                            // (scripts/extract-unit-tokens.py + -rote).
+  'unit-tokens-sheet.png',       // base composite sheet
+  'unit-tokens-sheet-rote.png',  // Rise of the Empire composite sheet
 ];
 
 function isWhitelisted(relPath) {
