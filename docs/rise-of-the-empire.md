@@ -148,9 +148,20 @@ New mechanics that need engine work, not just data:
      slugs even though the leaders don't exist yet — wired so the data
      is correct when Phase 5c lands those leaders. The mission-append
      script lives at `scripts/add-rote-missions.mjs` and is idempotent.
-   - **5b — RoE mission handlers (TODO):** bind each RoE mission's
-     `effectKey` to an `EffectHandler` in `src/engine/handlers/index.ts`.
-     Big slice — base game has 53 handlers.
+   - **5b — RoE mission handlers (DONE):** all 31 RoE missions are bound
+     in `src/engine/handlers/index.ts`, built across Waves A/B/C
+     (`scripts/bind-rote-mission-handlers-wave-{a,b,c}.mjs`). The two
+     **Subversion** variants (New/Original) are intentionally NOT in the
+     handler registry — they're opposition-only missions that auto-fire
+     during an opposed mission roll, wired directly in `phases.ts`
+     (`subversionBonus`: moves the opposer's assigned leader to the
+     contested system, discards the card, and gives the opposition +1
+     die). `scripts/bind-rote-subversion.mjs` documents that path.
+     Verified: every RoE mission's `effectKey` resolves to a registered
+     handler (or the subversion path); `node scripts/test-handlers.mjs`
+     RoE cases pass. (NB: 4 *base-game* handler tests — sabotage,
+     build-alliance loyalty, hit-and-run, gather-intel — fail as of this
+     audit; pre-existing, unrelated to RoE, flagged for separate fix.)
    - **5c — RoE leaders (DONE):** 8 RoE leaders appended to
      `assets/leaders.json` via `scripts/add-rote-leaders.mjs`
      (idempotent), tagged `set: 'rote'`. Source: the leader-card PNGs
@@ -198,8 +209,14 @@ New mechanics that need engine work, not just data:
      no new probe cards (the probe deck is per-system and the system
      set is unchanged from base). Confirmed against the rulebook:
      nothing to do.
-   - **5d-handlers (TODO):** bind `effectKey` for RoE action cards and
-     objectives. Same pattern as 5b for missions.
+   - **5d-handlers (PARTIAL):** the 14 RoE **action cards** are all bound
+     (`effectKey`s populated, handlers registered across
+     `scripts/wire-rote-action-handlers-wave-{d..j}.mjs`). The 12 RoE
+     **objectives** still have blank `effectKey`s — objectives are scored
+     via the stage-scoring path rather than the handler registry, so the
+     remaining work is confirming each RoE objective's scoring condition
+     fires (Heist/Rebel Cell/Show No Fear target-marker primitives are
+     already built and waiting). This is the open slice of 5d.
    - **5e — Advanced tactic cards (TODO):** full text on p.8; really
      part of Phase 7 (Cinematic Combat) since they only do anything
      when that module is on.
