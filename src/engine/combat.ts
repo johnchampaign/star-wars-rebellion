@@ -15,7 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, applyCinematicSpecialHeal, isCancelCard } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, applyCinematicSpecialHeal, isCancelCard, isEscapePlanAbility } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -317,43 +317,7 @@ export function runCombat(G: GameState): void {
         if (c.retreatDecidedThisRound.includes(side)) continue; // already decided this round (declined or retreated)
         if (c.flags?.cannotRetreatThisRound?.[side]) continue; // No Escape (single-round)
         if (c.flags?.opponentCannotRetreat?.includes(side)) continue; // Keep Them From Escaping (whole combat)
-        // RR p.6: the Imperial player cannot retreat ANY units if a Death Star or
-        // Death Star Under Construction is in the combat (player report: Death
-        // Star retreated before the Rebel could play Death Star Plans).
-        if (side === 'Empire' && unitsOf(G, 'Empire', c.systemId).some((u) =>
-          u.typeId === 'death-star' || u.typeId === 'death-star-under-construction')) continue;
-        const dests = legalRetreatDestinations(G, c, side);
-        const here = unitsOf(G, side, c.systemId);
-        const hasUnits = here.length > 0;
-        // RAW (rr p.5): retreat is led by a leader — "take one of his leaders
-        // from the system and place it in an adjacent system." With no leader
-        // present, the side simply cannot retreat; skip the option entirely.
-        const leadersHere = (side === 'Rebel' ? G.rebel : G.empire).leadersOnBoard[c.systemId] ?? [];
-        // "A leader can retreat only if the player is also retreating units."
-        // Ground units and restriction fighters (TIEs) can't move without a
-        // carrier, so a force with no self-mobile ship simply cannot retreat
-        // (e.g. a ground-only base garrison). Don't offer the dead-end option.
-        // Escape Plan (retreatIgnoresTransport) waives this — anything mobile
-        // can then go.
-        const ignoresT = !!c.flags?.retreatIgnoresTransport?.[side];
-        const hasMovable = here.some((u) => {
-          const t = G.catalog.unitTypes[u.typeId];
-          if (!t || t.transport.immobile) return false;
-          if (ignoresT) return true;
-          return t.theater === 'space' && !t.transport.restriction;
-        });
-        if (dests.length === 0 || !hasUnits || !hasMovable || leadersHere.length === 0) continue;
-        G.pendingChoice = {
-          kind: 'RetreatDecision',
-          side, systemId: c.systemId,
-          legalDestinations: dests,
-          availableUnits: unitsOf(G, side, c.systemId).map((u) => u.instanceId),
-          leadersInSystem: [...leadersHere],
-        };
-        log(G, { kind: 'choice-request', side, payload: {
-          kind: 'RetreatDecision', destinations: dests.length,
-        }});
-        return; // wait for resolveRetreatDecision
+        if (postRetreatChoice(G, c, side)) return; // wait for resolveRetreatDecision
       }
       c.retreatStepDoneThisRound = true;
     }
@@ -432,6 +396,41 @@ export function runCombat(G: GameState): void {
 // ============================================================================
 // Theater step (one round, both sides attack)
 // ============================================================================
+
+/** Build + post a RetreatDecision for `side` if it can legally retreat from the
+ *  combat system. Returns true if a choice was posted (caller pauses), false if
+ *  the side can't retreat. Used by the retreat step and by Escape Plan's
+ *  immediate-retreat. The Death Star block and leader/mobility requirements are
+ *  applied here; `retreatIgnoresTransport` (Escape Plan) waives the carrier
+ *  requirement. */
+function postRetreatChoice(G: GameState, c: CombatState, side: Side): boolean {
+  // RR p.6: the Imperial player cannot retreat ANY units if a Death Star or
+  // Death Star Under Construction is in the combat.
+  if (side === 'Empire' && unitsOf(G, 'Empire', c.systemId).some((u) =>
+    u.typeId === 'death-star' || u.typeId === 'death-star-under-construction')) return false;
+  const dests = legalRetreatDestinations(G, c, side);
+  const here = unitsOf(G, side, c.systemId);
+  const leadersHere = (side === 'Rebel' ? G.rebel : G.empire).leadersOnBoard[c.systemId] ?? [];
+  const ignoresT = !!c.flags?.retreatIgnoresTransport?.[side];
+  const hasMovable = here.some((u) => {
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t || t.transport.immobile) return false;
+    if (ignoresT) return true;
+    return t.theater === 'space' && !t.transport.restriction;
+  });
+  if (dests.length === 0 || here.length === 0 || !hasMovable || leadersHere.length === 0) return false;
+  G.pendingChoice = {
+    kind: 'RetreatDecision',
+    side, systemId: c.systemId,
+    legalDestinations: dests,
+    availableUnits: here.map((u) => u.instanceId),
+    leadersInSystem: [...leadersHere],
+  };
+  log(G, { kind: 'choice-request', side, payload: {
+    kind: 'RetreatDecision', destinations: dests.length,
+  }});
+  return true;
+}
 
 /** Begin or continue the current theater step. Returns early if a player
  *  choice is queued. Idempotent re-entry via runCombat. */
@@ -512,6 +511,23 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
         continue;
       }
       const sel = c.cinematicSelections[key];
+      // Escape Plan primary: "You may immediately retreat. If you do, cancel the
+      // Imperial tactic card." Discard the card, waive transport, mark this side
+      // done, and post a mid-tactic retreat choice. resolveRetreatDecision sets
+      // the cancel if a retreat actually happens, then resumes here.
+      if (sel && isEscapePlanAbility(sel.cardId, sel.useTop)) {
+        const f = side === 'Rebel' ? G.rebel : G.empire;
+        (f.cinematicTacticDiscard ??= []).push(sel.cardId);
+        c.flags = c.flags ?? {};
+        (c.flags.retreatIgnoresTransport ??= {})[side] = true;
+        c.cinematicTacticDoneThisRound.push(key);
+        log(G, { kind: 'cinematic-escape-plan', side, payload: { theater, round: c.round } });
+        c.flags.escapePlanCancel = { cancelKey: `${other(side)}:${theater}:${c.round}` };
+        if (postRetreatChoice(G, c, side)) return; // paused for the retreat decision
+        // Can't actually retreat (no destination/leader) — no cancel.
+        c.flags.escapePlanCancel = undefined;
+        continue;
+      }
       if (sel) applyCinematicAbility(G, c, side, theater, sel.cardId, sel.useTop);
       else log(G, { kind: 'cinematic-tactic-skip', side, payload: { theater, round: c.round } });
       c.cinematicTacticDoneThisRound.push(key);
@@ -2159,6 +2175,8 @@ export function resolveRetreatDecision(
     log(G, { kind: 'combat-retreat-decline', side, payload: { systemId: c.systemId } });
     c.retreatDecidedThisRound = c.retreatDecidedThisRound ?? [];
     if (!c.retreatDecidedThisRound.includes(side)) c.retreatDecidedThisRound.push(side);
+    // Escape Plan: declined the immediate retreat → no cancel.
+    if (c.flags?.escapePlanCancel) c.flags.escapePlanCancel = undefined;
     G.pendingChoice = undefined;
     runCombat(G);
     return { ok: true };
@@ -2246,6 +2264,12 @@ export function resolveRetreatDecision(
   }
   c.retreated.push(side);
   c.retreatHappenedThisRound = true; // Rogue One end-of-round trigger
+  // Escape Plan: the retreat happened → cancel the opponent's tactic card.
+  if (c.flags?.escapePlanCancel) {
+    (c.cinematicCancel ??= {})[c.flags.escapePlanCancel.cancelKey] = true;
+    log(G, { kind: 'cinematic-escape-plan-cancel', side, payload: { cancelKey: c.flags.escapePlanCancel.cancelKey } });
+    c.flags.escapePlanCancel = undefined;
+  }
   (c.report.retreats ??= []).push({ side, toSystemId: destSystemId, leaderId: leaderToMove });
   c.retreatDecidedThisRound = c.retreatDecidedThisRound ?? [];
   if (!c.retreatDecidedThisRound.includes(side)) c.retreatDecidedThisRound.push(side);

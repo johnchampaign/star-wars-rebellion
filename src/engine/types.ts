@@ -1384,6 +1384,11 @@ export type CombatState = {
     cannotBlockUntilStepEnd?: Partial<Record<Side, boolean>>;
     cannotRetreatThisRound?: Partial<Record<Side, boolean>>;
     retreatIgnoresTransport?: Partial<Record<Side, boolean>>;
+    // RoE Cinematic Escape Plan (primary): a retreat is being offered mid-tactic
+    // step; if the player actually retreats, cancel the opponent's tactic card
+    // at this key (`${opp}:${theatre}:${round}`). Cleared when the retreat
+    // resolves (whether or not they retreated).
+    escapePlanCancel?: { cancelKey: string };
     // Start-of-combat action card flags:
     // - accordingToMyDesignActive: Rebel rolls 1 fewer red die and 2 fewer
     //   black dice in round 1 (both theaters).

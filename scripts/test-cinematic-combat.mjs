@@ -536,5 +536,39 @@ console.log('\n[ Cinematic: defender Outrun Them cancels the attacker card ]');
   // non-effect generically, but the cancel flag above confirms the ordering.
 }
 
+// ---- Deeper item 5: Escape Plan — immediate retreat then cancel ----
+console.log('\n[ Cinematic: Escape Plan retreats the Rebel and cancels the Imperial card ]');
+{
+  const G = createGame(data, baseOpts(780));
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia');   // ground contest
+  M.deployUnit(G, 'Rebel', 'rebel-trooper', 'felucia');   // ground
+  M.deployUnit(G, 'Rebel', 'rebel-transport', 'felucia'); // Escape Plan prereq + carrier
+  G.rebel.leadersOnBoard['felucia'] = ['han-solo'];       // leader to lead the retreat
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  combat.runCombat(G);
+  let guard = 0;
+  while (G.pendingChoice?.kind === 'CombatAddLeaderPick' && guard++ < 5) combat.resolveCombatAddLeaderPick(G, null);
+  // Empire (attacker) selects a ground card first.
+  check('Empire prompted to select (ground)', G.pendingChoice?.kind === 'CinematicTacticSelect' && G.pendingChoice.theater === 'ground' && G.pendingChoice.side === 'Empire');
+  const empCard = G.pendingChoice.options[0].cardId;
+  combat.resolveCinematicTacticSelect(G, empCard, false);
+  // Rebel (defender) selects Escape Plan top.
+  const esc = G.pendingChoice?.options?.find((o) => o.cardId === 'cin-rebel-ground-escape-plan');
+  check('Rebel has Escape Plan with a usable top', !!esc && esc.primaryUsable);
+  combat.resolveCinematicTacticSelect(G, 'cin-rebel-ground-escape-plan', true);
+  // Escape Plan posts an immediate retreat decision for the Rebel.
+  check('Escape Plan posted a Rebel retreat decision', G.pendingChoice?.kind === 'RetreatDecision' && G.pendingChoice.side === 'Rebel');
+  const rc = G.pendingChoice;
+  combat.resolveRetreatDecision(G, rc.legalDestinations[0], rc.availableUnits, rc.leadersInSystem[0]);
+  check('Rebel retreat happened', !(G.map.systems['felucia'].units ?? []).some((u) => u.side === 'Rebel'));
+  // The cancel fires during the retreat (logged); combat may then end as the
+  // Rebel fully fled, clearing pendingCombat — so assert via the log event.
+  check('Imperial tactic card was cancelled (logged)',
+    G.turnLog.some((e) => e.kind === 'cinematic-escape-plan-cancel'));
+  check('Empire card never resolved (not in discard)',
+    !(G.empire.cinematicTacticDiscard ?? []).includes(empCard));
+  check('Escape Plan went to the Rebel discard', (G.rebel.cinematicTacticDiscard ?? []).includes('cin-rebel-ground-escape-plan'));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

@@ -79,8 +79,12 @@ type SpecialLockEffect = { kind: 'specialLock' };
 // unit was destroyed this round, mark an Imperial leader in the system for
 // elimination at end of the Command phase.
 type ConfrontationEffect = { kind: 'confrontation' };
+// Escape Plan primary: "You may immediately retreat. If you do, cancel the
+// Imperial tactic card." Handled in combat.ts (it posts a mid-tactic retreat
+// choice); resolves nothing here.
+type EscapePlanEffect = { kind: 'escapePlan' };
 type UnwiredEffect = { kind: 'unwired' };
-type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | RemoveDamageEffect | CaptureEffect | CancelEffect | ShieldAbsorbEffect | ExtraCardEffect | RogueOneEffect | SpecialLockEffect | ConfrontationEffect | UnwiredEffect;
+type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | RemoveDamageEffect | CaptureEffect | CancelEffect | ShieldAbsorbEffect | ExtraCardEffect | RogueOneEffect | SpecialLockEffect | ConfrontationEffect | EscapePlanEffect | UnwiredEffect;
 
 const D = (amount: number, color?: 'red' | 'black'): DealEffect => ({ kind: 'deal', amount, color });
 const P = (red: number, black: number, special = 0, extra = false): PreventEffect => ({ kind: 'prevent', red, black, special, extra });
@@ -98,6 +102,7 @@ const EXTRA: ExtraCardEffect = { kind: 'extraCard' };
 const ROGUE: RogueOneEffect = { kind: 'rogueOne' };
 const LOCKSPECIAL: SpecialLockEffect = { kind: 'specialLock' };
 const CONFRONT: ConfrontationEffect = { kind: 'confrontation' };
+const ESCAPE: EscapePlanEffect = { kind: 'escapePlan' };
 const U: UnwiredEffect = { kind: 'unwired' };
 
 // Per-card [top, bottom] abilities, keyed by the card id slug from
@@ -137,7 +142,7 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   'cin-rebel-ground-take-cover':             [P(2, 2), P(1, 1)],
   'cin-rebel-ground-planetary-shield':       [ABSORB(3, 'shield-generator'), FIRST],
   'cin-rebel-ground-rogue-one':              [ROGUE, LOCKSPECIAL],
-  'cin-rebel-ground-escape-plan':            [U /* retreat + cancel */, LOCK],
+  'cin-rebel-ground-escape-plan':            [ESCAPE, LOCK],
   'cin-rebel-ground-confrontation':          [CONFRONT, EXTRA],
 };
 
@@ -280,6 +285,11 @@ function abilityValue(G: GameState, c: CombatState, side: Side, theater: Theater
     if (empGround === 0 || !empLeaderHere) return 0.2;
     return empGround <= 2 ? 1.5 : 0.6;
   }
+  if (ab.kind === 'escapePlan') {
+    // Situational — the AI rarely wants to flee a fight it chose. Low value so
+    // it's a last resort, but available.
+    return 0.3;
+  }
   return 0; // unwired
 }
 
@@ -352,7 +362,17 @@ export function isCinematicLocked(c: CombatState, side: Side, theater: Theater):
 export function isCancelCard(cardId: string, useTop: boolean): boolean {
   const ab = ABILITIES[cardId];
   if (!ab) return false;
-  return (useTop ? ab[0] : ab[1]).kind === 'cancel';
+  const k = (useTop ? ab[0] : ab[1]).kind;
+  // Escape Plan also resolves before the attacker (its retreat-then-cancel is
+  // a cancel for ordering purposes).
+  return k === 'cancel' || k === 'escapePlan';
+}
+
+/** Is the card+ability Escape Plan's primary (handled by combat.ts's mid-tactic
+ *  retreat flow rather than applyCinematicAbility)? */
+export function isEscapePlanAbility(cardId: string, useTop: boolean): boolean {
+  const ab = ABILITIES[cardId];
+  return !!ab && (useTop ? ab[0] : ab[1]).kind === 'escapePlan';
 }
 
 /** Is a card's TOP (primary) ability resolvable — its primaryUnit present? */
@@ -471,6 +491,10 @@ export function applyCinematicAbility(
     // Resolved at end of round (resolveCinematicEndOfRound).
     (c.cinematicEndOfRound ??= []).push({ side, kind: 'confrontation' });
     logPlay({ queued: 'confrontation-end-of-round' });
+  } else if (ab.kind === 'escapePlan') {
+    // Handled by combat.ts (posts a mid-tactic retreat choice). If we reach
+    // here via the auto path, there's no interactive retreat — just log it.
+    logPlay({ escapePlan: 'no-interactive-retreat' });
   } else {
     logPlay({ unwired: true });
   }
