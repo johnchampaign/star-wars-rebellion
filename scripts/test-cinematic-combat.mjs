@@ -12,7 +12,7 @@ const { createGame } = await import('../src/engine/setup.ts');
 const M = await import('../src/engine/mechanics.ts');
 const combat = await import('../src/engine/combat.ts');
 const { stepOnce } = await import('../src/play/randomAI.ts');
-const { autoPlayCinematicTactic, applyCinematicAbility, resolveCinematicEndOfRound } = await import('../src/engine/cinematicTactics.ts');
+const { autoPlayCinematicTactic, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers } = await import('../src/engine/cinematicTactics.ts');
 
 /** Drive a combat to completion: resolve every pending combat choice (add-
  *  leader, tactics, damage assignment, retreat) via the AI until pendingCombat
@@ -362,6 +362,60 @@ console.log('\n[ Cinematic 7f: Fleet Logistics top = prevent + extra play ]');
   applyCinematicAbility(G, c, 'Rebel', 'space', 'cin-rebel-space-fleet-logistics', true); // TOP
   check('Fleet Logistics top granted an extra play', (c.cinematicExtraPlays?.['Rebel:space:1'] ?? 0) === 1);
   check('Fleet Logistics top also set a prevent', (c.cinematicPrevent?.Empire?.red ?? 0) >= 2);
+}
+
+// ---- Deeper item 1: Rogue One post-retreat rescue / remove-marker ----
+console.log('\n[ Cinematic: Rogue One — no retreat → does not fire ]');
+{
+  const G = createGame(data, baseOpts(740));
+  M.deployUnit(G, 'Rebel', 'u-wing', 'felucia');
+  M.deployUnit(G, 'Rebel', 'rebel-trooper', 'felucia');
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  G.empire.capturedLeaders = [{ leaderId: 'han-solo', ring: 'captured', systemId: 'coruscant' }];
+  applyCinematicAbility(G, c, 'Rebel', 'ground', 'cin-rebel-ground-rogue-one', true);
+  check('Rogue One queued a post-retreat trigger', (c.cinematicEndOfRound ?? []).some((e) => e.kind === 'rogueOne'));
+  c.retreatHappenedThisRound = false;
+  const paused = resolveCinematicRetreatTriggers(G, c);
+  check('no retreat → no pause, no choice', !paused && G.pendingChoice == null);
+}
+
+console.log('\n[ Cinematic: Rogue One — retreat → rescue a captured leader ]');
+{
+  const G = createGame(data, baseOpts(741));
+  M.deployUnit(G, 'Rebel', 'u-wing', 'felucia');
+  M.deployUnit(G, 'Rebel', 'rebel-trooper', 'felucia');
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  G.empire.capturedLeaders = [{ leaderId: 'han-solo', ring: 'captured', systemId: 'coruscant' }];
+  applyCinematicAbility(G, c, 'Rebel', 'ground', 'cin-rebel-ground-rogue-one', true);
+  c.retreatHappenedThisRound = true;
+  const paused = resolveCinematicRetreatTriggers(G, c);
+  check('retreat + target → posts a RogueOneChoice (paused)', paused && G.pendingChoice?.kind === 'RogueOneChoice');
+  check('Han Solo is a rescue option', G.pendingChoice.rescuable.includes('han-solo'));
+  combat.resolveRogueOneChoice(G, 'rescue:han-solo');
+  check('Han Solo rescued (no longer captured)', !(G.empire.capturedLeaders ?? []).some((cl) => cl.leaderId === 'han-solo'));
+}
+
+console.log('\n[ Cinematic: Rogue One — retreat → remove a target marker ]');
+{
+  const G = createGame(data, baseOpts(742));
+  M.deployUnit(G, 'Rebel', 'u-wing', 'felucia');
+  M.deployUnit(G, 'Rebel', 'rebel-trooper', 'felucia');
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia');
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  const c = G.pendingCombat;
+  G.empire.capturedLeaders = [];
+  G.map.systems['felucia'].targetMarkers = [{ source: 'secure-the-plans', placedBy: 'Empire', placedAt: 0 }];
+  applyCinematicAbility(G, c, 'Rebel', 'ground', 'cin-rebel-ground-rogue-one', true);
+  c.retreatHappenedThisRound = true;
+  resolveCinematicRetreatTriggers(G, c);
+  check('only a marker option offered (no captured leaders)', G.pendingChoice?.rescuable.length === 0 && G.pendingChoice?.markerSources.includes('secure-the-plans'));
+  combat.resolveRogueOneChoice(G, 'marker:secure-the-plans');
+  check('target marker removed from felucia',
+    !(G.map.systems['felucia'].targetMarkers ?? []).some((m) => m.source === 'secure-the-plans'));
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

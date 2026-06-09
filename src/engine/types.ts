@@ -700,6 +700,17 @@ export type ChoiceRequest =
       }[];
     }
   | {
+      // RoE Cinematic — Rogue One primary: a retreat happened this round, so
+      // the Rebel rescues 1 captured leader OR removes 1 target marker from the
+      // combat system. `rescuable` = captured Rebel leader ids; `markerSources`
+      // = target-marker card ids on the system. At least one list is non-empty.
+      kind: 'RogueOneChoice';
+      side: 'Rebel';
+      systemId: SystemId;
+      rescuable: LeaderId[];
+      markerSources: string[];
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated
@@ -1231,12 +1242,16 @@ export type CombatState = {
   // play THIS round in this theatre is cancelled (skipped). Set when the
   // opponent plays a cancel card before them.
   cinematicCancel?: Record<string, boolean>;
-  // RoE Cinematic end-of-round effects queued during the round (Tractor Beam
-  // primary: "at the end of the round … capture 1 leader"). Resolved once both
-  // theatres' attacks are done, before the round advances.
-  cinematicEndOfRound?: { side: Side; kind: 'capture' }[];
-  // Guard so the end-of-round resolution runs once per round.
+  // RoE Cinematic end-of-round effects queued during the round. `capture`
+  // (Tractor Beam) resolves after both theatres' attacks, before retreat;
+  // `rogueOne` (Rogue One: "if 1+ units retreat this round, rescue a leader OR
+  // remove a target marker") resolves AFTER the retreat step.
+  cinematicEndOfRound?: { side: Side; kind: 'capture' | 'rogueOne' }[];
+  // Guard so the end-of-round capture resolution runs once per round.
   cinematicEndOfRoundDoneRound?: number;
+  // Set when an actual retreat (not a decline) happens this round — read by
+  // Rogue One's end-of-round trigger. Reset at round advance.
+  retreatHappenedThisRound?: boolean;
   // RoE Cinematic "you may play an extra card" (Imposing Presence / Fleet
   // Logistics / Confrontation): `${side}:${theatre}:${round}` -> count of
   // additional tactic plays that side may make this round in this theatre.

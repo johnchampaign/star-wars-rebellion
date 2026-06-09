@@ -221,6 +221,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
     pc?.kind === 'ReadyForActionLeaderPick' ? pc.side :
     pc?.kind === 'CombatAddLeaderPick'   ? pc.side :
     pc?.kind === 'CinematicTacticSelect' ? pc.side :
+    pc?.kind === 'RogueOneChoice'        ? pc.side :
     pc?.kind === 'RetreatDecision'       ? pc.side : null;
   const isHumanDecision = decisionSide === humanSide;
   // Online, the opponent is a remote human (or a SERVER-driven AI seat) — either
@@ -613,6 +614,9 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
         )}
         {pc?.kind === 'CinematicTacticSelect' && isHumanDecision && (
           <CinematicTacticSelectPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'RogueOneChoice' && isHumanDecision && (
+          <RogueOneChoicePanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'RetreatDecision' && isHumanDecision && (
           <RetreatPanel G={G} choice={pc} onPersist={onPersist} />
@@ -1859,6 +1863,38 @@ function CinematicTacticSelectPanel({ G, choice, onPersist }: {
       <button onClick={() => submit(null, false)} style={btn('#ffd54a')}>
         Don't play a card this round
       </button>
+    </div>
+  );
+}
+
+function RogueOneChoicePanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'RogueOneChoice' }>;
+  onPersist: () => void;
+}) {
+  const submit = (action: string) => {
+    const r = combat.resolveRogueOneChoice(G, action);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>Rogue One</b> — a unit retreated this round. Rescue 1 captured leader{' '}
+        <i>or</i> remove 1 target marker from this system.
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {choice.rescuable.map((lid) => (
+          <button key={`r-${lid}`} onClick={() => submit(`rescue:${lid}`)} style={btn('#80dc78')}>
+            Rescue {G.catalog.leaders[lid]?.name ?? lid}
+          </button>
+        ))}
+        {choice.markerSources.map((src) => (
+          <button key={`m-${src}`} onClick={() => submit(`marker:${src}`)} style={btn('#80b0dc')}>
+            Remove “{src}” marker
+          </button>
+        ))}
+      </div>
     </div>
   );
 }

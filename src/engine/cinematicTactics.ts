@@ -68,8 +68,11 @@ type ShieldAbsorbEffect = { kind: 'shieldAbsorb'; amount: number; structureTypeI
 // You may play one extra tactic card this round in this theatre (Imposing
 // Presence / Confrontation secondaries — standalone).
 type ExtraCardEffect = { kind: 'extraCard' };
+// Rogue One primary: queued to AFTER the retreat step — if any unit retreated
+// this round, the Rebel rescues a captured leader OR removes a target marker.
+type RogueOneEffect = { kind: 'rogueOne' };
 type UnwiredEffect = { kind: 'unwired' };
-type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | RemoveDamageEffect | CaptureEffect | CancelEffect | ShieldAbsorbEffect | ExtraCardEffect | UnwiredEffect;
+type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | RemoveDamageEffect | CaptureEffect | CancelEffect | ShieldAbsorbEffect | ExtraCardEffect | RogueOneEffect | UnwiredEffect;
 
 const D = (amount: number, color?: 'red' | 'black'): DealEffect => ({ kind: 'deal', amount, color });
 const P = (red: number, black: number, special = 0, extra = false): PreventEffect => ({ kind: 'prevent', red, black, special, extra });
@@ -84,6 +87,7 @@ const CAPTURE: CaptureEffect = { kind: 'capture' };
 const CANCEL: CancelEffect = { kind: 'cancel' };
 const ABSORB = (amount: number, structureTypeId: string): ShieldAbsorbEffect => ({ kind: 'shieldAbsorb', amount, structureTypeId });
 const EXTRA: ExtraCardEffect = { kind: 'extraCard' };
+const ROGUE: RogueOneEffect = { kind: 'rogueOne' };
 const U: UnwiredEffect = { kind: 'unwired' };
 
 // Per-card [top, bottom] abilities, keyed by the card id slug from
@@ -122,7 +126,7 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   'cin-rebel-ground-tow-cables':             [TD(4, 'at-walker'), D(1)],
   'cin-rebel-ground-take-cover':             [P(2, 2), P(1, 1)],
   'cin-rebel-ground-planetary-shield':       [ABSORB(3, 'shield-generator'), FIRST],
-  'cin-rebel-ground-rogue-one':              [U /* rescue/remove marker */, U /* special lock */],
+  'cin-rebel-ground-rogue-one':              [ROGUE, U /* special-die lock: no-op (unmodelled) */],
   'cin-rebel-ground-escape-plan':            [U /* retreat + cancel */, LOCK],
   'cin-rebel-ground-confrontation':          [U /* mark-leader-for-elimination: needs end-of-Command-phase hook */, EXTRA],
 };
@@ -243,6 +247,14 @@ function abilityValue(G: GameState, c: CombatState, side: Side, theater: Theater
   if (ab.kind === 'extraCard') {
     // Only worth playing if there's at least one OTHER card to chain into.
     return availableCards(G, side, theater).length > 1 ? 0.6 : 0;
+  }
+  if (ab.kind === 'rogueOne') {
+    // Conditional on a retreat happening this round (unknown now). Worth a
+    // little if there's something to gain: a captured leader to rescue or a
+    // target marker on the system to remove.
+    const haveRescue = (G.empire.capturedLeaders ?? []).length > 0;
+    const haveMarker = (G.map.systems[c.systemId]?.targetMarkers ?? []).length > 0;
+    return haveRescue || haveMarker ? 1 : 0.2;
   }
   return 0; // unwired
 }
@@ -413,6 +425,10 @@ export function applyCinematicAbility(
   } else if (ab.kind === 'extraCard') {
     grantExtraCard(c, side, theater);
     logPlay({ extra: true });
+  } else if (ab.kind === 'rogueOne') {
+    // Resolved after the retreat step (resolveCinematicRetreatTriggers).
+    (c.cinematicEndOfRound ??= []).push({ side, kind: 'rogueOne' });
+    logPlay({ queued: 'rogue-one-post-retreat' });
   } else {
     logPlay({ unwired: true });
   }
@@ -490,9 +506,10 @@ function resolveShieldAbsorb(
   return moved;
 }
 
-/** Resolve queued end-of-round cinematic effects (Tractor Beam capture).
- *  Called once per round by combat.ts after both theatres' attacks resolve,
- *  before the round advances. */
+/** Resolve queued end-of-round CAPTURE effects (Tractor Beam). Deterministic,
+ *  no pause. Called by combat.ts after both theatres' attacks, before retreat.
+ *  Leaves non-capture entries (Rogue One) in the queue for the post-retreat
+ *  pass. */
 export function resolveCinematicEndOfRound(G: GameState, c: CombatState): void {
   const queue = c.cinematicEndOfRound;
   if (!queue || queue.length === 0) return;
@@ -511,7 +528,38 @@ export function resolveCinematicEndOfRound(G: GameState, c: CombatState): void {
     M.captureLeader(G, leaderId);
     log(G, { kind: 'cinematic-tractor-beam-capture', side: e.side, payload: { leaderId, systemId: c.systemId } });
   }
-  c.cinematicEndOfRound = [];
+  c.cinematicEndOfRound = queue.filter((e) => e.kind !== 'capture');
+}
+
+/** Resolve queued post-retreat cinematic triggers (Rogue One). Called by
+ *  combat.ts AFTER the retreat step. If a Rogue One is queued and a retreat
+ *  actually happened this round, post a RogueOneChoice and PAUSE (returns true);
+ *  the resolver (resolveRogueOneChoice) applies it and re-enters. Returns false
+ *  if nothing to do (entries with no retreat are dropped). */
+export function resolveCinematicRetreatTriggers(G: GameState, c: CombatState): boolean {
+  const queue = c.cinematicEndOfRound;
+  if (!queue || queue.length === 0) return false;
+  const rogue = queue.find((e) => e.kind === 'rogueOne');
+  if (!rogue) return false;
+  // Resolve this entry exactly once whether or not it fires.
+  c.cinematicEndOfRound = queue.filter((e) => e !== rogue);
+  if (!c.retreatHappenedThisRound) {
+    log(G, { kind: 'cinematic-rogue-one-no-retreat', side: rogue.side, payload: { systemId: c.systemId } });
+    return false;
+  }
+  const rescuable = (G.empire.capturedLeaders ?? []).map((cl) => cl.leaderId);
+  const markerSources = [...new Set((G.map.systems[c.systemId]?.targetMarkers ?? []).map((m) => m.source))];
+  if (rescuable.length === 0 && markerSources.length === 0) {
+    log(G, { kind: 'cinematic-rogue-one-no-target', side: rogue.side, payload: { systemId: c.systemId } });
+    return false;
+  }
+  G.pendingChoice = {
+    kind: 'RogueOneChoice', side: 'Rebel', systemId: c.systemId, rescuable, markerSources,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'RogueOneChoice', systemId: c.systemId, rescuable: rescuable.length, markers: markerSources.length,
+  }});
+  return true;
 }
 
 /** Targeted deal — assign `amount` damage to the cheapest-to-kill enemy unit

@@ -15,7 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -358,6 +358,10 @@ export function runCombat(G: GameState): void {
       c.retreatStepDoneThisRound = true;
     }
 
+    // RoE Cinematic post-retreat trigger (Rogue One). Runs after the retreat
+    // step; may PAUSE for the rescue/remove-marker choice.
+    if (c.cinematic && resolveCinematicRetreatTriggers(G, c)) return;
+
     // End check: do both sides still have units in some shared theater?
     const continues =
       bothSidesHaveTheater(G, c.systemId, 'space') ||
@@ -414,6 +418,7 @@ export function runCombat(G: GameState): void {
         c.roundTheatersDone = undefined; // reset for next round
         c.dsPlansOfferedThisRound = false; // fresh Death Star Plans window next round
         c.retreatStepDoneThisRound = false;
+        c.retreatHappenedThisRound = false; // reset Rogue One trigger for next round
         c.retreatDecidedThisRound = []; // each round each side gets a fresh retreat decision
         // No Escape only lasts the round it was played.
         if (c.flags?.cannotRetreatThisRound) c.flags.cannotRetreatThisRound = {};
@@ -1898,6 +1903,34 @@ export function resolveCinematicTacticSelect(
   return { ok: true };
 }
 
+/** Resolve Rogue One's post-retreat choice: rescue a captured leader OR remove
+ *  a target marker from the combat system. `action` is `rescue:<leaderId>` or
+ *  `marker:<source>`. */
+export function resolveRogueOneChoice(
+  G: GameState, action: string
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'RogueOneChoice') return { ok: false, reason: 'no-pending' };
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  if (action.startsWith('rescue:')) {
+    const leaderId = action.slice('rescue:'.length) as LeaderId;
+    if (!pc.rescuable.includes(leaderId)) return { ok: false, reason: 'not-rescuable' };
+    M.rescueLeader(G, leaderId, 'cinematic-rogue-one');
+    log(G, { kind: 'cinematic-rogue-one-rescue', side: 'Rebel', payload: { leaderId } });
+  } else if (action.startsWith('marker:')) {
+    const source = action.slice('marker:'.length);
+    if (!pc.markerSources.includes(source)) return { ok: false, reason: 'no-such-marker' };
+    M.removeTargetMarker(G, pc.systemId, source, 'Rebel');
+    log(G, { kind: 'cinematic-rogue-one-remove-marker', side: 'Rebel', payload: { systemId: pc.systemId, source } });
+  } else {
+    return { ok: false, reason: `bad-action:${action}` };
+  }
+  G.pendingChoice = undefined;
+  runCombat(G);
+  return { ok: true };
+}
+
 /** Resolve the Combat-step-1 "may add a leader from pool" choice.
  *  `leaderId` = pick a pool leader (must be in candidates), or `null` to
  *  decline. Pass through and continue runCombat to advance the step. */
@@ -2148,6 +2181,7 @@ export function resolveRetreatDecision(
     M.relocateLeader(G, side, leaderToMove, c.systemId, destSystemId);
   }
   c.retreated.push(side);
+  c.retreatHappenedThisRound = true; // Rogue One end-of-round trigger
   (c.report.retreats ??= []).push({ side, toSystemId: destSystemId, leaderId: leaderToMove });
   c.retreatDecidedThisRound = c.retreatDecidedThisRound ?? [];
   if (!c.retreatDecidedThisRound.includes(side)) c.retreatDecidedThisRound.push(side);

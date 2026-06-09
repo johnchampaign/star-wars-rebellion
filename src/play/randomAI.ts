@@ -1055,6 +1055,14 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const pick = pickBestCinematicPlay(G, c, side, G.pendingChoice.theater);
     return combat.resolveCinematicTacticSelect(G, pick?.cardId ?? null, pick?.useTop ?? false).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'RogueOneChoice' && G.pendingChoice.side === side) {
+    // AI: prefer rescuing a captured leader; otherwise remove a target marker.
+    const pc = G.pendingChoice;
+    const action = pc.rescuable.length > 0
+      ? `rescue:${pc.rescuable[0]}`
+      : `marker:${pc.markerSources[0]}`;
+    return combat.resolveRogueOneChoice(G, action).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'CombatAddLeaderPick' && G.pendingChoice.side === side) {
     // AI: always add the highest-tactic-value pool leader. Captures are bad
     // but missing the tactic-card draws is worse for a side that has units
