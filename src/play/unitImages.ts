@@ -23,6 +23,11 @@ export const UNIT_IMAGE: Record<string, string> = {
   'stormtrooper':                   'UnitStormtrooper.png',
   'at-st':                          'UnitATST.png',
   'at-at':                          'UnitATAT.png',
+  // Imperial — Rise of the Empire
+  'tie-striker':                    'UnitTIEStriker.png',
+  'assault-tank':                   'UnitAssaultTank.png',
+  'shield-bunker':                  'UnitShieldBunker.png',
+  'interdictor':                    'UnitInterdictor.png',
   // Rebel
   'x-wing':                         'UnitXWing.png',
   'y-wing':                         'UnitYWing.png',
@@ -33,6 +38,11 @@ export const UNIT_IMAGE: Record<string, string> = {
   'airspeeder':                     'UnitAirspeeder.png',
   'shield-generator':               'UnitShieldGenerator.png',
   'ion-cannon':                     'UnitIonCannon.png',
+  // Rebel — Rise of the Empire
+  'u-wing':                         'UnitUWing.png',
+  'nebulon-b-frigate':              'UnitNebulonBFrigate.png',
+  'rebel-vanguard':                 'UnitRebelVanguard.png',
+  'golan-arms-turret':              'UnitGolanArmsTurret.png',
 };
 
 const STYLE_KEY = 'rebellion-unit-image-style';
