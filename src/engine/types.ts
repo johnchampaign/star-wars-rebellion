@@ -689,6 +689,10 @@ export type ChoiceRequest =
       side: Side;
       theater: 'space' | 'ground';
       round: number;
+      // True when this is an EXTRA play (Imposing Presence / Fleet Logistics /
+      // Confrontation) — resolved immediately, outside the simultaneous
+      // collect-then-resolve ordering used for each side's first card.
+      extra?: boolean;
       options: {
         cardId: string;
         name: string;
@@ -1261,6 +1265,11 @@ export type CombatState = {
   // -> true means that side may NOT spend ★ dice to remove damage from its
   // units of that theatre this round (rules: "Removing damage" combat action).
   cinematicSpecialLock?: Record<string, boolean>;
+  // RoE Cinematic simultaneous selection: each side's chosen FIRST card this
+  // theatre/round, collected BEFORE either resolves (keyed `${side}:${theatre}:
+  // ${round}`; null = chose to skip). Once both are in, they resolve in order
+  // (the defender resolves first if their card uses "cancel" — rulebook).
+  cinematicSelections?: Record<string, { cardId: string; useTop: boolean } | null>;
   attackerHand: string[]; // tactic card ids
   defenderHand: string[];
   retreated: Side[]; // each side at most once

@@ -15,7 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, applyCinematicSpecialHeal } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, applyCinematicSpecialHeal, isCancelCard } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -463,20 +463,21 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
   // assignment resume doesn't replay it.
   if (c.cinematic) {
     c.cinematicTacticDoneThisRound ??= [];
+    c.cinematicSelections ??= {};
+    const attacker = c.attackerSide;
+    const defender = other(attacker);
+    const keyOf = (s: Side) => `${s}:${theater}:${c.round}`;
+
+    // SELECT phase (RoE p.9 "simultaneously"): collect each side's first-card
+    // choice WITHOUT resolving — the resolver stores it. The current player is
+    // prompted first, but neither effect lands until both have chosen.
     for (const side of tacticOrder) {
-      const key = `${side}:${theater}:${c.round}`;
-      if (c.cinematicTacticDoneThisRound.includes(key)) continue;
-      // Cancelled by the opponent's Entrapment / Air Superiority / Outrun Them
-      // (played earlier this round in this theatre) — skip this side's play.
-      if (c.cinematicCancel?.[key]) {
-        c.cinematicTacticDoneThisRound.push(key);
-        log(G, { kind: 'cinematic-tactic-cancelled', side, payload: { theater, round: c.round } });
-        continue;
-      }
+      const key = keyOf(side);
+      if (c.cinematicTacticDoneThisRound.includes(key)) continue; // fully resolved
+      if (key in c.cinematicSelections) continue;                  // already chose
       const options = cinematicSelectOptions(G, c, side, theater);
       if (options.length === 0) {
-        // Nothing to choose — skip without a pause.
-        c.cinematicTacticDoneThisRound.push(key);
+        c.cinematicSelections[key] = null; // nothing available — auto-skip
         continue;
       }
       G.pendingChoice = {
@@ -485,7 +486,50 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
       log(G, { kind: 'choice-request', side, payload: {
         kind: 'CinematicTacticSelect', theater, round: c.round, options: options.length,
       }});
-      return; // paused — resolveCinematicTacticSelect marks done + re-enters
+      return; // paused — resolveCinematicTacticSelect STORES the selection
+    }
+
+    // RESOLVE phase: both sides have chosen. Resolution order is the current
+    // player first UNLESS the defender's card uses "cancel" — then the defender
+    // resolves first (rulebook "Canceling cards"). A cancel that resolves first
+    // skips the opponent's card via cinematicCancel.
+    const defSel = c.cinematicSelections[keyOf(defender)];
+    const defenderCancels = !!defSel && isCancelCard(defSel.cardId, defSel.useTop);
+    const resolveOrder: Side[] = defenderCancels ? [defender, attacker] : [attacker, defender];
+    for (const side of resolveOrder) {
+      const key = keyOf(side);
+      if (c.cinematicTacticDoneThisRound.includes(key)) continue; // already resolved
+      if (c.cinematicCancel?.[key]) {
+        // The card was still played (revealed), it just resolves no abilities —
+        // discard it without applying.
+        const cancelledSel = c.cinematicSelections[key];
+        if (cancelledSel) {
+          const f = side === 'Rebel' ? G.rebel : G.empire;
+          (f.cinematicTacticDiscard ??= []).push(cancelledSel.cardId);
+        }
+        c.cinematicTacticDoneThisRound.push(key);
+        log(G, { kind: 'cinematic-tactic-cancelled', side, payload: { theater, round: c.round, card: cancelledSel?.cardId } });
+        continue;
+      }
+      const sel = c.cinematicSelections[key];
+      if (sel) applyCinematicAbility(G, c, side, theater, sel.cardId, sel.useTop);
+      else log(G, { kind: 'cinematic-tactic-skip', side, payload: { theater, round: c.round } });
+      c.cinematicTacticDoneThisRound.push(key);
+      // "You may play an extra card" — re-offer this side immediately (outside
+      // the simultaneous ordering); the resolver applies extras at once.
+      if (sel && (c.cinematicExtraPlays?.[key] ?? 0) > 0) {
+        const extraOpts = cinematicSelectOptions(G, c, side, theater);
+        if (extraOpts.length > 0) {
+          c.cinematicExtraPlays![key] -= 1;
+          G.pendingChoice = {
+            kind: 'CinematicTacticSelect', side, theater, round: c.round, extra: true, options: extraOpts,
+          };
+          log(G, { kind: 'choice-request', side, payload: {
+            kind: 'CinematicTacticSelect', theater, round: c.round, options: extraOpts.length, extra: true,
+          }});
+          return; // paused — resolver applies the extra immediately
+        }
+      }
     }
   }
 
@@ -1891,21 +1935,33 @@ export function resolveCinematicTacticSelect(
     const opt = pc.options.find((o) => o.cardId === cardId);
     if (!opt) return { ok: false, reason: `not-an-option:${cardId}` };
     if (useTop && !opt.primaryUsable) return { ok: false, reason: 'primary-not-usable' };
-    applyCinematicAbility(G, c, pc.side, pc.theater, cardId, useTop);
-  } else {
-    log(G, { kind: 'cinematic-tactic-skip', side: pc.side, payload: { theater: pc.theater, round: pc.round } });
   }
-  // "You may play an extra card" (Imposing Presence / Fleet Logistics /
-  // Confrontation): if this side has a granted extra play and actually played
-  // a card, consume one grant and DON'T mark them done — the tactic loop will
-  // re-offer them. Declining (cardId null) forfeits any remaining extras.
   const key = `${pc.side}:${pc.theater}:${pc.round}`;
-  const extras = c.cinematicExtraPlays?.[key] ?? 0;
-  if (cardId !== null && extras > 0) {
-    c.cinematicExtraPlays![key] = extras - 1;
-  } else {
-    (c.cinematicTacticDoneThisRound ??= []).push(key);
+
+  if (pc.extra) {
+    // EXTRA play — apply immediately (outside the simultaneous ordering). May
+    // itself grant another extra, so chain while grants and cards remain.
+    if (cardId !== null) applyCinematicAbility(G, c, pc.side, pc.theater, cardId, useTop);
+    else log(G, { kind: 'cinematic-tactic-skip', side: pc.side, payload: { theater: pc.theater, round: pc.round } });
+    const extras = c.cinematicExtraPlays?.[key] ?? 0;
+    if (cardId !== null && extras > 0) {
+      const extraOpts = cinematicSelectOptions(G, c, pc.side, pc.theater);
+      if (extraOpts.length > 0) {
+        c.cinematicExtraPlays![key] = extras - 1;
+        G.pendingChoice = {
+          kind: 'CinematicTacticSelect', side: pc.side, theater: pc.theater, round: pc.round, extra: true, options: extraOpts,
+        };
+        return { ok: true }; // pause for the next extra
+      }
+    }
+    G.pendingChoice = undefined;
+    runCombat(G);
+    return { ok: true };
   }
+
+  // BASE selection — STORE it; do NOT apply yet. runCombat re-enters runTheater,
+  // which collects the other side's choice and then resolves both in order.
+  (c.cinematicSelections ??= {})[key] = cardId === null ? null : { cardId, useTop };
   G.pendingChoice = undefined;
   runCombat(G);
   return { ok: true };

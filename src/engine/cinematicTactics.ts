@@ -346,6 +346,15 @@ export function isCinematicLocked(c: CombatState, side: Side, theater: Theater):
   return lockedThrough != null && c.round <= lockedThrough;
 }
 
+/** Does the given card+ability use "cancel"? Per the rulebook, if the DEFENDER
+ *  plays a cancel card, the defender resolves before the attacker. Used by
+ *  combat.ts to order the simultaneous tactic selections. */
+export function isCancelCard(cardId: string, useTop: boolean): boolean {
+  const ab = ABILITIES[cardId];
+  if (!ab) return false;
+  return (useTop ? ab[0] : ab[1]).kind === 'cancel';
+}
+
 /** Is a card's TOP (primary) ability resolvable — its primaryUnit present? */
 function topUsable(G: GameState, c: CombatState, side: Side, theater: Theater, cardId: string): boolean {
   const card = G.catalog.tactics[cardId];

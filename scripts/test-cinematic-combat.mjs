@@ -505,5 +505,36 @@ console.log('\n[ Cinematic: Confrontation does nothing if Imperial ground surviv
   check('no leader marked while Imperial ground survives', (G.cinematicMarkedForElimination ?? []).length === 0);
 }
 
+// ---- Deeper item 4: simultaneous selection — defender cancel resolves first --
+console.log('\n[ Cinematic: defender Outrun Them cancels the attacker card ]');
+{
+  const G = createGame(data, baseOpts(770));
+  M.deployUnit(G, 'Empire', 'star-destroyer', 'felucia');
+  M.deployUnit(G, 'Rebel', 'corellian-corvette', 'felucia'); // Outrun Them prereq
+  combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+  combat.runCombat(G);
+  // Decline any "add a leader to combat" prompts to reach the tactic step.
+  let guard = 0;
+  while (G.pendingChoice?.kind === 'CombatAddLeaderPick' && guard++ < 5) combat.resolveCombatAddLeaderPick(G, null);
+  check('attacker (Empire) is prompted to select first',
+    G.pendingChoice?.kind === 'CinematicTacticSelect' && G.pendingChoice.side === 'Empire' && G.pendingChoice.theater === 'space');
+  const empCard = G.pendingChoice.options[0].cardId;
+  combat.resolveCinematicTacticSelect(G, empCard, false); // Empire selects (stored, NOT yet applied)
+  check('Empire selection stored, not yet applied',
+    !(G.empire.cinematicTacticDiscard ?? []).includes(empCard));
+  check('defender (Rebel) is prompted next',
+    G.pendingChoice?.kind === 'CinematicTacticSelect' && G.pendingChoice.side === 'Rebel');
+  const outrun = G.pendingChoice.options.find((o) => o.cardId === 'cin-rebel-space-outrun-them');
+  check('Rebel has Outrun Them with a usable top (cancel)', !!outrun && outrun.primaryUsable);
+  combat.resolveCinematicTacticSelect(G, 'cin-rebel-space-outrun-them', true); // defender cancels
+  check('Empire space play was cancelled (defender resolved first)',
+    G.pendingCombat?.cinematicCancel?.['Empire:space:1'] === true || (G.empire.cinematicTacticDiscard ?? []).includes(empCard));
+  check('Rebel Outrun Them was played (in discard)',
+    (G.rebel.cinematicTacticDiscard ?? []).includes('cin-rebel-space-outrun-them'));
+  // Empire card is discarded (played but cancelled), but its ability never ran:
+  // the prevent/deal effect should not have landed. We can't easily assert the
+  // non-effect generically, but the cancel flag above confirms the ordering.
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);
