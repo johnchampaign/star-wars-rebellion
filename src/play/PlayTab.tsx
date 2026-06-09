@@ -9423,7 +9423,10 @@ function LogPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
         Log ({visible.length} entries shown; {G.turnLog.length - visible.length} private hidden)
       </div>
       <div style={{ fontFamily: 'monospace', fontSize: 11 }}>
-        {visible.slice(-100).map((entry, i) => {
+        {/* Newest-first: show the most recent 100 entries with the latest at
+            the top (player request — easier to see what just happened without
+            scrolling to the bottom). */}
+        {visible.slice(-100).reverse().map((entry, i) => {
           const redacted = ONSCREEN_REDACTED_KINDS.has(entry.kind)
             || (!!entry.side && entry.side !== humanSide && OPPONENT_SECRET_KINDS.has(entry.kind));
           const countOnly = COUNT_ONLY_KINDS.has(entry.kind);
