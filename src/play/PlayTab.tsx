@@ -13418,11 +13418,6 @@ function ExpansionPanel({ cfg, onChange }: {
           </label>
         </div>
       )}
-      {cfg.enabled && (
-        <div style={{ color: '#778', fontSize: 11, textAlign: 'center', maxWidth: 480 }}>
-          Expansion content lands incrementally — Phase 2 wires the switches; units, board, cards, and new rules follow.
-        </div>
-      )}
     </div>
   );
 }

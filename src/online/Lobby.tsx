@@ -141,11 +141,6 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
               ))}
             </div>
           )}
-          {expansion.enabled && (
-            <div style={{ color: '#778', fontSize: 12, marginTop: 6 }}>
-              Expansion content lands incrementally — the switches are recorded on the game; rules wiring follows in later phases.
-            </div>
-          )}
         </div>
       )}
 
