@@ -61,8 +61,12 @@ const REBEL_STARTING_UNITS_BASE: { typeId: string; count: number }[] = [
 // auto-setup distributes; the interactive setup leaves placement to the
 // Imperial player. Totals: 12 TIE Fighters (4+8), 13 Stormtroopers (1+12),
 // 3 Assault Carriers, 3 Star Destroyers, 2 TIE Strikers, 4 AT-STs,
-// 2 Assault Tanks, 1 AT-AT, 1 DSUC, 1 Death Star (which the build queue
-// gets in this code path).
+// 2 Assault Tanks, 1 AT-AT, 1 DSUC deployed on the board. The completed
+// Death Star is NOT deployed — per RoE setup it starts on build-track
+// space 3 (3 refreshes from completion), seeded onto buildQueue[3] below.
+// (Earlier this list also included a deployed `death-star`, which put a
+// fully-operational Death Star on the board at game start — player report
+// #155. Removed: the Death Star belongs on the build track, not the map.)
 const IMPERIAL_STARTING_UNITS_RoE_NEW: { typeId: string; count: number }[] = [
   { typeId: 'star-destroyer', count: 3 },
   { typeId: 'assault-carrier', count: 3 },
@@ -72,7 +76,6 @@ const IMPERIAL_STARTING_UNITS_RoE_NEW: { typeId: string; count: number }[] = [
   { typeId: 'at-st', count: 4 },
   { typeId: 'assault-tank', count: 2 },
   { typeId: 'at-at', count: 1 },
-  { typeId: 'death-star', count: 1 },
   { typeId: 'death-star-under-construction', count: 1 },
 ];
 
@@ -417,6 +420,17 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   // ----- Factions: leaders -----
   const rebel = emptyFaction('Rebel');
   const empire = emptyFaction('Empire');
+
+  // RoE "New Starter Units" (rules p.8): the Empire begins with its Death
+  // Star already part-built — a Death Star Under Construction model on the
+  // board (deployed via the starting-unit list) AND the completed Death Star
+  // on build-track space 3, i.e. 3 Refreshes from completion. When it reaches
+  // slot 1 the existing completion logic (phases.ts) swaps it in for the DSUC
+  // on its system. Gated to the same path that uses the RoE-new starter list,
+  // so the base game (and the RoE-old/base fallback) keeps an empty queue.
+  if (expansion.enabled && expansion.newStarterUnits) {
+    empire.buildQueue[3].push('death-star');
+  }
 
   for (const ldr of Object.values(catalog.leaders)) {
     if (!inSet(ldr)) continue;

@@ -13,8 +13,11 @@ modules, and full Cinematic Combat incl. interactive selection [7d]). These
 items still need finishing **to complete the expansion** (not deferred —
 they're this track's remaining work; general base-game bug fixes come after):
 
-- **#155** — RoE Death Star starting setup wrong (Empire gets a completed
-  Death Star on top of the under-construction one). Real setup defect.
+- ~~**#155** — RoE Death Star starting setup wrong (Empire got a completed
+  Death Star on top of the under-construction one).~~ **FIXED** — the
+  completed `death-star` is no longer in the RoE deploy list; it's seeded
+  onto build-track space 3 (`empire.buildQueue[3]`) so it completes 3
+  Refreshes in and swaps for the DSUC. Base game untouched.
 - **5d objectives** — the 12 RoE objective cards still score nothing
   (blank effectKeys; wire via the stage-scoring path).
 - **3 Cinematic abilities** — Tractor Beam end-of-round capture,
