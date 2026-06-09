@@ -616,6 +616,13 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
   const baseDist = (side === 'Rebel' && G.rebelBaseSystemId && !G.rebelBaseRevealed)
     ? bfsDistances(G, G.rebelBaseSystemId, 3)
     : null;
+  // Distance from a REVEALED base, for the Empire's multi-hop convergence
+  // gradient (#141/#153): once the base is exposed, reward activating systems
+  // along the path to it so force flows inward from deep in the map, not just
+  // from immediate neighbors.
+  const revealedBaseDist = (side === 'Empire' && G.rebelBaseRevealed && G.rebelBaseSystemId)
+    ? bfsDistances(G, G.rebelBaseSystemId, 4)
+    : null;
   // Precompute the set of probe-eliminated systems for the Empire.
   const eliminatedByProbe = side === 'Empire'
     ? new Set((G.empire.probeHand ?? [])
@@ -869,6 +876,16 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
         ts += 18;
       } else if (empireLeadersHere > 0) {
         ts -= 5 * empireLeadersHere;
+      }
+      // Multi-hop convergence gradient (#141/#153): the base/adjacent branches
+      // above only reward the final hop or two. Add a smaller pull for systems
+      // 2-3 hops from a revealed base (no own leader present) so deep-map
+      // Empire force marches inward over successive turns instead of idling on
+      // the far side of the galaxy while the exposed base sits unmolested.
+      if (revealedBaseDist && empireLeadersHere === 0 && sysId !== G.rebelBaseSystemId) {
+        const dToBase = distFrom(revealedBaseDist, sysId);
+        if (dToBase === 2) ts += 10;
+        else if (dToBase === 3) ts += 5;
       }
       // Don't waste activations on Coruscant or systems already saturated.
       if (sysId === 'coruscant') ts -= 3;
@@ -1125,7 +1142,17 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       if (!t) return 0;
       return ((t.attack?.red ?? 0) + (t.attack?.black ?? 0)) * 2 + (t.health?.value ?? 0);
     };
-    const picked = [...c.availableUnitIds].sort((a, b) => unitScore(b) - unitScore(a)).slice(0, c.max);
+    // Don't strip the base of all its defenders when it's REVEALED — sortieing
+    // every ground unit out leaves the exposed base to be walked into and
+    // captured for the win (player report #167). Reserve a garrison: keep at
+    // least half the base ground (min 1) home when revealed; when the base is
+    // still hidden, the old "send the strongest up to 4" behavior is fine.
+    let sendCap = c.max;
+    if (G.rebelBaseRevealed) {
+      const reserve = Math.max(1, Math.floor(c.availableUnitIds.length / 2));
+      sendCap = Math.max(0, Math.min(c.max, c.availableUnitIds.length - reserve));
+    }
+    const picked = [...c.availableUnitIds].sort((a, b) => unitScore(b) - unitScore(a)).slice(0, sendCap);
     return phases.resolveLeadStrikeTeamUnits(G, picked).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'RetreatDecision' && G.pendingChoice.side === side) {
