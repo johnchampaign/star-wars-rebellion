@@ -2826,6 +2826,113 @@ export function resolveDeathStarPlansAttempt(
   // RAW: roll 3 dice. Color doesn't matter for mission-style rolls; pick red.
   const faces: string[] = [];
   for (let i = 0; i < 3; i++) faces.push(rollDie(G.rng, 'red').face);
+  // Stash the roll and offer the reroll/manipulation cards that explicitly
+  // work on the DSP roll — One-in-a-Million ("automatic success with the Death
+  // Star Plans objective", rr) and the Yoda ring ("reroll one die per round").
+  // dsPlansOfferRerollsOrFinalize posts the next applicable choice, or scores
+  // the attempt when none remain (#186).
+  G.dsPlansAttempt = {
+    objectiveId: pc.objectiveId, systemId: pc.systemId,
+    deathStarInstanceIds: pc.deathStarInstanceIds,
+    deathStarInstanceId, faces,
+  };
+  return dsPlansOfferRerollsOrFinalize(G);
+}
+
+/** Whether the Yoda ring may reroll a blank on the current DSP roll. */
+function canQueueDsPlansYoda(G: GameState, d: NonNullable<GameState['dsPlansAttempt']>): boolean {
+  if (G.yodaRerollUsedThisRound) return false;
+  const holder = findYodaHolder(G);
+  if (!holder) return false;
+  if (!(G.rebel.leadersOnBoard[d.systemId] ?? []).includes(holder)) return false;
+  return d.faces.some((f) => f === 'blank');
+}
+
+/** Offer the next applicable DSP reroll/manipulation (One-in-a-Million, then
+ *  Yoda), or finalize the attempt when none remain. */
+function dsPlansOfferRerollsOrFinalize(G: GameState): { ok: boolean; reason?: string } {
+  const d = G.dsPlansAttempt;
+  if (!d) return { ok: false, reason: 'no-dsplans-attempt' };
+  // One-in-a-Million first — it can set a die straight to direct-hit.
+  if (!d.oimOffered && G.rebel.actionHand.includes('one-in-a-million') && d.faces.length > 0) {
+    d.oimOffered = true;
+    G.pendingChoice = {
+      kind: 'OneInAMillionOffer', side: 'Rebel', context: 'dsplans',
+      rebelRoleInRoll: 'attacker',
+      faces: [...d.faces], colors: d.faces.map(() => 'red' as const),
+    };
+    log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+      kind: 'OneInAMillionOffer', context: 'dsplans', dice: d.faces.length,
+    }});
+    return { ok: true };
+  }
+  // Yoda reroll — reroll one blank toward a direct-hit (once per round).
+  if (!d.yodaOffered && canQueueDsPlansYoda(G, d)) {
+    d.yodaOffered = true;
+    const yoda = findYodaHolder(G)!;
+    const blanks = d.faces.map((f, i) => f === 'blank' ? i : -1).filter((i) => i >= 0);
+    G.pendingChoice = {
+      kind: 'YodaReroll', side: 'Rebel', context: 'dsplans',
+      systemId: d.systemId, blankIndices: blanks, holderLeaderId: yoda,
+      missionFaces: [...d.faces],
+    };
+    log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+      kind: 'YodaReroll', context: 'dsplans', blanks: blanks.length,
+    }});
+    return { ok: true };
+  }
+  return finalizeDsPlans(G);
+}
+
+/** Resolve the One-in-a-Million offer on a DSP roll: set up to 2 dice faces
+ *  (empty picks = skip, keep the card), then continue to Yoda / finalize. */
+export function resolveDsPlansOneInAMillion(
+  G: GameState, picks: { index: number; face: string }[]
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'OneInAMillionOffer' || pc.context !== 'dsplans') return { ok: false, reason: 'no-pending' };
+  const d = G.dsPlansAttempt;
+  if (!d) return { ok: false, reason: 'no-dsplans-attempt' };
+  const applied = picks.filter((p) => p.index >= 0 && p.index < d.faces.length).slice(0, 2);
+  if (applied.length > 0) {
+    for (const p of applied) d.faces[p.index] = p.face;
+    const i = G.rebel.actionHand.indexOf('one-in-a-million');
+    if (i >= 0) { G.rebel.actionHand.splice(i, 1); G.rebel.actionDiscard.push('one-in-a-million'); }
+    log(G, { kind: 'one-in-a-million-used', side: 'Rebel', payload: {
+      context: 'dsplans', picks: applied, faces: [...d.faces],
+    }});
+  }
+  G.pendingChoice = undefined;
+  return dsPlansOfferRerollsOrFinalize(G);
+}
+
+/** Resolve the Yoda reroll offer on a DSP roll. `blankIndex >= 0` rerolls that
+ *  blank; -1 skips. Then finalize (or any remaining offer). */
+export function resolveDsPlansYoda(G: GameState, blankIndex: number): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'YodaReroll' || pc.context !== 'dsplans') return { ok: false, reason: 'no-pending' };
+  const d = G.dsPlansAttempt;
+  if (!d) return { ok: false, reason: 'no-dsplans-attempt' };
+  if (blankIndex >= 0 && d.faces[blankIndex] === 'blank') {
+    const nf = rollDie(G.rng, 'red').face;
+    d.faces[blankIndex] = nf;
+    G.yodaRerollUsedThisRound = true;
+    log(G, { kind: 'yoda-reroll', side: 'Rebel', payload: {
+      holder: pc.holderLeaderId, context: 'dsplans', index: blankIndex, newFace: nf, faces: [...d.faces],
+    }});
+  }
+  G.pendingChoice = undefined;
+  return dsPlansOfferRerollsOrFinalize(G);
+}
+
+/** Score the (possibly reroll-modified) Death Star Plans attempt. */
+function finalizeDsPlans(G: GameState): { ok: boolean; reason?: string } {
+  const d = G.dsPlansAttempt;
+  if (!d) return { ok: false, reason: 'no-dsplans-attempt' };
+  const pc = { objectiveId: d.objectiveId, systemId: d.systemId, deathStarInstanceIds: d.deathStarInstanceIds };
+  const deathStarInstanceId = d.deathStarInstanceId;
+  const faces = d.faces;
+  G.dsPlansAttempt = undefined;
   const directHit = faces.some((f) => f === 'direct-hit');
   if (directHit) {
     // Pick which Death Star to destroy. Default to the first if the caller

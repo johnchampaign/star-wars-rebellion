@@ -1934,11 +1934,16 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
 
       {/* Mission-context Yoda reroll (combat-context lives in CombatBoardLive). */}
       {G.pendingChoice?.kind === 'YodaReroll'
-        && G.pendingChoice.context === 'mission'
+        && (G.pendingChoice.context === 'mission' || G.pendingChoice.context === 'dsplans')
         && G.pendingChoice.side === humanSide && (
         <YodaMissionRerollModal G={G} choice={G.pendingChoice}
           onPick={(idx) => {
-            const r = phases.resolveYodaMissionReroll(G, idx);
+            // idx is the chosen blank to reroll, or -1 to skip. DSP context
+            // routes to the Death Star Plans resolver (#186).
+            const r = G.pendingChoice && G.pendingChoice.kind === 'YodaReroll'
+              && G.pendingChoice.context === 'dsplans'
+              ? combat.resolveDsPlansYoda(G, idx)
+              : phases.resolveYodaMissionReroll(G, idx);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -2067,11 +2072,15 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'OneInAMillionOffer'
-        && G.pendingChoice.context === 'mission'
+        && (G.pendingChoice.context === 'mission' || G.pendingChoice.context === 'dsplans')
         && G.pendingChoice.side === humanSide && (
         <OneInAMillionMissionModal choice={G.pendingChoice}
           onSubmit={(picks) => {
-            const r = phases.resolveOneInAMillionMission(G, picks);
+            // DSP context routes to the Death Star Plans resolver (#186).
+            const r = G.pendingChoice && G.pendingChoice.kind === 'OneInAMillionOffer'
+              && G.pendingChoice.context === 'dsplans'
+              ? combat.resolveDsPlansOneInAMillion(G, picks)
+              : phases.resolveOneInAMillionMission(G, picks);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -11064,7 +11073,7 @@ function YodaMissionRerollModal({
 }: {
   G: GameState;
   choice: {
-    kind: 'YodaReroll'; side: Side; context: 'combat' | 'mission';
+    kind: 'YodaReroll'; side: Side; context: 'combat' | 'mission' | 'dsplans';
     systemId: string; blankIndices: number[]; holderLeaderId: string;
     missionFaces?: string[];
     missionOwnSuccesses?: number;
@@ -11645,7 +11654,7 @@ function DetainedTargetPickModal({
 function OneInAMillionMissionModal({
   choice, onSubmit,
 }: {
-  choice: { faces: string[]; colors: ('red' | 'black')[]; rebelRoleInRoll: 'attacker' | 'opposer' };
+  choice: { faces: string[]; colors: readonly string[]; rebelRoleInRoll: 'attacker' | 'opposer' };
   onSubmit: (picks: { index: number; face: string }[]) => void;
 }) {
   const [picks, setPicks] = useState<Map<number, string>>(new Map());

@@ -470,7 +470,9 @@ export type ChoiceRequest =
       // rolls in both combat and mission contexts.
       kind: 'OneInAMillionOffer';
       side: Side; // 'Rebel'
-      context: 'combat' | 'mission';
+      // 'dsplans' = set faces of the Death Star Plans objective roll (the card
+      // explicitly works on that roll for an automatic success).
+      context: 'combat' | 'mission' | 'dsplans';
       // Whether the Rebel is the attacker or opposer (mission) / which side's
       // dice are flippable (combat).
       rebelRoleInRoll: 'attacker' | 'opposer';
@@ -1125,7 +1127,8 @@ export type ChoiceRequest =
       side: Side;        // always 'Rebel' but kept for consistency
       // 'combat' = re-roll a blank in pendingCombat.pendingAttack.dice
       // 'mission' = re-roll a blank in the stashed mission roll
-      context: 'combat' | 'mission';
+      // 'dsplans' = re-roll a blank in the Death Star Plans objective roll
+      context: 'combat' | 'mission' | 'dsplans';
       // Combat-only: which theater (for the panel header).
       theater?: Theater;
       systemId: SystemId;
@@ -1760,6 +1763,20 @@ export type GameState = {
   // Per-round Yoda-ring reroll state: once the Yoda-ring leader rerolls a
   // die this round, sets to true. Reset on entering Refresh.
   yodaRerollUsedThisRound?: boolean;
+
+  // Transient state for a Death Star Plans objective roll that's paused for
+  // One-in-a-Million / Yoda reroll offers (both apply to the DSP roll per the
+  // card text + rr). Holds the rolled faces while the player decides, then
+  // the success/miss is finalized against the (possibly modified) faces.
+  dsPlansAttempt?: {
+    objectiveId: string;
+    systemId: SystemId;
+    deathStarInstanceIds: string[];
+    deathStarInstanceId?: string;   // chosen target (if multiple Death Stars)
+    faces: string[];
+    oimOffered?: boolean;           // One-in-a-Million already offered
+    yodaOffered?: boolean;          // Yoda reroll already offered
+  };
 
   // Combat reports queued for the UI to display. Each is consumed (dismissed)
   // by the player after combat ends; the engine just appends.

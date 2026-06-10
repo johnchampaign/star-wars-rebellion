@@ -1035,6 +1035,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'YodaReroll' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
+    if (c.context === 'dsplans') {
+      // AI: reroll a blank toward the direct-hit the DSP roll needs, unless
+      // it already has one. (#186)
+      const haveHit = (c.missionFaces ?? []).some((f) => f === 'direct-hit');
+      const idx = haveHit ? -1 : (c.blankIndices[0] ?? -1);
+      return combat.resolveDsPlansYoda(G, idx).ok;
+    }
     if (c.context === 'mission') {
       // AI: always reroll the first blank (it's a free upgrade — same
       // policy as the auto-apply we replaced).
@@ -1421,6 +1428,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const rank = (f: string) => f === 'blank' ? 0 : f === 'special' ? 1 : f === 'hit' ? 2 : 3;
     const indexed = c.faces.map((f, i) => ({ i, r: rank(f) }))
       .sort((a, b) => a.r - b.r);
+    if (c.context === 'dsplans') {
+      // DSP needs exactly one direct-hit to succeed — set a single worst die
+      // to direct-hit (and spend the card) only if there isn't one already.
+      const haveHit = c.faces.some((f) => f === 'direct-hit');
+      const picks = haveHit ? [] : [{ index: indexed[0].i, face: 'direct-hit' }];
+      return combat.resolveDsPlansOneInAMillion(G, picks).ok;
+    }
     const picks = indexed.slice(0, Math.min(2, indexed.length))
       .filter((x) => x.r < 3) // don't bother overriding direct-hits
       .map((x) => ({ index: x.i, face: 'direct-hit' }));
