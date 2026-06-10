@@ -832,6 +832,28 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     if (summary.length) setAiActivity(summary);
   }, [tick, humanSide]);
 
+  // #179 (online): let a player declare "pass" during the OPPONENT's Command
+  // turn. RAW still applies — the pass is submitted only when it becomes their
+  // turn — but they don't have to come back just to click Pass. Cleared when
+  // the phase changes or after it fires. Never fires over a pending choice
+  // (e.g. an oppose-mission prompt), mission, or combat.
+  // MUST be declared before the early returns below — hooks run unconditionally
+  // on every render or React unmounts the tree (online loads with G null first,
+  // then populates, so a hook after the `if (!G)` return changes the hook count
+  // and blanks the page).
+  const [autoPassQueued, setAutoPassQueued] = useState(false);
+  useEffect(() => {
+    if (!autoPassQueued || !G || !online) return;
+    if (G.phase !== 'Command' || G.isGameOver) { setAutoPassQueued(false); return; }
+    if (!online.yourTurn || G.currentPlayer !== humanSide) return;
+    if (G.pendingChoice || G.pendingMission || G.pendingCombat) return;
+    setAutoPassQueued(false);
+    phases.pass(G, G.currentPlayer);
+    persist();
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPassQueued, tick, online?.yourTurn]);
+
   if (error) return <div className="placeholder"><h2>Load error</h2><p>{error}</p></div>;
   if (!dataRef.current) return <div className="placeholder">Loading data…</div>;
 
@@ -897,24 +919,6 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     persist();
     refresh();
   };
-
-  // #179 (online): let a player declare "pass" during the OPPONENT's Command
-  // turn. RAW still applies — the pass is submitted only when it becomes their
-  // turn — but they don't have to come back just to click Pass. Cleared when
-  // the phase changes or after it fires. Never fires over a pending choice
-  // (e.g. an oppose-mission prompt), mission, or combat.
-  const [autoPassQueued, setAutoPassQueued] = useState(false);
-  useEffect(() => {
-    if (!autoPassQueued || !G || !online) return;
-    if (G.phase !== 'Command' || G.isGameOver) { setAutoPassQueued(false); return; }
-    if (!online.yourTurn || G.currentPlayer !== humanSide) return;
-    if (G.pendingChoice || G.pendingMission || G.pendingCombat) return;
-    setAutoPassQueued(false);
-    phases.pass(G, G.currentPlayer);
-    persist();
-    refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [autoPassQueued, tick, online?.yourTurn]);
 
   const onPass = () => {
     if (!G) return;
