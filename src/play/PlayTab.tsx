@@ -7182,8 +7182,11 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                 // calibrated sabotageMarkerPos (dev positions tab, #174); fall
                 // back to the loyalty/planet cluster for systems not yet
                 // calibrated.
-                const sW = 30 * BOARD_SCALE;
-                const sH = 30 * BOARD_SCALE;
+                // The token art is a RECTANGLE (89x52 native) sized to cover a
+                // system's two resource icons — render it at native size like
+                // the loyalty tokens, not squeezed into a square.
+                const sW = 89 * BOARD_SCALE;
+                const sH = 52 * BOARD_SCALE;
                 const spx = (s.sabotageMarkerPos?.x ?? basePos.x) * BOARD_SCALE;
                 const spy = (s.sabotageMarkerPos?.y ?? basePos.y) * BOARD_SCALE;
                 return (
@@ -7193,7 +7196,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                       href={vmodAssetUrl('MarkerSabotage.png', MARKER_IMAGE_BASE)}
                       x={spx - sW / 2} y={spy - sH / 2}
                       width={sW} height={sH}
-                      preserveAspectRatio="xMidYMid meet"
+                      preserveAspectRatio="none"
                     />
                   </g>
                 );

@@ -214,9 +214,10 @@ export default function PositionsTab() {
         The big <span style={{ color: '#ffd54a' }}>yellow</span> marker is the planet center
         (<code>boardPos</code> — drives leader pips &amp; unit stacks); the smaller{' '}
         <span style={{ color: '#5aaaff' }}>blue</span> marker is the printed loyalty hex
-        (<code>loyaltyMarkerPos</code> — where the loyalty/subjugation disc sits); the small{' '}
-        <span style={{ color: '#ff9a3c' }}>orange</span> marker is the sabotage-token spot
-        (<code>sabotageMarkerPos</code> — drop it on the system&apos;s two RESOURCE icons; #174).
+        (<code>loyaltyMarkerPos</code> — where the loyalty/subjugation disc sits); the{' '}
+        <span style={{ color: '#ff9a3c' }}>orange rectangle</span> is the sabotage token&apos;s
+        actual footprint (<code>sabotageMarkerPos</code> — drag it to cover the system&apos;s two
+        RESOURCE icons; remote systems have none and get no rectangle; #174).
         Drop each on the matching spot, then Export. Repositioned markers turn green.
       </div>
 
@@ -371,30 +372,38 @@ export default function PositionsTab() {
                       </circle>
                     </>
                   )}
-                  {/* Sabotage / resource-icons marker — orange, draggable (#174) */}
-                  {hasResources && (
-                    <>
-                      {draggingSabotage && (
-                        <>
-                          <line x1={sx - 30} y1={sy} x2={sx + 30} y2={sy} stroke="rgba(255,150,60,0.6)" strokeWidth={1} pointerEvents="none" />
-                          <line x1={sx} y1={sy - 30} x2={sx} y2={sy + 30} stroke="rgba(255,150,60,0.6)" strokeWidth={1} pointerEvents="none" />
-                        </>
-                      )}
-                      <circle
-                        cx={sx} cy={sy} r={MARKER_R * 0.55}
-                        style={{
-                          fill: sabotageIsEdited ? 'rgba(80, 220, 120, 0.5)' : 'rgba(255, 150, 60, 0.4)',
-                          stroke: draggingSabotage ? '#ff7ab8' : (sabotageIsEdited ? 'rgba(80,220,120,0.95)' : 'rgba(255,150,60,0.95)'),
-                          strokeWidth: draggingSabotage ? 3 : 2,
-                          cursor: 'grab',
-                          pointerEvents: 'all',
-                        }}
-                        onMouseDown={(e) => { e.preventDefault(); setDragging({ id: s.id, kind: 'sabotage' }); }}
-                      >
-                        <title>{s.name} — sabotage marker (drop on the resource icons)</title>
-                      </circle>
-                    </>
-                  )}
+                  {/* Sabotage / resource-icons marker — orange RECTANGLE matching
+                      the real token footprint (89x52 native, covers both
+                      resource icons), draggable by its center (#174). Remote
+                      systems have no resource icons → no marker. */}
+                  {hasResources && (() => {
+                    const SAB_W = 89 * SCALE;
+                    const SAB_H = 52 * SCALE;
+                    return (
+                      <>
+                        {draggingSabotage && (
+                          <>
+                            <line x1={sx - 60} y1={sy} x2={sx + 60} y2={sy} stroke="rgba(255,150,60,0.6)" strokeWidth={1} pointerEvents="none" />
+                            <line x1={sx} y1={sy - 40} x2={sx} y2={sy + 40} stroke="rgba(255,150,60,0.6)" strokeWidth={1} pointerEvents="none" />
+                          </>
+                        )}
+                        <rect
+                          x={sx - SAB_W / 2} y={sy - SAB_H / 2}
+                          width={SAB_W} height={SAB_H} rx={2}
+                          style={{
+                            fill: sabotageIsEdited ? 'rgba(80, 220, 120, 0.35)' : 'rgba(255, 150, 60, 0.3)',
+                            stroke: draggingSabotage ? '#ff7ab8' : (sabotageIsEdited ? 'rgba(80,220,120,0.95)' : 'rgba(255,150,60,0.95)'),
+                            strokeWidth: draggingSabotage ? 3 : 2,
+                            cursor: 'grab',
+                            pointerEvents: 'all',
+                          }}
+                          onMouseDown={(e) => { e.preventDefault(); setDragging({ id: s.id, kind: 'sabotage' }); }}
+                        >
+                          <title>{s.name} — sabotage token footprint (drop over the two resource icons)</title>
+                        </rect>
+                      </>
+                    );
+                  })()}
                   <text
                     x={x} y={y + MARKER_R + 12}
                     textAnchor="middle"
