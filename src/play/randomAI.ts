@@ -618,7 +618,7 @@ function captureTargetLeaderId(G: GameState, side: Side, missionId: string, sysI
   return [...here].sort((a, b) => leaderValue(G, b) - leaderValue(G, a))[0] as LeaderId;
 }
 
-function bestCommandAction(G: GameState, side: Side): CommandAction {
+function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   const f = side === 'Rebel' ? G.rebel : G.empire;
   const actions: CommandAction[] = [];
   const allSystemIds = Object.keys(G.map.systems);
@@ -977,7 +977,11 @@ function bestCommandAction(G: GameState, side: Side): CommandAction {
 
   actions.push({ kind: 'pass', score: 0.5 });
   actions.sort((a, b) => b.score - a.score);
-  return actions[0]!;
+  // Return the full sorted list (pass is in there with score 0.5). The executor
+  // tries them in order and skips any that the engine rejects, so a high-score
+  // mission it can't actually reveal no longer forces a pass while feasible
+  // lower-score actions go untried (player report #190).
+  return actions;
 }
 
 /** Run one AI action for `side`. Returns true if something happened (caller
@@ -2211,20 +2215,30 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       return phases.skipAssignment(G, side).ok;
     }
     case 'Command': {
-      const action = bestCommandAction(G, side);
+      // Try actions in descending score order, skipping any the engine rejects,
+      // so a high-score mission we can't actually reveal no longer forces a
+      // pass while feasible lower-score actions go untried (player report #190).
+      const commandActions = bestCommandAction(G, side);
+      for (const action of commandActions) {
+      if (action.kind === 'pass') {
+        return phases.pass(G, side).ok;
+      }
       if (action.kind === 'reveal') {
         const r = phases.revealMission(G, side, action.missionId, action.targetSystemId, action.targetLeaderId);
         if (r.ok) return true;
-        // If reveal failed (illegal target etc.) try a few fallback systems.
-        // Recompute the locked target leader per fallback system.
-        const sysIds = Object.keys(G.map.systems);
-        for (let attempt = 0; attempt < 5; attempt++) {
-          const fallback = pick(sysIds)!;
-          const tgt = captureTargetLeaderId(G, side, action.missionId, fallback);
-          const r2 = phases.revealMission(G, side, action.missionId, fallback, tgt);
-          if (r2.ok) return true;
+        // The chosen target was illegal — try every REAL legal candidate system
+        // for this mission (from missionTargets). If none work, fall through to
+        // the next-best action rather than passing the whole turn.
+        const tr = missionTargets(G, side, action.missionId);
+        const candidates = tr.permissive ? Object.keys(G.map.systems) : tr.systemIds;
+        let revealed = false;
+        for (const sysId of candidates) {
+          const tgt = captureTargetLeaderId(G, side, action.missionId, sysId);
+          const r2 = phases.revealMission(G, side, action.missionId, sysId, tgt);
+          if (r2.ok) { revealed = true; break; }
         }
-        return phases.pass(G, side).ok;
+        if (revealed) return true;
+        continue; // can't reveal this mission anywhere — try the next action
       }
       if (action.kind === 'activate') {
         // Pull units from EVERY adjacent friendly system with no own
@@ -2319,12 +2333,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
         if (orders.length === 0) {
           const tss = G.map.systems[action.targetSystemId];
           const enemyAtTarget = tss?.units.some((u) => u.side !== side) ?? false;
-          if (!enemyAtTarget) return phases.pass(G, side).ok;
+          if (!enemyAtTarget) continue; // useless activation — try the next action
         }
         const r = phases.activateSystem(G, side, action.leaderId, action.targetSystemId, orders);
         if (r.ok) return true;
-        return phases.pass(G, side).ok;
+        continue; // activation rejected — try the next action
       }
+      } // end for over commandActions
       return phases.pass(G, side).ok;
     }
     default:

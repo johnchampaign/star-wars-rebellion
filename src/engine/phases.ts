@@ -2584,17 +2584,16 @@ export function resolveRapidMobilizationBasePick(
   const old = G.rebelBaseSystemId;
   const wasRevealed = !!G.rebelBaseRevealed;
 
-  // If the base was revealed, its Rebel units/leaders live in the actual old
-  // system. Establishing a new (hidden) base pulls them back into the hidden
-  // "Rebel Base" space (mirror of revealRebelBase, in reverse) so the location
-  // is secret again.
+  // RAW (rr p.11): "After establishing a new base, the Rebel player will not
+  // have any units at the 'Rebel Base' space until he moves units to it or
+  // deploys units there." So the base UNITS are LEFT BEHIND at the old
+  // location; the new (hidden) base space starts EMPTY. Leaders still move
+  // with the base into the hidden Rebel Base space. (Player report #191: the
+  // old code carried all units along to the new base.)
+  const oldSys = G.map.systems[old];
   if (wasRevealed) {
-    const oldSys = G.map.systems[old];
-    if (oldSys) {
-      const rebelUnits = oldSys.units.filter((u) => u.side === 'Rebel');
-      oldSys.units = oldSys.units.filter((u) => u.side !== 'Rebel');
-      G.map.rebelBaseSpace.units.push(...rebelUnits);
-    }
+    // Revealed base: units already sit at the old system — leave them there.
+    // Only the leaders return to the hidden "Rebel Base" space.
     const rebLeaders = G.rebel.leadersOnBoard[old] ?? [];
     if (rebLeaders.length > 0) {
       G.rebel.leadersOnBoard['rebel-base-space'] = [
@@ -2602,6 +2601,14 @@ export function resolveRapidMobilizationBasePick(
         ...rebLeaders,
       ];
       delete G.rebel.leadersOnBoard[old];
+    }
+  } else {
+    // Hidden base: units sit in the abstract "Rebel Base" space — drop them at
+    // the (now-abandoned) old location so the new base starts empty. Leaders
+    // stay in the base space and move with the base.
+    if (oldSys && G.map.rebelBaseSpace.units.length > 0) {
+      oldSys.units.push(...G.map.rebelBaseSpace.units);
+      G.map.rebelBaseSpace.units = [];
     }
   }
 
