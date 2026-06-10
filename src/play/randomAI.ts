@@ -675,6 +675,16 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   const revealedBaseDist = (side === 'Empire' && G.rebelBaseRevealed && G.rebelBaseSystemId)
     ? bfsDistances(G, G.rebelBaseSystemId, 4)
     : null;
+  // Mirror image for the REBEL: once the base is revealed an invasion is
+  // imminent, and the expert rushes every outlying unit home to defend. The
+  // Rebel branch had NO movement gradient for this (baseDist is only set while
+  // the base is hidden, to AVOID telegraphing it), so scattered Rebel force
+  // never converged on the threatened base — the AI moved units ~55% less than
+  // the expert (divergence harness). This is the defensive twin of
+  // revealedBaseDist: reward Rebel activations that flow force toward the base.
+  const rebelDefendDist = (side === 'Rebel' && G.rebelBaseRevealed && G.rebelBaseSystemId)
+    ? bfsDistances(G, G.rebelBaseSystemId, 4)
+    : null;
   // Precompute the set of probe-eliminated systems for the Empire.
   const eliminatedByProbe = side === 'Empire'
     ? new Set((G.empire.probeHand ?? [])
@@ -943,8 +953,30 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
       if (sysId === 'coruscant') ts -= 3;
     } else {
       if (baseDist) {
+        // Base still hidden — don't cluster units onto/next to it and give the
+        // location away.
         const d = distFrom(baseDist, sysId);
         if (d <= 1) ts -= 5;
+      }
+      if (rebelDefendDist) {
+        // Base revealed → DEFENSIVE convergence. Pull outlying Rebel force
+        // toward the threatened base, mirroring the Empire's attack gradient.
+        // The subsequent universal troop guard zeroes out any of these that
+        // can't actually bring a unit, so these bonuses only land where force
+        // really flows inward.
+        const rebLeadersHere = (G.rebel.leadersOnBoard[sysId] ?? []).length;
+        const dToBase = distFrom(rebelDefendDist, sysId);
+        if (sysId === G.rebelBaseSystemId) {
+          // Activate the base itself to draw adjacent defenders INTO it for the
+          // stand. (A leader already here can still pull from neighbors.)
+          ts += 22;
+        } else if (rebLeadersHere === 0) {
+          // Staging inward: activating a system 1-3 hops out moves its units one
+          // hop closer to the base each turn.
+          if (dToBase === 1) ts += 14;
+          else if (dToBase === 2) ts += 8;
+          else if (dToBase === 3) ts += 4;
+        }
       }
       if (sys.loyalty === 'imperial') ts += 3;
     }
