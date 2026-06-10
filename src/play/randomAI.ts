@@ -398,6 +398,45 @@ function empireProximityToBase(G: GameState): number {
 }
 
 /** Score a target system for an Empire mission, with situational bias. */
+/** Opposition term shared by both sides' target scoring.
+ *
+ *  RAW: an ATTEMPT mission whose target system has NO opposing leader present
+ *  AUTO-SUCCEEDS — no roll, strict upside (rr p.8). The expert engineers this
+ *  constantly (they get ~3× the unopposed successes the current AI does, and
+ *  roll ~2× less — see scripts/ai-divergence.mjs). The old target scoring never
+ *  rewarded an undefended target, so the AI happily revealed into a system with
+ *  an enemy leader sitting on it and gambled on dice.
+ *
+ *  Returns a score delta for choosing `targetSysId`:
+ *   - undefended (no opposing leader)  → +bonus (auto-success)
+ *   - defended                         → −penalty scaled by the opposers'
+ *                                        icons in THIS mission's skill (a
+ *                                        high-skill opposer rolls more dice and
+ *                                        is likelier to beat the attempt).
+ *  RESOLVE missions (isAttempt:false, e.g. Seek Yoda) skip opposition entirely,
+ *  so they get no term. */
+function oppositionTargetTerm(G: GameState, attackerSide: Side, missionId: string, targetSysId: SystemId): number {
+  const card = G.catalog.missions[missionId];
+  if (!card || !card.isAttempt) return 0; // RESOLVE missions can't be opposed
+  const oppSide = attackerSide === 'Rebel' ? 'Empire' : 'Rebel';
+  const oppF = oppSide === 'Rebel' ? G.rebel : G.empire;
+  const oppLeaders = oppF.leadersOnBoard[targetSysId] ?? [];
+  if (oppLeaders.length === 0) {
+    return 6; // undefended → auto-success. The headline expert behavior.
+  }
+  // Defended: penalize by how hard they can oppose. Opposers roll dice equal to
+  // their icons in the mission's skill, so a 0-icon opposer barely threatens the
+  // attempt while a 2-icon opposer is a real wall. Always at least a small
+  // penalty for the presence of ANY leader (they still roll a die / can react).
+  let oppSkill = 0;
+  for (const lid of oppLeaders) {
+    const ld = G.catalog.leaders[lid];
+    if (!ld || !card.skill) continue;
+    oppSkill += (ld.skills[card.skill as keyof typeof ld.skills] ?? 0);
+  }
+  return -2 - oppSkill * 2; // -2 (any leader) down through -2/skill-icon
+}
+
 function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: SystemId): number {
   let s = 0;
   const sys = G.catalog.systems[targetSysId];
@@ -420,6 +459,8 @@ function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: 
   }
   // Captures / probes don't care about target system per se.
   if (missionId === 'gather-intel') s += 3;
+  // Prefer an undefended target so the attempt auto-succeeds (see helper).
+  s += oppositionTargetTerm(G, 'Empire', missionId, targetSysId);
   return s;
 }
 
@@ -493,6 +534,8 @@ function rebelMissionTargetScore(
       (lid) => (G.catalog.leaders[lid]?.skills?.specOps ?? 0) > 0);
     s += specOpsHere ? -3 : 4;
   }
+  // Prefer an undefended target so the attempt auto-succeeds (see helper).
+  s += oppositionTargetTerm(G, 'Rebel', missionId, targetSysId);
   return s;
 }
 
