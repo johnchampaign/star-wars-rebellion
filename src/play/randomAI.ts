@@ -959,7 +959,14 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
     //
     // Exception: activating a system that already has your units is fine
     // (consolidation, joining a prior wave, leader+units defensive set).
-    if (side === 'Empire') {
+    {
+      // UNIVERSAL troop guard (applies to BOTH sides — the rule above is
+      // explicitly universal, but this was historically gated to Empire only.
+      // The expert-vs-AI divergence harness flagged Rebel as activating 59%
+      // MORE than the expert while moving units 59% LESS — i.e. the Rebel AI
+      // was landing leaders alone exactly the way the Empire guard was added to
+      // prevent. Same logic, side-generic now.)
+      const actF = side === 'Rebel' ? G.rebel : G.empire;
       const adj = G.catalog.adjacency[sysId] ?? [];
       // Transport-aware "can I actually bring units here?" — a ground unit or
       // restricted fighter only moves if a capital ship at the SAME source has
@@ -969,14 +976,14 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
       // (player report #114: "activated leaders without accompanying troops").
       let movable = 0;
       for (const a of adj) {
-        if ((G.empire.leadersOnBoard[a] ?? []).length > 0) continue;
+        if ((actF.leadersOnBoard[a] ?? []).length > 0) continue;
         const ss2 = G.map.systems[a];
         if (!ss2) continue;
         let selfMoving = 0; // capital ships: move themselves + provide capacity
         let capacity = 0;
         let needCarry = 0; // ground + restricted fighters: need a carrier
         for (const u of ss2.units) {
-          if (u.side !== 'Empire') continue;
+          if (u.side !== side) continue;
           const t = G.catalog.unitTypes[u.typeId];
           if (!t || t.transport.immobile) continue;
           if (t.transport.capacity > 0) { selfMoving++; capacity += t.transport.capacity; }
@@ -984,7 +991,7 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         }
         movable += selfMoving + Math.min(capacity, needCarry);
       }
-      const ownHere = sys.units.filter((u) => u.side === 'Empire').length;
+      const ownHere = sys.units.filter((u) => u.side === side).length;
       if (movable === 0 && ownHere === 0) {
         // Nothing can actually be brought and no force already there → the
         // leader would sit alone. Strong negative so the AI moves a different
