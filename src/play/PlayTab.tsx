@@ -179,6 +179,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'RetreatDecision':          return pc.side === side;
     // Infiltration / Stolen Plans / Plan The Assault are always Rebel choices.
     case 'InfiltrationPick':         return side === 'Rebel';
+    case 'SafeHavenPick':            return side === 'Rebel';
     case 'StolenPlansReorder':       return side === 'Rebel';
     case 'PlanTheAssaultShips':      return side === 'Rebel';
     case 'LeadStrikeTeamUnits':      return side === 'Rebel';
@@ -1246,7 +1247,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         }}>
           <div style={{ flex: 1 }}>
             <div style={{ color: sideColor(aiSide), fontWeight: 700, marginBottom: 2 }}>
-              {aiSide} just:
+              {/* "since your last turn" rather than "just" — these are the AI's
+                  actions accumulated since the human last had control, which
+                  can span a round boundary if the human passed early (#181). */}
+              {aiSide} — since your last turn:
             </div>
             <div style={{ color: '#cfe2f5', display: 'flex', flexWrap: 'wrap', gap: '2px 10px' }}>
               {aiActivity.map((line, i) => {
@@ -2659,6 +2663,21 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           choice={G.pendingChoice}
           onPick={(keepId) => {
             const r = phases.resolveInfiltrationPick(G, keepId);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'SafeHavenPick'
+        && (!online || online.yourTurn) && (
+        <SafeHavenPickModal
+          G={G}
+          choice={G.pendingChoice}
+          onConfirm={(picks) => {
+            const r = phases.resolveSafeHavenPick(G, picks);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }}
@@ -4553,6 +4572,73 @@ function InfiltrationPickModal({ G, choice, onPick }: {
       bottomHint="Returned to the bottom; you'll see it again later."
       onConfirm={(topCardId, _bottomCardId) => onPick(topCardId)}
     />
+  );
+}
+
+/** RoE Safe Haven — pick up to 2 units from the build queue to deploy here. */
+function SafeHavenPickModal({ G, choice, onConfirm }: {
+  G: GameState;
+  choice: { kind: 'SafeHavenPick'; systemId: string; units: { slot: 1 | 2 | 3; index: number; typeId: string }[] };
+  onConfirm: (pickedIndices: number[]) => void;
+}) {
+  const color = sideColor('Rebel');
+  const [selected, setSelected] = useState<number[]>([]);
+  const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  const toggle = (i: number) => {
+    setSelected((cur) => {
+      if (cur.includes(i)) return cur.filter((x) => x !== i);
+      if (cur.length >= 2) return cur; // cap at 2
+      return [...cur, i];
+    });
+  };
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2600,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 8,
+        padding: 24, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+      }}>
+        <h3 style={{ color, marginTop: 0 }}>Safe Haven — deploy up to 2 units</h3>
+        <div style={{ color: '#cbc4b0', fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>
+          Choose up to <b>2 units</b> from your build queue to deploy directly to <b>{sysName}</b>.
+          You may take fewer (or none). Selected: {selected.length}/2.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {choice.units.map((u, i) => {
+            const isSel = selected.includes(i);
+            const name = G.catalog.unitTypes[u.typeId]?.name ?? u.typeId;
+            return (
+              <button
+                key={`${u.slot}-${u.index}`}
+                className="tab-button"
+                onClick={() => toggle(i)}
+                style={{
+                  textAlign: 'left', padding: '8px 12px',
+                  borderColor: isSel ? color : '#2a2d34',
+                  background: isSel ? 'rgba(170,224,255,0.12)' : '#0c0d10',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                }}
+              >
+                <span style={{ width: 18 }}>{isSel ? '☑' : '☐'}</span>
+                <span style={{ fontWeight: 700, color: '#fff' }}>{name}</span>
+                <span style={{ marginLeft: 'auto', color: '#888', fontSize: 11 }}>build slot {u.slot}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+          <button className="tab-button" style={{ borderColor: color, color }}
+            onClick={() => onConfirm(selected)}>
+            Deploy {selected.length} unit{selected.length === 1 ? '' : 's'}
+          </button>
+          <button className="tab-button" onClick={() => onConfirm([])}>
+            Take none
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

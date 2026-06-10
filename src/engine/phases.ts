@@ -3687,6 +3687,29 @@ export function resolveInfiltrationPick(G: GameState, keepOnTopId: string): { ok
   return { ok: true };
 }
 
+/** RoE Safe Haven — deploy the chosen build-queue units (0..2) to the mission
+ *  system, then resume. `pickedIndices` are indices into the choice's `units`
+ *  list; up to 2, duplicates ignored. An empty list = "take none" (legal —
+ *  the card is "up to 2"). */
+export function resolveSafeHavenPick(G: GameState, pickedIndices: number[]): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'SafeHavenPick') return { ok: false, reason: 'no-pending-safe-haven' };
+  const picks = [...new Set(pickedIndices)].filter((i) => i >= 0 && i < choice.units.length).slice(0, 2);
+  // Resolve the picks to {slot, typeId}, then remove them from the queue
+  // highest-index-first within each slot so earlier indices stay valid.
+  const chosen = picks.map((i) => choice.units[i]);
+  for (const slot of [1, 2, 3] as const) {
+    const idxs = chosen.filter((u) => u.slot === slot).map((u) => u.index).sort((a, b) => b - a);
+    for (const idx of idxs) G.rebel.buildQueue[slot].splice(idx, 1);
+  }
+  const deployed: string[] = [];
+  for (const u of chosen) { M.deployUnit(G, 'Rebel', u.typeId, choice.systemId); deployed.push(u.typeId); }
+  log(G, { kind: 'safe-haven-deploy', side: 'Rebel', payload: { systemId: choice.systemId, unitTypes: deployed } });
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 function runMissionEffect(G: GameState, side: Side, missionId: string, targetSystemId: SystemId, leaderIds: LeaderId[], targetLeaderId?: LeaderId, successMargin?: number): void {
   const card = G.catalog.missions[missionId];
   if (!card) return;

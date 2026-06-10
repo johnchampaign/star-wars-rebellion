@@ -1962,6 +1962,15 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const r = phases.resolveStolenPlansPick(G, best);
     return r.ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'SafeHavenPick' && side === 'Rebel') {
+    // AI: take up to 2 units — prefer the higher build slots (closer to done).
+    const c = G.pendingChoice;
+    const order = c.units
+      .map((_u, i) => i)
+      .sort((a, b) => c.units[b].slot - c.units[a].slot)
+      .slice(0, 2);
+    return phases.resolveSafeHavenPick(G, order).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'PlanTheAssaultShips' && side === 'Rebel') {
     // AI: send every available ship.
     const c = G.pendingChoice;

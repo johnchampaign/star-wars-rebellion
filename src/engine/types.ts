@@ -244,6 +244,10 @@ export type ChoiceRequest =
   | { kind: 'YesNo'; prompt: string }
   | { kind: 'ChooseActionCard'; from: string[] }
   | { kind: 'InfiltrationPick'; missionId: string; topId: string; bottomId: string }
+  // RoE Safe Haven — Rebel chooses up to 2 units from their build queue to
+  // deploy at the mission system. `units` is the flat pickable list (slot +
+  // index into that slot's queue + typeId). Resolver takes the chosen indices.
+  | { kind: 'SafeHavenPick'; side: 'Rebel'; systemId: SystemId; units: { slot: 1 | 2 | 3; index: number; typeId: string }[] }
   | {
       // Covert Operation: drew 2 objectives, keep 1 (into hand), other
       // goes to the bottom of the deck. Distinct from InfiltrationPick

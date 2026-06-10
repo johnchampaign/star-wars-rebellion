@@ -1770,14 +1770,21 @@ const assault: EffectHandler = (G, ctx) => {
 const safeHaven: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  const taken: string[] = [];
+  // Build the pickable list of every unit currently in the Rebel build queue.
+  // The PLAYER chooses up to 2 (#182 — was auto-taking the first 2). If the
+  // queue is empty there's nothing to choose, so the mission just succeeds.
+  const units: { slot: 1 | 2 | 3; index: number; typeId: string }[] = [];
   for (const slot of [1, 2, 3] as const) {
-    const q = G.rebel.buildQueue[slot];
-    while (taken.length < 2 && q.length > 0) taken.push(q.shift()!);
-    if (taken.length === 2) break;
+    G.rebel.buildQueue[slot].forEach((typeId, index) => units.push({ slot, index, typeId }));
   }
-  for (const typeId of taken) M.deployUnit(G, 'Rebel', typeId, sysId);
-  log(G, { kind: 'safe-haven-deploy', side: 'Rebel', payload: { systemId: sysId, unitTypes: taken } });
+  if (units.length === 0) {
+    log(G, { kind: 'safe-haven-deploy', side: 'Rebel', payload: { systemId: sysId, unitTypes: [] } });
+    return true;
+  }
+  G.pendingChoice = { kind: 'SafeHavenPick', side: 'Rebel', systemId: sysId, units };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'SafeHavenPick', systemId: sysId, count: units.length,
+  }});
   return true;
 };
 
