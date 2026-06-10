@@ -474,10 +474,32 @@ export function buildToQueue(G: GameState, side: Side, typeId: UnitTypeId, slot:
 export function deployUnit(G: GameState, side: Side, typeId: UnitTypeId, systemId: SystemId): void {
   const ss = stateAt(G, systemId);
   if (!ss) return;
+  // The completed Death Star and the Death Star Under Construction are the
+  // same Death Star (one token). Deploying the DS removes any DSUC still on
+  // the board so the two never coexist — e.g. Imperial Might pulling the
+  // finished Death Star off build space 1 (player report #188). The normal
+  // completion path removes the DSUC first, so this is a no-op there.
+  if (typeId === 'death-star') removeDeathStarUnderConstruction(G);
   const inst = mkInstance(typeId, side);
   ss.units.push(inst);
   log(G, { kind: 'deploy', side, payload: { typeId, systemId, unit: inst.instanceId } });
   applyInvariants(G, [systemId]);
+}
+
+/** Remove the Death Star Under Construction from wherever it sits (it's the
+ *  same Death Star that just deployed in completed form). No-op if none. */
+function removeDeathStarUnderConstruction(G: GameState): void {
+  for (const sid of Object.keys(G.map.systems)) {
+    const arr = G.map.systems[sid].units;
+    const i = arr.findIndex((u) => u.typeId === 'death-star-under-construction');
+    if (i >= 0) {
+      const removed = arr.splice(i, 1)[0];
+      log(G, { kind: 'dsuc-replaced-by-death-star', side: 'Empire', payload: {
+        systemId: sid, removed: removed.instanceId,
+      }});
+      return;
+    }
+  }
 }
 
 /** Gain a unit (mission text "gain X") — bypasses sabotage / 2-per-system /

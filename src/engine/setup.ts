@@ -466,6 +466,15 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   const rebel = emptyFaction('Rebel');
   const empire = emptyFaction('Empire');
 
+  // RAW (rr p.15 setup): the Imperial player draws 2 probe cards into hand —
+  // done AFTER the Rebel base probe is out of the deck so the Empire can't
+  // start holding the base location (player report #189: started with 0).
+  // For the interactive base-pick path the deck isn't finalized yet (the real
+  // base probe is removed in pickRebelBase), so the draw is deferred to there.
+  if (!pendingRebelBasePick) {
+    empire.probeHand = probeDeck.splice(0, 2);
+  }
+
   // RoE "New Starter Units" (rules p.8): the Empire begins with its Death
   // Star already part-built — a Death Star Under Construction model on the
   // board (deployed via the starting-unit list) AND the completed Death Star
