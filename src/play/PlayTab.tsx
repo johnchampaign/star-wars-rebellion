@@ -898,6 +898,24 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     refresh();
   };
 
+  // #179 (online): let a player declare "pass" during the OPPONENT's Command
+  // turn. RAW still applies — the pass is submitted only when it becomes their
+  // turn — but they don't have to come back just to click Pass. Cleared when
+  // the phase changes or after it fires. Never fires over a pending choice
+  // (e.g. an oppose-mission prompt), mission, or combat.
+  const [autoPassQueued, setAutoPassQueued] = useState(false);
+  useEffect(() => {
+    if (!autoPassQueued || !G || !online) return;
+    if (G.phase !== 'Command' || G.isGameOver) { setAutoPassQueued(false); return; }
+    if (!online.yourTurn || G.currentPlayer !== humanSide) return;
+    if (G.pendingChoice || G.pendingMission || G.pendingCombat) return;
+    setAutoPassQueued(false);
+    phases.pass(G, G.currentPlayer);
+    persist();
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPassQueued, tick, online?.yourTurn]);
+
   const onPass = () => {
     if (!G) return;
     // Guard: passing ENDS your Command phase for the round — any missions you
@@ -1318,6 +1336,40 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         />
       )}
 
+      {/* #179 (online): while it's the opponent's Command turn, let the player
+          pre-declare a pass. The actual pass submits when their turn arrives
+          (RAW — you pass ON your turn); this just saves a round trip. */}
+      {online && G.phase === 'Command' && !G.isGameOver && G.currentPlayer !== humanSide && (
+        <div style={{
+          marginTop: 12, background: '#15171c', borderRadius: 4, padding: 12,
+          border: '1px solid #2a2d34', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        }}>
+          <span style={{ color: '#aaa', fontSize: 13 }}>
+            Command — opponent&apos;s turn.
+          </span>
+          <button
+            className="tab-button"
+            style={autoPassQueued ? { borderColor: '#80dc78', color: '#80dc78' } : undefined}
+            onClick={() => {
+              if (autoPassQueued) { setAutoPassQueued(false); return; }
+              const f = humanSide === 'Rebel' ? G.rebel : G.empire;
+              const pending = f.leadersOnMissions.length;
+              if (pending > 0) {
+                const ok = window.confirm(
+                  `You still have ${pending} assigned mission${pending === 1 ? '' : 's'} you haven't revealed.\n\n` +
+                  `Passing ends your Command phase for this round — those missions will NOT be carried out. ` +
+                  `Queue the pass anyway?`,
+                );
+                if (!ok) return;
+              }
+              setAutoPassQueued(true);
+            }}
+          >
+            {autoPassQueued ? '✓ Will pass when your turn comes — click to cancel' : 'Pass my next turn (end my Command phase)'}
+          </button>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
         <FactionPanel G={G} side="Rebel" humanSide={humanSide} />
         <FactionPanel G={G} side="Empire" humanSide={humanSide} />
@@ -1476,23 +1528,25 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           it's not your turn, the modal isn't shown, so it can never lock. The
           report is cleared by whoever currently holds the turn, via onAckReport
           (server-persisted acknowledge online). */}
-      {G.combatReports && G.combatReports.length > 0
-        && (!online || online.yourTurn) && (
-        <CombatReportModal
-          G={G}
-          report={G.combatReports[0]}
-          onDismiss={() => onAckReport('combat')}
-        />
-      )}
-
-      {G.missionReports && G.missionReports.length > 0
-        && (!online || online.yourTurn) && (
-        <MissionReportModal
-          G={G}
-          report={G.missionReports[0]}
-          onDismiss={() => onAckReport('mission')}
-        />
-      )}
+      {/* Combat + mission report modals — when BOTH are queued, show them in
+          true chronological order via the seq stamp (turnLog length at queue
+          time). Previously both rendered at once and the mission modal (later
+          in the JSX) stacked on top, so an AI turn that fought a battle THEN
+          ran a mission showed the mission result first (#178). Legacy reports
+          without seq sort as 0 → combat-first, which matches that flow. */}
+      {(() => {
+        const cr = G.combatReports?.[0];
+        const mr = G.missionReports?.[0];
+        if (online && !online.yourTurn) return null;
+        const combatFirst = !!cr && (!mr || (cr.seq ?? 0) <= (mr.seq ?? Number.MAX_SAFE_INTEGER));
+        if (cr && combatFirst) {
+          return <CombatReportModal G={G} report={cr} onDismiss={() => onAckReport('combat')} />;
+        }
+        if (mr) {
+          return <MissionReportModal G={G} report={mr} onDismiss={() => onAckReport('mission')} />;
+        }
+        return null;
+      })()}
 
       {G.objectiveReports && G.objectiveReports.length > 0
         && (!G.missionReports || G.missionReports.length === 0)
@@ -6096,6 +6150,31 @@ function EnlargedSector({ G, system }: { G: GameState; system: System }) {
               SABOTAGED
             </span>
           )}
+          {/* RoE target markers at this system (Secure the Plans / Raid
+              Outposts / Rebel Cell / Show No Fear) — shown here too, not just
+              on the map overview (player report #175). */}
+          {(state.targetMarkers ?? []).map((tm, i) => {
+            const img: Record<string, string> = {
+              'secure-the-plans': 'MarkerSecureThePlans.png',
+              'raid-outposts-2': 'MarkerRaidOutposts.png',
+              'rebel-cell-2': 'MarkerRebelCell.png',
+              'show-no-fear-3': 'MarkerShowNoFear.png',
+            };
+            const label: Record<string, string> = {
+              'secure-the-plans': 'Secure the Plans',
+              'raid-outposts-2': 'Raid Outposts',
+              'rebel-cell-2': 'Rebel Cell',
+              'show-no-fear-3': 'Show No Fear',
+            };
+            return (
+              <span key={`tm-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#ffd54a', background: 'rgba(60,45,10,0.85)', padding: '2px 6px', borderRadius: 2, fontWeight: 600 }}>
+                {img[tm.source] && (
+                  <img src={vmodAssetUrl(img[tm.source], MARKER_IMAGE_BASE)} width={20} height={20} alt="" />
+                )}
+                TARGET — {label[tm.source] ?? tm.source}
+              </span>
+            );
+          })}
           {isBaseRevealed && (
             <span style={{ fontSize: 11, color: '#80dc78', background: 'rgba(10,60,30,0.85)', padding: '2px 6px', borderRadius: 2, fontWeight: 600 }}>
               REBEL BASE
@@ -6443,18 +6522,26 @@ function LeaderPips({ G, systemId, centerX, centerY }: {
         const cx = startX + i * (SIZE + GAP) + SIZE / 2;
         // Active leaders use side colour. Captured/carbonite override with a
         // distinctive ring + label so the player can see who's held where.
+        // Cinematic Confrontation: the leader is marked and will be
+        // eliminated when the Command phase ends — show it, or the kill
+        // looks like it didn't register (#176).
+        const isMarked = x.kind === 'active'
+          && (G.cinematicMarkedForElimination ?? []).includes(x.leader.id as LeaderId);
         const ringColor =
           x.kind === 'captured'  ? '#ff3a3a' :
           x.kind === 'carbonite' ? '#4fc3f7' :
+          isMarked               ? '#ff7800' :
           x.side === 'Rebel'      ? '#aae0ff' : '#ffaaaa';
         const glowColor =
           x.kind === 'captured'  ? 'rgba(255,58,58,0.9)' :
           x.kind === 'carbonite' ? 'rgba(79,195,247,0.9)' :
+          isMarked               ? 'rgba(255,120,0,0.95)' :
           x.side === 'Rebel'      ? 'rgba(170,224,255,0.85)' : 'rgba(255,170,170,0.85)';
         const clipId = `lpip-${systemId}-${x.leader.id}-${x.kind}`;
         const titlePrefix =
           x.kind === 'captured'  ? `CAPTURED ${x.side}` :
           x.kind === 'carbonite' ? `CARBONITE ${x.side}` :
+          isMarked               ? `${x.side} — MARKED for elimination at end of this Command phase (Confrontation)` :
           x.side;
         const pipKey = `${x.kind}-${x.leader.id}`;
         return (
@@ -6471,7 +6558,7 @@ function LeaderPips({ G, systemId, centerX, centerY }: {
             </defs>
             {/* Soft outer glow — easier to spot the cluster on a busy map */}
             <circle cx={cx} cy={centerY} r={SIZE / 2 + 1.5}
-              style={{ fill: 'none', stroke: glowColor, strokeWidth: x.kind === 'active' ? 1 : 1.5, opacity: 0.75 }} />
+              style={{ fill: 'none', stroke: glowColor, strokeWidth: x.kind === 'active' && !isMarked ? 1 : 1.5, opacity: 0.75 }} />
             <image
               href={vmodAssetUrl(x.leader.image, LEADER_IMAGE_BASE)}
               x={cx - SIZE / 2} y={centerY - SIZE / 2}

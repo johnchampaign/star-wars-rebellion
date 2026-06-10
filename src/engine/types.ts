@@ -1519,6 +1519,9 @@ export type MissionResolutionReport = {
   portraitBonus?: number;            // +2 if the assigned leader matches the card's portrait
   attackerTotal?: number;            // dice successes + portrait
   result: 'success' | 'failure' | 'auto-success';
+  /** Monotonic ordering stamp (turnLog length at queue time) — see
+   *  CombatReport.seq. */
+  seq?: number;
   /** Human-readable notes for response-card interventions that fired during
    *  resolution (Undercover relocate, Blindside, Wookie Guardian, etc.).
    *  Surfaced in MissionReportModal so the player understands WHY a mission
@@ -1568,6 +1571,9 @@ export type CombatReport = {
   retreats?: { side: Side; toSystemId: SystemId; leaderId?: LeaderId }[];
   winner: Side | 'draw' | null;
   totalRounds: number;
+  /** Monotonic ordering stamp (turnLog length at queue time) so the UI can
+   *  show queued combat/mission reports in true chronological order. */
+  seq?: number;
 };
 
 // ---------- Refresh-phase summary ----------

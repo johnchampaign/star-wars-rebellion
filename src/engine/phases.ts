@@ -1126,6 +1126,7 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
     // posts, matching the attempt-mission ordering.)
     if (card && !card.isAttempt) {
       (G.missionReports ??= []).push({
+        seq: G.turnLog.length,
         missionId: pending.missionId,
         resolverSide: pending.resolverSide,
         targetSystemId: pending.targetSystemId,
@@ -1435,6 +1436,7 @@ function finalizeMissionRoll(
     result: succeeded ? 'success' : 'failure',
   }});
   (G.missionReports ??= []).push({
+    seq: G.turnLog.length,
     missionId: pm.missionId,
     resolverSide: pm.resolverSide,
     targetSystemId: pm.targetSystemId,
@@ -3155,6 +3157,7 @@ export function resolveWookieGuardianOffer(G: GameState, accept: boolean): { ok:
     // Push a fail-report so the player sees a modal explaining why the
     // mission was auto-stopped (instead of the mission silently vanishing).
     (G.missionReports ??= []).push({
+      seq: G.turnLog.length,
       missionId: pm.missionId,
       resolverSide: pm.resolverSide,
       targetSystemId: pm.targetSystemId,

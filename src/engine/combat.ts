@@ -2623,6 +2623,9 @@ function endCombat(G: GameState): void {
   else if (!attackerLeft && !defenderLeft) c.report.winner = 'draw';
   else c.report.winner = null;
   if (!G.combatReports) G.combatReports = [];
+  // Stamp queue-time ordering so the UI shows this report in true
+  // chronological order relative to queued mission reports (#178).
+  c.report.seq = G.turnLog.length;
   G.combatReports.push(c.report);
 
   log(G, { kind: 'combat-end', payload: { systemId: c.systemId, rounds: c.round, winner: c.report.winner } });
