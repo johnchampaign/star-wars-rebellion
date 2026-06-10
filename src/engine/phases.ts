@@ -1361,7 +1361,8 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
     finalizeMissionRoll(G, pm, c, skill, attackerDice, opposerDice,
       pm.r2d2Pending.attFaces, pm.r2d2Pending.oppFaces,
       pm.r2d2Pending.attSuccesses, pm.r2d2Pending.oppSuccesses,
-      portrait, oppLeaderIds as LeaderId[]);
+      portrait, oppLeaderIds as LeaderId[],
+      pm.r2d2Pending.attColors, pm.r2d2Pending.oppColors);
     pm.r2d2Pending = undefined;
   }
 
@@ -1407,6 +1408,10 @@ function finalizeMissionRoll(
   oppSuccesses: number,
   portrait: number,
   oppLeaderIds: LeaderId[],
+  // Per-die colors (red/black/green) parallel to the faces arrays — lets the
+  // report modal render RoE minor-skill GREEN dice as green (#minor-dice).
+  attColors?: string[],
+  oppColors?: string[],
 ): void {
   // Contingency Plan bonus: +2 successes on Lando's next mission attempt this
   // round. Consumed when applied. Only when Lando is among the resolvers and
@@ -1437,8 +1442,8 @@ function finalizeMissionRoll(
     opposerSide: c.opposerSide,
     opposerLeaders: [...oppLeaderIds] as LeaderId[],
     skill,
-    attackerDice: { count: Math.min(attackerDice, 10), faces: attFaces, successes: attSuccesses },
-    opposerDice: { count: Math.min(opposerDice, 10), faces: oppFaces, successes: oppSuccesses },
+    attackerDice: { count: Math.min(attackerDice, 10), faces: attFaces, colors: attColors, successes: attSuccesses },
+    opposerDice: { count: Math.min(opposerDice, 10), faces: oppFaces, colors: oppColors, successes: oppSuccesses },
     portraitBonus: portrait,
     attackerTotal,
     result: succeeded ? 'success' : 'failure',
@@ -1610,6 +1615,7 @@ function continueMissionFromStash(G: GameState, pm: MissionResolution): void {
     stash.attFaces, stash.oppFaces,
     stash.attSuccesses, stash.oppSuccesses,
     stash.portrait, stash.oppLeaderIds,
+    stash.attColors, stash.oppColors,
   );
   pm.r2d2Pending = undefined;
   if (maybePostMissionRingTrigger(G, pm)) return;
@@ -1710,6 +1716,7 @@ export function resolveR2D2MissionFlip(G: GameState, flipIndex: number | null): 
     stash.attFaces, stash.oppFaces,
     stash.attSuccesses, stash.oppSuccesses,
     stash.portrait, stash.oppLeaderIds,
+    stash.attColors, stash.oppColors,
   );
   pm.r2d2Pending = undefined;
   if (maybePostMissionRingTrigger(G, pm)) return { ok: true };
@@ -2734,6 +2741,7 @@ export function resolveOneInAMillionMission(
     stash.attFaces, stash.oppFaces,
     stash.attSuccesses, stash.oppSuccesses,
     stash.portrait, stash.oppLeaderIds,
+    stash.attColors, stash.oppColors,
   );
   pm.r2d2Pending = undefined;
   if (maybePostMissionRingTrigger(G, pm)) return { ok: true };

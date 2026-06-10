@@ -1511,8 +1511,11 @@ export type MissionResolutionReport = {
   opposerLeaders: LeaderId[];        // any opposer leaders at the target after the send-from-pool choice
   skill: string;
   // Roll data — undefined if unopposed (auto-success).
-  attackerDice?: { count: number; faces: string[]; successes: number };
-  opposerDice?: { count: number; faces: string[]; successes: number };
+  // colors[] parallels faces[] (red/black/green) — green = RoE minor-skill
+  // dice, so the report modal can render them distinctly. Optional: reports
+  // recorded before this field existed have faces only (render as red).
+  attackerDice?: { count: number; faces: string[]; colors?: string[]; successes: number };
+  opposerDice?: { count: number; faces: string[]; colors?: string[]; successes: number };
   portraitBonus?: number;            // +2 if the assigned leader matches the card's portrait
   attackerTotal?: number;            // dice successes + portrait
   result: 'success' | 'failure' | 'auto-success';

@@ -5738,7 +5738,7 @@ function MissionReportModal({ G, report, onDismiss }: {
   const renderSidePanel = (
     side: Side,
     leaderIds: string[],
-    dice: { count: number; faces: string[]; successes: number } | undefined,
+    dice: { count: number; faces: string[]; colors?: string[]; successes: number } | undefined,
     portrait: number | undefined,
     align: 'left' | 'right',
   ) => {
@@ -5789,7 +5789,12 @@ function MissionReportModal({ G, report, onDismiss }: {
               {report.result === 'auto-success' ? '(no roll — unopposed)' : '(0 dice)'}
             </span>
           ) : (
-            dice.faces.map((f, i) => <DieFaceImg key={i} face={f} color="red" />)
+            // Per-die color: RoE minor-skill dice roll GREEN (weaker faces) and
+            // must read as green, not red. Older reports lack colors → red.
+            dice.faces.map((f, i) => (
+              <DieFaceImg key={i} face={f}
+                color={(dice.colors?.[i] as 'red' | 'black' | 'green' | undefined) ?? 'red'} />
+            ))
           )}
         </div>
         {/* Successes summary */}
