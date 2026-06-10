@@ -140,6 +140,14 @@ function profileSide(games, side) {
     // --- territory (Empire-relevant but tracked for both) ---
     push('territory/subjugated-per-round', get('subjugated') / rounds);
 
+    // --- ECONOMY: loyalty growth drives production. Build slots are 1:1 with
+    // loyal resource icons (engine refreshBuildIfApplicable), so a Rebel that
+    // flips fewer systems builds fewer units — the suspected root of the
+    // build/deploy/move cascade. gain-loyalty is side-tagged; loyalty-already
+    // is a WASTED loyalty mission (ran on an already-loyal system). ---
+    push('econ/gain-loyalty-per-round', get('gain-loyalty') / rounds);
+    push('econ/loyalty-wasted-per-round', get('loyalty-already') / rounds);
+
     // --- game shape ---
     push('shape/rounds', g.rounds);
   }

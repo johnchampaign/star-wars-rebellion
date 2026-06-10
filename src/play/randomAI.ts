@@ -342,6 +342,23 @@ function missionSituationalAdjust(G: GameState, missionId: string, side: Side): 
       const threatened = G.rebelBaseRevealed || empireProximityToBase(G) > 0;
       adj += threatened ? 20 : -6;
     }
+    // ECONOMY (divergence harness): the AI Rebel gained loyalty 43% less per
+    // round than the expert, cascading into 30% fewer builds, 16% fewer
+    // deploys, and 55% fewer unit moves — it simply controlled fewer loyal
+    // resource systems. Build slots are 1:1 with loyal resource icons, and a
+    // flipped system produces EVERY build turn for the rest of the game, so a
+    // loyalty flip COMPOUNDS and is worth far more early. Amplify loyalty-gain
+    // missions, strongest early, tapering to ~0 as the build turns run out.
+    const REBEL_LOYALTY_MISSIONS = new Set([
+      'build-alliance', 'establish-trade-relations', 'support-of-mon-calamari',
+      'wookie-uprising', 'regional-aid',
+    ]);
+    if (REBEL_LOYALTY_MISSIONS.has(missionId)) {
+      // Build turns remaining ≈ (16 − timeMarker)/2 (builds fire on even turns
+      // 2..14). Each future build turn is one more harvest from a flip now.
+      const buildTurnsLeft = Math.max(0, Math.ceil((16 - G.timeMarker) / 2));
+      adj += Math.min(buildTurnsLeft, 7); // up to +7 early → 0 by end-game
+    }
   }
   // Diminishing returns: each prior successful reveal of THIS mission by
   // THIS side reduces score by 3. Tournament data showed Empire running
