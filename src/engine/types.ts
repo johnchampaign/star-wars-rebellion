@@ -229,7 +229,7 @@ export type ChoiceRequest =
   | { kind: 'RetreatTo'; legal: SystemId[]; allowSkip: boolean }
   | { kind: 'DeployTarget'; unitTypeId: UnitTypeId; legal: SystemId[] }
   | { kind: 'PickProbeForNewBase'; cards: string[] }
-  | { kind: 'PlayObjective'; side: Side; legal: string[]; window: 'combat' | 'refresh'; logStart?: number }
+  | { kind: 'PlayObjective'; side: Side; legal: string[]; window: 'combat' | 'refresh'; logStart?: number; allowDecline?: boolean }
   // RoE Rebel Cell — place the card's target marker in a chosen Rebel system.
   // `resumeKind` = how the engine resumes after placement (the Immediate
   // objective can be drawn during the Command phase or the Refresh draw step).

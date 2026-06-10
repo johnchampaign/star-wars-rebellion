@@ -16,7 +16,7 @@ import * as Handlers from './handlers/registry';
 import { missionTargets } from './missionTargets';
 import { PROJECT_ONLY_UNIT_IDS } from './units';
 import { rollDie, shuffle } from './rng';
-import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck, objectiveReturnsToHand, postPlayObjectiveChoice, PERSISTENT_OBJECTIVES, timeForPeaceQueueTargets } from './objectives';
+import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck, objectiveReturnsToHand, postPlayObjectiveChoice, PERSISTENT_OBJECTIVES, COST_OBJECTIVES, timeForPeaceQueueTargets } from './objectives';
 
 /** Time-track turns on which the Rebel recruits a new leader, per the printed
  *  16-space board (turns 2-5). Single source of truth shared by the engine's
@@ -4212,8 +4212,18 @@ export function resolvePlayObjectivePick(
   if (!pc || pc.kind !== 'PlayObjective' || pc.window !== 'refresh') {
     return { ok: false, reason: 'no-pending' };
   }
-  if (!pc.legal.includes(objectiveId)) return { ok: false, reason: 'illegal' };
   const logStart = pc.logStart ?? G.turnLog.length;
+  // Decline sentinel (empty string) — allowed only when the choice permits it
+  // (a cost-bearing objective the player may opt out of, #183). Skip playing
+  // any objective and continue the refresh.
+  if (objectiveId === '') {
+    if (!pc.allowDecline) return { ok: false, reason: 'decline-not-allowed' };
+    G.pendingChoice = undefined;
+    log(G, { kind: 'objective-declined', side: 'Rebel', payload: { legal: pc.legal } });
+    continueRefreshAfterObjectives(G, logStart);
+    return { ok: true };
+  }
+  if (!pc.legal.includes(objectiveId)) return { ok: false, reason: 'illegal' };
   G.pendingChoice = undefined;
   playRefreshObjective(G, objectiveId, objectiveReputationGain(G, objectiveId));
   if (G.isGameOver) return { ok: true };
@@ -4259,14 +4269,18 @@ function refreshPlayStartOfRefreshObjectives(G: GameState, logStart: number): bo
     }});
   }
   if (eligible.length === 0) return false;
-  // RR p.10: only one objective per refresh. With a single eligible card
-  // there's no decision to make — play it. With 2+, let the player choose
-  // which one to score (the rest stay in hand for a future refresh).
-  if (eligible.length === 1) {
+  // RR p.10: only one objective per refresh, and playing is a "MAY". With a
+  // single FREE eligible card there's no decision worth a prompt — auto-play
+  // it. But cost-bearing objectives (The Long War discards 2 of your other
+  // objectives, #183) must be opt-in: route them through the choice with a
+  // decline option so the player isn't forced to pay the cost. 2+ eligible
+  // always prompts.
+  const anyCost = eligible.some((e) => COST_OBJECTIVES.has(e.id));
+  if (eligible.length === 1 && !anyCost) {
     playRefreshObjective(G, eligible[0].id, eligible[0].rep);
     return false;
   }
-  postPlayObjectiveChoice(G, eligible.map((e) => e.id), 'refresh', logStart);
+  postPlayObjectiveChoice(G, eligible.map((e) => e.id), 'refresh', logStart, anyCost);
   return true;
 }
 
@@ -5198,6 +5212,11 @@ export function playableImmediateActionCards(G: GameState, side: Side): string[]
     // Droid rings (R2-D2 / C-3PO / K-2SO) go through AttachRingPick during
     // an Assignment turn, NOT this play-immediate path.
     if (DROID_RING_CARDS[cid]) continue;
+    // The Millennium Falcon works as a passive trigger FROM HAND (its
+    // auto-rescue fires as a FalconOffer after a successful Han/Chewie
+    // mission). It has no manual-play effect, so offering it here just lets
+    // the player waste it on a no-op (player report #185). Keep it in hand.
+    if (cid === 'the-milleninium-falcon') continue;
     // Leader requirement: at least one named leader must be in the pool.
     const reqs = card.leaderRequirement ?? [];
     if (reqs.length > 0 && !reqs.some((lid) => f.leaderPool.includes(lid))) continue;

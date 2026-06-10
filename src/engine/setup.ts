@@ -72,7 +72,9 @@ const IMPERIAL_STARTING_UNITS_RoE_NEW: { typeId: string; count: number }[] = [
   { typeId: 'assault-carrier', count: 3 },
   { typeId: 'tie-fighter', count: 12 },
   { typeId: 'tie-striker', count: 2 },
-  { typeId: 'stormtrooper', count: 6 },
+  // 13 = 12 on Imperial systems + 1 on the DSUC remote (rules p.8). Was 6
+  // (player report #180).
+  { typeId: 'stormtrooper', count: 13 },
   { typeId: 'at-st', count: 4 },
   { typeId: 'assault-tank', count: 2 },
   { typeId: 'at-at', count: 1 },

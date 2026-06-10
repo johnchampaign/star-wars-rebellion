@@ -24,6 +24,7 @@ import * as phases from '../engine/phases';
 import * as combat from '../engine/combat';
 import { pickBestCinematicPlay } from '../engine/cinematicTactics';
 import { missionTargets } from '../engine/missionTargets';
+import { COST_OBJECTIVES } from '../engine/objectives';
 
 // AI randomness. Defaults to Math.random (live app), but the tournament
 // harness calls seedAI() so AI-vs-AI runs are reproducible per seed — without
@@ -1188,9 +1189,16 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     // refresh / combat). Dispatch by window — refresh vs combat live in
     // different modules.
     const pc = G.pendingChoice;
-    const best = [...pc.legal].sort(
+    // Prefer free objectives; never pay a cost objective's price (#183). If
+    // only cost objectives are eligible and the choice allows it, decline.
+    const free = pc.legal.filter((id) => !COST_OBJECTIVES.has(id));
+    const pool = free.length > 0 ? free : pc.legal;
+    const best = [...pool].sort(
       (a, b) => (G.catalog.objectives[b]?.reputation ?? 0) - (G.catalog.objectives[a]?.reputation ?? 0)
     )[0];
+    if (free.length === 0 && pc.allowDecline && pc.window === 'refresh') {
+      return phases.resolvePlayObjectivePick(G, '').ok;
+    }
     return pc.window === 'combat'
       ? combat.resolveCombatObjectivePick(G, best).ok
       : phases.resolvePlayObjectivePick(G, best).ok;

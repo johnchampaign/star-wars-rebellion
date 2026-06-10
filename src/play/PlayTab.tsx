@@ -11289,7 +11289,7 @@ function PlayObjectiveModal({
   G, choice, onPick,
 }: {
   G: GameState;
-  choice: { kind: 'PlayObjective'; side: Side; legal: string[]; window: 'combat' | 'refresh'; logStart?: number };
+  choice: { kind: 'PlayObjective'; side: Side; legal: string[]; window: 'combat' | 'refresh'; logStart?: number; allowDecline?: boolean };
   onPick: (objectiveId: string) => void;
 }) {
   const windowLabel = choice.window === 'combat' ? 'combat' : 'Refresh phase';
@@ -11365,6 +11365,20 @@ function PlayObjectiveModal({
               </button>
             );
           })}
+          {/* Decline — for cost-bearing objectives (e.g. The Long War, which
+              discards 2 of your other objectives). Playing is a "may" (#183). */}
+          {choice.allowDecline && (
+            <button
+              className="tab-button"
+              onClick={() => onPick('')}
+              style={{ textAlign: 'left', padding: '10px 14px', borderColor: '#5a5d64', color: '#cbc4b0' }}
+            >
+              <div style={{ fontWeight: 700 }}>Don&apos;t play an objective this Refresh</div>
+              <div style={{ color: '#9a937f', fontSize: 12, marginTop: 2 }}>
+                Keep your cards — skip the cost (the objective stays in hand for a later Refresh).
+              </div>
+            </button>
+          )}
         </div>
       </div>
     </div>

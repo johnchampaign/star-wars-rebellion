@@ -18,11 +18,17 @@ import { log } from './log';
  *  resolver/UI whether this is the refresh or combat slot; `logStart` is
  *  carried through so the refresh phase can resume where it paused. */
 export function postPlayObjectiveChoice(
-  G: GameState, legal: string[], window: 'combat' | 'refresh', logStart?: number
+  G: GameState, legal: string[], window: 'combat' | 'refresh', logStart?: number,
+  allowDecline?: boolean,
 ): void {
-  G.pendingChoice = { kind: 'PlayObjective', side: 'Rebel', legal, window, logStart };
-  log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'PlayObjective', window, legal } });
+  G.pendingChoice = { kind: 'PlayObjective', side: 'Rebel', legal, window, logStart, allowDecline };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'PlayObjective', window, legal, allowDecline } });
 }
+
+/** Objectives whose play carries a real COST to the Rebel, so they must NOT
+ *  be auto-played — the player decides whether the benefit is worth it. The
+ *  Long War discards 2 of your OTHER objectives as a cost (#183). */
+export const COST_OBJECTIVES = new Set<string>(['the-long-war-1']);
 
 /** Return true if the given objective's condition is satisfied in the
  *  current state. Caller should already have verified the timing matches. */
