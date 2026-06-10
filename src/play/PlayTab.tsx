@@ -7178,20 +7178,20 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
               {state.sabotage && (() => {
                 // Sabotage token — the table-top marker art (MarkerSabotage.png
                 // from the .vmod). In the physical game it covers the system's
-                // RESOURCE icons (sabotage disables production). We don't store
-                // per-resource-icon pixel coords (they're baked into the printed
-                // map art), so place it on the loyalty/production cluster
-                // (loyaltyMarkerPos) — the closest proxy, by the resource + build
-                // banner. The hover/detail preview still strikes each resource
-                // icon individually for the precise read.
+                // RESOURCE icons (sabotage disables production), so prefer the
+                // calibrated sabotageMarkerPos (dev positions tab, #174); fall
+                // back to the loyalty/planet cluster for systems not yet
+                // calibrated.
                 const sW = 30 * BOARD_SCALE;
                 const sH = 30 * BOARD_SCALE;
+                const spx = (s.sabotageMarkerPos?.x ?? basePos.x) * BOARD_SCALE;
+                const spy = (s.sabotageMarkerPos?.y ?? basePos.y) * BOARD_SCALE;
                 return (
                   <g>
                     <title>{`${sysName} — sabotaged (production disabled)`}</title>
                     <image
                       href={vmodAssetUrl('MarkerSabotage.png', MARKER_IMAGE_BASE)}
-                      x={mx - sW / 2} y={my - sH / 2}
+                      x={spx - sW / 2} y={spy - sH / 2}
                       width={sW} height={sH}
                       preserveAspectRatio="xMidYMid meet"
                     />

@@ -28,6 +28,11 @@ export type System = {
   // Position of the printed loyalty hex on the board. Null for remote systems
   // and Coruscant (which have no loyalty space).
   loyaltyMarkerPos?: { x: number; y: number } | null;
+  // Position of the printed RESOURCE icons on the board — where the sabotage
+  // marker belongs (it covers production; player report #174). Calibrated via
+  // the dev positions tab. When absent the renderer falls back to the
+  // loyalty-hex / planet position.
+  sabotageMarkerPos?: { x: number; y: number } | null;
 };
 
 export type SystemsFile = {

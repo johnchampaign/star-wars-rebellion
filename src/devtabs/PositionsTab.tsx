@@ -15,8 +15,8 @@ const INV_SCALE = NATIVE_W / DISPLAY_W;
 const MARKER_R = 22;
 const LS_KEY = 'rebellion-dev-systems-edits';
 
-type SystemEdits = Record<string, Partial<Pick<System, 'region' | 'resources' | 'buildSlot' | 'boardPos' | 'loyaltyMarkerPos'>>>;
-type MarkerKind = 'planet' | 'loyalty';
+type SystemEdits = Record<string, Partial<Pick<System, 'region' | 'resources' | 'buildSlot' | 'boardPos' | 'loyaltyMarkerPos' | 'sabotageMarkerPos'>>>;
+type MarkerKind = 'planet' | 'loyalty' | 'sabotage';
 
 function applyEdits(systems: System[], edits: SystemEdits): System[] {
   return systems.map((s) => {
@@ -26,6 +26,7 @@ function applyEdits(systems: System[], edits: SystemEdits): System[] {
       ...s, ...e,
       boardPos: e.boardPos ?? s.boardPos,
       loyaltyMarkerPos: e.loyaltyMarkerPos ?? s.loyaltyMarkerPos,
+      sabotageMarkerPos: e.sabotageMarkerPos ?? s.sabotageMarkerPos,
     };
   });
 }
@@ -90,7 +91,15 @@ export default function PositionsTab() {
     if (!orig || !orig.loyaltyMarkerPos || !s.loyaltyMarkerPos) return false;
     return orig.loyaltyMarkerPos.x !== s.loyaltyMarkerPos.x || orig.loyaltyMarkerPos.y !== s.loyaltyMarkerPos.y;
   }, [data]);
-  const editedFlag = useCallback((s: System) => planetEdited(s) || loyaltyEdited(s), [planetEdited, loyaltyEdited]);
+  const sabotageEdited = useCallback((s: System) => {
+    if (!data) return false;
+    const orig = data.systems.find((o) => o.id === s.id);
+    if (!orig || !s.sabotageMarkerPos) return false;
+    // No original position recorded → any placed value is an edit.
+    if (!orig.sabotageMarkerPos) return true;
+    return orig.sabotageMarkerPos.x !== s.sabotageMarkerPos.x || orig.sabotageMarkerPos.y !== s.sabotageMarkerPos.y;
+  }, [data]);
+  const editedFlag = useCallback((s: System) => planetEdited(s) || loyaltyEdited(s) || sabotageEdited(s), [planetEdited, loyaltyEdited, sabotageEdited]);
 
   const isDirty = useMemo(() => {
     if (!data || !effective) return false;
@@ -103,8 +112,11 @@ export default function PositionsTab() {
     if (!orig) return;
     const newX = Math.round(x);
     const newY = Math.round(y);
-    const origPos = kind === 'planet' ? orig.boardPos : orig.loyaltyMarkerPos;
-    const field: 'boardPos' | 'loyaltyMarkerPos' = kind === 'planet' ? 'boardPos' : 'loyaltyMarkerPos';
+    const origPos = kind === 'planet' ? orig.boardPos
+      : kind === 'loyalty' ? orig.loyaltyMarkerPos
+      : orig.sabotageMarkerPos;
+    const field: 'boardPos' | 'loyaltyMarkerPos' | 'sabotageMarkerPos' =
+      kind === 'planet' ? 'boardPos' : kind === 'loyalty' ? 'loyaltyMarkerPos' : 'sabotageMarkerPos';
     setEdits((prev) => {
       const next = { ...prev };
       const merged = { ...(next[id] ?? {}) };
@@ -141,10 +153,11 @@ export default function PositionsTab() {
   const handleResetOne = (id: string) => {
     setEdits((prev) => {
       const next = { ...prev };
-      if (next[id]?.boardPos || next[id]?.loyaltyMarkerPos) {
+      if (next[id]?.boardPos || next[id]?.loyaltyMarkerPos || next[id]?.sabotageMarkerPos) {
         const merged = { ...next[id] };
         delete merged.boardPos;
         delete merged.loyaltyMarkerPos;
+        delete merged.sabotageMarkerPos;
         if (Object.keys(merged).length === 0) delete next[id];
         else next[id] = merged;
       }
@@ -201,8 +214,10 @@ export default function PositionsTab() {
         The big <span style={{ color: '#ffd54a' }}>yellow</span> marker is the planet center
         (<code>boardPos</code> — drives leader pips &amp; unit stacks); the smaller{' '}
         <span style={{ color: '#5aaaff' }}>blue</span> marker is the printed loyalty hex
-        (<code>loyaltyMarkerPos</code> — where the loyalty/subjugation disc sits). Drop each on
-        the matching spot, then Export. Repositioned markers turn green.
+        (<code>loyaltyMarkerPos</code> — where the loyalty/subjugation disc sits); the small{' '}
+        <span style={{ color: '#ff9a3c' }}>orange</span> marker is the sabotage-token spot
+        (<code>sabotageMarkerPos</code> — drop it on the system&apos;s two RESOURCE icons; #174).
+        Drop each on the matching spot, then Export. Repositioned markers turn green.
       </div>
 
       <div style={{ marginBottom: 10, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -217,7 +232,7 @@ export default function PositionsTab() {
         </span>
         {dragging && (
           <span style={{ marginLeft: 'auto', color: '#ff7ab8', fontWeight: 600, fontSize: 13 }}>
-            Dragging: {dragging.id} ({dragging.kind === 'planet' ? 'planet' : 'loyalty marker'})
+            Dragging: {dragging.id} ({dragging.kind === 'planet' ? 'planet' : dragging.kind === 'loyalty' ? 'loyalty marker' : 'sabotage marker'})
           </span>
         )}
       </div>
@@ -294,12 +309,22 @@ export default function PositionsTab() {
               const isHover = hoverId === s.id;
               const draggingPlanet = dragging?.id === s.id && dragging.kind === 'planet';
               const draggingLoyalty = dragging?.id === s.id && dragging.kind === 'loyalty';
+              const draggingSabotage = dragging?.id === s.id && dragging.kind === 'sabotage';
               const planetIsEdited = planetEdited(s);
               const loyaltyIsEdited = loyaltyEdited(s);
+              const sabotageIsEdited = sabotageEdited(s);
               // Loyalty hex marker (smaller, blue) — only for systems that have one.
               const lp = s.loyaltyMarkerPos;
               const lx = lp ? lp.x * SCALE : 0;
               const ly = lp ? lp.y * SCALE : 0;
+              // Sabotage / resource-icons marker (orange) — only for systems with
+              // resource icons. Starts at the saved sabotageMarkerPos, else just
+              // right of the loyalty hex (or planet) so it's visible to grab.
+              const hasResources = (s.resources?.length ?? 0) > 0;
+              const sp = s.sabotageMarkerPos
+                ?? (lp ? { x: lp.x + 60, y: lp.y } : { x: s.boardPos.x + 60, y: s.boardPos.y });
+              const sx = sp.x * SCALE;
+              const sy = sp.y * SCALE;
               return (
                 <g key={s.id}>
                   {(isHover || draggingPlanet) && (
@@ -346,11 +371,35 @@ export default function PositionsTab() {
                       </circle>
                     </>
                   )}
+                  {/* Sabotage / resource-icons marker — orange, draggable (#174) */}
+                  {hasResources && (
+                    <>
+                      {draggingSabotage && (
+                        <>
+                          <line x1={sx - 30} y1={sy} x2={sx + 30} y2={sy} stroke="rgba(255,150,60,0.6)" strokeWidth={1} pointerEvents="none" />
+                          <line x1={sx} y1={sy - 30} x2={sx} y2={sy + 30} stroke="rgba(255,150,60,0.6)" strokeWidth={1} pointerEvents="none" />
+                        </>
+                      )}
+                      <circle
+                        cx={sx} cy={sy} r={MARKER_R * 0.55}
+                        style={{
+                          fill: sabotageIsEdited ? 'rgba(80, 220, 120, 0.5)' : 'rgba(255, 150, 60, 0.4)',
+                          stroke: draggingSabotage ? '#ff7ab8' : (sabotageIsEdited ? 'rgba(80,220,120,0.95)' : 'rgba(255,150,60,0.95)'),
+                          strokeWidth: draggingSabotage ? 3 : 2,
+                          cursor: 'grab',
+                          pointerEvents: 'all',
+                        }}
+                        onMouseDown={(e) => { e.preventDefault(); setDragging({ id: s.id, kind: 'sabotage' }); }}
+                      >
+                        <title>{s.name} — sabotage marker (drop on the resource icons)</title>
+                      </circle>
+                    </>
+                  )}
                   <text
                     x={x} y={y + MARKER_R + 12}
                     textAnchor="middle"
                     className="system-label"
-                    opacity={isHover || draggingPlanet || draggingLoyalty || planetIsEdited || loyaltyIsEdited ? 1 : 0.5}
+                    opacity={isHover || draggingPlanet || draggingLoyalty || draggingSabotage || planetIsEdited || loyaltyIsEdited || sabotageIsEdited ? 1 : 0.5}
                     style={{ pointerEvents: 'none' }}
                   >
                     {s.name}
