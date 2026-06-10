@@ -6918,6 +6918,12 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           const r = hasUnits ? MARKER_R + 2 : MARKER_R - 4;
 
           const grouped = groupByType(state.units);
+          // Any leader pips at this system? (Active either side, or captured
+          // pinned here.) Drives the units-above-leaders vertical layout.
+          const hasLeadersHere =
+            (G.rebel.leadersOnBoard[s.id]?.length ?? 0) > 0
+            || (G.empire.leadersOnBoard[s.id]?.length ?? 0) > 0
+            || (G.empire.capturedLeaders ?? []).some((cl) => cl.systemId === s.id);
           const isEliminated = effectiveEliminated?.has(s.id) ?? false;
           // Yellow "searched" rule-out, only when not already red-X'd by a probe.
           const isSearched = !isEliminated && (effectiveSearched?.has(s.id) ?? false);
@@ -6965,16 +6971,27 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                     style={{ stroke: '#ff5050', strokeWidth: 3, strokeLinecap: 'round' }} />
                 </g>
               )}
-              {hasUnits && (
-                <UnitCluster
-                  // Render ABOVE the planet image — the area below the planet
-                  // is occupied by the printed yellow system-name banner.
-                  centerX={x} centerY={y - MARKER_R - 14}
-                  groups={grouped}
-                  iconSize={18}
-                  maxWidth={100}
-                />
-              )}
+              {hasUnits && (() => {
+                // Render ABOVE the planet image — the area below the planet
+                // is occupied by the printed yellow system-name banner. When
+                // leaders are also at this system, their pip row takes the
+                // slot directly above the planet and the unit cluster shifts
+                // up to sit on top of it (player feedback: pips below the
+                // planet covered the printed system names).
+                const unitRows = Math.ceil(grouped.length / 5);
+                const unitH = unitRows * 18 + (unitRows - 1) * 2;
+                const unitCenterY = hasLeadersHere
+                  ? (y - MARKER_R - 14) - 12 - 4 - unitH / 2
+                  : y - MARKER_R - 14;
+                return (
+                  <UnitCluster
+                    centerX={x} centerY={unitCenterY}
+                    groups={grouped}
+                    iconSize={18}
+                    maxWidth={100}
+                  />
+                );
+              })()}
               {!artLoaded && (
                 <text x={x} y={y + r + 11} textAnchor="middle"
                   style={{ fill: '#fff', fontSize: 9, pointerEvents: 'none', opacity: 0.85 }}
@@ -7046,8 +7063,11 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                   )}
                 </g>
               )}
-              {/* Leader portraits — small circular pip per leader at this system */}
-              <LeaderPips G={G} systemId={s.id} centerX={x} centerY={y + MARKER_R + 32} />
+              {/* Leader portraits — small circular pip per leader at this system.
+                  Rendered just above the planet (under the unit cluster), NOT
+                  below it — the area below holds the printed system-name
+                  banner and the loyalty hex, which the pips used to cover. */}
+              <LeaderPips G={G} systemId={s.id} centerX={x} centerY={y - MARKER_R - 14} />
             </g>
           );
         })}
