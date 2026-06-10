@@ -1987,6 +1987,27 @@ export function resolveHeistChoice(G: GameState, action: string): { ok: boolean;
   return { ok: true };
 }
 
+/** Establish Trade Relations choice: 'loyalty' = gain 2 loyalty in the system;
+ *  'cruiser' = place 1 Mon Calamari Cruiser on space 3 of the build queue. */
+export function resolveEstablishTradeChoice(G: GameState, action: 'loyalty' | 'cruiser'): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'EstablishTradeChoice') return { ok: false, reason: 'no-pending' };
+  G.pendingChoice = undefined;
+  if (action === 'cruiser') {
+    G.rebel.buildQueue[3].push('mon-cala-cruiser' as UnitTypeId);
+    log(G, { kind: 'establish-trade-relations', side: 'Rebel', payload: {
+      systemId: pc.systemId, chose: 'cruiser', slot: 3,
+    }});
+  } else {
+    M.gainLoyalty(G, 'Rebel', pc.systemId, 2);
+    log(G, { kind: 'establish-trade-relations', side: 'Rebel', payload: {
+      systemId: pc.systemId, chose: 'loyalty', amount: 2,
+    }});
+  }
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Break Their Will (Empire, RoE): Empire named a system; reveal to the
  *  Empire whether the Rebel base is in that system's region. */
 export function resolveBreakTheirWillPick(G: GameState, systemId: SystemId): { ok: boolean; reason?: string } {

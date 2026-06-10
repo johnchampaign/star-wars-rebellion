@@ -763,23 +763,26 @@ const wookieUprising: EffectHandler = (G, ctx) => {
 const establishTradeRelations: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  M.gainLoyalty(G, 'Rebel', sysId, 1);
-  const sysDef = G.catalog.systems[sysId];
   const ss = G.map.systems[sysId];
-  if (!sysDef || !ss) return true;
-  // RAW: a sabotage marker prevents building OR deploying units at this
-  // system. Skip the build step here if sabotaged — loyalty gain still applies.
-  if (ss.sabotage) {
-    log(G, { kind: 'establish-trade-relations-built', side: 'Rebel', payload: {
-      systemId: sysId, slot: sysDef.buildSlot ?? 1, added: [],
-      note: 'Sabotage marker present — no units added to the build queue.',
+  if (!ss) return true;
+  // RAW (card): choose ONE — gain 2 loyalty in the system, OR place 1 Mon
+  // Calamari Cruiser on space 3 of the build queue (player report #187: the
+  // old impl gained 1 loyalty + built from icons, never offering the cruiser).
+  // The cruiser option needs one in supply and an un-sabotaged system; if it's
+  // unavailable there's no choice, so just gain the 2 loyalty.
+  const cruiserAvailable = !ss.sabotage && M.unitsAvailableInSupply(G, 'mon-cala-cruiser') > 0;
+  if (!cruiserAvailable) {
+    M.gainLoyalty(G, 'Rebel', sysId, 2);
+    log(G, { kind: 'establish-trade-relations', side: 'Rebel', payload: {
+      systemId: sysId, chose: 'loyalty', amount: 2,
+      note: ss.sabotage ? 'system sabotaged — cruiser option unavailable' : 'no cruiser in supply',
     }});
     return true;
   }
-  // Player chooses the unit type per resource icon (BuildFromIconsPick) —
-  // matching the normal Build step and Temporary Alliance, instead of forcing
-  // a fixed default (which also never built airspeeders for the Rebel).
-  queueBuildFromIcons(G, 'Rebel', sysId, 'Establish Trade Relations');
+  G.pendingChoice = { kind: 'EstablishTradeChoice', side: 'Rebel', systemId: sysId };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'EstablishTradeChoice', systemId: sysId,
+  }});
   return true;
 };
 

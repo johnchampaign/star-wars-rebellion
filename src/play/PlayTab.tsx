@@ -240,6 +240,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'ImperialMightUnits':       return pc.side === side;
     case 'BreakTheirWillPick':       return pc.side === side;
     case 'HeistChoice':              return pc.side === side;
+    case 'EstablishTradeChoice':     return pc.side === side;
     case 'UnderTheRadarKeep':        return pc.side === side;
     case 'UnderTheRadarReturn':      return pc.side === side;
     case 'StartingCardBranch':       return pc.side === side;
@@ -2212,6 +2213,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <HeistChoiceModal G={G} choice={G.pendingChoice}
           onAction={(action) => {
             const r = phases.resolveHeistChoice(G, action);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'EstablishTradeChoice'
+        && G.pendingChoice.side === humanSide && (
+        <EstablishTradeChoiceModal G={G} choice={G.pendingChoice}
+          onAction={(action) => {
+            const r = phases.resolveEstablishTradeChoice(G, action);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -12112,6 +12125,48 @@ function HeistChoiceModal({
               Remove the {sourceLabel(src)} target marker
             </button>
           ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Establish Trade Relations: gain 2 loyalty here, or queue a Mon Cala Cruiser. */
+function EstablishTradeChoiceModal({
+  G, choice, onAction,
+}: {
+  G: GameState;
+  choice: { kind: 'EstablishTradeChoice'; side: Side; systemId: string };
+  onAction: (action: 'loyalty' | 'cruiser') => void;
+}) {
+  const color = sideColor('Rebel');
+  const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2600,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 8,
+        padding: 24, maxWidth: 460, width: '92%',
+      }}>
+        <h3 style={{ color, marginTop: 0 }}>Establish Trade Relations</h3>
+        <div style={{ color: '#cbc4b0', fontSize: 13, marginBottom: 16, lineHeight: 1.5 }}>
+          Choose one:
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button className="tab-button" style={{ textAlign: 'left', padding: '10px 14px', borderColor: color }}
+            onClick={() => onAction('loyalty')}>
+            <div style={{ fontWeight: 700, color: '#fff' }}>Gain 2 loyalty</div>
+            <div style={{ color: '#9a937f', fontSize: 12, marginTop: 2 }}>+2 Rebel loyalty in {sysName}.</div>
+          </button>
+          <button className="tab-button" style={{ textAlign: 'left', padding: '10px 14px', borderColor: color }}
+            onClick={() => onAction('cruiser')}>
+            <div style={{ fontWeight: 700, color: '#fff' }}>Build a Mon Calamari Cruiser</div>
+            <div style={{ color: '#9a937f', fontSize: 12, marginTop: 2 }}>
+              Place 1 Mon Calamari Cruiser on space 3 of your build queue (deploys in 3 Refreshes).
+            </div>
+          </button>
         </div>
       </div>
     </div>

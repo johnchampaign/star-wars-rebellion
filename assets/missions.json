@@ -528,7 +528,7 @@
       "isAttempt": true,
       "leaderPortrait": "mon-mothma",
       "effectKey": "",
-      "rulesText": "Attempt in any system that does not contain a sabotage marker. If successful, gain 1 loyalty in the system and place units on the build queue using this system's resource icons and number.",
+      "rulesText": "Attempt in any system that does not contain a sabotage marker. If successful, choose one: gain 2 loyalty in the system, OR place 1 Mon Calamari Cruiser on space 3 of the build queue.",
       "image": "MissionRebelEstablishTradeRelations.png"
     },
     {

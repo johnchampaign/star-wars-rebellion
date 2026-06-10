@@ -1561,6 +1561,10 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     if (c.canDrawObjective) return phases.resolveHeistChoice(G, 'draw').ok;
     return phases.resolveHeistChoice(G, `remove:${c.markerSources[0]}`).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'EstablishTradeChoice' && G.pendingChoice.side === side) {
+    // AI Rebel: take the Mon Calamari Cruiser (a strong ship beats 2 loyalty).
+    return phases.resolveEstablishTradeChoice(G, 'cruiser').ok;
+  }
   // Discredit Rebellion (RoE): heuristic — always prefer the ROLL branch.
   // Sabotage markers are a strategic asset (they cripple Imperial systems
   // every refresh); a single rep loss on a 1/3 or so chance is the better

@@ -678,6 +678,15 @@ export type ChoiceRequest =
       markerSources: string[];   // card-id sources of the target markers present
     }
   | {
+      // Establish Trade Relations (Rebel): choose to gain 2 loyalty in the
+      // system OR place 1 Mon Calamari Cruiser on space 3 of the build queue.
+      // Only posted when the Cruiser option is actually available (one is in
+      // supply and the system isn't sabotaged); otherwise loyalty applies.
+      kind: 'EstablishTradeChoice';
+      side: Side; // 'Rebel'
+      systemId: SystemId;
+    }
+  | {
       // Under the Radar (Rebel, RoE): pick 1 of the top 4 peeked probe
       // cards to hold facedown (pulled out of the deck). The others stay
       // on top in their original order.
