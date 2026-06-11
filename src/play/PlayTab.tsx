@@ -11252,6 +11252,18 @@ function TacticKeyModal({ G, onClose }: { G: GameState; onClose: () => void }) {
   );
 }
 
+/** Combat attack as a compact string showing only the dice colors that are
+ *  non-zero (e.g. "2G" for an Interdictor, "1R+1B" for a Corvette, "0" for a
+ *  Transport). Cleaner than always printing 0R+0B (idea from contributor PR
+ *  #211, by wizard770 / Jiho Ahn). */
+function unitAttackText(t: { attack: { red: number; black: number; green: number } }): string {
+  const parts: string[] = [];
+  if (t.attack.red > 0) parts.push(`${t.attack.red}R`);
+  if (t.attack.black > 0) parts.push(`${t.attack.black}B`);
+  if (t.attack.green > 0) parts.push(`${t.attack.green}G`);
+  return parts.length > 0 ? parts.join('+') : '0';
+}
+
 /** Special-unit ability descriptions for the unit key (player request #210).
  *  Text condensed from the rules reference / faction sheets / RoE rulebook. */
 const UNIT_ABILITY_TEXT: Record<string, string> = {
@@ -11292,7 +11304,7 @@ function UnitKeyModal({ G, unitStyle, onClose }: {
                   <div style={{ fontSize: 10, color: '#9aa3ad' }}>
                     {shapeGlyph(t.tier)} {t.tier ?? '?'} · {t.theater}
                     {' · '}HP {t.health.value}{t.health.color ? ` (${t.health.color})` : ''}
-                    {' · atk '}{t.attack.red}R+{t.attack.black}B{t.attack.green > 0 ? `+${t.attack.green}G` : ''}
+                    {' · atk '}{unitAttackText(t)}
                     {/* Carry capacity / needs-a-lift (player request — MightyFaben). */}
                     {t.transport.capacity > 0 && ` · carries ${t.transport.capacity}`}
                     {t.transport.restriction && ' · needs a lift'}
@@ -11325,7 +11337,8 @@ function UnitKeyModal({ G, unitStyle, onClose }: {
         </div>
         <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
           ▲ triangle · ● circle · ■ square — the shape is the unit's tier (used by
-          build icons and combat). Pictures use your current unit style ({unitStyle}).
+          build icons and combat). atk R/B/G = red / black / green attack dice.
+          Pictures use your current unit style ({unitStyle}).
         </div>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           {renderSide('Rebel')}
