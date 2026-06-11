@@ -2314,14 +2314,24 @@ export function resolveFearWillKeepThemInLinePick(G: GameState, systemIds: strin
   return { ok: true };
 }
 
-/** Public Uprising: Rebel picks unit composition for 1 circle + 2 triangles. */
+/** Public Uprising: Rebel picks unit composition for 1 circle + 2 triangles.
+ *  RAW: "gain 1 circle and 2 triangle units (ships and/or ground units)." So
+ *  ANY Rebel unit of the matching icon shape is legal — not just a hardcoded
+ *  pair. The old signature only permitted x-wing / rebel-trooper for the
+ *  triangles, so a player couldn't take a Rebel Transport (also a triangle
+ *  ship) — player report #205. Validate each pick against its required tier. */
 export function resolvePublicUprisingPick(G: GameState, picks: {
-  circle: 'corellian-corvette' | 'airspeeder';
-  triangles: ('x-wing' | 'rebel-trooper')[];
+  circle: string;
+  triangles: string[];
 }): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;
   if (!choice || choice.kind !== 'PublicUprisingPick') return { ok: false, reason: 'no-pending' };
   if (picks.triangles.length !== 2) return { ok: false, reason: 'expected-2-triangles' };
+  const tierOf = (tid: string) => G.catalog.unitTypes[tid]?.tier;
+  if (tierOf(picks.circle) !== 'circle') return { ok: false, reason: `not-a-circle-unit:${picks.circle}` };
+  for (const t of picks.triangles) {
+    if (tierOf(t) !== 'triangle') return { ok: false, reason: `not-a-triangle-unit:${t}` };
+  }
   const sysId = choice.systemId;
   M.gainUnit(G, 'Rebel', picks.circle, sysId);
   for (const t of picks.triangles) M.gainUnit(G, 'Rebel', t, sysId);

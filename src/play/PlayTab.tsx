@@ -5015,13 +5015,34 @@ function PlanetaryConquestModal({ G, choice, onPick }: {
 function PublicUprisingModal({ G, choice, onSubmit }: {
   G: GameState;
   choice: { kind: 'PublicUprisingPick'; systemId: string };
-  onSubmit: (picks: { circle: 'corellian-corvette' | 'airspeeder'; triangles: ('x-wing' | 'rebel-trooper')[] }) => void;
+  onSubmit: (picks: { circle: string; triangles: string[] }) => void;
 }) {
-  const [circle, setCircle] = useState<'corellian-corvette' | 'airspeeder'>('corellian-corvette');
-  const [tri1, setTri1] = useState<'x-wing' | 'rebel-trooper'>('rebel-trooper');
-  const [tri2, setTri2] = useState<'x-wing' | 'rebel-trooper'>('rebel-trooper');
+  // RAW: "gain 1 circle and 2 triangle units (ships and/or ground units)."
+  // Offer EVERY Rebel unit of the matching tier from the catalog — not a
+  // hardcoded pair — so e.g. the Rebel Transport (a triangle ship) is
+  // selectable (player report #205). Structures aren't "gained" this way.
+  const rebelUnitsOfTier = (tier: 'circle' | 'triangle') =>
+    Object.values(G.catalog.unitTypes)
+      .filter((u) => (u.side === 'Rebel' || (u as { faction?: string }).faction === 'Rebel')
+        && u.tier === tier && u.class !== 'structure')
+      .map((u) => u.id);
+  const circleOptions = rebelUnitsOfTier('circle');
+  const triangleOptions = rebelUnitsOfTier('triangle');
+  const label = (id: string) => {
+    const u = G.catalog.unitTypes[id];
+    const kind = u?.theater === 'ground' ? 'ground' : 'ship';
+    return `${u?.name ?? id} (${kind})`;
+  };
+  const [circle, setCircle] = useState<string>(circleOptions[0] ?? '');
+  const [tri1, setTri1] = useState<string>(triangleOptions[0] ?? '');
+  const [tri2, setTri2] = useState<string>(triangleOptions[0] ?? '');
   const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
-  const opt = (val: string, text: string) => <option value={val}>{text}</option>;
+  const sel = (val: string, set: (v: string) => void, options: string[]) => (
+    <select value={val} onChange={(e) => set(e.target.value)}
+      style={{ marginLeft: 8, background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '2px 6px' }}>
+      {options.map((id) => <option key={id} value={id}>{label(id)}</option>)}
+    </select>
+  );
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
@@ -5031,30 +5052,12 @@ function PublicUprisingModal({ G, choice, onSubmit }: {
           Public Uprising — gain 1 circle + 2 triangle units at {sysName}
         </div>
         <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
-          Combat resolves after the units arrive.
+          Ships and/or ground units. Combat resolves after the units arrive.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13, color: '#fff' }}>
-          <label>Circle unit:
-            <select value={circle} onChange={(e) => setCircle(e.target.value as typeof circle)}
-              style={{ marginLeft: 8, background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '2px 6px' }}>
-              {opt('corellian-corvette', 'Corellian Corvette (ship)')}
-              {opt('airspeeder', 'Airspeeder (ground)')}
-            </select>
-          </label>
-          <label>Triangle #1:
-            <select value={tri1} onChange={(e) => setTri1(e.target.value as typeof tri1)}
-              style={{ marginLeft: 8, background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '2px 6px' }}>
-              {opt('x-wing', 'X-Wing (ship)')}
-              {opt('rebel-trooper', 'Rebel Trooper (ground)')}
-            </select>
-          </label>
-          <label>Triangle #2:
-            <select value={tri2} onChange={(e) => setTri2(e.target.value as typeof tri2)}
-              style={{ marginLeft: 8, background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '2px 6px' }}>
-              {opt('x-wing', 'X-Wing (ship)')}
-              {opt('rebel-trooper', 'Rebel Trooper (ground)')}
-            </select>
-          </label>
+          <label>Circle unit: {sel(circle, setCircle, circleOptions)}</label>
+          <label>Triangle #1: {sel(tri1, setTri1, triangleOptions)}</label>
+          <label>Triangle #2: {sel(tri2, setTri2, triangleOptions)}</label>
         </div>
         <div style={{ marginTop: 14, textAlign: 'right' }}>
           <button onClick={() => onSubmit({ circle, triangles: [tri1, tri2] })}
