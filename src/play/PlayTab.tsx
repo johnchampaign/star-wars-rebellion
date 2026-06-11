@@ -11198,6 +11198,18 @@ function TacticKeyModal({ G, onClose }: { G: GameState; onClose: () => void }) {
   );
 }
 
+/** Special-unit ability descriptions for the unit key (player request #210).
+ *  Text condensed from the rules reference / faction sheets / RoE rulebook. */
+const UNIT_ABILITY_TEXT: Record<string, string> = {
+  'shield-generator': 'Structure (immobile). At the start of each ground battle step, draw 1 ground tactic card.',
+  'ion-cannon': 'Structure (immobile). During each space battle step, your opponent rolls 2 fewer red dice.',
+  'golan-arms-turret': 'Structure (immobile). Unlike other structures it actively fights in ground combat (green dice) and is not destroyed just for being your only ground unit left.',
+  'interdictor': 'Rebel units cannot retreat from a system containing an Interdictor (and Rebel retreat abilities are blocked there). Applies until all Interdictors in the system are destroyed.',
+  'shield-bunker': 'Death Stars and the DSUC cannot be damaged or destroyed (even by Death Star Plans) while sharing a system with a Shield Bunker. Also enables flexible deployment to Imperial-held / remote systems. Applies until all Shield Bunkers in the system are destroyed.',
+  'death-star': 'Space station, not a ship. No health and cannot be dealt damage — only the Death Star Plans objective can destroy it. Can destroy a whole system; if it destroys the Rebel base system, the Empire wins immediately.',
+  'death-star-under-construction': 'Immobile space station. A deployed Death Star replaces it in its system. If the DSUC is destroyed, the Death Star on the build queue is destroyed too.',
+};
+
 function UnitKeyModal({ G, unitStyle, onClose }: {
   G: GameState; unitStyle: UnitImageStyle; onClose: () => void;
 }) {
@@ -11231,6 +11243,11 @@ function UnitKeyModal({ G, unitStyle, onClose }: {
                     {t.transport.capacity > 0 && ` · carries ${t.transport.capacity}`}
                     {t.transport.restriction && ' · needs a lift'}
                   </div>
+                  {UNIT_ABILITY_TEXT[t.id] && (
+                    <div style={{ fontSize: 10, color: '#cbb78a', marginTop: 2, lineHeight: 1.3 }}>
+                      {UNIT_ABILITY_TEXT[t.id]}
+                    </div>
+                  )}
                 </div>
               </div>
             );
