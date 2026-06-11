@@ -2866,6 +2866,20 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           }}
         />
       )}
+
+      {G.pendingChoice?.kind === 'HandLimitDiscard' && G.pendingChoice.side === humanSide
+        && (!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0) && (
+        <HandLimitDiscardModal
+          G={G}
+          choice={G.pendingChoice}
+          onSubmit={(ids) => {
+            const r = phases.resolveHandLimitDiscard(G, ids);
+            if (!r.ok) alert(`Cannot discard: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
       </div>
 
       {/* Floating "peek the board" toggle — shown whenever a prompt/overlay is
@@ -3884,6 +3898,65 @@ function UnitStatLine({ G, typeId }: { G: GameState; typeId: string }) {
       {t.transport.capacity > 0 && ` · carries ${t.transport.capacity}`}
       {t.transport.restriction && ' · needs a transport'}
     </span>
+  );
+}
+
+/** Mission hand-limit discard (RR p.12): the player picks exactly `count`
+ *  non-starting, non-project missions to discard down to the 10-card limit. */
+function HandLimitDiscardModal({ G, choice, onSubmit }: {
+  G: GameState;
+  choice: { kind: 'HandLimitDiscard'; side: Side; count: number; discardable: string[] };
+  onSubmit: (ids: string[]) => void;
+}) {
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const toggle = (id: string) => {
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else if (next.size < choice.count) next.add(id);
+      return next;
+    });
+  };
+  const accent = '#ffb84d';
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100 }}>
+      <div style={{ background: '#15171c', border: `2px solid ${accent}`, borderRadius: 6,
+        padding: 20, maxWidth: 620, width: '92%', maxHeight: '88vh', overflowY: 'auto' }}>
+        <h3 style={{ color: accent, marginTop: 0 }}>
+          Over the mission hand limit — discard {choice.count}
+        </h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          You're over the 10-card limit. Choose {choice.count} mission{choice.count === 1 ? '' : 's'} to
+          discard ({picked.size}/{choice.count} selected). Starting and project cards don't count and can't be discarded.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
+          {choice.discardable.map((id) => {
+            const m = G.catalog.missions[id];
+            const on = picked.has(id);
+            return (
+              <button key={id} className="tab-button" onClick={() => toggle(id)}
+                style={{ textAlign: 'left', padding: '8px 10px',
+                  border: `1px solid ${on ? accent : '#2a2d34'}`,
+                  background: on ? 'rgba(120,80,20,0.35)' : '#0c0d10' }}>
+                <div style={{ fontWeight: 700, color: '#fff' }}>{m?.name ?? id}</div>
+                {m?.rulesText && (
+                  <div style={{ fontSize: 11, color: '#aaa', marginTop: 3 }}>{m.rulesText}</div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <button className="tab-button active"
+            disabled={picked.size !== choice.count}
+            onClick={() => onSubmit([...picked])}
+            style={{ padding: '6px 16px', opacity: picked.size === choice.count ? 1 : 0.5 }}>
+            Discard {picked.size}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

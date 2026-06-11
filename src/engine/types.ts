@@ -1105,6 +1105,16 @@ export type ChoiceRequest =
       }[];
     }
   | {
+      // Mission hand-limit discard (RR p.12): after the Refresh draw, a player
+      // over the 10-card limit chooses which non-starting, non-project missions
+      // to discard down to 10. `count` is how many must go; `discardable` is the
+      // legal set to pick from (starting + project cards excluded).
+      kind: 'HandLimitDiscard';
+      side: Side;
+      count: number;
+      discardable: string[];
+    }
+  | {
       // Plan The Assault: Rebel picks which ships in rebel-base-space to
       // move to the target system (which then triggers combat).
       kind: 'PlanTheAssaultShips';
@@ -1865,6 +1875,13 @@ export type GameState = {
     // Per-side, per-system count of units deployed THIS refresh phase.
     // RR p.7 caps deployment at 2 units per system per side per Refresh.
     deployedThisPhase?: Partial<Record<Side, Record<SystemId, number>>>;
+  };
+  // Hand-limit discard queue (Refresh step 2). After drawing missions, any side
+  // over the 10-card limit must discard down — processed one side at a time as a
+  // HandLimitDiscard choice. Steps 3-6 of Refresh resume once the queue drains.
+  pendingHandLimitDiscards?: {
+    logStart: number;
+    queue: { side: Side; count: number; discardable: string[] }[];
   };
 
   // Flags set by Assignment-timed action cards. Cleared at appropriate

@@ -1449,6 +1449,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'BuildPick' && G.pendingChoice.side === side) {
     return handleBuildPick(G);
   }
+  // HandLimitDiscard (refresh, bilateral): discard the lowest-value missions.
+  if (G.pendingChoice && G.pendingChoice.kind === 'HandLimitDiscard' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const ranked = [...c.discardable].sort((a, b) =>
+      missionBaseValue(a, side) - missionBaseValue(b, side));
+    return phases.resolveHandLimitDiscard(G, ranked.slice(0, c.count)).ok;
+  }
   // DeployUnitPick is also a bilateral refresh-phase pause.
   if (G.pendingChoice && G.pendingChoice.kind === 'DeployUnitPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;

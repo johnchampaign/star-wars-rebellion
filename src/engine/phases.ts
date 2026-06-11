@@ -3876,9 +3876,17 @@ function continueRefreshAfterObjectives(G: GameState, logStart: number): void {
   refreshRetrieveLeaders(G);
   if (G.isGameOver) return;
 
-  // Step 2: Draw missions (down to limit)
-  refreshDrawMissions(G);
+  // Step 2: Draw missions (down to limit). PAUSES if a side must choose which
+  // cards to discard over the 10-card limit; resumes via resolveHandLimitDiscard
+  // → continueRefreshAfterMissionDraw.
+  if (refreshDrawMissions(G, logStart)) return;
 
+  continueRefreshAfterMissionDraw(G, logStart);
+}
+
+/** Refresh steps 3-4, after the mission draw (split out so the hand-limit
+ *  discard choice can pause between step 2 and step 3). */
+function continueRefreshAfterMissionDraw(G: GameState, logStart: number): void {
   // Step 3: Launch probe droids
   M.drawProbe(G, 2);
 
@@ -4428,29 +4436,80 @@ function refreshRetrieveLeaders(G: GameState): void {
   G.detainedLeadersNextRefresh = [];
 }
 
-function refreshDrawMissions(G: GameState): void {
+/** Refresh step 2: draw 2 missions per side, then enforce the 10-card hand
+ *  limit. RR p.12: the player CHOOSES which cards to discard down to 10 — it's
+ *  not an automatic trim (player report: "I wasn't allowed to choose what to
+ *  discard; it simply didn't draw"). Returns true if a HandLimitDiscard choice
+ *  is now pending (Refresh pauses; resolveHandLimitDiscard resumes it). */
+function refreshDrawMissions(G: GameState, logStart: number): boolean {
+  const queue: { side: Side; count: number; discardable: string[] }[] = [];
   for (const side of ['Rebel', 'Empire'] as const) {
     M.drawMission(G, side, 2);
     const f = faction(G, side);
     // Per RR p.12: only non-project mission cards count toward the 10-card
     // limit. Starting missions also cannot be discarded.
-    const countingHand = () => f.missionHand.filter((id) => {
+    const counting = f.missionHand.filter((id) => !G.catalog.missions[id]?.isProject);
+    const over = counting.length - STARTING_HAND_LIMIT;
+    if (over <= 0) continue;
+    const discardable = f.missionHand.filter((id) => {
       const c = G.catalog.missions[id];
-      return c && !c.isProject;
-    }).length;
-    while (countingHand() > STARTING_HAND_LIMIT) {
-      // Find a non-starting, non-project card to discard (auto: from the end).
-      let i = -1;
-      for (let j = f.missionHand.length - 1; j >= 0; j--) {
-        const c = G.catalog.missions[f.missionHand[j]];
-        if (c && !c.isStarting && !c.isProject) { i = j; break; }
-      }
-      if (i < 0) break;
-      const card = f.missionHand.splice(i, 1)[0];
-      f.missionDiscard.push(card);
-      log(G, { kind: 'mission-hand-trim', side, payload: { missionId: card } });
-    }
+      return c && !c.isStarting && !c.isProject;
+    });
+    // Can't discard more than exist as discardable (starting cards are exempt).
+    const count = Math.min(over, discardable.length);
+    if (count > 0) queue.push({ side, count, discardable });
   }
+  if (queue.length === 0) return false;
+  G.pendingHandLimitDiscards = { logStart, queue };
+  postNextHandLimitDiscard(G);
+  return true;
+}
+
+/** Post the HandLimitDiscard choice for the next queued side. */
+function postNextHandLimitDiscard(G: GameState): void {
+  const p = G.pendingHandLimitDiscards;
+  if (!p || p.queue.length === 0) return;
+  const next = p.queue[0];
+  G.pendingChoice = {
+    kind: 'HandLimitDiscard', side: next.side, count: next.count, discardable: next.discardable,
+  };
+  log(G, { kind: 'choice-request', side: next.side, payload: {
+    kind: 'HandLimitDiscard', count: next.count, choices: next.discardable.length,
+  }});
+}
+
+/** Resolve a HandLimitDiscard: discard the chosen missions, then resume Refresh
+ *  (the next over-limit side, or steps 3-6). */
+export function resolveHandLimitDiscard(G: GameState, missionIds: string[]): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'HandLimitDiscard') return { ok: false, reason: 'no-pending' };
+  const p = G.pendingHandLimitDiscards;
+  if (!p || p.queue.length === 0) return { ok: false, reason: 'no-queue' };
+  const cur = p.queue[0];
+  if (missionIds.length !== cur.count) return { ok: false, reason: `expected-${cur.count}-discards` };
+  const seen = new Set<string>();
+  for (const id of missionIds) {
+    if (!cur.discardable.includes(id)) return { ok: false, reason: `not-discardable:${id}` };
+    if (seen.has(id)) return { ok: false, reason: `duplicate:${id}` };
+    seen.add(id);
+  }
+  const f = faction(G, cur.side);
+  for (const id of missionIds) {
+    const i = f.missionHand.indexOf(id);
+    if (i >= 0) f.missionHand.splice(i, 1);
+    f.missionDiscard.push(id);
+    log(G, { kind: 'mission-hand-trim', side: cur.side, payload: { missionId: id } });
+  }
+  p.queue.shift();
+  G.pendingChoice = undefined;
+  if (p.queue.length > 0) {
+    postNextHandLimitDiscard(G);
+    return { ok: true };
+  }
+  const logStart = p.logStart;
+  G.pendingHandLimitDiscards = undefined;
+  continueRefreshAfterMissionDraw(G, logStart);
+  return { ok: true };
 }
 
 /** Refresh recruit step. Each side draws 2 action cards and the player
