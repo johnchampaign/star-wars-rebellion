@@ -822,7 +822,17 @@ export function activateSystem(
   if (leader.tacticValues.space + leader.tacticValues.ground === 0) {
     return { ok: false, reason: 'leader-has-no-tactic-values' };
   }
-  if (!G.map.systems[targetSystemId]) return { ok: false, reason: 'unknown-target-system' };
+  // The Rebel may activate the hidden "Rebel Base" space itself to pull units IN
+  // from the base's system or an adjacent one (rr "Moving to or from the Rebel
+  // Base"; player report). Otherwise the target must be a real map system.
+  const targetIsBaseSpace = targetSystemId === 'rebel-base-space';
+  if (targetIsBaseSpace) {
+    if (side !== 'Rebel') return { ok: false, reason: 'base-space-rebel-only' };
+    if (G.rebelBaseRevealed) return { ok: false, reason: 'base-revealed-no-base-space' };
+    if (!G.rebelBaseSystemId) return { ok: false, reason: 'no-rebel-base' };
+  } else if (!G.map.systems[targetSystemId]) {
+    return { ok: false, reason: 'unknown-target-system' };
+  }
 
   // Cannot move units out of a system that already contains your own leader (rr p.2).
   for (const order of moveOrders) {
@@ -837,7 +847,19 @@ export function activateSystem(
       return { ok: false, reason: `friendly-leader-blocks-source:${order.fromSystemId}` };
     }
     // Adjacency check (rr p.9 — units can pass region borders but not impassable).
-    if (order.fromSystemId === 'rebel-base-space') {
+    if (targetIsBaseSpace) {
+      // Moving INTO the hidden Rebel Base space: the source must be the base's
+      // own system or a system adjacent to it (rr "Moving to or from the Rebel
+      // Base"). Sources can't themselves be the base space.
+      if (order.fromSystemId === 'rebel-base-space') {
+        return { ok: false, reason: 'source-cannot-be-base-space' };
+      }
+      const baseId = G.rebelBaseSystemId;
+      const baseAdj = G.catalog.adjacency[baseId] ?? [];
+      if (order.fromSystemId !== baseId && !baseAdj.includes(order.fromSystemId)) {
+        return { ok: false, reason: `source-not-base-or-adjacent:${order.fromSystemId}` };
+      }
+    } else if (order.fromSystemId === 'rebel-base-space') {
       // RAW ("Moving to and from the Rebel base"): while the base is hidden,
       // units may move FROM the Rebel Base space only to the base's own system
       // or a system adjacent to it. (Special missions that ignore adjacency —

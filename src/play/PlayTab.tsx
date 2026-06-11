@@ -8641,7 +8641,17 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
   // Valid sources for moves: systems adjacent to target (or the target itself —
   // pre-existing friendly units), where the human has no leader.
   const sources: string[] = [];
-  if (targetSystemId) {
+  if (targetSystemId === 'rebel-base-space') {
+    // Activating the hidden Rebel Base space: pull units IN from the base's own
+    // system or a system adjacent to it (rr "Moving to or from the Rebel Base").
+    const baseId = G.rebelBaseSystemId;
+    const candidates = [baseId, ...(G.catalog.adjacency[baseId] ?? [])];
+    for (const sysId of candidates) {
+      if ((f.leadersOnBoard[sysId] ?? []).length > 0) continue;
+      const ss = G.map.systems[sysId];
+      if (ss && ss.units.some((u) => u.side === side)) sources.push(sysId);
+    }
+  } else if (targetSystemId) {
     const adj = G.catalog.adjacency[targetSystemId] ?? [];
     for (const sysId of adj) {
       if ((f.leadersOnBoard[sysId] ?? []).length > 0) continue;
@@ -8729,7 +8739,8 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
     // troops) — reporter MightyFaben lost a turn this way. Confirm first.
     const totalUnits = orders.reduce((n, o) => n + o.unitInstanceIds.length, 0);
     if (totalUnits === 0) {
-      const sysName = G.catalog.systems[targetSystemId]?.name ?? targetSystemId;
+      const sysName = targetSystemId === 'rebel-base-space' ? 'the Rebel Base space'
+        : (G.catalog.systems[targetSystemId]?.name ?? targetSystemId);
       const ok = window.confirm(
         `Activate ${sysName} with NO units moving?\n\n`
         + `Your leader will go there alone — this can't move troops, subjugate, `
@@ -9013,6 +9024,12 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
             }}
           >
             <option value="">— pick target system —</option>
+            {/* Rebel can activate the hidden "Rebel Base" space itself to pull
+                units IN from the base's system or an adjacent one (rr "Moving to
+                or from the Rebel Base"; player request). */}
+            {side === 'Rebel' && !G.rebelBaseRevealed && G.rebelBaseSystemId && (
+              <option value="rebel-base-space">Rebel Base space (hidden)</option>
+            )}
             {Object.keys(G.map.systems).sort().map((sysId) => {
               const sd = G.catalog.systems[sysId];
               return <option key={sysId} value={sysId}>{sd?.name ?? sysId}</option>;
@@ -9021,7 +9038,7 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
         )}
         {targetSystemId && (
           <span style={{ marginLeft: 8, fontSize: 12, color: '#ffd54a' }}>
-            → {G.catalog.systems[targetSystemId]?.name ?? targetSystemId}
+            → {targetSystemId === 'rebel-base-space' ? 'Rebel Base space (hidden)' : (G.catalog.systems[targetSystemId]?.name ?? targetSystemId)}
           </span>
         )}
       </div>
