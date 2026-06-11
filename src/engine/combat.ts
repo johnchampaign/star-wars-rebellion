@@ -1185,6 +1185,12 @@ export function resolveCombatAttackerTactics(
   // target constraints (Onslaught spreads, Take It Down concentrates).
   for (const cid of plays.damageBoostCardIds ?? []) {
     if (!hand.includes(cid)) continue;
+    // A tactic card with a ★ requirement (Onslaught, Take It Down) may ONLY be
+    // played by spending a rolled special die — that path is resolveSpecialDie
+    // Spend(), which charges 1 special per card. This regular-tactics path must
+    // NOT also play them, or a player could play them with no special rolled
+    // (player report #204). Critical Hit (requiresSpecial:false) stays free here.
+    if (G.catalog.tactics[cid]?.requiresSpecial === true) continue;
     const amount = cid.includes('take-it-down') ? 2
                 : cid.includes('onslaught')   ? 2
                 : cid.includes('critical-hit') ? 1

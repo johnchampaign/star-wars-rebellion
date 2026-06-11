@@ -2543,10 +2543,14 @@ function handleCombatAttackerTactics(G: GameState): boolean {
   if (c.dice.length > 0 && blanks > 0 && hits < Math.ceil(c.dice.length / 2)) {
     concentrateFire = c.hand.find((cid) => cid.includes('concentrate-fire')) ?? null;
   }
+  // Only the FREE boost (Critical Hit) is playable in the regular-tactics step.
+  // Onslaught / Take It Down need a rolled special (requiresSpecial) and are
+  // played via the Special Die Spend path instead (#204) — the engine now skips
+  // them here, so don't bother offering them.
   const damageBoosts: string[] = [];
   for (const sub of ['take-it-down', 'critical-hit', 'onslaught']) {
     const cid = c.hand.find((x) => x.includes(sub));
-    if (cid) damageBoosts.push(cid);
+    if (cid && G.catalog.tactics[cid]?.requiresSpecial !== true) damageBoosts.push(cid);
   }
   const r = combat.resolveCombatAttackerTactics(G, {
     concentrateFireCardId: concentrateFire,
@@ -2701,7 +2705,17 @@ function handleYodaReroll(G: GameState): boolean {
  *  any special-required cards (we'd need card-by-card logic). */
 function handleSpecialDieSpend(G: GameState): boolean {
   const c = G.pendingChoice as Extract<NonNullable<GameState['pendingChoice']>, { kind: 'SpecialDieSpend' }>;
-  const r = combat.resolveSpecialDieSpend(G, { draws: c.specialCount, playCardIds: [] });
+  // Spend specials on playing ★-cost damage cards already in hand FIRST (each
+  // costs 1 special), then draw with whatever specials remain. Previously the AI
+  // always drew and never played its special cards — and the damage cards used
+  // to leak through the regular tactics path for free (#204). Now that that's
+  // closed, the AI must spend a special to play them, like the rules require.
+  // Prefer the biggest immediate damage (Take It Down +2, Onslaught +2).
+  const rank = (cid: string) => cid.includes('take-it-down') ? 2 : cid.includes('onslaught') ? 1 : 0;
+  const playable = [...(c.specialCards ?? [])].sort((a, b) => rank(b) - rank(a));
+  const playCardIds = playable.slice(0, c.specialCount);
+  const draws = c.specialCount - playCardIds.length;
+  const r = combat.resolveSpecialDieSpend(G, { draws, playCardIds });
   return r.ok;
 }
 

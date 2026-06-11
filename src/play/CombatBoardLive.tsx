@@ -1096,8 +1096,13 @@ function AttackerTacticsPanel({ G, choice, onPersist }: {
   const hits = choice.dice.filter((d) => d.face === 'hit' || d.face === 'direct-hit').length;
   const blanks = choice.dice.filter((d) => d.face === 'blank').length;
   const cf = choice.hand.find((cid) => cid.includes('concentrate-fire')) ?? null;
+  // Only the FREE damage boost (Critical Hit) belongs in this regular-tactics
+  // step. Onslaught / Take It Down have a ★ requirement (requiresSpecial) and
+  // are played from the Special Die Spend step, which charges a rolled special
+  // — offering them here let a player play them with no special (report #204).
   const damageBoosts = choice.hand.filter((cid) =>
-    cid.includes('take-it-down') || cid.includes('critical-hit') || cid.includes('onslaught')
+    (cid.includes('take-it-down') || cid.includes('critical-hit') || cid.includes('onslaught'))
+    && G.catalog.tactics[cid]?.requiresSpecial !== true
   );
   const [useCF, setUseCF] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
