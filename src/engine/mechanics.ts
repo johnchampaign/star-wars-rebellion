@@ -617,6 +617,20 @@ export function placeLeader(G: GameState, side: Side, leaderId: LeaderId, system
   const f = faction(G, side);
   const i = f.leaderPool.indexOf(leaderId);
   if (i >= 0) f.leaderPool.splice(i, 1);
+  // Enforce the single-location invariant: a leader occupies exactly one place.
+  // Strip any existing board position before placing, otherwise a caller that
+  // places an already-on-board leader leaves a stale duplicate. This bit Homing
+  // Beacon (player report #192): rescueLeader dropped the leader at the base
+  // space, then placeLeader added the chosen system, leaving Mon Mothma in BOTH
+  // the rebel-base-space and Felucia at once.
+  for (const [sysId, list] of Object.entries(f.leadersOnBoard)) {
+    const j = list.indexOf(leaderId);
+    if (j >= 0) {
+      list.splice(j, 1);
+      if (list.length === 0) delete f.leadersOnBoard[sysId];
+      break;
+    }
+  }
   if (!f.leadersOnBoard[systemId]) f.leadersOnBoard[systemId] = [];
   f.leadersOnBoard[systemId].push(leaderId);
   log(G, { kind: 'place-leader', side, payload: { leaderId, systemId } });
