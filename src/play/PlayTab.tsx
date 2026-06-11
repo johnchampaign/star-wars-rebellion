@@ -13347,7 +13347,8 @@ function TemporaryAllianceBuildPickModal({
       .filter((t) => t.side === 'Rebel'
         && t.theater === icon.theater
         && (tierRank[t.tier ?? 'square'] ?? 2) <= need
-        && t.class !== 'structure'
+        // Structures (Shield Generator / Ion Cannon / Golan Turret) ARE legal on
+        // a ground build icon (#161, #209) — don't exclude them.
         // RoE units are only buildable when the expansion's unit toggle is on
         // (base-game build must not offer U-Wing / Nebulon-B / etc.).
         && (t.set !== 'rote' || G.expansion?.roeUnits === true))
@@ -13420,7 +13421,7 @@ function BuildFromIconsPickModal({
       .filter((t) => t.side === choice.side
         && t.theater === icon.theater
         && (tierRank[t.tier ?? 'square'] ?? 2) <= need
-        && t.class !== 'structure'
+        // Structures ARE buildable from a ground build icon (#161, #209).
         && !PROJECT_ONLY_UNIT_IDS.has(t.id)
         // RoE units only buildable when the expansion's unit toggle is on.
         && (t.set !== 'rote' || G.expansion?.roeUnits === true))

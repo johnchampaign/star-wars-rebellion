@@ -3603,7 +3603,13 @@ export function resolveBuildFromIconsPick(
     if (!t || t.side !== choice.side) return { ok: false, reason: `bad-type:${tid}` };
     if (PROJECT_ONLY_UNIT_IDS.has(tid)) return { ok: false, reason: `project-only:${tid}` };
     if (t.theater !== icon.theater) return { ok: false, reason: `theater-mismatch:${tid}` };
-    if (t.class === 'structure') return { ok: false, reason: `structure:${tid}` };
+    // Structures (Shield Generator, Ion Cannon, Golan Turret) ARE buildable from
+    // resource icons — they carry a ground build icon per the printed components
+    // (#161), the normal Refresh build offers them, and Temporary Alliance's
+    // resolver already allows them. This path wrongly rejected them, so missions
+    // like Establish Trade / Construct Factory couldn't build a structure on an
+    // (orange) ground-square icon (player report #209). Tier check below already
+    // keeps them to the right-sized icon.
     const need = tierRank[icon.shape] ?? 2;
     const have = tierRank[t.tier ?? 'square'] ?? 2;
     if (have > need) return { ok: false, reason: `tier-too-high:${tid}` };
