@@ -94,12 +94,16 @@ const REBEL_STARTING_UNITS_RoE_NEW: { typeId: string; count: number }[] = [
   { typeId: 'airspeeder', count: 2 },
 ];
 
-// A Rise of the Empire game always uses the "New Starter Units" deployment
-// (rulebook p.8 — the official RoE setup). The deprecated VASSAL "Old Starter
-// Units" variant is not implemented; there is no toggle. Base game uses the
-// base starter list.
+// The RoE "New Starter Units" deployment (rulebook p.8) belongs to the RoE
+// UNITS content — its lists contain RoE-only units (TIE Strikers, Assault Tanks,
+// the DSUC, U-Wings, Rebel Vanguards). So it follows the `roeUnits` toggle, NOT
+// the master `enabled` flag: a player who turns the expansion on but leaves
+// "RoE units" OFF (e.g. to try Cinematic Combat alone) should start with the
+// BASE units, matching what the build menu lets them build (player report #208 —
+// ticking only Cinematic Combat handed them a pile of expansion units). The
+// deprecated VASSAL "Old Starter Units" variant is not implemented.
 function pickStartingUnits(expansion: ExpansionConfig, side: 'Empire' | 'Rebel') {
-  if (expansion.enabled) {
+  if (expansion.roeUnits) {
     return side === 'Empire'
       ? IMPERIAL_STARTING_UNITS_RoE_NEW
       : REBEL_STARTING_UNITS_RoE_NEW;
