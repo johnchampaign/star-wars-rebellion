@@ -1045,6 +1045,7 @@ export type ChoiceRequest =
     }
   | {
       kind: 'StolenPlansReorder';
+      side: Side;
       missionId: string;
       remaining: string[];      // objective card IDs still to be picked
       orderedTop: string[];     // accumulated pick order (index 0 = topmost)

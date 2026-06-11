@@ -20,7 +20,6 @@ export function pendingChoiceOwner(G: GameState, side: Side): boolean {
     case 'OpposeMission':            return pc.opposerSide === side;
     // Always-Rebel choices (no `side` tag on the request).
     case 'InfiltrationPick':         return side === 'Rebel';
-    case 'StolenPlansReorder':       return side === 'Rebel';
     case 'PlanTheAssaultShips':      return side === 'Rebel';
     case 'LeadStrikeTeamUnits':      return side === 'Rebel';
     case 'CovertOperationPick':      return side === 'Rebel';

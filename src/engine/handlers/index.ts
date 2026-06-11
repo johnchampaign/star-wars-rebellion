@@ -1266,6 +1266,7 @@ const stolenPlans: EffectHandler = (G, ctx) => {
   }
   G.pendingChoice = {
     kind: 'StolenPlansReorder',
+    side: 'Rebel',
     missionId: ctx.card.id,
     remaining: drawn,
     orderedTop: [],

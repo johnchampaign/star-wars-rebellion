@@ -177,10 +177,9 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'RebelCellPlace':           return pc.side === side;
     case 'RebelCellDiscard':         return pc.side === side;
     case 'RetreatDecision':          return pc.side === side;
-    // Infiltration / Stolen Plans / Plan The Assault are always Rebel choices.
+    // Infiltration / Plan The Assault are always Rebel choices.
     case 'InfiltrationPick':         return side === 'Rebel';
     case 'SafeHavenPick':            return side === 'Rebel';
-    case 'StolenPlansReorder':       return side === 'Rebel';
     case 'PlanTheAssaultShips':      return side === 'Rebel';
     case 'LeadStrikeTeamUnits':      return side === 'Rebel';
     case 'BuildFromIconsPick':       return pc.side === side;
@@ -2730,7 +2729,12 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'StolenPlansReorder'
-        && humanSide === 'Rebel' && (
+        // Side-aware gate: the reorder modal belongs to whichever side the
+        // choice is tagged for — Rebel for Stolen Plans, Empire for Lord
+        // Vader's Orders (#203). Was hardcoded to Rebel, so a human Empire
+        // playing Lord Vader's Orders never got the dialog (and, after the
+        // ownership fix, the game would soft-lock with no one to resolve it).
+        && humanSide === G.pendingChoice.side && (
         <StolenPlansReorderModal
           G={G}
           choice={G.pendingChoice}
