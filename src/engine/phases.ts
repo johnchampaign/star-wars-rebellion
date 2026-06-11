@@ -1301,6 +1301,12 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
       result: 'auto-success',
     }});
     G.missionReports.push({
+      // Stamp queue-time ordering so the UI shows this report in true
+      // chronological order relative to other queued reports (combat etc.).
+      // The other three mission-report push sites set this; the unopposed
+      // path was the only one missing it, so an unopposed mission sorted as
+      // MAX_SAFE_INTEGER and could display out of order (#193, #178).
+      seq: G.turnLog.length,
       missionId: pm.missionId,
       resolverSide: pm.resolverSide,
       targetSystemId: pm.targetSystemId,
@@ -2580,6 +2586,18 @@ export function resolveRapidMobilizationMove(
     if (u && G.catalog.unitTypes[u.typeId]?.transport.immobile) {
       return { ok: false, reason: `immobile-unit:${u.typeId}` };
     }
+  }
+  // Transport capacity STILL applies. Rapid Mobilization's text only says it
+  // ignores ADJACENCY, not transport restrictions — so per the general rule
+  // ("he must follow all movement rules and restrictions ... must obey transport
+  // capacity" unless an ability says "ignore transport restrictions"), ground
+  // units and restriction-icon fighters need capital-ship capacity from the same
+  // source (BGG report). This was unchecked.
+  if (unitInstanceIds.length > 0) {
+    const cap = validateMoveOrderTransport(G, 'Rebel', {
+      fromSystemId: sourceSystemId, unitInstanceIds,
+    });
+    if (!cap.ok) return { ok: false, reason: cap.reason };
   }
   const picks = unitInstanceIds.filter((uid) => {
     const u = src.units.find((x) => x.instanceId === uid);
