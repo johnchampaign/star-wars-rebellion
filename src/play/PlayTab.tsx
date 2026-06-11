@@ -11013,6 +11013,20 @@ function UnitKeyModal({ G, unitStyle, onClose }: {
 }) {
   const shapeGlyph = (tier?: string) => tier === 'triangle' ? '▲' : tier === 'circle' ? '●' : '■';
   const all = Object.values(G.catalog.unitTypes);
+  const unitNote: Record<string, string> = {
+    'death-star-under-construction': 'Stationary. Counts as a Death Star target while it is being built.',
+    'shield-generator': 'Structure: cinematic shield effects can absorb damage through it.',
+    'ion-cannon': 'Structure used by Rebel tactics and mission effects.',
+    'shield-bunker': 'Protects an Empire Death Star or DSUC in the system until the bunker is gone.',
+    'interdictor': 'Rebel units in this system cannot retreat while any Interdictor remains.',
+  };
+  const attackText = (t: typeof all[number]) => {
+    const parts: string[] = [];
+    if (t.attack.red > 0) parts.push(`${t.attack.red}R`);
+    if (t.attack.black > 0) parts.push(`${t.attack.black}B`);
+    if (t.attack.green > 0) parts.push(`${t.attack.green}G`);
+    return parts.length > 0 ? parts.join('+') : '0';
+  };
   const renderSide = (side: Side) => {
     // Hide RoE-tagged units in a base game (only show them when the expansion
     // is enabled) — see player report #152.
@@ -11036,11 +11050,16 @@ function UnitKeyModal({ G, unitStyle, onClose }: {
                   <div style={{ fontSize: 10, color: '#9aa3ad' }}>
                     {shapeGlyph(t.tier)} {t.tier ?? '?'} · {t.theater}
                     {' · '}HP {t.health.value}{t.health.color ? ` (${t.health.color})` : ''}
-                    {' · atk '}{t.attack.red}R+{t.attack.black}B
+                    {' · atk '}{attackText(t)}
                     {/* Carry capacity / needs-a-lift (player request — MightyFaben). */}
                     {t.transport.capacity > 0 && ` · carries ${t.transport.capacity}`}
                     {t.transport.restriction && ' · needs a lift'}
                   </div>
+                  {unitNote[t.id] && (
+                    <div style={{ fontSize: 10, color: '#c7b982', marginTop: 2 }}>
+                      {unitNote[t.id]}
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -11064,7 +11083,8 @@ function UnitKeyModal({ G, unitStyle, onClose }: {
         </div>
         <div style={{ fontSize: 11, color: '#888', marginBottom: 10 }}>
           ▲ triangle · ● circle · ■ square — the shape is the unit's tier (used by
-          build icons and combat). Pictures use your current unit style ({unitStyle}).
+          build icons and combat). `R/B/G` = red, black, and green dice. Pictures use
+          your current unit style ({unitStyle}).
         </div>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           {renderSide('Rebel')}
