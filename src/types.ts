@@ -180,6 +180,14 @@ export type MissionCard = {
   rulesText: string;
   image: string;
   set?: ContentSet;
+  // Which RoE mission SET this card belongs to, distinct from `set` (ownership).
+  // RAW (RoE rulebook): in an expansion game each player uses EITHER the base
+  // mission set OR the Rise of the Empire set, not both. Most cards are derived
+  // (base no-icon → base set; base + leader portrait → BOTH sets; rote/Vader-icon
+  // → rote set). This explicit field is only needed for the rare card that is
+  // RoE-owned (`set: 'rote'`) yet belongs to the BASE set — e.g. the "Core"
+  // Subversion. Omit it to use the derived membership.
+  missionSet?: 'base' | 'rote' | 'both';
 };
 
 // Base objectives use 'StartOfRefresh'; Rise of the Empire objectives use

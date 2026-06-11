@@ -1005,9 +1005,10 @@
       "isAttempt": false,
       "leaderPortrait": null,
       "effectKey": "subversion-new",
-      "rulesText": "Oppose a Rebel mission (from the new RoE set). Place assigned leaders in that system. Roll 1 additional die to oppose the mission.",
+      "rulesText": "Reveal this mission after the Rebel player reveals a mission. Place all of your leaders assigned to \"Subversion\" in the targeted system. You roll 1 additional die for this opposition.",
       "image": "Subversion Empire RotE.jpg",
-      "set": "rote"
+      "set": "rote",
+      "missionSet": "rote"
     },
     {
       "id": "subversion-original",
@@ -1020,9 +1021,10 @@
       "isAttempt": false,
       "leaderPortrait": null,
       "effectKey": "subversion-original",
-      "rulesText": "Oppose a Rebel mission (from the original base set). Place assigned leaders in that system. Roll 1 additional die to oppose the mission.",
+      "rulesText": "Reveal this mission after the Rebel player reveals a mission. Place all of your leaders assigned to \"Subversion\" in the targeted system. You roll 1 additional die for this opposition.",
       "image": "Subversion Empire Core.jpg",
-      "set": "rote"
+      "set": "rote",
+      "missionSet": "base"
     },
     {
       "id": "aggressive-negotiations",

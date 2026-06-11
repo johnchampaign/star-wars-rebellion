@@ -535,13 +535,34 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   // swap is testable end-to-end, but resolve as no-ops until Phase 5b
   // binds them.
   const isRoe = (m: { set?: 'base' | 'rote' }) => m.set === 'rote';
-  const missionInDeck = (m: { isStarting: boolean; isProject: boolean; set?: 'base' | 'rote' }): boolean => {
-    if (m.isStarting || m.isProject) {
-      // Additive: base always in; rote-tagged in when expansion enabled.
-      return expansion.enabled || !isRoe(m);
-    }
-    // Regular mission: swap.
-    return expansion.roeMissions ? isRoe(m) : !isRoe(m);
+  // RAW (RoE rulebook): in an expansion game each player uses EITHER the base
+  // mission set OR the Rise of the Empire set — never both combined. The set a
+  // card belongs to is keyed off its printed icon:
+  //   - no icon            → BASE set only
+  //   - leader portrait    → BOTH sets (kept whichever set you use)
+  //   - Darth Vader icon   → ROTE set only  (all `set: 'rote'` cards)
+  // A few cards are RoE-owned yet belong to the base set (the "Core" Subversion);
+  // those carry an explicit `missionSet` override. Starting + project cards are
+  // always used (additive, base + rote when owned). The selected set is driven by
+  // the visible `roeMissions` toggle (on = RoE set, off = base set), the player's
+  // "choice of mission deck" — we model the rulebook's random reveal as a choice.
+  const membership = (m: { set?: 'base' | 'rote'; leaderPortrait?: string | null;
+    missionSet?: 'base' | 'rote' | 'both' }): 'base' | 'rote' | 'both' => {
+    if (m.missionSet) return m.missionSet;
+    if (m.set === 'rote') return 'rote';          // Vader icon
+    if (m.leaderPortrait) return 'both';          // base leader-icon → both sets
+    return 'base';                                // base no-icon
+  };
+  const missionInDeck = (m: { isStarting: boolean; isProject: boolean; set?: 'base' | 'rote';
+    leaderPortrait?: string | null; missionSet?: 'base' | 'rote' | 'both' }): boolean => {
+    // Ownership: a rote-origin card only exists when the expansion is enabled.
+    const owned = expansion.enabled || !isRoe(m);
+    if (!owned) return false;
+    if (m.isStarting || m.isProject) return true; // always used
+    if (!expansion.enabled) return true;          // base game: all owned regulars
+    const want: 'base' | 'rote' = expansion.roeMissions ? 'rote' : 'base';
+    const set = membership(m);
+    return set === 'both' || set === want;
   };
   const rebelStartingMissions = Object.values(catalog.missions).filter((m) => m.side === 'Rebel' && m.isStarting && missionInDeck(m)).map((m) => m.id);
   const empireStartingMissions = Object.values(catalog.missions).filter((m) => m.side === 'Empire' && m.isStarting && !m.isProject && missionInDeck(m)).map((m) => m.id);
