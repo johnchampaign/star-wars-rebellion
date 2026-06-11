@@ -2071,7 +2071,7 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   // resolved). Pre-fix, the gate trapped them and caused freezes.)
 
   // If a player choice is pending and this side owns it, resolve it first.
-  if (G.pendingChoice && G.pendingChoice.kind === 'StolenPlansReorder' && side === 'Rebel') {
+  if (G.pendingChoice && G.pendingChoice.kind === 'StolenPlansReorder' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
     // Pick the highest-rep remaining card to place next on top.
     let best = c.remaining[0];

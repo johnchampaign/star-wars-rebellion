@@ -177,10 +177,9 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'RebelCellPlace':           return pc.side === side;
     case 'RebelCellDiscard':         return pc.side === side;
     case 'RetreatDecision':          return pc.side === side;
-    // Infiltration / Stolen Plans / Plan The Assault are always Rebel choices.
+    // Infiltration / Plan The Assault are always Rebel choices.
     case 'InfiltrationPick':         return side === 'Rebel';
     case 'SafeHavenPick':            return side === 'Rebel';
-    case 'StolenPlansReorder':       return side === 'Rebel';
     case 'PlanTheAssaultShips':      return side === 'Rebel';
     case 'LeadStrikeTeamUnits':      return side === 'Rebel';
     case 'BuildFromIconsPick':       return pc.side === side;

@@ -1759,7 +1759,7 @@ export function resolveStolenPlansPick(G: GameState, cardId: string): { ok: bool
     for (let i = choice.orderedTop.length - 1; i >= 0; i--) {
       G.rebel.objectiveDeck.unshift(choice.orderedTop[i]);
     }
-    log(G, { kind: 'stolen-plans-reorder', side: 'Rebel', payload: { order: [...choice.orderedTop] } });
+    log(G, { kind: 'stolen-plans-reorder', side: choice.side, payload: { order: [...choice.orderedTop] } });
     G.pendingChoice = undefined;
     resumeMissionAfterChoice(G);
   }
@@ -6173,11 +6173,12 @@ function applyAssignmentActionCardEffect(
       }
       G.pendingChoice = {
         kind: 'StolenPlansReorder',
+        side: 'Empire',
         missionId: cardId,
         remaining: drawn,
         orderedTop: [],
       };
-      log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+      log(G, { kind: 'choice-request', side: 'Empire', payload: {
         kind: 'StolenPlansReorder', count: drawn.length, via: 'lord-vader-s-orders',
       }});
       break;
