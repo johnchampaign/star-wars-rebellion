@@ -3334,7 +3334,9 @@ export function resolveBrilliantAdministratorBuildPick(
     if (t.theater !== icon.theater) return { ok: false, reason: `theater-mismatch:${tid}` };
     const need = tierRank[icon.shape] ?? 2;
     const have = tierRank[t.tier ?? 'square'] ?? 2;
-    if (have > need) return { ok: false, reason: `tier-too-high:${tid}` };
+    // EXACT tier — a resource icon builds a unit of THAT size (rules ref
+    // "Resource Icons"); you can't downgrade to a smaller unit (player #214).
+    if (have !== need) return { ok: false, reason: `tier-mismatch:${tid}` };
   }
   let added = 0;
   for (let i = 0; i < typeIds.length; i++) {
@@ -3579,7 +3581,9 @@ export function resolveTemporaryAllianceBuildPick(
     if (t.theater !== icon.theater) return { ok: false, reason: `theater-mismatch:${tid}` };
     const need = tierRank[icon.shape] ?? 2;
     const have = tierRank[t.tier ?? 'square'] ?? 2;
-    if (have > need) return { ok: false, reason: `tier-too-high:${tid}` };
+    // EXACT tier — a resource icon builds a unit of THAT size (rules ref
+    // "Resource Icons"); you can't downgrade to a smaller unit (player #214).
+    if (have !== need) return { ok: false, reason: `tier-mismatch:${tid}` };
   }
   let added = 0;
   for (let i = 0; i < typeIds.length; i++) {
@@ -3628,7 +3632,9 @@ export function resolveBuildFromIconsPick(
     // keeps them to the right-sized icon.
     const need = tierRank[icon.shape] ?? 2;
     const have = tierRank[t.tier ?? 'square'] ?? 2;
-    if (have > need) return { ok: false, reason: `tier-too-high:${tid}` };
+    // EXACT tier — a resource icon builds a unit of THAT size (rules ref
+    // "Resource Icons"); you can't downgrade to a smaller unit (player #214).
+    if (have !== need) return { ok: false, reason: `tier-mismatch:${tid}` };
   }
   let added = 0;
   for (let i = 0; i < typeIds.length; i++) {

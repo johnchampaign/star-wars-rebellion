@@ -12932,7 +12932,7 @@ function BrilliantAdministratorBuildPickModal({
     return Object.values(G.catalog.unitTypes)
       .filter((t) => t.side === 'Empire'
         && t.theater === icon.theater
-        && (tierRank[t.tier ?? 'square'] ?? 2) <= need
+        && (tierRank[t.tier ?? 'square'] ?? 2) === need
         && t.class !== 'structure'
         && !PROJECT_ONLY_UNIT_IDS.has(t.id)
         // RoE units only buildable when the expansion's unit toggle is on.
@@ -13448,7 +13448,7 @@ function TemporaryAllianceBuildPickModal({
     return Object.values(G.catalog.unitTypes)
       .filter((t) => t.side === 'Rebel'
         && t.theater === icon.theater
-        && (tierRank[t.tier ?? 'square'] ?? 2) <= need
+        && (tierRank[t.tier ?? 'square'] ?? 2) === need
         // Structures (Shield Generator / Ion Cannon / Golan Turret) ARE legal on
         // a ground build icon (#161, #209) — don't exclude them.
         // RoE units are only buildable when the expansion's unit toggle is on
@@ -13522,7 +13522,7 @@ function BuildFromIconsPickModal({
     return Object.values(G.catalog.unitTypes)
       .filter((t) => t.side === choice.side
         && t.theater === icon.theater
-        && (tierRank[t.tier ?? 'square'] ?? 2) <= need
+        && (tierRank[t.tier ?? 'square'] ?? 2) === need
         // Structures ARE buildable from a ground build icon (#161, #209).
         && !PROJECT_ONLY_UNIT_IDS.has(t.id)
         // RoE units only buildable when the expansion's unit toggle is on.
@@ -13547,7 +13547,7 @@ function BuildFromIconsPickModal({
       }}>
         <h3 style={{ color: accent, marginTop: 0 }}>{choice.label} — build units at {sysName}</h3>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
-          One unit per resource icon (you may build a lower tier than the icon). Skip an icon to leave that slot empty.
+          One unit per resource icon (choose among the units that match that icon's size). Skip an icon to leave that slot empty.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
           {choice.icons.map((icon, i) => {
