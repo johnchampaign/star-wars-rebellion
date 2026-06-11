@@ -2708,7 +2708,12 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'StolenPlansReorder'
-        && humanSide === 'Rebel' && (
+        // Side-aware gate: the reorder modal belongs to whichever side the
+        // choice is tagged for — Rebel for Stolen Plans, Empire for Lord
+        // Vader's Orders (#203). Was hardcoded to Rebel, so a human Empire
+        // playing Lord Vader's Orders never got the dialog (and, after the
+        // ownership fix, the game would soft-lock with no one to resolve it).
+        && humanSide === G.pendingChoice.side && (
         <StolenPlansReorderModal
           G={G}
           choice={G.pendingChoice}
