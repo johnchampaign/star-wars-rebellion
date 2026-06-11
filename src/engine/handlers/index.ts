@@ -726,7 +726,12 @@ const leadTheStrikeTeam: EffectHandler = (G, ctx) => {
   const baseContainer = baseSourceId === 'rebel-base-space'
     ? G.map.rebelBaseSpace : G.map.systems[baseSourceId];
   const baseGround = (baseContainer?.units ?? [])
-    .filter((u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground')
+    .filter((u) => {
+      const t = G.catalog.unitTypes[u.typeId];
+      // Ground COMBAT units only — immobile structures (Ion Cannon, Shield
+      // Generator, Golan Turret) can't be moved by a move ability (#212).
+      return u.side === 'Rebel' && t?.theater === 'ground' && !t.transport.immobile;
+    })
     .map((u) => u.instanceId);
   if (baseGround.length === 0) {
     // No ground units to send — still resolve combat in case the Rebel

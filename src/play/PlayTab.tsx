@@ -3897,6 +3897,10 @@ function UnitStatLine({ G, typeId }: { G: GameState; typeId: string }) {
       <span style={{ color: '#ff8866' }}>{t.attack.red}R</span>
       <span style={{ color: '#888' }}>/</span>
       <span style={{ color: '#ccc' }}>{t.attack.black}B</span>
+      {t.attack.green > 0 && (<>
+        <span style={{ color: '#888' }}>/</span>
+        <span style={{ color: '#7be08a' }}>{t.attack.green}G</span>
+      </>)}
       {' · HP '}{t.health.value}
       {t.transport.capacity > 0 && ` · carries ${t.transport.capacity}`}
       {t.transport.restriction && ' · needs a transport'}
@@ -11222,7 +11226,7 @@ function UnitKeyModal({ G, unitStyle, onClose }: {
                   <div style={{ fontSize: 10, color: '#9aa3ad' }}>
                     {shapeGlyph(t.tier)} {t.tier ?? '?'} · {t.theater}
                     {' · '}HP {t.health.value}{t.health.color ? ` (${t.health.color})` : ''}
-                    {' · atk '}{t.attack.red}R+{t.attack.black}B
+                    {' · atk '}{t.attack.red}R+{t.attack.black}B{t.attack.green > 0 ? `+${t.attack.green}G` : ''}
                     {/* Carry capacity / needs-a-lift (player request — MightyFaben). */}
                     {t.transport.capacity > 0 && ` · carries ${t.transport.capacity}`}
                     {t.transport.restriction && ' · needs a lift'}
