@@ -765,24 +765,20 @@ const establishTradeRelations: EffectHandler = (G, ctx) => {
   if (!sysId) return true;
   const ss = G.map.systems[sysId];
   if (!ss) return true;
-  // RAW (card): choose ONE — gain 2 loyalty in the system, OR place 1 Mon
-  // Calamari Cruiser on space 3 of the build queue (player report #187: the
-  // old impl gained 1 loyalty + built from icons, never offering the cruiser).
-  // The cruiser option needs one in supply and an un-sabotaged system; if it's
-  // unavailable there's no choice, so just gain the 2 loyalty.
-  const cruiserAvailable = !ss.sabotage && M.unitsAvailableInSupply(G, 'mon-cala-cruiser') > 0;
-  if (!cruiserAvailable) {
-    M.gainLoyalty(G, 'Rebel', sysId, 2);
-    log(G, { kind: 'establish-trade-relations', side: 'Rebel', payload: {
-      systemId: sysId, chose: 'loyalty', amount: 2,
-      note: ss.sabotage ? 'system sabotaged — cruiser option unavailable' : 'no cruiser in supply',
-    }});
-    return true;
-  }
-  G.pendingChoice = { kind: 'EstablishTradeChoice', side: 'Rebel', systemId: sysId };
-  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-    kind: 'EstablishTradeChoice', systemId: sysId,
+  // RAW (card art, confirmed by player report #200): "gain 1 loyalty in the
+  // system AND place units on the build queue using this system's resource
+  // icons and number." #187 wrongly handed this card Support of Mon Calamari's
+  // "2 loyalty OR Mon Cala Cruiser" effect — two different cards were conflated.
+  // This restores the card's real effect: 1 loyalty, then a normal
+  // build-from-icons placement for the target system.
+  M.gainLoyalty(G, 'Rebel', sysId, 1);
+  log(G, { kind: 'establish-trade-relations', side: 'Rebel', payload: {
+    systemId: sysId, loyalty: 1,
   }});
+  // Build from this system's resource icons (player picks a unit per icon).
+  // Posts a BuildFromIconsPick; if the system can't build (no slot/resources)
+  // the helper no-ops and the mission just completes with the loyalty gain.
+  queueBuildFromIcons(G, 'Rebel', sysId, 'Establish Trade Relations');
   return true;
 };
 
