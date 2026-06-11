@@ -811,8 +811,12 @@ const interceptTransmissions: EffectHandler = (G, _ctx) => {
   }});
   G.probeDeck.push(...reshuffle);
   shuffle(G.rng, G.probeDeck);
-  // Empire keeps the "given" probes (effectively removed from play; Empire
-  // knows those systems don't contain the base).
+  // RAW: "he gives YOU all cards belonging to systems that contain an Imperial
+  // unit." The Empire RECEIVES those probes into its hand (it now knows those
+  // systems aren't the base) — they were being dropped on the floor instead,
+  // so several probe cards vanished from play each time this resolved (player
+  // report #202: "six cards not accounted for").
+  (G.empire.probeHand ??= []).push(...givenToEmpire);
   return true;
 };
 

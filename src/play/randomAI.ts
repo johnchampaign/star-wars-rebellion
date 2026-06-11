@@ -476,6 +476,12 @@ function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: 
   }
   // Captures / probes don't care about target system per se.
   if (missionId === 'gather-intel') s += 3;
+  // Research & Development can REMOVE a sabotage marker from its target system
+  // (Option B) while still drawing a project. The AI was running R&D on
+  // arbitrary systems and never clearing sabotage, letting the Rebel choke its
+  // production (player report #199). Strongly prefer a sabotaged Imperial system
+  // as the target so Option B cleans it up.
+  if (missionId === 'research-and-development' && sysState?.sabotage) s += 25;
   // Prefer an undefended target so the attempt auto-succeeds (see helper).
   s += oppositionTargetTerm(G, 'Empire', missionId, targetSysId);
   return s;
@@ -2665,7 +2671,7 @@ function handleCombatAssignDamage(G: GameState): boolean {
     const src = c.hits[i].source;
     const isTakeItDown = src && src.includes('take-it-down');
     const isOnslaught = src && src.includes('onslaught');
-    let best: { id: string; remaining: number; tier: number } | null = null;
+    let best: { id: string; remaining: number; tier: number; threat: number } | null = null;
     for (const tid of targets) {
       // Per-source constraint filtering.
       if (isTakeItDown && sourceFirstTarget.has(src)) {
@@ -2680,8 +2686,19 @@ function handleCombatAssignDamage(G: GameState): boolean {
       const remaining = (t.health.value ?? 1) - (u.damage ?? 0) - queued;
       if (remaining <= 0) continue; // already dead under queued damage
       const tier = tierRank[t.tier ?? 'square'] ?? 9;
-      if (!best || remaining < best.remaining || (remaining === best.remaining && tier < best.tier)) {
-        best = { id: tid, remaining, tier };
+      // Combat threat = total attack dice. Among equally-killable targets, take
+      // out the bigger threat first: a Rebel Transport (0 attack) and a Corellian
+      // Corvette (2 attack) have the SAME health, and the old tie-break (smaller
+      // tier) wasted hits on the harmless Transport (player report #198). Finish
+      // the easiest kill first (lowest remaining), then break ties by threat,
+      // then by smaller tier.
+      const threat = (t.attack?.red ?? 0) + (t.attack?.black ?? 0) + (t.attack?.green ?? 0);
+      const better = !best
+        || remaining < best.remaining
+        || (remaining === best.remaining && threat > best.threat)
+        || (remaining === best.remaining && threat === best.threat && tier < best.tier);
+      if (better) {
+        best = { id: tid, remaining, tier, threat };
       }
     }
     if (best) {
