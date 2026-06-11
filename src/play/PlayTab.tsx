@@ -372,6 +372,14 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   const [leaderRescuedQueue, setLeaderRescuedQueue] = useState<
     { leaderId: string; reason: string; turn: number }[]
   >([]);
+  // Generic "private event" notices for the human EMPIRE player — things that
+  // happen on the Empire's side but had no surfacing other than reading the log:
+  //   - Homing Beacon placed a captured leader to reveal the base's region (#192)
+  //   - a project card was drawn into the Empire's hand (#194)
+  // Each becomes a small dismissible modal. Detected from the same turnLog scan.
+  const [infoNoticeQueue, setInfoNoticeQueue] = useState<
+    { title: string; body: string; turn: number }[]
+  >([]);
   // Queue of resolved-problem-report responses the user hasn't seen yet.
   // Fetched once at app load from /api/my-responses; each unseen response
   // becomes a modal that thanks the user + explains the fix in plain
@@ -621,6 +629,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       // reputation") for the same score (player report #120).
       const draws: { objectiveId: string; turn: number }[] = [];
       const rescues: { leaderId: string; reason: string; turn: number }[] = [];
+      const infos: { title: string; body: string; turn: number }[] = [];
       for (let i = seenObjectiveLogIdxRef.current; i < G.turnLog.length; i++) {
         const e = G.turnLog[i];
         // draw-objective is only logged for the Rebel side (objectives are
@@ -648,6 +657,33 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             });
           }
         }
+        // Homing Beacon placed a captured leader in a system in the Rebel base's
+        // region, exposing which region the base is in — a big deal for the
+        // Empire's search, but previously only visible in the log (#192).
+        if (e.kind === 'homing-beacon-place' && humanSidePref === 'Empire') {
+          const p = e.payload as { leaderId?: string; systemId?: string } | undefined;
+          const leaderName = p?.leaderId ? (G.catalog.leaders[p.leaderId]?.name ?? p.leaderId) : 'A leader';
+          const sysName = p?.systemId ? (G.catalog.systems[p.systemId]?.name ?? p.systemId) : 'a system';
+          infos.push({
+            title: 'Homing Beacon — region revealed',
+            body: `${leaderName} was placed in ${sysName}. The Rebel base is in this system's region — focus your search there.`,
+            turn: e.turn ?? 0,
+          });
+        }
+        // A project card was drawn into the Empire's hand (Research & Development /
+        // Construct missions). The Empire player couldn't tell WHICH one without
+        // hunting through their mission hand (#194).
+        if (e.kind === 'project-draw' && humanSidePref === 'Empire') {
+          const p = e.payload as { drawn?: string[] } | undefined;
+          for (const pid of (p?.drawn ?? [])) {
+            const name = G.catalog.missions[pid]?.name ?? pid;
+            infos.push({
+              title: 'Project card drawn',
+              body: `You drew the project: ${name}. It's in your mission hand, ready to assign.`,
+              turn: e.turn ?? 0,
+            });
+          }
+        }
       }
       seenObjectiveLogIdxRef.current = G.turnLog.length;
       if (draws.length > 0) {
@@ -655,6 +691,9 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       }
       if (rescues.length > 0) {
         setLeaderRescuedQueue((q) => [...q, ...rescues]);
+      }
+      if (infos.length > 0) {
+        setInfoNoticeQueue((q) => [...q, ...infos]);
       }
     }
   }, [runAILoop]);
@@ -722,6 +761,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     setObjectiveNoticeQueue([]);
     setDrawnObjectiveQueue([]);
     setLeaderRescuedQueue([]);
+    setInfoNoticeQueue([]);
     // Honor the player's side preference. "Random" rolls 50/50.
     const newHuman: Side =
       sidePref === 'Rebel' ? 'Rebel' :
@@ -752,6 +792,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       setObjectiveNoticeQueue([]);
       setDrawnObjectiveQueue([]);
       setLeaderRescuedQueue([]);
+      setInfoNoticeQueue([]);
       refresh();
     } catch (e) {
       setError(`Failed to restore saved game: ${String(e)}. Starting fresh might help.`);
@@ -1529,6 +1570,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           G={G}
           notice={leaderRescuedQueue[0]}
           onDismiss={() => setLeaderRescuedQueue((q) => q.slice(1))}
+        />
+      )}
+
+      {/* Empire private-event notices (Homing Beacon region reveal #192,
+       *  project draw #194) — stack behind the objective/rescue notices. */}
+      {objectiveNoticeQueue.length === 0
+        && drawnObjectiveQueue.length === 0
+        && leaderRescuedQueue.length === 0
+        && infoNoticeQueue.length > 0 && (
+        <InfoNoticeModal
+          notice={infoNoticeQueue[0]}
+          onDismiss={() => setInfoNoticeQueue((q) => q.slice(1))}
         />
       )}
 
@@ -3221,6 +3274,35 @@ function ObjectiveDrawnModal({ G, notice, onDismiss }: {
 // of combat after the Empire retreated; the player didn't realize, then
 // tried to reveal Daring Rescue and got a confusing "no targets" error.
 // ============================================================================
+
+/** Generic dismissible info notice for Empire private events (Homing Beacon
+ *  region reveal #192, project draw #194). Title + body, one button. */
+function InfoNoticeModal({ notice, onDismiss }: {
+  notice: { title: string; body: string; turn: number };
+  onDismiss: () => void;
+}) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5200 }}
+      onClick={onDismiss}>
+      <div style={{ background: '#15171c', border: '2px solid #ffb84d', borderRadius: 6,
+        padding: 20, maxWidth: 460, width: '90%' }}
+        onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontSize: 15, color: '#ffb84d', fontWeight: 700, marginBottom: 8 }}>
+          {notice.title}
+        </div>
+        <div style={{ fontSize: 13, color: '#d8dade', lineHeight: 1.5, marginBottom: 16 }}>
+          {notice.body}
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <button className="tab-button active" onClick={onDismiss} style={{ padding: '6px 18px' }}>
+            Got it
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function LeaderRescuedModal({ G, notice, onDismiss }: {
   G: GameState;
