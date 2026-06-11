@@ -2339,9 +2339,12 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           }} />
       )}
 
-      {(!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && G.pendingChoice?.kind === 'SecretMissionPick'
+      {/* Secret Mission's keep-cards pick is part of RESOLVING the mission, so
+          it must show even though the mission's own resolve report is already
+          queued — otherwise the player sees only the report and never the pick
+          (BGG report). The modal's z-index sits above the report so it shows
+          first; the report follows once the pick is made. */}
+      {G.pendingChoice?.kind === 'SecretMissionPick'
         && G.pendingChoice.side === humanSide && (
         <SecretMissionPickModal G={G} choice={G.pendingChoice}
           onPick={(mid) => {
@@ -12109,7 +12112,9 @@ function SecretMissionPickModal({
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+      // Above the mission-resolve report (zIndex 5000) so the active pick shows
+      // first even when that report is queued behind it (BGG: Secret Mission).
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5600,
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
