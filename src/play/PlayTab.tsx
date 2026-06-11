@@ -861,6 +861,40 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     if (G && !G.isGameOver && gameOverAck) setGameOverAck(false);
   }, [G, G?.isGameOver, gameOverAck]);
 
+  // #193 instrumentation: report-ordering diagnostics. When the player reports
+  // that a combat summary shows out of order (e.g. after the opponent's
+  // mission/activation), the cause is which queued report the UI picks to show
+  // next. Whenever the set of queued reports changes, log a snapshot of all five
+  // queues with their seq stamps (seq = turnLog length when the report was
+  // queued, i.e. its chronological position) and the current turnLog length, so
+  // the next out-of-order occurrence is captured in the console verbatim. Cheap,
+  // read-only, and easy to strip once #193 is understood.
+  const reportSig = G ? [
+    ...(G.combatReports ?? []).map((r) => `c${r.seq ?? '?'}`),
+    ...(G.missionReports ?? []).map((r) => `m${r.seq ?? '?'}`),
+    ...(G.objectiveReports ?? []).map((r) => `o${(r as { seq?: number }).seq ?? '?'}`),
+    ...(G.refreshReports ?? []).map((r) => `r${(r as { seq?: number }).seq ?? '?'}`),
+    ...(G.activationReports ?? []).map((r) => `a${(r as { seq?: number }).seq ?? '?'}`),
+  ].join(',') : '';
+  useEffect(() => {
+    if (!G || reportSig === '') return;
+    const snap = (arr: { seq?: number; kind?: string }[] | undefined, tag: string) =>
+      (arr ?? []).map((r, i) => ({ tag, i, seq: r.seq, kind: (r as { kind?: string }).kind }));
+    // eslint-disable-next-line no-console
+    console.log('[report-order #193]', {
+      turnLogLen: G.turnLog?.length,
+      currentPlayer: G.currentPlayer,
+      phase: G.phase,
+      queues: [
+        ...snap(G.combatReports as { seq?: number }[], 'combat'),
+        ...snap(G.missionReports as { seq?: number }[], 'mission'),
+        ...snap(G.objectiveReports as { seq?: number }[], 'objective'),
+        ...snap(G.refreshReports as { seq?: number }[], 'refresh'),
+        ...snap(G.activationReports as { seq?: number }[], 'activation'),
+      ].sort((a, b) => (a.seq ?? 1e15) - (b.seq ?? 1e15)),
+    });
+  }, [reportSig]);
+
   // "What the AI just did" — when control returns to the human, summarize the
   // AI's notable Command actions since the human last had control. Runs on
   // every tick; only acts when the human is genuinely in control (no pending
