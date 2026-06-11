@@ -1963,7 +1963,12 @@ const behindEnemyLines: EffectHandler = (G, ctx) => {
   const baseContainer = baseSourceId === 'rebel-base-space'
     ? G.map.rebelBaseSpace : G.map.systems[baseSourceId];
   if (!baseContainer) return true;
-  const rebelUnits = baseContainer.units.filter((u) => u.side === 'Rebel');
+  // Immobile units (Shield Generator / Ion Cannon / Golan Turret) can never be
+  // moved by a move ability — "ignore transport" lifts capacity needs, not the
+  // immobile property (player report). They only relocate when the base itself
+  // is discovered, which is a separate mechanic.
+  const rebelUnits = baseContainer.units.filter(
+    (u) => u.side === 'Rebel' && !G.catalog.unitTypes[u.typeId]?.transport.immobile);
   if (rebelUnits.length === 0) {
     // No units to move — still resolve combat in case the Rebel already
     // has units at the target (mirrors Lead the Strike Team's edge case).

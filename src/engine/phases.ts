@@ -2565,6 +2565,16 @@ export function resolveRapidMobilizationMove(
   if (unitInstanceIds.length > 0 && (G.rebel.leadersOnBoard[sourceSystemId] ?? []).length > 0) {
     return { ok: false, reason: `friendly-leader-blocks-source:${sourceSystemId}` };
   }
+  // Immobile units (structures) can never be moved by a move ability — even one
+  // that ignores transport/adjacency. Reject so the player can't relocate a
+  // Shield Generator / Ion Cannon / Golan Turret via Rapid Mobilization (BGG
+  // report). They only move when the base itself is discovered.
+  for (const uid of unitInstanceIds) {
+    const u = src.units.find((x) => x.instanceId === uid);
+    if (u && G.catalog.unitTypes[u.typeId]?.transport.immobile) {
+      return { ok: false, reason: `immobile-unit:${u.typeId}` };
+    }
+  }
   const picks = unitInstanceIds.filter((uid) => {
     const u = src.units.find((x) => x.instanceId === uid);
     return u && u.side === 'Rebel';

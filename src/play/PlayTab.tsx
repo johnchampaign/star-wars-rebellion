@@ -13638,8 +13638,11 @@ function RapidMobilizationMovePickModal({
     (sid) => G.map.systems[sid].units.some((u) => u.side === 'Rebel')
       && (G.rebel.leadersOnBoard[sid] ?? []).length === 0
   );
+  // Immobile structures (Shield Generator / Ion Cannon / Golan Turret) can't be
+  // moved by Rapid Mobilization — don't offer them as movable units (BGG report).
   const units = sysId
-    ? G.map.systems[sysId].units.filter((u) => u.side === 'Rebel')
+    ? G.map.systems[sysId].units.filter(
+        (u) => u.side === 'Rebel' && !G.catalog.unitTypes[u.typeId]?.transport.immobile)
     : [];
   const toggle = (uid: string) => {
     const next = new Set(picks);
