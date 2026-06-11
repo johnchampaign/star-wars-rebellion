@@ -2364,9 +2364,19 @@ function stepOnceInner(G: GameState, side: Side): boolean {
         const prisonSystems = new Set<string>(
           (f.capturedLeaders ?? []).map((c) => c.systemId).filter(Boolean) as string[],
         );
+        // Never DRAIN the revealed Rebel base: once exposed, the base system's
+        // units are its last line of defense, and pulling them to a neighbor
+        // hands the Empire the base (player report #196: "the rebels moved
+        // troops away from their base as I was closing in"). The defensive
+        // gradient already steers activations to converge ON the base; this
+        // stops a competing activation (a mission target, an Imperial system)
+        // from using the base as a source and emptying it.
+        const baseDrainGuard = side === 'Rebel' && G.rebelBaseRevealed
+          ? G.rebelBaseSystemId : undefined;
         const sources = adj.filter((sysId) => {
           if ((f.leadersOnBoard[sysId] ?? []).length > 0) return false;
           if (prisonSystems.has(sysId)) return false; // guard captured leaders
+          if (sysId === baseDrainGuard) return false; // guard the revealed base
           const ss = G.map.systems[sysId];
           return ss && ss.units.some((u) => u.side === side);
         });
