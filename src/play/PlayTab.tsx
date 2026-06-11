@@ -347,6 +347,11 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // a brief dismissible summary.
   const [aiActivity, setAiActivity] = useState<AiActivityLine[]>([]);
   const aiActivitySeenIdxRef = useRef<number>(0);
+  // Game-over modal: shown once when the game ends, dismissible (the inline
+  // banner stays as a persistent reminder). Player report #195 asked for a
+  // proper "you won / you lost" dialogue rather than only the easy-to-miss
+  // banner. Keyed by a flag the effect resets when a NEW game starts.
+  const [gameOverAck, setGameOverAck] = useState(false);
   const aiActivityInitRef = useRef<boolean>(false);
   // Queue of objective cards just drawn (one modal per draw, with the
   // objective's name, art, and rules text). User #39 needed to know which
@@ -809,6 +814,13 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // Re-arm the AI loop on initial render after data loads.
   useEffect(() => { runAILoop(); }, [runAILoop]);
 
+  // Re-arm the game-over modal whenever a game is in progress, so the NEXT
+  // game's end shows the dialogue again (#195). Unconditional hook — must run
+  // before any early return.
+  useEffect(() => {
+    if (G && !G.isGameOver && gameOverAck) setGameOverAck(false);
+  }, [G, G?.isGameOver, gameOverAck]);
+
   // "What the AI just did" — when control returns to the human, summarize the
   // AI's notable Command actions since the human last had control. Runs on
   // every tick; only acts when the human is genuinely in control (no pending
@@ -1233,6 +1245,15 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           </strong>{' '}
           <span style={{ color: '#aaa' }}>reason: {G.winReason}</span>
         </div>
+      )}
+
+      {G.isGameOver && !gameOverAck && (
+        <GameOverModal
+          winner={G.winner ?? null}
+          winReason={G.winReason ?? null}
+          humanSide={humanSide}
+          onDismiss={() => setGameOverAck(true)}
+        />
       )}
 
       {aiActivity.length > 0 && (
@@ -13406,6 +13427,62 @@ function ContingencyPlanPickModal({
   );
 }
 
+function GameOverModal({
+  winner, winReason, humanSide, onDismiss,
+}: {
+  winner: Side | null;
+  winReason: string | null;
+  humanSide: Side;
+  onDismiss: () => void;
+}) {
+  const won = winner != null && winner === humanSide;
+  // Plain-language explanation of HOW the game ended.
+  const reasonText = (() => {
+    switch (winReason) {
+      case 'base-captured':
+        return 'The Empire found and captured the Rebel base.';
+      case 'reputation-time':
+        return 'The Rebellion survived long enough — the reputation marker reached the time marker, so the Rebels win.';
+      case 'max-rounds-reached':
+        return 'The game reached its final round.';
+      default:
+        return winReason ? `Game ended: ${winReason}.` : 'The game has ended.';
+    }
+  })();
+  const accent = winner ? sideColor(winner) : '#888';
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 6000,
+    }}
+      onClick={onDismiss}
+    >
+      <div style={{
+        background: won ? '#13241a' : '#241313',
+        border: `3px solid ${accent}`, borderRadius: 8,
+        padding: '28px 32px', maxWidth: 480, width: '92%', textAlign: 'center',
+        boxShadow: '0 12px 48px rgba(0,0,0,0.8)',
+      }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ fontSize: 34, fontWeight: 800, color: won ? '#7be08a' : '#e88', marginBottom: 4 }}>
+          {won ? 'Victory!' : 'Defeat'}
+        </div>
+        <div style={{ fontSize: 16, color: accent, fontWeight: 600, marginBottom: 14 }}>
+          {winner ? `${winner} wins` : 'Game over'}
+          {winner && humanSide ? ` — you played ${humanSide}` : ''}
+        </div>
+        <div style={{ fontSize: 14, color: '#cfd2d6', lineHeight: 1.5, marginBottom: 20 }}>
+          {reasonText}
+        </div>
+        <button className="tab-button active" onClick={onDismiss} style={{ padding: '8px 20px' }}>
+          Close
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function RapidMobilizationBranchModal({
   choice, onPick,
 }: {
@@ -13426,20 +13503,24 @@ function RapidMobilizationBranchModal({
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Rapid Mobilization — choose</h3>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
           Two leaders: {choice.twoLeaders ? 'yes (8 probes for new-base pick)' : 'no (4 probes for new-base pick)'}.
-          Base currently {choice.baseRevealed ? 'REVEALED' : 'hidden'}.
+          Base currently {choice.baseRevealed ? 'REVEALED' : 'hidden'}. Only "Establish a new Rebel Base" relocates you.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <button className="tab-button"
             disabled={!choice.moveUnitsAvailable}
             onClick={() => onPick('move-units')}
             style={{ textAlign: 'left', opacity: choice.moveUnitsAvailable ? 1 : 0.5 }}
-            title={choice.moveUnitsAvailable ? '' : 'Only available when the base is not yet revealed.'}
+            title={choice.moveUnitsAvailable ? '' : 'A revealed base cannot be kept — Rapid Mobilization must establish a new (hidden) base.'}
           >
-            <div style={{ fontWeight: 600 }}>Move up to 5 units to Rebel Base space</div>
-            <div style={{ fontSize: 10, opacity: 0.8 }}>Pick a system; choose up to 5 Rebel units there. Ignores adjacency.</div>
+            <div style={{ fontWeight: 600 }}>Keep current base (move up to 5 units to it)</div>
+            <div style={{ fontSize: 10, opacity: 0.8 }}>
+              {choice.moveUnitsAvailable
+                ? 'Your base stays where it is. Optionally pull up to 5 Rebel units from one system to it (ignores adjacency); you can also move none.'
+                : 'Unavailable: a REVEALED base cannot be kept via Rapid Mobilization — you must establish a new hidden base below.'}
+            </div>
           </button>
           <button className="tab-button" onClick={() => onPick('establish-base')} style={{ textAlign: 'left' }}>
-            <div style={{ fontWeight: 600 }}>Establish a new Rebel Base</div>
+            <div style={{ fontWeight: 600 }}>Relocate — establish a new Rebel Base</div>
             <div style={{ fontSize: 10, opacity: 0.8 }}>
               {choice.baseRevealed
                 ? 'Pick any system on the map to be the new base.'
@@ -13521,14 +13602,13 @@ function RapidMobilizationMovePickModal({
         )}
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="tab-button active"
-            disabled={!sysId}
+            disabled={!sysId || picks.size === 0}
             onClick={() => sysId && onPick(sysId, [...picks])}
-          >Move {picks.size} unit{picks.size === 1 ? '' : 's'}</button>
+          >Move {picks.size} unit{picks.size === 1 ? '' : 's'} to base</button>
           <button className="tab-button"
-            onClick={() => sysId && onPick(sysId, [])}
-            disabled={!sysId}
-            title="Resolve without moving any units"
-          >Skip move</button>
+            onClick={() => onPick(sysId ?? '', [])}
+            title="Keep your base where it is and move no units"
+          >Keep base, move nothing</button>
         </div>
       </div>
     </div>

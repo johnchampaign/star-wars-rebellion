@@ -2533,6 +2533,18 @@ export function resolveRapidMobilizationMove(
   const choice = G.pendingChoice;
   if (!choice || choice.kind !== 'RapidMobilizationMovePick') return { ok: false, reason: 'no-pending' };
   if (unitInstanceIds.length > 5) return { ok: false, reason: 'too-many-units' };
+  // Moving units is OPTIONAL ("up to 5"): the player may keep the base and move
+  // nothing. Don't require a valid source when no units are being moved — else a
+  // Rebel with no eligible source system gets stuck unable to resolve the card
+  // and keep their base (BGG report). The source only matters when units move.
+  if (unitInstanceIds.length === 0) {
+    log(G, { kind: 'rapid-mobilization-move-applied', side: 'Rebel', payload: {
+      sourceSystemId: sourceSystemId || null, movedCount: 0, movedIds: [],
+    }});
+    G.pendingChoice = undefined;
+    finishRapidMobilization(G);
+    return { ok: true };
+  }
   const src = G.map.systems[sourceSystemId];
   if (!src) return { ok: false, reason: 'unknown-source' };
   // RAW: Rapid Mobilization ignores adjacency, but it does NOT lift the
