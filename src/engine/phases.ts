@@ -2327,10 +2327,16 @@ export function resolvePublicUprisingPick(G: GameState, picks: {
   const choice = G.pendingChoice;
   if (!choice || choice.kind !== 'PublicUprisingPick') return { ok: false, reason: 'no-pending' };
   if (picks.triangles.length !== 2) return { ok: false, reason: 'expected-2-triangles' };
+  // RoE units are only buildable when the expansion's unit toggle is on — reject
+  // them in a base game (regression #215: Public Uprising offered Nebulon-B etc.).
+  const legal = (tid: string) => {
+    const u = G.catalog.unitTypes[tid];
+    return !!u && (u.set !== 'rote' || G.expansion?.roeUnits === true);
+  };
   const tierOf = (tid: string) => G.catalog.unitTypes[tid]?.tier;
-  if (tierOf(picks.circle) !== 'circle') return { ok: false, reason: `not-a-circle-unit:${picks.circle}` };
+  if (tierOf(picks.circle) !== 'circle' || !legal(picks.circle)) return { ok: false, reason: `bad-circle-unit:${picks.circle}` };
   for (const t of picks.triangles) {
-    if (tierOf(t) !== 'triangle') return { ok: false, reason: `not-a-triangle-unit:${t}` };
+    if (tierOf(t) !== 'triangle' || !legal(t)) return { ok: false, reason: `bad-triangle-unit:${t}` };
   }
   const sysId = choice.systemId;
   M.gainUnit(G, 'Rebel', picks.circle, sysId);

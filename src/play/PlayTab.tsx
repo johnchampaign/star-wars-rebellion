@@ -5190,7 +5190,10 @@ function PublicUprisingModal({ G, choice, onSubmit }: {
   const rebelUnitsOfTier = (tier: 'circle' | 'triangle') =>
     Object.values(G.catalog.unitTypes)
       .filter((u) => (u.side === 'Rebel' || (u as { faction?: string }).faction === 'Rebel')
-        && u.tier === tier && u.class !== 'structure')
+        && u.tier === tier && u.class !== 'structure'
+        // RoE units only when the expansion's unit toggle is on — don't offer
+        // Nebulon-B / Rebel Vanguard / U-Wing in a base game (regression #215).
+        && (u.set !== 'rote' || G.expansion?.roeUnits === true))
       .map((u) => u.id);
   const circleOptions = rebelUnitsOfTier('circle');
   const triangleOptions = rebelUnitsOfTier('triangle');
