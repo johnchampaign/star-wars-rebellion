@@ -2650,7 +2650,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'RapidMobilizationBranch'
         && G.pendingChoice.side === humanSide && (
-        <RapidMobilizationBranchModal choice={G.pendingChoice}
+        <RapidMobilizationBranchModal G={G} choice={G.pendingChoice}
           onPick={(branch) => {
             const r = phases.resolveRapidMobilizationBranch(G, branch);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
@@ -13740,12 +13740,21 @@ function GameOverModal({
 }
 
 function RapidMobilizationBranchModal({
-  choice, onPick,
+  G, choice, onPick,
 }: {
-  choice: { kind: 'RapidMobilizationBranch'; side: Side; twoLeaders: boolean; baseRevealed: boolean; moveUnitsAvailable: boolean };
+  G: GameState;
+  choice: { kind: 'RapidMobilizationBranch'; side: Side; twoLeaders: boolean; baseRevealed: boolean;
+    moveUnitsAvailable: boolean; drawnProbeIds?: string[]; baseCandidates?: string[] };
   onPick: (branch: 'move-units' | 'establish-base') => void;
 }) {
   const n = choice.twoLeaders ? 8 : 4;
+  // The probes are drawn and LOOKED AT before you decide (RR p.11). Show the
+  // systems they name — these are eliminated as base locations, and if you keep
+  // your base they go to the bottom of the deck (so you know what's down there).
+  const probeNames = (choice.drawnProbeIds ?? [])
+    .map((pid) => G.catalog.probes[pid]?.systemId)
+    .map((sid) => (sid ? (G.catalog.systems[sid]?.name ?? sid) : '?'));
+  const candidateSet = new Set(choice.baseCandidates ?? []);
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
@@ -13761,6 +13770,27 @@ function RapidMobilizationBranchModal({
           Two leaders: {choice.twoLeaders ? 'yes (8 probes for new-base pick)' : 'no (4 probes for new-base pick)'}.
           Base currently {choice.baseRevealed ? 'REVEALED' : 'hidden'}. Only "Establish a new Rebel Base" relocates you.
         </div>
+        {probeNames.length > 0 && (
+          <div style={{ background: '#0c0d10', border: '1px solid #2a2d34', borderRadius: 4,
+            padding: '8px 10px', marginBottom: 10, fontSize: 12, color: '#cfd2d6' }}>
+            <div style={{ color: '#aae0ff', fontWeight: 600, marginBottom: 4 }}>
+              Probe cards drawn (you looked at these — {n} of them):
+            </div>
+            {(choice.drawnProbeIds ?? []).map((pid, i) => {
+              const sid = G.catalog.probes[pid]?.systemId;
+              const legal = sid ? candidateSet.has(sid) : false;
+              return (
+                <span key={pid} style={{ display: 'inline-block', marginRight: 8,
+                  color: legal ? '#7be08a' : '#888' }}>
+                  {probeNames[i]}{legal ? '' : ' (not a legal base)'}
+                </span>
+              );
+            })}
+            <div style={{ color: '#9a937f', fontSize: 11, marginTop: 4 }}>
+              If you keep your base, these are shuffled to the BOTTOM of the probe deck.
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <button className="tab-button"
             disabled={!choice.moveUnitsAvailable}

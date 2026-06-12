@@ -940,6 +940,13 @@ export type ChoiceRequest =
       baseRevealed: boolean;
       // Whether the move-units option is available (only if base unrevealed).
       moveUnitsAvailable: boolean;
+      // RR p.11: the Rebel DRAWS and LOOKS at the probe cards (4, or 8 with two
+      // leaders) BEFORE deciding whether to establish a new base. Shown in the
+      // branch modal so the player can use the info. `baseCandidates` is the
+      // subset that's a legal new-base location. If the player keeps the base,
+      // all drawn probes are shuffled to the bottom of the deck.
+      drawnProbeIds: string[];
+      baseCandidates: SystemId[];
     }
   | {
       // Rapid Mobilization sub-choice: pick source system + up to 5 units
