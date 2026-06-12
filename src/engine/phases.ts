@@ -3387,6 +3387,10 @@ export function resolveBrilliantAdministratorBuildPick(
     const icon = choice.icons[i];
     const t = G.catalog.unitTypes[tid];
     if (!t || t.side !== 'Empire') return { ok: false, reason: `bad-type:${tid}` };
+    // RoE units are only buildable when the expansion's unit toggle is on —
+    // reject them in a base game (same class as regression #215; the AI was
+    // picking an Assault Tank for a ground-triangle icon, player #219).
+    if (t.set === 'rote' && G.expansion?.roeUnits !== true) return { ok: false, reason: `roe-unit-in-base-game:${tid}` };
     if (PROJECT_ONLY_UNIT_IDS.has(tid)) return { ok: false, reason: `project-only:${tid}` };
     if (t.theater !== icon.theater) return { ok: false, reason: `theater-mismatch:${tid}` };
     const need = tierRank[icon.shape] ?? 2;
@@ -3635,6 +3639,8 @@ export function resolveTemporaryAllianceBuildPick(
     const icon = choice.icons[i];
     const t = G.catalog.unitTypes[tid];
     if (!t || t.side !== 'Rebel') return { ok: false, reason: `bad-type:${tid}` };
+    // RoE units only buildable when the expansion's unit toggle is on (#219).
+    if (t.set === 'rote' && G.expansion?.roeUnits !== true) return { ok: false, reason: `roe-unit-in-base-game:${tid}` };
     if (t.theater !== icon.theater) return { ok: false, reason: `theater-mismatch:${tid}` };
     const need = tierRank[icon.shape] ?? 2;
     const have = tierRank[t.tier ?? 'square'] ?? 2;
@@ -3678,6 +3684,8 @@ export function resolveBuildFromIconsPick(
     const icon = choice.icons[i];
     const t = G.catalog.unitTypes[tid];
     if (!t || t.side !== choice.side) return { ok: false, reason: `bad-type:${tid}` };
+    // RoE units only buildable when the expansion's unit toggle is on (#219).
+    if (t.set === 'rote' && G.expansion?.roeUnits !== true) return { ok: false, reason: `roe-unit-in-base-game:${tid}` };
     if (PROJECT_ONLY_UNIT_IDS.has(tid)) return { ok: false, reason: `project-only:${tid}` };
     if (t.theater !== icon.theater) return { ok: false, reason: `theater-mismatch:${tid}` };
     // Structures (Shield Generator, Ion Cannon, Golan Turret) ARE buildable from
@@ -5030,14 +5038,30 @@ export function resolveBuildPicks(G: GameState, choices: string[]): { ok: boolea
   for (let i = 0; i < cur.picks.length; i++) {
     const p = cur.picks[i];
     const c = choices[i];
+    // An empty string is an explicit "skip this icon" (the UI sends it when an
+    // icon's every legal unit is exhausted by other picks in the same batch).
+    if (c === '') {
+      log(G, { kind: 'build-wasted-no-supply', side: cur.side, payload: {
+        sourceSystemId: p.sourceSystemId, slot: p.slot,
+        iconType: p.iconType, iconShape: p.iconShape, legalUnitTypes: p.legalUnitTypes,
+      }});
+      continue;
+    }
     if (!p.legalUnitTypes.includes(c)) {
       return { ok: false, reason: `illegal-pick:${c}` };
     }
-    // Hard supply gate (RAW holding pool). Checked live so two same-shape
-    // icons in one batch can't both spend the last token — each buildToQueue
-    // above decrements the pool that this read sees.
+    // Hard supply gate (RAW holding pool). Checked live so two same-shape icons
+    // in one batch can't both spend the last token — each buildToQueue above
+    // decrements the pool that this read sees. When the pool is exhausted the
+    // build is simply WASTED (RAW: "you can only build a unit you still have a
+    // token for"), not an error — erroring here hard-froze the build modal when
+    // every legal unit for an icon was used up by earlier picks (player #217).
     if (M.unitsAvailableInSupply(G, c) <= 0) {
-      return { ok: false, reason: `no-supply:${c}` };
+      log(G, { kind: 'build-wasted-no-supply', side: cur.side, payload: {
+        sourceSystemId: p.sourceSystemId, slot: p.slot,
+        iconType: p.iconType, iconShape: p.iconShape, legalUnitTypes: p.legalUnitTypes,
+      }});
+      continue;
     }
     M.buildToQueue(G, cur.side, c, p.slot, p.sourceSystemId);
   }

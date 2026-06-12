@@ -4050,7 +4050,19 @@ function BuildPickModal({ G, choice, onSubmit }: {
     selections.reduce((n, s, j) => n + (j !== exclude && s === tid ? 1 : 0), 0);
   const remainingFor = (tid: string, exclude: number): number =>
     supplyOf(tid) - claimedByOthers(tid, exclude);
-  const overdraw = choice.picks.some((p, i) => remainingFor(selections[i], i) <= 0 && supplyOf(selections[i]) !== Infinity);
+  // An icon's chosen unit is "exhausted" when no token remains for it. The
+  // overdraw is FIXABLE if some OTHER legal unit for that icon still has a
+  // token (the player should switch) — and only then do we block Confirm.
+  // When every legal unit for an icon is used up (unfixable), the build is
+  // unavoidably wasted per RAW, so we allow Confirm and let the engine waste
+  // it in order — otherwise the modal hard-froze with no way forward (#217).
+  const pickExhausted = (i: number): boolean =>
+    supplyOf(selections[i]) !== Infinity && remainingFor(selections[i], i) <= 0;
+  const pickFixable = (i: number): boolean =>
+    pickExhausted(i) && choice.picks[i].legalUnitTypes.some(
+      (tid) => tid !== selections[i] && remainingFor(tid, i) > 0);
+  const blockConfirm = choice.picks.some((p, i) => pickFixable(i));
+  const willWaste = choice.picks.some((p, i) => pickExhausted(i) && !pickFixable(i));
 
   return (
     <div style={{
@@ -4133,20 +4145,27 @@ function BuildPickModal({ G, choice, onSubmit }: {
           </div>
         ))}
 
-        {overdraw && (
+        {blockConfirm && (
           <div style={{ fontSize: 12, color: '#e57373', margin: '8px 0', lineHeight: 1.4 }}>
             One of your picks would build a unit you have no token left for in
-            the holding pool. Choose a different unit for the highlighted icon —
-            the build can't exceed your physical supply.
+            the holding pool, but another unit is still available for that icon.
+            Choose a different unit — the build can't exceed your physical supply.
+          </div>
+        )}
+        {!blockConfirm && willWaste && (
+          <div style={{ fontSize: 12, color: '#d2a24c', margin: '8px 0', lineHeight: 1.4 }}>
+            You've run out of tokens for some of these icons, and no other unit
+            fits them. Those resource icons will simply be skipped (the build is
+            wasted) — you can still confirm to build everything you have tokens for.
           </div>
         )}
 
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
           <button
             onClick={() => onSubmit(selections)}
-            disabled={overdraw}
-            style={{ padding: '8px 24px', background: overdraw ? '#444' : color, color: overdraw ? '#999' : '#000',
-              border: 'none', borderRadius: 4, cursor: overdraw ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14 }}
+            disabled={blockConfirm}
+            style={{ padding: '8px 24px', background: blockConfirm ? '#444' : color, color: blockConfirm ? '#999' : '#000',
+              border: 'none', borderRadius: 4, cursor: blockConfirm ? 'not-allowed' : 'pointer', fontWeight: 700, fontSize: 14 }}
           >
             Confirm builds
           </button>

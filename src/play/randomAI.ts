@@ -1855,7 +1855,9 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       const need = tierRank[icon.shape] ?? 2;
       const legal = Object.values(G.catalog.unitTypes)
         .filter((t) => t.side === 'Empire' && t.theater === icon.theater
-          && (tierRank[t.tier ?? 'square'] ?? 2) <= need && t.class !== 'structure')
+          && (tierRank[t.tier ?? 'square'] ?? 2) <= need && t.class !== 'structure'
+          // RoE units only buildable with the expansion's unit toggle on (#219).
+          && (t.set !== 'rote' || G.expansion?.roeUnits === true))
         .map((t) => t.id);
       return legal[legal.length - 1] ?? null;
     };
@@ -1992,7 +1994,9 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       const need = tierRank[icon.shape] ?? 2;
       const opts = Object.values(G.catalog.unitTypes)
         .filter((t) => t.side === side && t.theater === icon.theater
-          && t.class !== 'structure' && (tierRank[t.tier ?? 'square'] ?? 2) <= need)
+          && t.class !== 'structure' && (tierRank[t.tier ?? 'square'] ?? 2) <= need
+          // RoE units only buildable with the expansion's unit toggle on (#219).
+          && (t.set !== 'rote' || G.expansion?.roeUnits === true))
         .sort((a, b) => (tierRank[a.tier ?? 'square'] ?? 2) - (tierRank[b.tier ?? 'square'] ?? 2));
       return opts.length > 0 ? opts[opts.length - 1].id : null; // highest tier <= icon
     });
