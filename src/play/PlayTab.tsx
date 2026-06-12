@@ -2015,7 +2015,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           G={G} systems={systemsRef.current} masks={masksRef.current} humanSide={humanSide}
           color={sideColor(G.pendingChoice.side)}
           title={`Deploy ${G.catalog.unitTypes[G.pendingChoice.typeId]?.name ?? G.pendingChoice.typeId}`}
-          instructions={`Pick where this unit deploys. The galaxy map stays visible so you can see existing placements.`}
+          instructions={`Pick where this unit deploys — or use "Leave on build queue (slot 1)" below to NOT deploy it and keep it on space 1 of your build queue.`}
           candidates={G.pendingChoice.candidates}
           unitTokens={(() => {
             // pendingDeployPicks already INCLUDES the unit being placed now as

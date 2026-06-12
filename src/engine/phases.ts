@@ -5276,6 +5276,9 @@ function promoteNextDeployPick(G: GameState): boolean {
 export function resolveDeployUnitPick(G: GameState, systemId: SystemId): { ok: boolean; reason?: string } {
   const pc = G.pendingChoice;
   if (!pc || pc.kind !== 'DeployUnitPick') return { ok: false, reason: 'no-pending' };
+  // (Declining to deploy — leaving a unit on build queue space 1 per rr "Deploy
+  // Units" — is handled by declineDeployUnit(), wired to the "Leave on build
+  // queue" button in the deploy picker.)
   if (!pc.candidates.includes(systemId)) return { ok: false, reason: 'not-a-candidate' };
   // Defensive cap check — candidates list was already filtered by
   // applyDeployCap when the choice was posted, but re-check in case the
