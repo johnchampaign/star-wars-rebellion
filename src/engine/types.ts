@@ -158,6 +158,12 @@ export type FactionState = {
   // cards = all their side+theatre advanced cards minus this pile. Present
   // only in cinematic games.
   cinematicTacticDiscard?: string[];
+  // RoE Cinematic Combat: advanced tactic cards that say "eliminate this card"
+  // when their effect resolves (e.g. Confrontation). Unlike a normal discard
+  // — which is recycled back into the deck once the deck empties (rules p.8) —
+  // an eliminated card is GONE for the rest of the game and must never return
+  // to the deck. Tracked separately so recycle/availability can exclude it.
+  cinematicTacticEliminated?: string[];
   // RoE multi-turn action cards "armed" with a facedown probe (Secret
   // Facility, Sweep the Area). The probe card's destination system is
   // recorded as `probeSystemId`; the action card is out of the hand and

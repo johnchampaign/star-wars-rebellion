@@ -2207,9 +2207,15 @@ export function resolveConfrontationLeaderPick(
   if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'not-a-candidate' };
   (G.cinematicMarkedForElimination ??= []).push(leaderId);
   log(G, { kind: 'cinematic-confrontation-mark', side: 'Rebel', payload: { leaderId, systemId: pc.systemId } });
-  // Eliminate the card from the recyclable discard so it can't return (#4/#14).
-  const di = (G.rebel.cinematicTacticDiscard ?? []).indexOf('cin-rebel-ground-confrontation');
-  if (di >= 0) G.rebel.cinematicTacticDiscard!.splice(di, 1);
+  // RAW "…and eliminate this card." (#4/#14): the card is GONE for the game.
+  // It stays in the discard (so it's never "available") AND is recorded as
+  // eliminated so recycleCinematicDeck never returns it to the deck. (The old
+  // code spliced it OUT of the discard, which made it available again — the
+  // opposite of eliminating it.)
+  (G.rebel.cinematicTacticEliminated ??= []).push('cin-rebel-ground-confrontation');
+  if (!(G.rebel.cinematicTacticDiscard ?? []).includes('cin-rebel-ground-confrontation')) {
+    (G.rebel.cinematicTacticDiscard ??= []).push('cin-rebel-ground-confrontation');
+  }
   G.pendingChoice = undefined;
   runCombat(G);
   return { ok: true };

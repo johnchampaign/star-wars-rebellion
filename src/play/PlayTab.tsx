@@ -11116,11 +11116,14 @@ function AttachRingPickModal({
 // ============================================================================
 
 function DiceKeyModal({ onClose }: { onClose: () => void }) {
-  // Faces per die, matching RED_FACES / BLACK_FACES in rng.ts exactly.
-  const dice: { color: 'red' | 'black'; faces: { face: string; n: number }[] }[] = [
+  // Faces per die, matching RED_FACES / BLACK_FACES / GREEN_FACES in rng.ts exactly.
+  const dice: { color: 'red' | 'black' | 'green'; faces: { face: string; n: number }[] }[] = [
     { color: 'red',   faces: [{ face: 'hit', n: 2 }, { face: 'direct-hit', n: 1 }, { face: 'special', n: 1 }, { face: 'blank', n: 2 }] },
     { color: 'black', faces: [{ face: 'hit', n: 3 }, { face: 'special', n: 1 }, { face: 'blank', n: 2 }] },
+    { color: 'green', faces: [{ face: 'hit', n: 1 }, { face: 'direct-hit', n: 1 }, { face: 'special', n: 1 }, { face: 'blank', n: 3 }] },
   ];
+  const dieLabel = (c: 'red' | 'black' | 'green') => c === 'red' ? 'Red die' : c === 'black' ? 'Black die' : 'Green die (Rise of the Empire)';
+  const dieColor = (c: 'red' | 'black' | 'green') => c === 'red' ? '#ff8866' : c === 'green' ? '#7ed957' : '#ccc';
   const Cell = ({ children, color }: { children: React.ReactNode; color?: string }) => (
     <td style={{ padding: '4px 8px', borderBottom: '1px solid #2a2d34', color: color ?? '#cbc4b0', verticalAlign: 'top' }}>{children}</td>
   );
@@ -11141,13 +11144,15 @@ function DiceKeyModal({ onClose }: { onClose: () => void }) {
         <div style={{ fontSize: 13, color: '#cbc4b0', marginBottom: 10 }}>
           Units roll a number of <b style={{ color: '#ff8866' }}>red</b> and/or{' '}
           <b style={{ color: '#ccc' }}>black</b> dice equal to their attack values; on a mission you
-          roll one die per matching skill icon. Each die has 6 faces:
+          roll one die per matching skill icon. Rise of the Empire adds a{' '}
+          <b style={{ color: '#7ed957' }}>green</b> die — rolled by some expansion units and by
+          leaders' minor skill icons on missions (max 3 green per roll). Each die has 6 faces:
         </div>
 
         {dice.map((d) => (
           <div key={d.color} style={{ marginBottom: 10 }}>
-            <div style={{ fontWeight: 700, color: d.color === 'red' ? '#ff8866' : '#ccc', marginBottom: 4 }}>
-              {d.color === 'red' ? 'Red die' : 'Black die'} (6 faces)
+            <div style={{ fontWeight: 700, color: dieColor(d.color), marginBottom: 4 }}>
+              {dieLabel(d.color)} (6 faces)
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
               {d.faces.flatMap((fc) =>
@@ -11180,7 +11185,7 @@ function DiceKeyModal({ onClose }: { onClose: () => void }) {
             </tr>
             <tr>
               <Cell color="#fff"><DieFaceImg face="direct-hit" color="red" /> Direct hit</Cell>
-              <Cell>1 damage that <b>ignores blocks</b> and can be assigned to <b>any</b> unit (any colour). Only on red dice.</Cell>
+              <Cell>1 damage that <b>ignores blocks</b> and can be assigned to <b>any</b> unit (any colour). Only on red and green dice.</Cell>
               <Cell>1 success (same as a hit).</Cell>
             </tr>
             <tr>
@@ -11197,12 +11202,13 @@ function DiceKeyModal({ onClose }: { onClose: () => void }) {
         </table>
 
         <div style={{ fontSize: 12, color: '#9a937f', marginTop: 12, lineHeight: 1.5 }}>
-          <b>Quick odds.</b> In combat, both dice deal damage on <b>3 of 6 faces</b> (½): the red die's
+          <b>Quick odds.</b> In combat, red and black deal damage on <b>3 of 6 faces</b> (½): the red die's
           come as 2 hits + 1 direct hit, the black die's as 3 hits. Red is better on attack because its
-          direct hit can't be blocked and ignores colour matching; black's damage is all blockable.
-          For <b>missions</b>, both dice average <b>5/6 of a success</b> per die (the special's double-count
-          balances black's extra hit), so red and black are equally good there. A mission rolls at most
-          5 red + 5 black dice.
+          direct hit can't be blocked and ignores colour matching; black's damage is all blockable. The
+          green die is weaker — it damages on just <b>2 of 6 faces</b> (1 hit + 1 direct hit).
+          For <b>missions</b>, red and black average <b>5/6 of a success</b> per die (the special's double-count
+          balances black's extra hit); the green die averages <b>4/6</b>. A mission rolls at most
+          5 red + 5 black + 3 green dice.
         </div>
       </div>
     </div>
@@ -12493,7 +12499,7 @@ function DiscreditRebellionModal({
           The Empire resolved <i>Discredit Rebellion</i>. You must choose: remove
           ALL sabotage markers from the board ({choice.sabotageSystemIds.length} —
           {' '}{sysNames}) and stay safe, OR roll {choice.diceCount} red die{choice.diceCount === 1 ? '' : 's'}
-          {' '}— on any success the Rebels lose 1 reputation, but the sabotage
+          {' '}— if you roll at least 1 special symbol the Rebels lose 1 reputation, but the sabotage
           markers stay in play.
         </div>
         <div style={{ display: 'flex', gap: 8 }}>

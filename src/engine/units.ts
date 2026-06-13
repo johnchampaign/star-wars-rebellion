@@ -231,7 +231,10 @@ export const UNIT_TYPES: UnitType[] = [
     id: 'nebulon-b-frigate', name: 'Nebulon-B Frigate', theater: 'space', class: 'capital', tier: 'circle',
     health: { color: 'red', value: 3 },
     attack: { red: 0, black: 0, green: 2 },
-    transport: { capacity: 0, restriction: false, immobile: false },
+    // Transport capacity 3, read off the printed Rebel RoE faction reference
+    // sheet (the bottom-left badge on the ship mini): Rebel Transport=4,
+    // Corellian Corvette=2, Nebulon-B=3. Was 0 (a placeholder estimate).
+    transport: { capacity: 3, restriction: false, immobile: false },
     buildResource: 2, supplyCount: 4, set: 'rote',
   }),
   R({

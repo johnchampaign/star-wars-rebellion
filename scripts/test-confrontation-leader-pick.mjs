@@ -54,7 +54,12 @@ console.log('[ #15B: last Imperial ground destroyed → posts ConfrontationLeade
   const r = combat.resolveConfrontationLeaderPick(G, pick);
   check('resolver ok', r.ok === true);
   check('chosen leader marked', (G.cinematicMarkedForElimination ?? []).includes(pick));
-  check('card eliminated from recyclable discard', !(G.rebel.cinematicTacticDiscard ?? []).includes('cin-rebel-ground-confrontation'));
+  // RAW "…and eliminate this card." — gone for the game. It is recorded as
+  // eliminated and must NEVER be offered to play again (the old code spliced it
+  // out of the discard, which made availableCards treat it as back in the deck).
+  check('card recorded as eliminated', (G.rebel.cinematicTacticEliminated ?? []).includes('cin-rebel-ground-confrontation'));
+  check('eliminated card not offered again (even after a deck recycle)',
+    !cin.cinematicSelectOptions(G, c, 'Rebel', 'ground').some((o) => o.cardId === 'cin-rebel-ground-confrontation'));
   check('pendingChoice cleared', G.pendingChoice == null);
 }
 

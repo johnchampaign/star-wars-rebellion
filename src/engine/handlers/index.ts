@@ -1427,10 +1427,10 @@ const imperialPromotion: EffectHandler = (G, ctx) => {
 };
 
 /** Discredit Rebellion: "Resolve on a sabotaged system. Rebel must remove
- *  all sabotage markers on the board, or roll 1 die — on any success,
- *  Rebels lose 1 reputation. If Motti is assigned, Rebels roll 2 dice
- *  instead." Rebel almost always prefers to roll (sabotage markers are
- *  valuable), so we auto-roll. */
+ *  all sabotage markers on the board, or roll 1 die — if he rolls at least
+ *  1 special, Rebels lose 1 reputation. If Admiral Motti resolves this, the
+ *  Rebel rolls 2 dice instead of 1." Rebel almost always prefers to roll
+ *  (sabotage markers are valuable), so we auto-roll. */
 const discreditRebellion: EffectHandler = (G, ctx) => {
   // Rebel chooses: remove ALL sabotage markers on the board (avoids the
   // reputation risk but loses the markers' ongoing pressure), or roll
@@ -1444,9 +1444,11 @@ const discreditRebellion: EffectHandler = (G, ctx) => {
   if (sabotageSystemIds.length === 0) {
     const faces: string[] = [];
     for (let i = 0; i < diceCount; i++) faces.push(rollDie(G.rng, 'red').face);
-    const hit = faces.some((f) => f === 'hit' || f === 'direct-hit');
-    log(G, { kind: 'discredit-rebellion-roll', side: 'Empire', payload: { faces, hit, diceCount } });
-    if (hit) M.loseReputation(G, 1);
+    // RAW (card text): "If he rolls at least 1 special, he loses 1 reputation."
+    // The trigger is the special symbol, NOT a hit/direct-hit.
+    const special = faces.some((f) => f === 'special');
+    log(G, { kind: 'discredit-rebellion-roll', side: 'Empire', payload: { faces, special, diceCount } });
+    if (special) M.loseReputation(G, 1);
     return true;
   }
   G.pendingChoice = {

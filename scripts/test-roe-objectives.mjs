@@ -159,11 +159,17 @@ console.log('[ show-no-fear-3: place at base, score each refresh, removed on rel
   G.rebel.objectiveHand = ['show-no-fear-3'];
   const base = G.rebelBaseSystemId;
   const rep0 = G.reputationMarker;
+  // RAW (card): "If the marker is still present AT THE START of each Refresh
+  // phase, gain 1 reputation." The Refresh that PLACES the marker must not
+  // score — the marker wasn't present at the start of it. Scoring begins the
+  // following Refresh.
   Phases.processPersistentObjectives(G);
   check('marker placed at Rebel Base system', hasMarker(G, base));
-  check('first refresh scored +1 reputation', G.reputationMarker === rep0 - 1);
+  check('placement refresh does NOT score', G.reputationMarker === rep0);
   Phases.processPersistentObjectives(G);
-  check('second refresh scored another +1', G.reputationMarker === rep0 - 2);
+  check('next refresh scored +1 (marker present at its start)', G.reputationMarker === rep0 - 1);
+  Phases.processPersistentObjectives(G);
+  check('each subsequent refresh scores another +1', G.reputationMarker === rep0 - 2);
   // simulate base relocation: remove marker AND discard the spent card
   for (const sid of markerSystems(G)) removeMarker(G, sid);
   G.rebel.objectiveHand = G.rebel.objectiveHand.filter((id) => id !== 'show-no-fear-3');

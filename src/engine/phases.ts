@@ -3069,8 +3069,8 @@ export function resolveSecretMissionPick(G: GameState, missionId: string): { ok:
 
 /** Discredit Rebellion (Empire/Motti, RoE): Rebel chooses to wipe all
  *  sabotage markers off the board (avoids the rep-loss risk) or to roll
- *  dice — 2 dice with Motti, 1 otherwise. Any success on the roll loses
- *  the Rebel 1 reputation. */
+ *  dice — 2 dice with Motti, 1 otherwise. At least 1 special symbol on the
+ *  roll loses the Rebel 1 reputation (RAW card text). */
 export function resolveDiscreditRebellion(G: GameState, action: 'remove' | 'roll'): { ok: boolean; reason?: string } {
   const pc = G.pendingChoice;
   if (!pc || pc.kind !== 'DiscreditRebellionChoice') return { ok: false, reason: 'no-pending' };
@@ -3087,9 +3087,11 @@ export function resolveDiscreditRebellion(G: GameState, action: 'remove' | 'roll
   } else {
     const faces: string[] = [];
     for (let i = 0; i < pc.diceCount; i++) faces.push(rollDie(G.rng, 'red').face);
-    const hit = faces.some((f) => f === 'hit' || f === 'direct-hit');
-    log(G, { kind: 'discredit-rebellion-roll', side: 'Rebel', payload: { faces, hit, diceCount: pc.diceCount } });
-    if (hit) M.loseReputation(G, 1);
+    // RAW (card text): "If he rolls at least 1 special, he loses 1 reputation."
+    // The trigger is the special symbol, NOT a hit/direct-hit.
+    const special = faces.some((f) => f === 'special');
+    log(G, { kind: 'discredit-rebellion-roll', side: 'Rebel', payload: { faces, special, diceCount: pc.diceCount } });
+    if (special) M.loseReputation(G, 1);
   }
   resumeMissionAfterChoice(G);
   return { ok: true };
@@ -4166,15 +4168,23 @@ export function applyObjectiveScoreSideEffect(G: GameState, objectiveId: string)
 export function processPersistentObjectives(G: GameState): void {
   const hand = G.rebel.objectiveHand ?? [];
   if (hand.includes('show-no-fear-3')) {
-    const baseSys = G.rebelBaseSystemId;
-    if (baseSys && !M.hasTargetMarker(G, baseSys, 'show-no-fear-3')
-        && M.systemsWithTargetMarker(G, 'show-no-fear-3').length === 0) {
-      M.placeTargetMarker(G, baseSys, 'show-no-fear-3', 'Rebel');
-    }
-    if (M.systemsWithTargetMarker(G, 'show-no-fear-3').length > 0) {
+    // RAW (card): "If the marker is still present AT THE START of each Refresh
+    // phase, gain 1 reputation." The Refresh in which the marker is first
+    // placed does NOT score — the marker was not present at the start of it.
+    // So decide scoring on the board state at entry, THEN place if missing.
+    const presentAtStart = M.systemsWithTargetMarker(G, 'show-no-fear-3').length > 0;
+    if (presentAtStart) {
       (G.objectiveReports ??= []).push({ objectiveId: 'show-no-fear-3', reputation: 1, via: 'refresh' });
       log(G, { kind: 'show-no-fear-score', side: 'Rebel', payload: { reputation: 1 } });
       M.gainReputation(G, 1);
+    } else {
+      // First Refresh the objective is in hand: place the marker on the base
+      // system. Scoring begins next Refresh. (When the base later moves the
+      // marker is removed and the objective discarded, so it never re-places.)
+      const baseSys = G.rebelBaseSystemId;
+      if (baseSys && !M.hasTargetMarker(G, baseSys, 'show-no-fear-3')) {
+        M.placeTargetMarker(G, baseSys, 'show-no-fear-3', 'Rebel');
+      }
     }
   }
 }

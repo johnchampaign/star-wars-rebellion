@@ -348,8 +348,10 @@ function resolvePrevent(c: CombatState, side: Side, eff: PreventEffect): void {
 function availableCards(G: GameState, side: Side, theater: Theater): string[] {
   const f = side === 'Rebel' ? G.rebel : G.empire;
   const discard = new Set(f.cinematicTacticDiscard ?? []);
+  const eliminated = new Set(f.cinematicTacticEliminated ?? []);
   return Object.values(G.catalog.tactics)
-    .filter((t) => t.cinematic && t.side === side && t.theater === theater && !discard.has(t.id))
+    .filter((t) => t.cinematic && t.side === side && t.theater === theater
+      && !discard.has(t.id) && !eliminated.has(t.id))
     .map((t) => t.id);
 }
 
@@ -404,16 +406,19 @@ export function recycleCinematicDeck(G: GameState, side: Side, theater: Theater)
   if (availableCards(G, side, theater).length > 0) return; // deck not empty
   const f = side === 'Rebel' ? G.rebel : G.empire;
   const disc = f.cinematicTacticDiscard ?? [];
+  const eliminated = new Set(f.cinematicTacticEliminated ?? []);
+  // Eliminated cards ("eliminate this card") never recycle — they stay in the
+  // discard forever and are excluded from the recyclable set.
   const theaterCards = disc.filter((id) => {
     const t = G.catalog.tactics[id];
-    return t?.cinematic && t.side === side && t.theater === theater;
+    return t?.cinematic && t.side === side && t.theater === theater && !eliminated.has(id);
   });
   if (theaterCards.length <= 1) return; // nothing meaningful to recycle
   const keep = theaterCards[theaterCards.length - 1]; // the just-resolved card stays
   f.cinematicTacticDiscard = disc.filter((id) => {
     const t = G.catalog.tactics[id];
     const thisTheater = t?.cinematic && t.side === side && t.theater === theater;
-    return !thisTheater || id === keep;
+    return !thisTheater || id === keep || eliminated.has(id);
   });
   log(G, { kind: 'cinematic-deck-recycle', side, payload: {
     theater, kept: keep, recycled: theaterCards.length - 1,
