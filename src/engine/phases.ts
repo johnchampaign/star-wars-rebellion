@@ -410,6 +410,36 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
   return { ok: true };
 }
 
+/** Undo a setup placement: pull a unit back off the board and return it to the
+ *  pending-deployment pool (player request — you couldn't change a setup
+ *  placement). Only valid during Setup while deployment is still pending. If the
+ *  player removes their last unit from the chosen deploy target, the target is
+ *  cleared so they can pick a different system. */
+export function setupUndoDeployUnit(G: GameState, side: Side, typeId: string, systemId: SystemId): { ok: boolean; reason?: string } {
+  if (G.phase !== 'Setup') return { ok: false, reason: 'wrong-phase' };
+  if (!G.pendingDeployment) return { ok: false, reason: 'no-pending-deployment' };
+  const dest = systemId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[systemId];
+  if (!dest) return { ok: false, reason: 'unknown-system' };
+  // Only setup units exist on the board at this point, so any matching
+  // side+type unit here was placed during setup.
+  const ui = dest.units.findIndex((u) => u.side === side && u.typeId === typeId);
+  if (ui < 0) return { ok: false, reason: `no-such-unit-placed:${typeId}@${systemId}` };
+  dest.units.splice(ui, 1);
+  G.pendingDeployment[side].push(typeId);
+  log(G, { kind: 'setup-undeploy', side, payload: { typeId, systemId } });
+  // Clear the single-system deploy target if this was the last unit there, so
+  // the player can re-choose where their forces start.
+  if (side === 'Rebel' && G.rebelDeployTarget === systemId
+    && !(G.map.systems[systemId]?.units ?? []).some((u) => u.side === 'Rebel')) {
+    G.rebelDeployTarget = undefined;
+  }
+  if (side === 'Empire' && G.empireDeployTarget === systemId
+    && !(G.map.systems[systemId]?.units ?? []).some((u) => u.side === 'Empire')) {
+    G.empireDeployTarget = undefined;
+  }
+  return { ok: true };
+}
+
 /** Auto-fill the remaining pending deployments for `side` using a random-but-
  *  rules-compliant placement. Imperial: place 1 ground unit per Imperial system
  *  first, then distribute remaining round-robin. Rebel: all to Rebel Base space. */

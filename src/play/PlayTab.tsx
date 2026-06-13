@@ -1120,6 +1120,22 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     refresh();
   };
 
+  // Pull a SPECIFIC placed unit back off the board during setup (player request:
+  // change a placement without undoing everything after it). Snapshotted like a
+  // deploy so it's itself undoable.
+  const onSetupUndoUnit = (side: Side, typeId: string, systemId: string) => {
+    if (!G) return;
+    const snapshot = canEncode(G) ? encode(G) : null;
+    if (snapshot) setupUndoStackRef.current.push(snapshot);
+    const r = phases.setupUndoDeployUnit(G, side, typeId, systemId);
+    if (!r.ok) {
+      if (snapshot) setupUndoStackRef.current.pop();
+      alert(`Cannot pull back: ${r.reason}`);
+    }
+    persist();
+    refresh();
+  };
+
   // Undo the most recent human setup placement (or auto-fill).
   const onSetupUndo = () => {
     const Gc = gameRef.current;
@@ -1417,6 +1433,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           onDeploy={onSetupDeploy}
           onAutoFill={onSetupAutoFill}
           onUndo={onSetupUndo}
+          onUndoUnit={onSetupUndoUnit}
           onReset={onSetupReset}
           undoCount={setupUndoStackRef.current.length}
         />
@@ -8405,12 +8422,13 @@ function RebelBasePickPanel({ G, onPick }: { G: GameState; onPick: (sysId: strin
 // Setup Panel — choose where to deploy starting units
 // ============================================================================
 
-function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onReset, undoCount }: {
+function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onUndoUnit, onReset, undoCount }: {
   G: GameState;
   side: Side;
   onDeploy: (side: Side, typeId: string, systemId: string) => void;
   onAutoFill: (side: Side) => void;
   onUndo: () => void;
+  onUndoUnit: (side: Side, typeId: string, systemId: string) => void;
   onReset: () => void;
   undoCount: number;
 }) {
@@ -8619,6 +8637,38 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onReset, undoCount 
           )}
         </div>
       </div>
+
+      {/* Placed units — click any to pull it back off the board (player request:
+          change a setup placement without undoing everything after it). */}
+      {(() => {
+        const placed: { systemId: string; sysName: string; typeId: string; count: number }[] = [];
+        const collect = (container: { units: { side: Side; typeId: string }[] } | undefined, systemId: string, sysName: string) => {
+          if (!container) return;
+          const counts = new Map<string, number>();
+          for (const u of container.units) if (u.side === side) counts.set(u.typeId, (counts.get(u.typeId) ?? 0) + 1);
+          for (const [typeId, count] of counts) placed.push({ systemId, sysName, typeId, count });
+        };
+        if (side === 'Rebel') collect(G.map.rebelBaseSpace, 'rebel-base-space', 'Rebel Base space');
+        for (const [sysId, ss] of Object.entries(G.map.systems)) collect(ss, sysId, G.catalog.systems[sysId]?.name ?? sysId);
+        if (placed.length === 0) return null;
+        return (
+          <div style={{ marginTop: 10, borderTop: '1px solid #2a2d34', paddingTop: 8 }}>
+            <div style={{ fontSize: 12, color: '#aaa', marginBottom: 4 }}>
+              Placed so far — click a unit to pull it back off the board:
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {placed.map((p) => (
+                <button key={`${p.systemId}:${p.typeId}`} className="tab-button"
+                  onClick={() => onUndoUnit(side, p.typeId, p.systemId)}
+                  title={`Pull a ${G.catalog.unitTypes[p.typeId]?.name ?? p.typeId} back from ${p.sysName}`}
+                  style={{ fontSize: 11, padding: '3px 8px' }}>
+                  ↩ {G.catalog.unitTypes[p.typeId]?.name ?? p.typeId}{p.count > 1 ? ` ×${p.count}` : ''} @ {p.sysName}
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
