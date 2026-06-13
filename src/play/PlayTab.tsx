@@ -52,6 +52,12 @@ const DISPLAY_W = 1200;
 const DISPLAY_H = 600;
 const SCALE = DISPLAY_W / NATIVE_W;
 const MARKER_R = 16;
+// Distinct, muted fills per board region — used to draw a usable VECTOR galaxy
+// when the real Map.png art isn't available (no module / copyright-stripped
+// placeholder). Indexed by system.region.
+const REGION_FILL = [
+  '#3a4a63', '#5a4a63', '#3a5a52', '#63523a', '#4a3a63', '#3a6352', '#634a4a', '#52633a', '#3a4a4a',
+];
 
 const LS_CURRENT = 'rebellion-game-current';
 const LS_HISTORY = 'rebellion-games-history';
@@ -7257,8 +7263,14 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
       : null;
 
   return (
-    <div style={{ position: 'relative', display: 'inline-block', border: '1px solid #2a2d34' }}>
-      <img src={mapImageUrl()} width={DISPLAY_W} height={DISPLAY_H} alt="Board" />
+    <div style={{ position: 'relative', display: 'inline-block', border: '1px solid #2a2d34',
+      // Dark backdrop so the vector fallback reads as a board when there's no map art.
+      background: mapImageReady ? undefined : '#0a0c10', width: DISPLAY_W, height: DISPLAY_H }}>
+      {/* Only render the board image when a REAL map is available — otherwise the
+          copyright-stripped placeholder is a blank transparent box. */}
+      {mapImageReady && (
+        <img src={mapImageUrl()} width={DISPLAY_W} height={DISPLAY_H} alt="Board" />
+      )}
       <svg width={DISPLAY_W} height={DISPLAY_H} style={{ position: 'absolute', top: 0, left: 0 }}>
         {/* Rectangles — kind=hide masks; other kinds render game state on top */}
         {masks.map((r) => {
@@ -7395,6 +7407,12 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           const isSelected = selectedSystemIds?.has(s.id) ?? false;
           return (
             <g key={s.id} style={isHighlighted && onSystemClick ? { cursor: 'pointer' } : undefined}>
+              {/* No real map art → draw a visible region-colored "planet" so the
+                  galaxy is usable as a vector board (player report: blank map). */}
+              {!mapImageReady && (
+                <circle cx={x} cy={y} r={MARKER_R + 3}
+                  style={{ fill: REGION_FILL[s.region % REGION_FILL.length], stroke: '#1a1c22', strokeWidth: 1 }} />
+              )}
               {isBaseRevealed && (
                 <circle cx={x} cy={y} r={MARKER_R + 6}
                   style={{ fill: 'none', stroke: '#80dc78', strokeWidth: 2 }} />
