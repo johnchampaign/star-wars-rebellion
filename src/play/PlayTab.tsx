@@ -7206,6 +7206,14 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
   // (and ugly — they sit on top of the printed banner). Hide them when
   // art is loaded.
   const artLoaded = useArtLoaded().loaded;
+  // The on-board text fallback (system names + resource glyphs) should appear
+  // whenever the actual MAP image isn't rendering — NOT merely when "no vmod is
+  // loaded". A vmod can be loaded yet its board image unavailable (e.g. the
+  // v1.2e "Redux" board names it Map-Redux.png and the blob hasn't resolved, or
+  // a partial module). Gating on artLoaded alone left such users with a blank
+  // board AND no labels (player report). Tie the fallback to the map blob
+  // specifically — useArtLoaded re-renders this on load so it stays reactive.
+  const mapImageReady = typeof getCachedArtUrlSync('Map.png') === 'string';
   const [hoverSystemId, setHoverSystemId] = useState<string | null>(null);
   const [hoverRebelBase, setHoverRebelBase] = useState<boolean>(false);
   // #98 follow-up (player request): let the Empire PIN the probe overlay by
@@ -7437,7 +7445,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                   maxWidth={100}
                 />
               )}
-              {!artLoaded && (
+              {!mapImageReady && (
                 <text x={x} y={y + r + 11} textAnchor="middle"
                   style={{ fill: '#fff', fontSize: 9, pointerEvents: 'none', opacity: 0.85 }}
                 >
@@ -7455,7 +7463,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                *  Hidden when art is loaded — the printed map already shows
                *  this info as the yellow buildslot icon + resource tokens
                *  baked into each system tile. */}
-              {!artLoaded && (() => {
+              {!mapImageReady && (() => {
                 const parts: React.ReactNode[] = [];
                 if (s.buildSlot != null) {
                   parts.push(
