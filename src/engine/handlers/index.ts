@@ -2120,9 +2120,9 @@ export function registerAll(): void {
   register('critical-rescue', criticalRescue);
   register('rebel-promotion', rebelPromotion);
   register('my-only-hope', myOnlyHope);
-  // RoE "Covert Operations" (plural) has the same effect as the base
-  // "Covert Operation" (singular) — reuse the existing handler.
-  register('covert-operations', covertOperation);
+  // NOTE: the duplicate RoE "Covert Operations" (plural) mission was removed —
+  // Covert Operation is a BASE mission (no Vader icon); in RoE its 3-intel slot
+  // is Critical Rescue, not a second copy of Covert Operation (player #236).
 
   // ----- Rise of the Empire — Wave B (Phase 5b) -----
   // Imperial

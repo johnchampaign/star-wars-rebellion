@@ -1147,21 +1147,6 @@
       "set": "rote"
     },
     {
-      "id": "covert-operations",
-      "name": "Covert Operations",
-      "side": "Rebel",
-      "isStarting": false,
-      "isProject": false,
-      "skill": "intel",
-      "skillCost": 3,
-      "isAttempt": true,
-      "leaderPortrait": null,
-      "effectKey": "covert-operations",
-      "rulesText": "Attempt on a system with 1+ Imperial units. Draw 2 Objective cards, keep 1, put the other at the bottom of the deck.",
-      "image": "MissionRebelCovertOperation.png",
-      "set": "rote"
-    },
-    {
       "id": "assault",
       "name": "Assault",
       "side": "Rebel",
