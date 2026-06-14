@@ -7250,6 +7250,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
   const sysById = useMemo(() => new Map(systems.map((s) => [s.id, s])), [systems]);
   const interactiveTerritories = useMemo(() =>
     FALLBACK_TERRITORIES
+      .filter((t) => !t.barrier) // barriers are impassable borders, not selectable cells
       .map((t) => ({
         exterior: t.exterior,
         systemIds: systems
@@ -7318,6 +7319,13 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
             so the no-art fallback reads as the board's partitioned galaxy. */}
         {!mapImageReady && FALLBACK_TERRITORIES.map((t) => {
           const points = t.exterior.map(([x, y]) => `${(x * SCALE).toFixed(1)},${(y * SCALE).toFixed(1)}`).join(' ');
+          if (t.barrier) {
+            // Impassable barrier — drawn as a red border, not a fillable cell.
+            return (
+              <polygon key={`barrier-${t.id}`} points={points}
+                style={{ fill: 'none', stroke: '#c0392b', strokeWidth: 3, strokeLinejoin: 'round' }} />
+            );
+          }
           const fill = territoryFill(t.id);
           return (
             <polygon key={`terr-${t.id}`} points={points}

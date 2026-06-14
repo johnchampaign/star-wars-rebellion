@@ -4,14 +4,28 @@
 // no-art vector fallback in the play tab reflects them live; Export downloads an
 // updated src/data/territories.json (with recomputed centroid/area).
 
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { MAP_IMAGE_URL } from '../data/loadAssets';
+import { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { MAP_IMAGE_URL, loadSystems } from '../data/loadAssets';
 import { useArtLoaded, getCachedArtUrlSync } from '../play/vmodArtCache';
 import {
   TERRITORIES, cloneRegions, loadTerritoryEdits, saveTerritoryEdits,
   polygonCentroid, polygonArea, territoryFill,
   type TerritoryRegion,
 } from '../data/territories';
+
+type SysLite = { id: string; name: string; boardPos: { x: number; y: number } };
+
+/** Ray-cast point-in-polygon (image-native coords). */
+function pointInPoly(p: [number, number], poly: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+    const intersect = ((yi > p[1]) !== (yj > p[1])) &&
+      (p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
 
 const NATIVE_W = 3180;
 const NATIVE_H = 1590;
@@ -45,6 +59,7 @@ export default function TerritoriesTab() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [selectedVertex, setSelectedVertex] = useState<number | null>(null);
   const [drag, setDrag] = useState<Drag>(null);
+  const [sysList, setSysList] = useState<SysLite[]>([]);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   // Initial load: canonical base + any local edits.
@@ -53,6 +68,23 @@ export default function TerritoriesTab() {
     setBase(b);
     setRegions(loadTerritoryEdits() ?? cloneRegions(b));
   }, []);
+
+  // Systems, so each cell can show the planet it contains (1 = clean, >1 = needs
+  // splitting, 0 = orphan unless it's a barrier).
+  useEffect(() => {
+    loadSystems()
+      .then((d) => setSysList((d.systems ?? []).map((s) => ({ id: s.id, name: s.name, boardPos: s.boardPos }))))
+      .catch(() => {});
+  }, []);
+
+  // systemIds contained in each region (by id), recomputed when geometry changes.
+  const containedByRegion = useMemo(() => {
+    const m = new Map<number, string[]>();
+    for (const r of regions) {
+      m.set(r.id, sysList.filter((s) => pointInPoly([s.boardPos.x, s.boardPos.y], r.exterior)).map((s) => s.name));
+    }
+    return m;
+  }, [regions, sysList]);
 
   // Persist edits whenever they change.
   useEffect(() => {
@@ -155,6 +187,11 @@ export default function TerritoriesTab() {
     setSelectedVertex(null);
   };
 
+  const toggleBarrier = () => {
+    if (selectedId === null) return;
+    setRegions((rs) => rs.map((r) => (r.id === selectedId ? { ...r, barrier: !r.barrier } : r)));
+  };
+
   const handleReset = () => {
     if (!confirm('Discard all local territory edits and revert to the saved file?')) return;
     setRegions(cloneRegions(base));
@@ -178,6 +215,7 @@ export default function TerritoriesTab() {
       regions: regions.map((r) => ({
         id: r.id,
         ...(r.name ? { name: r.name } : {}),
+        ...(r.barrier ? { barrier: true } : {}),
         area_px: polygonArea(r.exterior),
         centroid: polygonCentroid(r.exterior),
         exterior: r.exterior,
@@ -223,16 +261,26 @@ export default function TerritoriesTab() {
         </span>
         {selected && (
           <>
+            <button className="tab-button" onClick={toggleBarrier}
+              style={{ marginLeft: 'auto', color: selected.barrier ? '#c0392b' : undefined }}>
+              {selected.barrier ? 'Unmark barrier' : 'Mark as barrier'}
+            </button>
             <button className="tab-button" onClick={deleteVertex}
-              disabled={selectedVertex === null || selected.exterior.length <= 3}
-              style={{ marginLeft: 'auto' }}>
+              disabled={selectedVertex === null || selected.exterior.length <= 3}>
               Delete vertex
             </button>
             <button className="tab-button" onClick={deleteTerritory} style={{ color: '#ff8866' }}>
-              Delete territory #{selectedId}
+              Delete #{selectedId}
             </button>
           </>
         )}
+      </div>
+
+      <div className="meta-notes" style={{ marginBottom: 10 }}>
+        <strong>Goal: one system per cell.</strong> Each cell should contain exactly one planet
+        (shown in the list). A cell with <span style={{ color: '#ff6b6b' }}>several</span> needs
+        splitting; a cell with <span style={{ color: '#ffd54a' }}>none</span> is an orphan unless
+        it's a <span style={{ color: '#c0392b' }}>barrier</span> (impassable border — mark it so).
       </div>
 
       <div style={{ display: 'flex', gap: 12 }}>
@@ -244,6 +292,15 @@ export default function TerritoriesTab() {
           <div style={{ fontSize: 12, color: '#aaa', marginBottom: 6 }}>Territories</div>
           {regions.map((r) => {
             const sel = selectedId === r.id;
+            const contained = containedByRegion.get(r.id) ?? [];
+            // status color: barrier red, 1 system green, >1 red, 0 amber
+            const statusColor = r.barrier ? '#c0392b'
+              : contained.length === 1 ? '#80dc78'
+              : contained.length > 1 ? '#ff6b6b' : '#ffd54a';
+            const statusText = r.barrier ? 'barrier'
+              : contained.length === 1 ? contained[0]
+              : contained.length > 1 ? `${contained.length} systems!`
+              : 'no system';
             return (
               <div key={r.id}
                 onClick={() => { setSelectedId(r.id); setSelectedVertex(null); }}
@@ -252,18 +309,23 @@ export default function TerritoriesTab() {
                   border: '1px solid ' + (sel ? '#ff7ab8' : '#2a2d34'),
                   borderRadius: 3, cursor: 'pointer',
                   background: sel ? '#1f1428' : 'transparent',
-                  display: 'flex', alignItems: 'center', gap: 6,
                 }}>
-                <span style={{
-                  width: 12, height: 12, borderRadius: 2, flexShrink: 0,
-                  background: territoryFill(r.id), border: '1px solid #b5662e',
-                }} />
-                <span style={{ fontSize: 12, color: '#e8e8ea' }}>
-                  #{r.id}{r.name ? ` ${r.name}` : ''}
-                </span>
-                <span style={{ fontSize: 10, color: '#777', marginLeft: 'auto', fontFamily: 'monospace' }}>
-                  {r.exterior.length}v
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{
+                    width: 12, height: 12, borderRadius: 2, flexShrink: 0,
+                    background: r.barrier ? 'transparent' : territoryFill(r.id),
+                    border: '1px solid ' + (r.barrier ? '#c0392b' : '#b5662e'),
+                  }} />
+                  <span style={{ fontSize: 12, color: '#e8e8ea' }}>
+                    #{r.id}{r.name ? ` ${r.name}` : ''}
+                  </span>
+                  <span style={{ fontSize: 10, color: '#777', marginLeft: 'auto', fontFamily: 'monospace' }}>
+                    {r.exterior.length}v
+                  </span>
+                </div>
+                <div style={{ fontSize: 10, color: statusColor, marginLeft: 18, marginTop: 1 }}>
+                  {statusText}
+                </div>
               </div>
             );
           })}
@@ -284,6 +346,12 @@ export default function TerritoriesTab() {
               const sel = selectedId === r.id;
               const pts = r.exterior.map(([x, y]) => `${x * SCALE},${y * SCALE}`).join(' ');
               const fill = territoryFill(r.id);
+              const contained = containedByRegion.get(r.id) ?? [];
+              // Border color flags status while tracing: barrier red, ok green,
+              // multi red, orphan amber. Selection overrides to yellow.
+              const border = r.barrier ? '#c0392b'
+                : contained.length === 1 ? '#5a8f4a'
+                : contained.length > 1 ? '#ff6b6b' : '#caa23a';
               return (
                 <g key={r.id}>
                   <polygon points={pts}
@@ -294,16 +362,17 @@ export default function TerritoriesTab() {
                       if (n) { setSelectedId(r.id); insertVertexAt(r.id, n); }
                     }}
                     style={{
-                      fill: sel ? `${fill}66` : `${fill}33`,
-                      stroke: sel ? '#ffd54a' : '#b5662e',
-                      strokeWidth: sel ? 2 : 1.2,
+                      fill: r.barrier ? 'none' : (sel ? `${fill}66` : `${fill}33`),
+                      stroke: sel ? '#ffd54a' : border,
+                      strokeWidth: sel ? 2.5 : (r.barrier || contained.length !== 1 ? 2 : 1.2),
+                      strokeDasharray: r.barrier ? '6,3' : undefined,
                       strokeLinejoin: 'round', cursor: 'pointer', pointerEvents: 'all',
                     }} />
                   {/* id label at centroid */}
                   <text x={polygonCentroid(r.exterior)[0] * SCALE} y={polygonCentroid(r.exterior)[1] * SCALE}
                     textAnchor="middle" dominantBaseline="middle"
                     style={{ fill: sel ? '#fff' : '#cfcfd4', fontSize: 12, fontWeight: 700, pointerEvents: 'none' }}>
-                    {r.id}
+                    {r.barrier ? '⛔' : r.id}
                   </text>
                 </g>
               );

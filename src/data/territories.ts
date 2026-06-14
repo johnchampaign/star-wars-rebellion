@@ -16,6 +16,9 @@ import territoriesJson from './territories.json';
 export type TerritoryRegion = {
   id: number;
   name?: string;
+  /** A barrier is an impassable border region, NOT a selectable territory:
+   *  it owns no system and is rendered as an impassable line, not a cell. */
+  barrier?: boolean;
   area_px: number;
   centroid: [number, number];
   exterior: [number, number][];
