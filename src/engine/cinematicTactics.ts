@@ -500,6 +500,7 @@ export function applyCinematicAbility(
     logPlay({ lockDeck: { side: other(side), theater, throughRound: c.round + 1 } });
   } else if (ab.kind === 'removeDamage') {
     logPlay({ removedDamage: resolveRemoveDamage(G, side, c.systemId, theater, ab) });
+    restageTheater(G, c); // un-stage units healed back below lethal
   } else if (ab.kind === 'capture') {
     // Deferred to end of round — the condition (you have a Star Destroyer, the
     // opponent has no ships) is an end-of-round state. Queue it.
@@ -515,6 +516,7 @@ export function applyCinematicAbility(
     logPlay({ cancel: { side: opp, theater, applied: !tooLate, note: tooLate ? 'opponent already resolved' : undefined } });
   } else if (ab.kind === 'shieldAbsorb') {
     logPlay({ absorbed: resolveShieldAbsorb(G, side, c.systemId, ab) });
+    restageTheater(G, c); // un-stage ground units healed by the shield absorb
   } else if (ab.kind === 'extraCard') {
     grantExtraCard(c, side, theater);
     logPlay({ extra: true });
@@ -574,6 +576,22 @@ function resolveRemoveDamage(
   return removed;
 }
 
+/** Re-sync c.theaterStaged to units that are CURRENTLY at lethal damage. Call
+ *  after ANY cinematic damage-removal: a unit dealt lethal damage by a tactic
+ *  is staged (pending end-of-round destruction) and excluded from targeting,
+ *  but if it's then healed below lethal it must be un-staged so it can be hit
+ *  again and counted as a live target (player #256: a healed AT-ST stayed
+ *  un-targetable, so the next hit was unassignable). */
+export function restageTheater(G: GameState, c: CombatState): void {
+  if (!c.theaterStaged?.length) return;
+  const units = G.map.systems[c.systemId]?.units ?? [];
+  c.theaterStaged = c.theaterStaged.filter((id) => {
+    const u = units.find((x) => x.instanceId === id);
+    const t = u && G.catalog.unitTypes[u.typeId];
+    return !!(u && t && u.damage >= t.health.value); // still lethal → keep staged
+  });
+}
+
 /** RoE "Removing damage" combat action (rulebook p.8): after a side rolls its
  *  attack dice in cinematic combat, it may discard each ★ (special) die to
  *  remove 1 damage from one of its units whose health colour matches the die's
@@ -604,6 +622,7 @@ export function applyCinematicSpecialHeal(
   }
   if (healed > 0) {
     log(G, { kind: 'cinematic-remove-damage', side, payload: { theater, round: c.round, removed: healed } });
+    restageTheater(G, c); // un-stage units healed back below lethal
   }
   return healed;
 }

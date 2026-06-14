@@ -15,7 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -1059,6 +1059,7 @@ export function resolveCinematicHeal(
     log(G, { kind: 'cinematic-remove-damage', side: pa.side, payload: {
       theater: pa.theater, round: c.round, removed: healed,
     }});
+    restageTheater(G, c); // un-stage units healed back below lethal (player #256)
   }
   pa.cinematicHealResolved = true;
   G.pendingChoice = undefined;
