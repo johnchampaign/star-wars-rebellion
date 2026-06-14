@@ -15,7 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -581,6 +581,12 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
     if (G.pendingChoice) return; // paused for a choice; resume on next call
     // beginAttack with no choice means side had no units — skip.
   }
+
+  // Reactive cinematic heals ("remove damage after the opponent assigns
+  // damage" — Draw Their Fire / Energy Shield) resolve now: after this
+  // theatre's attacks, before destruction, so they can save a just-damaged
+  // ship from being destroyed below (#225).
+  if (c.cinematic) applyDeferredCinematicHeals(G, c, theater);
 
   // Apply destructions (RR p.5 — end of theater step).
   finalizeTheaterDestructions(G, c, theater);

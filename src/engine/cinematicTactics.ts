@@ -499,8 +499,12 @@ export function applyCinematicAbility(
     (c.cinematicDeckLock ??= {})[`${other(side)}:${theater}`] = c.round + 1;
     logPlay({ lockDeck: { side: other(side), theater, throughRound: c.round + 1 } });
   } else if (ab.kind === 'removeDamage') {
-    logPlay({ removedDamage: resolveRemoveDamage(G, side, c.systemId, theater, ab) });
-    restageTheater(G, c); // un-stage units healed back below lethal
+    // "After the [opponent] assign damage, remove up to N damage" — reactive.
+    // DEFER to after this theatre's attacks (applyDeferredCinematicHeals),
+    // before the destruction step, so it can save a just-damaged ship. Applied
+    // here at round-start it would heal nothing — there's no damage yet (#225).
+    (c.cinematicDeferredHeal ??= []).push({ side, theater, amount: ab.amount, exceptTypeId: ab.exceptTypeId });
+    logPlay({ deferredRemoveDamage: ab.amount, except: ab.exceptTypeId });
   } else if (ab.kind === 'capture') {
     // Deferred to end of round — the condition (you have a Star Destroyer, the
     // opponent has no ships) is an end-of-round state. Queue it.
@@ -574,6 +578,26 @@ function resolveRemoveDamage(
     u.damage -= take; budget -= take; removed += take;
   }
   return removed;
+}
+
+/** Apply any deferred "remove damage after the opponent attacks" heals (Draw
+ *  Their Fire / Energy Shield) for `theater`. Called by combat.ts AFTER the
+ *  theatre's attacks resolve and BEFORE finalizeTheaterDestructions, so a heal
+ *  can pull a just-damaged ship back below lethal and save it (#225). */
+export function applyDeferredCinematicHeals(G: GameState, c: CombatState, theater: Theater): void {
+  const queue = c.cinematicDeferredHeal;
+  if (!queue?.length) return;
+  const keep: typeof queue = [];
+  for (const h of queue) {
+    if (h.theater !== theater) { keep.push(h); continue; }
+    const removed = resolveRemoveDamage(G, h.side, c.systemId, theater,
+      { kind: 'removeDamage', amount: h.amount, exceptTypeId: h.exceptTypeId });
+    restageTheater(G, c); // un-stage units healed back below lethal
+    log(G, { kind: 'cinematic-remove-damage', side: h.side, payload: {
+      theater, round: c.round, removed, except: h.exceptTypeId,
+    }});
+  }
+  c.cinematicDeferredHeal = keep;
 }
 
 /** Re-sync c.theaterStaged to units that are CURRENTLY at lethal damage. Call

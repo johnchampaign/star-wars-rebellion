@@ -13,7 +13,7 @@ const M = await import('../src/engine/mechanics.ts');
 const combat = await import('../src/engine/combat.ts');
 const phases = await import('../src/engine/phases.ts');
 const { stepOnce } = await import('../src/play/randomAI.ts');
-const { autoPlayCinematicTactic, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, applyCinematicSpecialHeal } = await import('../src/engine/cinematicTactics.ts');
+const { autoPlayCinematicTactic, applyCinematicAbility, applyDeferredCinematicHeals, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, applyCinematicSpecialHeal } = await import('../src/engine/cinematicTactics.ts');
 
 /** Drive a combat to completion: resolve every pending combat choice (add-
  *  leader, tactics, damage assignment, retreat) via the AI until pendingCombat
@@ -234,6 +234,7 @@ console.log('\n[ Cinematic 7e: remove-damage heals own ships ]');
   const sd = G.map.systems['felucia'].units.find((u) => u.side === 'Empire' && u.typeId === 'star-destroyer');
   sd.damage = 3;
   applyCinematicAbility(G, c, 'Empire', 'space', 'cin-empire-space-energy-shield', true);
+  applyDeferredCinematicHeals(G, c, 'space'); // reactive heal resolves after attacks (#225)
   check('Energy Shield removed up to 2 damage (3 → 1)', sd.damage === 1, `damage = ${sd.damage}`);
 }
 
@@ -249,6 +250,7 @@ console.log('\n[ Cinematic 7e: Draw Their Fire excludes Nebulon-B ]');
   const mc = G.map.systems['felucia'].units.find((u) => u.typeId === 'mon-cala-cruiser');
   neb.damage = 2; mc.damage = 2;
   applyCinematicAbility(G, c, 'Rebel', 'space', 'cin-rebel-space-draw-their-fire', true);
+  applyDeferredCinematicHeals(G, c, 'space'); // reactive heal resolves after attacks (#225)
   check('Draw Their Fire healed the Mon Cal cruiser (2 → 0)', mc.damage === 0, `mc = ${mc.damage}`);
   check('Draw Their Fire skipped the Nebulon-B (still 2)', neb.damage === 2, `neb = ${neb.damage}`);
 }

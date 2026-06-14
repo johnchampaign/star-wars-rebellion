@@ -1330,6 +1330,14 @@ export type CombatState = {
     Rebel?: { red: number; black: number; special: number };
     Empire?: { red: number; black: number; special: number };
   };
+  // RoE Cinematic "remove damage after the opponent assigns damage" heals
+  // (Draw Their Fire / Energy Shield). These are reactive: they must run AFTER
+  // this theatre's attacks but BEFORE the end-of-theatre destruction step, so
+  // they can pull a just-damaged ship back below lethal and save it. Tactic
+  // abilities otherwise resolve at round start (before any attack), which is
+  // too early — applied then they heal nothing (#225). Drained per theatre by
+  // applyDeferredCinematicHeals just before finalizeTheaterDestructions.
+  cinematicDeferredHeal?: { side: Side; theater: Theater; amount: number; exceptTypeId?: string }[];
   // Which (side, theatre) cinematic tactic sub-steps have been resolved this
   // round, so re-entry doesn't replay them.
   cinematicTacticDoneThisRound?: string[]; // entries like 'Rebel:space'
