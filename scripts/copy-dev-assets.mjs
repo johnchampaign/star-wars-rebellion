@@ -60,6 +60,18 @@ const copies = [
   ['vmod_extracted/images/UnitAirspeeder.png',           'units/UnitAirspeeder.png'],
   ['vmod_extracted/images/UnitShieldGenerator.png',      'units/UnitShieldGenerator.png'],
   ['vmod_extracted/images/UnitIonCannon.png',            'units/UnitIonCannon.png'],
+  // Rise of the Empire unit miniatures. Copied regardless of base/expansion so
+  // ALL unit art is always available; the engine only ever places these on the
+  // board when the expansion is enabled, so a base game still never shows them.
+  // Filenames match the .vmod / images/ set (issue #255).
+  ['vmod_extracted/images/UnitTIEStriker.png',           'units/UnitTIEStriker.png'],
+  ['vmod_extracted/images/UnitAssaultTank.png',          'units/UnitAssaultTank.png'],
+  ['vmod_extracted/images/UnitShieldBunker.png',         'units/UnitShieldBunker.png'],
+  ['vmod_extracted/images/UnitInterdictor.png',          'units/UnitInterdictor.png'],
+  ['vmod_extracted/images/UnitUWing.png',                'units/UnitUWing.png'],
+  ['vmod_extracted/images/UnitNebulonB.png',             'units/UnitNebulonB.png'],
+  ['vmod_extracted/images/UnitRebelVanguard.png',        'units/UnitRebelVanguard.png'],
+  ['vmod_extracted/images/UnitGolanTurret.png',          'units/UnitGolanTurret.png'],
   // Combat / mission dice faces (34x34 RGBA). Base game uses black + red;
   // green is RoE-only and the .vmod ships only Blank + Direct for it.
   ['vmod_extracted/images/DiceBlackBlank.png',           'dice/DiceBlackBlank.png'],
