@@ -60,6 +60,10 @@ export default function TerritoriesTab() {
   const [selectedVertex, setSelectedVertex] = useState<number | null>(null);
   const [drag, setDrag] = useState<Drag>(null);
   const [sysList, setSysList] = useState<SysLite[]>([]);
+  // Draw mode: when non-null, clicks on the board add points to a new cell's
+  // outline (each click is one edge). Used to trace cells — e.g. splitting the
+  // central blob into four by drawing four new cells, then deleting the blob.
+  const [draft, setDraft] = useState<[number, number][] | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
 
   // Initial load: canonical base + any local edits.
@@ -155,9 +159,16 @@ export default function TerritoriesTab() {
     setSelectedVertex(null);
   };
 
-  // Keyboard: Delete removes the selected vertex.
+  // Keyboard: in draw mode Enter=finish, Esc=cancel, Backspace=undo point.
+  // Otherwise Delete removes the selected vertex.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (draft !== null) {
+        if (e.key === 'Enter') { e.preventDefault(); finishDraft(); }
+        else if (e.key === 'Escape') { e.preventDefault(); cancelDraw(); }
+        else if (e.key === 'Backspace') { e.preventDefault(); undoDraftPoint(); }
+        return;
+      }
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedVertex !== null) {
         e.preventDefault();
         deleteVertex();
@@ -185,6 +196,37 @@ export default function TerritoriesTab() {
     setRegions((rs) => rs.filter((r) => r.id !== selectedId));
     setSelectedId(null);
     setSelectedVertex(null);
+  };
+
+  // ---- draw a new cell (trace mode) ----------------------------------------
+  const startDraw = () => { setDraft([]); setSelectedId(null); setSelectedVertex(null); };
+  const cancelDraw = () => setDraft(null);
+  const undoDraftPoint = () => setDraft((d) => (d && d.length ? d.slice(0, -1) : d));
+  const finishDraft = () => {
+    if (!draft || draft.length < 3) return;
+    const ext = draft.slice();
+    const id = nextId(regions);
+    setRegions((rs) => [...rs, { id, area_px: polygonArea(ext), centroid: polygonCentroid(ext), exterior: ext }]);
+    setDraft(null);
+    setSelectedId(id);
+  };
+  // Add a point, or close the cell when clicking near the first point.
+  const addDraftPoint = (p: [number, number]) => {
+    setDraft((d) => {
+      if (!d) return d;
+      if (d.length >= 3) {
+        const dx = p[0] - d[0][0], dy = p[1] - d[0][1];
+        if (dx * dx + dy * dy < 18 * 18 * INV_SCALE * INV_SCALE) {
+          // close: defer creation to finishDraft via a microtask-free path
+          const ext = d.slice();
+          const id = nextId(regions);
+          setRegions((rs) => [...rs, { id, area_px: polygonArea(ext), centroid: polygonCentroid(ext), exterior: ext }]);
+          setSelectedId(id);
+          return null;
+        }
+      }
+      return [...d, p];
+    });
   };
 
   const toggleBarrier = () => {
@@ -255,7 +297,21 @@ export default function TerritoriesTab() {
           Export territories.json {isDirty ? '*' : ''}
         </button>
         <button className="tab-button" onClick={handleReset} disabled={!isDirty}>Reset</button>
-        <button className="tab-button" onClick={addTerritory}>+ Add territory</button>
+        {draft === null ? (
+          <>
+            <button className="tab-button" onClick={startDraw} style={{ color: '#80dc78' }}>✏️ Draw cell</button>
+            <button className="tab-button" onClick={addTerritory}>+ Add square</button>
+          </>
+        ) : (
+          <>
+            <button className="tab-button" onClick={finishDraft} disabled={draft.length < 3}
+              style={{ color: '#80dc78' }}>
+              Finish cell ({draft.length})
+            </button>
+            <button className="tab-button" onClick={undoDraftPoint} disabled={draft.length === 0}>Undo point</button>
+            <button className="tab-button" onClick={cancelDraw} style={{ color: '#ff8866' }}>Cancel</button>
+          </>
+        )}
         <span style={{ color: '#888', fontSize: 12, marginLeft: 8 }}>
           {regions.length} territories
         </span>
@@ -411,18 +467,49 @@ export default function TerritoriesTab() {
                 </g>
               );
             })()}
+
+            {/* Draw layer (trace a new cell) — topmost capture rect so every
+                click adds a point, plus the in-progress outline. */}
+            {draft !== null && (
+              <g>
+                <rect x={0} y={0} width={DISPLAY_W} height={DISPLAY_H} fill="rgba(0,0,0,0.18)"
+                  style={{ cursor: 'crosshair', pointerEvents: 'all' }}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    const n = toNative(e.clientX, e.clientY);
+                    if (n) addDraftPoint(n);
+                  }} />
+                {draft.length > 0 && (
+                  <polyline
+                    points={[...draft, ...(draft.length >= 3 ? [draft[0]] : [])]
+                      .map(([x, y]) => `${x * SCALE},${y * SCALE}`).join(' ')}
+                    style={{ fill: draft.length >= 3 ? 'rgba(128,220,120,0.18)' : 'none',
+                      stroke: '#80dc78', strokeWidth: 2, strokeDasharray: '5,3', pointerEvents: 'none' }} />
+                )}
+                {draft.map((p, i) => (
+                  <circle key={i} cx={p[0] * SCALE} cy={p[1] * SCALE} r={i === 0 ? 6 : 4}
+                    style={{ fill: i === 0 ? '#ffd54a' : '#80dc78', stroke: '#1a1a1a', strokeWidth: 1, pointerEvents: 'none' }} />
+                ))}
+              </g>
+            )}
           </svg>
         </div>
       </div>
 
       <div style={{ marginTop: 12, fontSize: 12, color: '#888' }}>
         <p style={{ margin: '4px 0' }}>
-          <strong>How to use:</strong> click a territory (or sidebar entry) to select it — pink
-          handles appear at each vertex and a cyan handle at the centroid. Drag a pink handle to
-          move that vertex; <strong>double-click an edge</strong> to insert a new vertex there;
-          select a vertex and press <strong>Delete</strong> (or the button) to remove it; drag the
-          cyan handle to slide the whole cell. <strong>+ Add territory</strong> drops a square in
-          the center.
+          <strong>Split a cell (e.g. the central blob):</strong> click <strong>✏️ Draw cell</strong>,
+          then click around a planet to lay down the outline — each click adds a point/edge.
+          <strong> Backspace</strong> removes the last point; click the first (yellow) point again,
+          press <strong>Enter</strong>, or hit <strong>Finish cell</strong> to close it. Repeat for
+          each planet, then select the old oversized blob and <strong>Delete</strong> it. A cell
+          turns <span style={{ color: '#5a8f4a' }}>green</span> once it holds exactly one planet.
+        </p>
+        <p style={{ margin: '4px 0' }}>
+          <strong>Reshape:</strong> click a cell to select it — drag a pink vertex handle to move
+          it, <strong>double-click an edge</strong> to insert a vertex, select a vertex and press
+          <strong> Delete</strong> to remove it, or drag the cyan centroid handle to slide the whole
+          cell. <strong>Mark as barrier</strong> turns a cell into an impassable border.
         </p>
         <p style={{ margin: '4px 0' }}>
           Edits auto-save locally and the play-tab vector fallback picks them up on reload. When
