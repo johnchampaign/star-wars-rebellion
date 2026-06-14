@@ -127,8 +127,8 @@ export default function TerritoriesTab() {
   };
 
   // Distance² snap radius (display px → native) for dropping one vertex onto
-  // another to merge them.
-  const MERGE_THR2 = (12 * INV_SCALE) ** 2;
+  // another to merge them. Generous so a hand-dragged release still snaps.
+  const MERGE_THR2 = (22 * INV_SCALE) ** 2;
   // The other vertex of `region` that vertex `i` is currently near enough to
   // merge with, or -1. Used both for the live highlight and the split on drop.
   const mergeTargetFor = useCallback((ext: [number, number][], i: number): number => {
@@ -492,7 +492,7 @@ export default function TerritoriesTab() {
                     const vsel = selectedVertex === i;
                     const isMergeTarget = i === mergeTarget;
                     return (
-                      <circle key={i} cx={p[0] * SCALE} cy={p[1] * SCALE} r={isMergeTarget ? 7 : vsel ? 6 : 4.5}
+                      <circle key={i} cx={p[0] * SCALE} cy={p[1] * SCALE} r={isMergeTarget ? 9 : vsel ? 7 : 5.5}
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           setSelectedVertex(i);
