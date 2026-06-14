@@ -7336,28 +7336,9 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
               style={{ fill, stroke: '#1a1d24', strokeWidth: 1, strokeLinejoin: 'round' }} />
           );
         })}
-        {/* Adjacency edges — on the vector fallback, draw a line between every
-            pair of adjacent systems (behind the planets) so reachability is
-            visible without the printed map's hyperlane art. */}
-        {!mapImageReady && (() => {
-          const pos = new Map(systems.map((s) => [s.id, { x: s.boardPos.x * SCALE, y: s.boardPos.y * SCALE }]));
-          const seen = new Set<string>();
-          const edges: React.ReactNode[] = [];
-          for (const s of systems) {
-            for (const a of (G.catalog.adjacency[s.id] ?? [])) {
-              const key = s.id < a ? `${s.id}|${a}` : `${a}|${s.id}`;
-              if (seen.has(key)) continue;
-              seen.add(key);
-              const p1 = pos.get(s.id), p2 = pos.get(a);
-              if (!p1 || !p2) continue;
-              edges.push(
-                <line key={key} x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                  style={{ stroke: '#5a606b', strokeWidth: 1 }} />,
-              );
-            }
-          }
-          return edges;
-        })()}
+        {/* Adjacency edges used to be drawn here on the vector fallback, but the
+            traced territory cells now convey the board layout, so the edge lines
+            are no longer needed and were removed for a cleaner art-free board. */}
         {/* Rectangles — kind=hide masks; other kinds render game state on top */}
         {masks.map((r) => {
           const x = r.x * BOARD_SCALE;
