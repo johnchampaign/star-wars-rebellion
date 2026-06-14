@@ -176,10 +176,11 @@ export default function TerritoriesTab() {
       image: { width: NATIVE_W, height: NATIVE_H },
       count: regions.length,
       regions: regions.map((r) => ({
+        id: r.id,
+        ...(r.name ? { name: r.name } : {}),
         area_px: polygonArea(r.exterior),
         centroid: polygonCentroid(r.exterior),
         exterior: r.exterior,
-        id: r.id,
       })),
     };
     const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
@@ -257,7 +258,9 @@ export default function TerritoriesTab() {
                   width: 12, height: 12, borderRadius: 2, flexShrink: 0,
                   background: territoryFill(r.id), border: '1px solid #b5662e',
                 }} />
-                <span style={{ fontSize: 12, color: '#e8e8ea' }}>#{r.id}</span>
+                <span style={{ fontSize: 12, color: '#e8e8ea' }}>
+                  #{r.id}{r.name ? ` ${r.name}` : ''}
+                </span>
                 <span style={{ fontSize: 10, color: '#777', marginLeft: 'auto', fontFamily: 'monospace' }}>
                   {r.exterior.length}v
                 </span>

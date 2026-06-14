@@ -15,6 +15,7 @@ import territoriesJson from './territories.json';
 
 export type TerritoryRegion = {
   id: number;
+  name?: string;
   area_px: number;
   centroid: [number, number];
   exterior: [number, number][];
@@ -37,7 +38,8 @@ export function cloneRegions(regions: TerritoryRegion[]): TerritoryRegion[] {
     ...r,
     centroid: [r.centroid[0], r.centroid[1]] as [number, number],
     exterior: r.exterior.map((p) => [p[0], p[1]] as [number, number]),
-  }));
+  })); // spread preserves any optional `name`
+
 }
 
 /** Local dev edits, if any (the dev tab's working copy). */
