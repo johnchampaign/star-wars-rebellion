@@ -423,6 +423,19 @@ export default function TerritoriesTab() {
                   <span style={{ fontSize: 10, color: '#777', marginLeft: 'auto', fontFamily: 'monospace' }}>
                     {r.exterior.length}v
                   </span>
+                  <button
+                    title={`Delete cell #${r.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!confirm(`Delete cell #${r.id}${r.name ? ' (' + r.name + ')' : ''}?`)) return;
+                      setRegions((rs) => rs.filter((x) => x.id !== r.id));
+                      if (selectedId === r.id) { setSelectedId(null); setSelectedVertex(null); }
+                    }}
+                    style={{
+                      flexShrink: 0, width: 18, height: 18, lineHeight: '14px', padding: 0,
+                      background: 'transparent', color: '#ff8866', border: '1px solid #5a3030',
+                      borderRadius: 3, cursor: 'pointer', fontSize: 12,
+                    }}>×</button>
                 </div>
                 <div style={{ fontSize: 10, color: statusColor, marginLeft: 18, marginTop: 1 }}>
                   {statusText}
