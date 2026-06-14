@@ -11,14 +11,15 @@
       "Edited via dev territories tab at 2026-06-14T11:57:34.659Z.",
       "Removed degenerate sliver (old id 24, area 233 px) left over from the Hoth split.",
       "Edited via dev territories tab at 2026-06-14T12:17:37.720Z.",
-      "Barrier cells auto-detected from the fat empty playfield areas (erosion + contour trace)."
+      "Barrier cells auto-detected from the fat empty playfield areas (erosion + contour trace).",
+      "Edited via dev territories tab at 2026-06-14T15:07:16.997Z."
     ]
   },
   "image": {
     "width": 3180,
     "height": 1590
   },
-  "count": 37,
+  "count": 38,
   "regions": [
     {
       "id": 1,
@@ -1799,6 +1800,33 @@
         [
           2865,
           189
+        ]
+      ]
+    },
+    {
+      "id": 39,
+      "barrier": true,
+      "area_px": 5576,
+      "centroid": [
+        1684,
+        40
+      ],
+      "exterior": [
+        [
+          1643,
+          6
+        ],
+        [
+          1643,
+          74
+        ],
+        [
+          1725,
+          74
+        ],
+        [
+          1725,
+          6
         ]
       ]
     }
