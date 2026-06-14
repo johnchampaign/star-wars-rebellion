@@ -7306,30 +7306,30 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
 
   return (
     <div style={{ position: 'relative', display: 'inline-block', border: '1px solid #2a2d34',
-      // Vector fallback: a solid-red board behind the cells, so every empty spot
-      // between/around cells reads as an impassable barrier (matching the printed
-      // walls). The opaque system cells + UI masks cover everything that isn't a
-      // barrier.
-      background: mapImageReady ? undefined : '#c0392b', width: DISPLAY_W, height: DISPLAY_H }}>
+      // Dark backdrop so the vector fallback reads as a board when there's no map
+      // art. Thin gaps between cells are just dividers (dark); the fat impassable
+      // barrier regions are explicit barrier cells, drawn solid red below.
+      background: mapImageReady ? undefined : '#0a0c10', width: DISPLAY_W, height: DISPLAY_H }}>
       {/* Only render the board image when a REAL map is available — otherwise the
           copyright-stripped placeholder is a blank transparent box. */}
       {mapImageReady && (
         <img src={mapImageUrl()} width={DISPLAY_W} height={DISPLAY_H} alt="Board" />
       )}
       <svg width={DISPLAY_W} height={DISPLAY_H} style={{ position: 'absolute', top: 0, left: 0 }}>
-        {/* Solid-red barrier backdrop — the empty spaces between cells are walls. */}
-        {!mapImageReady && (
-          <rect x={0} y={0} width={DISPLAY_W} height={DISPLAY_H} style={{ fill: '#c0392b' }} />
-        )}
         {/* Territory cells — traced polygons from the printed board (edited via
             the dev 'territories' tab). Drawn behind the adjacency edges/planets
             so the no-art fallback reads as the board's partitioned galaxy. */}
         {!mapImageReady && FALLBACK_TERRITORIES.map((t) => {
-          // Barriers are part of the red backdrop — no separate fill needed.
-          if (t.barrier) return null;
           const points = t.exterior.map(([x, y]) => `${(x * SCALE).toFixed(1)},${(y * SCALE).toFixed(1)}`).join(' ');
+          if (t.barrier) {
+            // Fat impassable barrier region — solid red.
+            return (
+              <polygon key={`barrier-${t.id}`} points={points}
+                style={{ fill: '#c0392b', stroke: '#7a1f15', strokeWidth: 1.5, strokeLinejoin: 'round' }} />
+            );
+          }
           const fill = territoryFill(t.id);
-          // Opaque so the red barrier backdrop only shows in the gaps between cells.
+          // Opaque cell; thin gaps between cells show the dark backdrop (dividers).
           return (
             <polygon key={`terr-${t.id}`} points={points}
               style={{ fill, stroke: '#1a1d24', strokeWidth: 1, strokeLinejoin: 'round' }} />
