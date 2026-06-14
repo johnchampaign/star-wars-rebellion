@@ -8,6 +8,7 @@ import { UNIT_IMAGE, groupByType, groupTypeIds, getUnitStyle, setUnitStyle, next
 import { capturePageScreenshot } from './screenshot';
 import { missionTargets, missionLeaderTargets } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce } from './randomAI';
+import { effectiveRegions, territoryFill } from '../data/territories';
 import {
   loadVmodFromFile, getVmodMeta, clearVmodCache, preloadAllBlobUrls,
   notifyArtChanged, useArtLoaded, getCachedFilenames, getCachedArtUrlSync,
@@ -59,11 +60,11 @@ const REGION_FILL = [
   '#3a4a63', '#5a4a63', '#3a5a52', '#63523a', '#4a3a63', '#3a6352', '#634a4a', '#52633a', '#3a4a4a',
 ];
 
-// NOTE: a first-pass "region wedges" vector overlay (8 pie-slices radiating
-// from the galaxy core, tiled by mean-angle boundaries) lived here and in the
-// Board SVG. It was removed because straight radial spokes didn't match the
-// printed board's curved region borders. To revisit, restore from git history
-// (commit 03f8b46) and switch the straight spokes to bowed/arced boundaries.
+// Territory polygons for the no-art vector fallback, traced from the printed
+// board and editable via the dev 'territories' tab. Resolved once at module
+// load (picks up the dev tab's localStorage edits on reload). Earlier a
+// radial-wedge approximation lived here; it was replaced by these traced cells.
+const FALLBACK_TERRITORIES = effectiveRegions();
 
 const LS_CURRENT = 'rebellion-game-current';
 const LS_HISTORY = 'rebellion-games-history';
@@ -7278,10 +7279,17 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
         <img src={mapImageUrl()} width={DISPLAY_W} height={DISPLAY_H} alt="Board" />
       )}
       <svg width={DISPLAY_W} height={DISPLAY_H} style={{ position: 'absolute', top: 0, left: 0 }}>
-        {/* Region boundaries on the vector fallback are temporarily removed —
-            the radial-wedge first pass didn't match the printed board's curved
-            region borders well enough. Revisit with bowed boundaries later.
-            (REGION_WEDGES / wedgePoints geometry kept above for when we do.) */}
+        {/* Territory cells — traced polygons from the printed board (edited via
+            the dev 'territories' tab). Drawn behind the adjacency edges/planets
+            so the no-art fallback reads as the board's partitioned galaxy. */}
+        {!mapImageReady && FALLBACK_TERRITORIES.map((t) => {
+          const points = t.exterior.map(([x, y]) => `${(x * SCALE).toFixed(1)},${(y * SCALE).toFixed(1)}`).join(' ');
+          const fill = territoryFill(t.id);
+          return (
+            <polygon key={`terr-${t.id}`} points={points}
+              style={{ fill: `${fill}33`, stroke: '#b5662e', strokeWidth: 1.5, strokeLinejoin: 'round' }} />
+          );
+        })}
         {/* Adjacency edges — on the vector fallback, draw a line between every
             pair of adjacent systems (behind the planets) so reachability is
             visible without the printed map's hyperlane art. */}

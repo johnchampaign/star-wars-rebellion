@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import SystemsTab from './devtabs/SystemsTab';
 import AdjacencyTab from './devtabs/AdjacencyTab';
 import RegionsTab from './devtabs/RegionsTab';
+import TerritoriesTab from './devtabs/TerritoriesTab';
 import ResourcesTab from './devtabs/ResourcesTab';
 import PositionsTab from './devtabs/PositionsTab';
 import MaskTab from './devtabs/MaskTab';
@@ -15,12 +16,13 @@ import Lobby from './online/Lobby';
 import OnlinePlay from './online/OnlinePlay';
 import { readOnlineInvite } from './online/gameClient';
 
-type TabId = 'play' | 'systems' | 'adjacency' | 'regions' | 'resources' | 'positions' | 'mask' | 'silhouette' | 'tokens' | 'tokens-rote' | 'leaders' | 'cards' | 'probe';
+type TabId = 'play' | 'systems' | 'adjacency' | 'regions' | 'territories' | 'resources' | 'positions' | 'mask' | 'silhouette' | 'tokens' | 'tokens-rote' | 'leaders' | 'cards' | 'probe';
 
 const DEV_TABS: { id: TabId; label: string }[] = [
   { id: 'systems', label: 'systems' },
   { id: 'adjacency', label: 'adjacency' },
   { id: 'regions', label: 'regions' },
+  { id: 'territories', label: 'territories' },
   { id: 'resources', label: 'resources' },
   { id: 'positions', label: 'positions' },
   { id: 'mask', label: 'mask' },
@@ -110,6 +112,7 @@ export default function App() {
         {tab === 'systems' && <SystemsTab />}
         {tab === 'adjacency' && <AdjacencyTab />}
         {tab === 'regions' && <RegionsTab />}
+        {tab === 'territories' && <TerritoriesTab />}
         {tab === 'resources' && <ResourcesTab />}
         {tab === 'positions' && <PositionsTab />}
         {tab === 'mask' && <MaskTab />}
