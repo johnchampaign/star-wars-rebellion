@@ -47,7 +47,12 @@ export function pick<T>(rng: SeededRngState, arr: readonly T[]): T {
  *  green: per Rise of Empire; ignored in base game */
 const RED_FACES: import('./types').DieFace[] = ['hit', 'hit', 'direct-hit', 'special', 'blank', 'blank'];
 const BLACK_FACES: import('./types').DieFace[] = ['hit', 'hit', 'hit', 'special', 'blank', 'blank'];
-const GREEN_FACES: import('./types').DieFace[] = ['hit', 'direct-hit', 'special', 'blank', 'blank', 'blank']; // VERIFY rr p.RoE
+// RoE green die: 4 blanks + 2 direct hits, no regular hit and no special.
+// Per the printed die (images/Green 1.PNG = blank face, images/Green 5_6.PNG =
+// the direct-hit faces 5 & 6) and confirmed by player reports (green dice only
+// ever show direct hits). Direct hits bypass health colour, so green hits are
+// always assignable to any target.
+const GREEN_FACES: import('./types').DieFace[] = ['blank', 'blank', 'blank', 'blank', 'direct-hit', 'direct-hit'];
 
 export function rollDie(rng: SeededRngState, color: import('./types').DieColor): import('./types').DieResult {
   const faces = color === 'red' ? RED_FACES : color === 'black' ? BLACK_FACES : GREEN_FACES;

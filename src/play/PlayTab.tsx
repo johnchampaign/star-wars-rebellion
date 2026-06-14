@@ -11307,7 +11307,7 @@ function DiceKeyModal({ onClose }: { onClose: () => void }) {
   const dice: { color: 'red' | 'black' | 'green'; faces: { face: string; n: number }[] }[] = [
     { color: 'red',   faces: [{ face: 'hit', n: 2 }, { face: 'direct-hit', n: 1 }, { face: 'special', n: 1 }, { face: 'blank', n: 2 }] },
     { color: 'black', faces: [{ face: 'hit', n: 3 }, { face: 'special', n: 1 }, { face: 'blank', n: 2 }] },
-    { color: 'green', faces: [{ face: 'hit', n: 1 }, { face: 'direct-hit', n: 1 }, { face: 'special', n: 1 }, { face: 'blank', n: 3 }] },
+    { color: 'green', faces: [{ face: 'direct-hit', n: 2 }, { face: 'blank', n: 4 }] },
   ];
   const dieLabel = (c: 'red' | 'black' | 'green') => c === 'red' ? 'Red die' : c === 'black' ? 'Black die' : 'Green die (Rise of the Empire)';
   const dieColor = (c: 'red' | 'black' | 'green') => c === 'red' ? '#ff8866' : c === 'green' ? '#7ed957' : '#ccc';
