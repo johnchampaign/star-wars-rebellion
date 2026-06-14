@@ -126,13 +126,55 @@ export default function TerritoriesTab() {
     }
   };
 
-  const endDrag = () => setDrag(null);
+  // Distance² snap radius (display px → native) for dropping one vertex onto
+  // another to merge them.
+  const MERGE_THR2 = (12 * INV_SCALE) ** 2;
+  // The other vertex of `region` that vertex `i` is currently near enough to
+  // merge with, or -1. Used both for the live highlight and the split on drop.
+  const mergeTargetFor = useCallback((ext: [number, number][], i: number): number => {
+    const vi = ext[i];
+    let best = -1, bd = MERGE_THR2;
+    for (let k = 0; k < ext.length; k++) {
+      if (k === i) continue;
+      const dx = ext[k][0] - vi[0], dy = ext[k][1] - vi[1];
+      const d = dx * dx + dy * dy;
+      if (d < bd) { bd = d; best = k; }
+    }
+    return best;
+  }, [MERGE_THR2]);
+
+  // Drag end via a single document mouseup (so a release anywhere finishes it).
+  // If a vertex was dropped onto another vertex of the same cell, pinch them:
+  // the polygon ring splits into two cells meeting at that point.
+  const dragRef = useRef<Drag>(null);
+  useEffect(() => { dragRef.current = drag; }, [drag]);
   useEffect(() => {
-    if (!drag) return;
-    const up = () => setDrag(null);
+    const up = () => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      setDrag(null);
+      if (!d || d.kind !== 'vertex') return;
+      setRegions((rs) => {
+        const r = rs.find((x) => x.id === d.id);
+        if (!r) return rs;
+        const ext = r.exterior;
+        const j = mergeTargetFor(ext, d.index);
+        if (j < 0) return rs; // not dropped onto another vertex
+        const a = Math.min(d.index, j), b = Math.max(d.index, j);
+        const P = ext[j]; // merge point
+        const poly1: [number, number][] = [P, ...ext.slice(a + 1, b)];
+        const poly2: [number, number][] = [P, ...ext.slice(b + 1), ...ext.slice(0, a)];
+        if (poly1.length < 3 || poly2.length < 3) return rs; // too close to split cleanly
+        const others = rs.filter((x) => x.id !== d.id);
+        const mk = (id: number, e: [number, number][]): TerritoryRegion =>
+          ({ id, area_px: polygonArea(e), centroid: polygonCentroid(e), exterior: e });
+        return [...others, mk(r.id, poly1), mk(nextId(rs), poly2)];
+      });
+      setSelectedVertex(null);
+    };
     document.addEventListener('mouseup', up);
     return () => document.removeEventListener('mouseup', up);
-  }, [drag]);
+  }, [mergeTargetFor]);
 
   // Insert a vertex on the selected polygon's nearest edge at the click point.
   const insertVertexAt = (id: number, p: [number, number]) => {
@@ -392,7 +434,7 @@ export default function TerritoriesTab() {
           style={{ width: DISPLAY_W, height: DISPLAY_H, flexShrink: 0, userSelect: 'none' }}>
           <img src={mapSrc} width={DISPLAY_W} height={DISPLAY_H} alt="Board" draggable={false} />
           <svg ref={svgRef} width={DISPLAY_W} height={DISPLAY_H}
-            onMouseMove={handleMouseMove} onMouseUp={endDrag}
+            onMouseMove={handleMouseMove}
             style={{ position: 'absolute', top: 0, left: 0, cursor: 'default', pointerEvents: 'all' }}>
             {/* backstop: click empty space to deselect */}
             <rect x={0} y={0} width={DISPLAY_W} height={DISPLAY_H} fill="transparent"
@@ -439,20 +481,27 @@ export default function TerritoriesTab() {
             {/* Vertex + centroid handles for the selected territory (on top) */}
             {selected && (() => {
               const c = polygonCentroid(selected.exterior);
+              // While dragging a vertex, which other vertex would it merge with
+              // on release (→ split the cell). Highlight it so the split is
+              // predictable.
+              const mergeTarget = (drag?.kind === 'vertex' && drag.id === selected.id)
+                ? mergeTargetFor(selected.exterior, drag.index) : -1;
               return (
                 <g>
                   {selected.exterior.map((p, i) => {
                     const vsel = selectedVertex === i;
+                    const isMergeTarget = i === mergeTarget;
                     return (
-                      <circle key={i} cx={p[0] * SCALE} cy={p[1] * SCALE} r={vsel ? 6 : 4.5}
+                      <circle key={i} cx={p[0] * SCALE} cy={p[1] * SCALE} r={isMergeTarget ? 7 : vsel ? 6 : 4.5}
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           setSelectedVertex(i);
                           setDrag({ kind: 'vertex', id: selected.id, index: i });
                         }}
                         style={{
-                          fill: vsel ? '#ffd54a' : '#ff7ab8',
-                          stroke: '#1a1a1a', strokeWidth: 1, cursor: 'grab', pointerEvents: 'all',
+                          fill: isMergeTarget ? '#ff5a3a' : vsel ? '#ffd54a' : '#ff7ab8',
+                          stroke: isMergeTarget ? '#fff' : '#1a1a1a',
+                          strokeWidth: isMergeTarget ? 2 : 1, cursor: 'grab', pointerEvents: 'all',
                         }} />
                     );
                   })}
@@ -510,6 +559,12 @@ export default function TerritoriesTab() {
           it, <strong>double-click an edge</strong> to insert a vertex, select a vertex and press
           <strong> Delete</strong> to remove it, or drag the cyan centroid handle to slide the whole
           cell. <strong>Mark as barrier</strong> turns a cell into an impassable border.
+        </p>
+        <p style={{ margin: '4px 0' }}>
+          <strong>Split a cell in two:</strong> drag one vertex onto another vertex of the same cell
+          (the target turns <span style={{ color: '#ff5a3a' }}>red</span>) and release — the cell
+          pinches apart into two cells meeting at that point. Another way to break the central blob:
+          add a vertex on each side where the cut should be, then merge them.
         </p>
         <p style={{ margin: '4px 0' }}>
           Edits auto-save locally and the play-tab vector fallback picks them up on reload. When
