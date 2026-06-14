@@ -4768,6 +4768,29 @@ function recruitLeaderFromCard(G: GameState, side: Side, cardId: string): boolea
   return true;
 }
 
+/** Issue #221: a droid-ring recruit card ("He Means Well" → K-2SO, the base
+ *  R2-D2 / C-3PO cards) carries an Immediate ring effect. Rather than leave the
+ *  card in hand to be played later during Assignment, offer the ring the moment
+ *  the leader is recruited. Returns true (caller pauses) if it posted an
+ *  AttachRingPick; the ring is resolved by resolveAttachRing, which resumes the
+ *  recruit flow because the choice is tagged viaRecruit. */
+function maybeOfferRecruitRing(G: GameState, side: Side, cardId: string): boolean {
+  const ringId = DROID_RING_CARDS[cardId];
+  if (!ringId) return false;
+  if (side !== 'Rebel') return false; // all current ring cards are Rebel
+  if (M.findRingHolder(G, ringId)) return false; // single ring at a time
+  const f = faction(G, side);
+  if (!f.actionHand.includes(cardId)) return false; // recruitLeaderFromCard kept it
+  // Leader requirement (He Means Well needs Cassian, just recruited above).
+  const reqs = G.catalog.actions[cardId]?.leaderRequirement ?? [];
+  if (reqs.length > 0 && !reqs.some((lid) => f.leaderPool.includes(lid))) return false;
+  const candidates = allLeadersOf(G, side);
+  if (candidates.length === 0) return false;
+  G.pendingChoice = { kind: 'AttachRingPick', side, cardId, ringId, candidates, viaRecruit: true };
+  log(G, { kind: 'choice-request', side, payload: { kind: 'AttachRingPick', cardId, ringId, candidates } });
+  return true;
+}
+
 /** After a recruit pick is fully resolved (card kept + leader chosen),
  *  advance to the next side's recruit pick, else proceed to the build step /
  *  finish the refresh. Shared by the card-pick and leader-pick resolvers. */
@@ -4862,6 +4885,7 @@ export function resolveRecruitActionCardPick(G: GameState, keepCardId: string): 
   // leaders, this posts a RecruitLeaderPick and pauses; the leader-pick
   // resolver then continues the flow. (#62)
   if (recruitLeaderFromCard(G, cur.side, keepCardId)) return { ok: true };
+  if (maybeOfferRecruitRing(G, cur.side, keepCardId)) return { ok: true };
   return continueRecruitFlow(G);
 }
 
@@ -4876,6 +4900,7 @@ export function resolveRecruitLeaderPick(G: GameState, leaderId: LeaderId): { ok
   f.leaderPool.push(leaderId);
   log(G, { kind: 'recruit-leader', side: c.side, payload: { leaderId, cardId: c.cardId } });
   G.pendingChoice = undefined;
+  if (maybeOfferRecruitRing(G, c.side, c.cardId)) return { ok: true };
   return continueRecruitFlow(G);
 }
 
@@ -5503,7 +5528,11 @@ export function resolveAttachRing(G: GameState, leaderId: LeaderId): { ok: boole
   log(G, { kind: 'action-card-play', side: pc.side, payload: {
     cardId: pc.cardId, leaderId, systemId: null, timing: 'attach-ring',
   }});
+  const viaRecruit = pc.viaRecruit;
   G.pendingChoice = undefined;
+  // When the ring was offered at recruit time (#221), resume the paused
+  // refresh recruit flow so the rest of recruit/build proceeds.
+  if (viaRecruit) return continueRecruitFlow(G);
   return { ok: true };
 }
 

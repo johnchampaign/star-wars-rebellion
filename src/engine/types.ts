@@ -998,6 +998,9 @@ export type ChoiceRequest =
       cardId: string; // 'resourceful-astromech' | 'human-cyborg-relations' | 'he-means-well'
       ringId: 'r2d2' | 'c3po' | 'k2so';
       candidates: LeaderId[];
+      // Set when the prompt is offered the instant the card is recruited
+      // (issue #221), so the resolver resumes the recruit flow afterward.
+      viaRecruit?: boolean;
     }
   | {
       // Refresh recruit step: drew (at least) 2 action cards, keep 1 (into
