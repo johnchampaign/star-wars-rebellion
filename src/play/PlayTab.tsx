@@ -59,6 +59,28 @@ const REGION_FILL = [
   '#3a4a63', '#5a4a63', '#3a5a52', '#63523a', '#4a3a63', '#3a6352', '#634a4a', '#52633a', '#3a4a4a',
 ];
 
+/** Convex hull (Andrew's monotone chain) of {x,y} points — used to draw region
+ *  boundaries on the vector-galaxy fallback. */
+function convexHull(points: { x: number; y: number }[]): { x: number; y: number }[] {
+  if (points.length <= 2) return points.slice();
+  const pts = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
+    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: { x: number; y: number }[] = [];
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+    lower.push(p);
+  }
+  const upper: { x: number; y: number }[] = [];
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i];
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+    upper.push(p);
+  }
+  lower.pop(); upper.pop();
+  return lower.concat(upper);
+}
+
 const LS_CURRENT = 'rebellion-game-current';
 const LS_HISTORY = 'rebellion-games-history';
 // encodedAt ids of completed games already uploaded, so we don't re-send them
@@ -7272,6 +7294,36 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
         <img src={mapImageUrl()} width={DISPLAY_W} height={DISPLAY_H} alt="Board" />
       )}
       <svg width={DISPLAY_W} height={DISPLAY_H} style={{ position: 'absolute', top: 0, left: 0 }}>
+        {/* Region boundaries — only on the vector fallback (no map art). Draw a
+            padded convex hull per region behind everything so systems read as
+            grouped into their galactic regions, like the printed board. */}
+        {!mapImageReady && (() => {
+          const byRegion = new Map<number, { x: number; y: number }[]>();
+          for (const s of systems) {
+            const arr = byRegion.get(s.region) ?? [];
+            arr.push({ x: s.boardPos.x * SCALE, y: s.boardPos.y * SCALE });
+            byRegion.set(s.region, arr);
+          }
+          return [...byRegion.entries()].map(([region, pts]) => {
+            const hull = convexHull(pts);
+            if (hull.length < 3) return null;
+            // Expand each hull vertex outward from the region centroid so the
+            // boundary clears the planet circles.
+            const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+            const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+            const pad = 30;
+            const poly = hull.map((p) => {
+              const dx = p.x - cx, dy = p.y - cy;
+              const d = Math.hypot(dx, dy) || 1;
+              return `${(p.x + (dx / d) * pad).toFixed(1)},${(p.y + (dy / d) * pad).toFixed(1)}`;
+            }).join(' ');
+            const fill = REGION_FILL[region % REGION_FILL.length];
+            return (
+              <polygon key={`region-${region}`} points={poly}
+                style={{ fill: `${fill}22`, stroke: fill, strokeWidth: 1.5, strokeLinejoin: 'round' }} />
+            );
+          });
+        })()}
         {/* Rectangles — kind=hide masks; other kinds render game state on top */}
         {masks.map((r) => {
           const x = r.x * BOARD_SCALE;
@@ -7411,7 +7463,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                   galaxy is usable as a vector board (player report: blank map). */}
               {!mapImageReady && (
                 <circle cx={x} cy={y} r={MARKER_R + 3}
-                  style={{ fill: REGION_FILL[s.region % REGION_FILL.length], stroke: '#1a1c22', strokeWidth: 1 }} />
+                  style={{ fill: REGION_FILL[s.region % REGION_FILL.length], stroke: '#c8cdd6', strokeWidth: 1.5 }} />
               )}
               {isBaseRevealed && (
                 <circle cx={x} cy={y} r={MARKER_R + 6}
