@@ -112,6 +112,7 @@ export default function TerritoriesTab() {
     const n = toNative(e.clientX, e.clientY);
     if (!n) return;
     if (drag.kind === 'vertex') {
+      dragPosRef.current = n;
       setRegions((rs) => rs.map((r) =>
         r.id === drag.id
           ? { ...r, exterior: r.exterior.map((p, i) => (i === drag.index ? n : p)) }
@@ -148,33 +149,50 @@ export default function TerritoriesTab() {
   // the polygon ring splits into two cells meeting at that point.
   const dragRef = useRef<Drag>(null);
   useEffect(() => { dragRef.current = drag; }, [drag]);
+  const regionsRef = useRef<TerritoryRegion[]>([]);
+  useEffect(() => { regionsRef.current = regions; }, [regions]);
+  // Live position of the vertex being dragged (updated synchronously on every
+  // move), so the merge test doesn't depend on React having committed yet.
+  const dragPosRef = useRef<[number, number] | null>(null);
   useEffect(() => {
     const up = () => {
       const d = dragRef.current;
       dragRef.current = null;
+      const p = dragPosRef.current;
+      dragPosRef.current = null;
       setDrag(null);
-      if (!d || d.kind !== 'vertex') return;
+      if (!d || d.kind !== 'vertex' || !p) return;
+      // Did this release drop the vertex onto another vertex of the same cell?
+      // Compute from the live drag position vs the other (stationary) vertices,
+      // so a plain drag/click keeps the vertex selected (Delete still works) and
+      // only a real merge splits the cell.
+      const r = regionsRef.current.find((x) => x.id === d.id);
+      if (!r) return;
+      const ext = r.exterior;
+      let j = -1, bd = MERGE_THR2;
+      for (let k = 0; k < ext.length; k++) {
+        if (k === d.index) continue;
+        const dx = ext[k][0] - p[0], dy = ext[k][1] - p[1];
+        const dd = dx * dx + dy * dy;
+        if (dd < bd) { bd = dd; j = k; }
+      }
+      if (j < 0) return; // not a merge — keep selection
+      const a = Math.min(d.index, j), b = Math.max(d.index, j);
+      const P = ext[j]; // merge point (the dragged vertex is dropped here)
+      const poly1: [number, number][] = [P, ...ext.slice(a + 1, b)];
+      const poly2: [number, number][] = [P, ...ext.slice(b + 1), ...ext.slice(0, a)];
+      if (poly1.length < 3 || poly2.length < 3) return; // too close to split — keep selection
       setRegions((rs) => {
-        const r = rs.find((x) => x.id === d.id);
-        if (!r) return rs;
-        const ext = r.exterior;
-        const j = mergeTargetFor(ext, d.index);
-        if (j < 0) return rs; // not dropped onto another vertex
-        const a = Math.min(d.index, j), b = Math.max(d.index, j);
-        const P = ext[j]; // merge point
-        const poly1: [number, number][] = [P, ...ext.slice(a + 1, b)];
-        const poly2: [number, number][] = [P, ...ext.slice(b + 1), ...ext.slice(0, a)];
-        if (poly1.length < 3 || poly2.length < 3) return rs; // too close to split cleanly
         const others = rs.filter((x) => x.id !== d.id);
         const mk = (id: number, e: [number, number][]): TerritoryRegion =>
           ({ id, area_px: polygonArea(e), centroid: polygonCentroid(e), exterior: e });
         return [...others, mk(r.id, poly1), mk(nextId(rs), poly2)];
       });
-      setSelectedVertex(null);
+      setSelectedVertex(null); // only after an actual split
     };
     document.addEventListener('mouseup', up);
     return () => document.removeEventListener('mouseup', up);
-  }, [mergeTargetFor]);
+  }, [MERGE_THR2]);
 
   // Insert a vertex on the selected polygon's nearest edge at the click point.
   const insertVertexAt = (id: number, p: [number, number]) => {
@@ -521,6 +539,7 @@ export default function TerritoriesTab() {
                         onMouseDown={(e) => {
                           e.stopPropagation();
                           setSelectedVertex(i);
+                          dragPosRef.current = null; // set only once the vertex actually moves
                           setDrag({ kind: 'vertex', id: selected.id, index: i });
                         }}
                         style={{
