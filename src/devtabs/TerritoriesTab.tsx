@@ -6,6 +6,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { MAP_IMAGE_URL } from '../data/loadAssets';
+import { useArtLoaded, getCachedArtUrlSync } from '../play/vmodArtCache';
 import {
   TERRITORIES, cloneRegions, loadTerritoryEdits, saveTerritoryEdits,
   polygonCentroid, polygonArea, territoryFill,
@@ -190,6 +191,13 @@ export default function TerritoriesTab() {
     URL.revokeObjectURL(url);
   };
 
+  // Resolve the board image the same way the play tab does: prefer the user's
+  // uploaded VASSAL art from the IndexedDB cache (handles the Map-Redux alias),
+  // falling back to the static dev-asset. useArtLoaded() forces a re-render once
+  // the cached blob URLs are ready.
+  useArtLoaded();
+  const mapSrc = getCachedArtUrlSync('Map.png') ?? MAP_IMAGE_URL;
+
   const selected = selectedId !== null ? regions.find((r) => r.id === selectedId) : null;
 
   return (
@@ -261,7 +269,7 @@ export default function TerritoriesTab() {
         {/* Board */}
         <div className="adjacency-canvas"
           style={{ width: DISPLAY_W, height: DISPLAY_H, flexShrink: 0, userSelect: 'none' }}>
-          <img src={MAP_IMAGE_URL} width={DISPLAY_W} height={DISPLAY_H} alt="Board" draggable={false} />
+          <img src={mapSrc} width={DISPLAY_W} height={DISPLAY_H} alt="Board" draggable={false} />
           <svg ref={svgRef} width={DISPLAY_W} height={DISPLAY_H}
             onMouseMove={handleMouseMove} onMouseUp={endDrag}
             style={{ position: 'absolute', top: 0, left: 0, cursor: 'default', pointerEvents: 'all' }}>
