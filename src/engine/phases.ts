@@ -735,6 +735,10 @@ function advanceCommandTurn(G: GameState): void {
   // resolves now — pause for its placement before advancing. The resolver
   // re-enters advanceCommandTurn to chain / advance.
   if (flushImmediateObjectiveActivations(G, 'command')) return;
+  // RoE: drain the current player's Immediate action cards (Rebel Extremist /
+  // Under the Radar / Early Promotion) before advancing — they trigger on draw,
+  // not on demand. The resolvers re-enter advanceCommandTurn to chain/continue.
+  if (flushImmediateActionCards(G)) return;
   if (G.passedThisCommand.length >= 2) {
     // RoE Sweep the Area auto-reveal fires at end-of-Command-phase (right
     // before Refresh kicks off).
@@ -1993,7 +1997,11 @@ export function resolveUnderTheRadarKeep(G: GameState, probeId: string): { ok: b
   G.probeDeck.splice(idx, 1);
   G.rebel.heldProbe = probeId;
   log(G, { kind: 'under-the-radar-keep', side: 'Rebel', payload: { probeId } });
+  const autoFlush = (pc as { autoFlush?: boolean }).autoFlush;
   G.pendingChoice = undefined;
+  // Only when auto-triggered on draw: chain + continue the turn (manual play
+  // just resolves the card without advancing).
+  if (autoFlush) advanceCommandTurn(G);
   return { ok: true };
 }
 
@@ -4296,6 +4304,33 @@ export function flushImmediateObjectiveActivations(G: GameState, resumeKind: imp
   return false;
 }
 
+/** RoE: action cards with "Immediate" timing resolve when they're in hand and
+ *  playable — they are NOT held for a manual play (player reports #233/#234/#235:
+ *  Immediate cards like Rebel Extremist / Under the Radar persisted instead of
+ *  triggering on draw). Mirrors flushImmediateObjectiveActivations: triggers the
+ *  current player's first playable Immediate "resolve-now" action card (removing
+ *  it from hand and applying its effect, which may post a sub-choice), draining
+ *  any that resolve inline. The Empire arm cards (Secret Facility / Sweep the
+ *  Area) keep their own arm/reveal flow and are excluded here. Returns true if it
+ *  posted a choice — the caller must pause/return; the matching resolver then
+ *  re-enters advanceCommandTurn to chain and continue. */
+const ARM_IMMEDIATE_CARDS = new Set(['secret-facility', 'sweep-the-area']);
+export function flushImmediateActionCards(G: GameState): boolean {
+  while (!G.pendingChoice && !G.isGameOver) {
+    const side = G.currentPlayer;
+    const f = faction(G, side);
+    const cardId = playableImmediateActionCards(G, side).find((cid) => !ARM_IMMEDIATE_CARDS.has(cid));
+    if (!cardId) return false;
+    const i = f.actionHand.indexOf(cardId);
+    if (i < 0) return false;
+    f.actionHand.splice(i, 1);
+    f.actionDiscard.push(cardId);
+    log(G, { kind: 'action-card-play', side, payload: { cardId, leaderId: null, systemId: null, timing: 'Immediate' } });
+    applyImmediateActionCardEffect(G, side, cardId, /*viaFlush*/ true);
+  }
+  return !!G.pendingChoice;
+}
+
 /** Resumable Refresh pre-step machine: runs the persistent-objective sequence
  *  (Show No Fear + Raid Outposts scoring, then Raid Outposts / Rebel Cell
  *  placement, then the Rebel Cell discard option) before the one-shot objective
@@ -5004,16 +5039,28 @@ function refreshBuildIfApplicable(G: GameState, logStart: number): boolean {
         if (empireUnit || empireLoyal) baseProduces = false;
       }
       if (baseProduces) {
-        // Ground triangle has only one legal type — auto-apply (if any Rebel
-        // Troopers remain in the holding pool; otherwise the icon is wasted).
-        if (M.unitsAvailableInSupply(G, 'rebel-trooper') > 0) {
-          M.buildToQueue(G, 'Rebel', 'rebel-trooper', 1, 'rebel-base');
-          sideAutoApplied.push({ sourceSystemId: 'rebel-base', slot: 1, unitTypeId: 'rebel-trooper' });
-        } else {
+        // Ground triangle — use the shared icon→units map so the Rebel Base
+        // offers the same ground-triangle options as any other system. In the
+        // base game that's just the Rebel Trooper (auto-applied), but with RoE
+        // units on it's Trooper OR Vanguard, which must be a player choice
+        // rather than a hardcoded trooper (issue #240).
+        const baseGround = legalUnitsForIcon('Rebel', 'ground', 'triangle', G)
+          .filter((t) => M.unitsAvailableInSupply(G, t) > 0);
+        if (baseGround.length === 0) {
           log(G, { kind: 'build-wasted-no-supply', side: 'Rebel', payload: {
             sourceSystemId: 'rebel-base', slot: 1, iconType: 'ground', iconShape: 'triangle',
-            legalUnitTypes: ['rebel-trooper'],
+            legalUnitTypes: legalUnitsForIcon('Rebel', 'ground', 'triangle', G),
           }});
+        } else if (baseGround.length === 1) {
+          M.buildToQueue(G, 'Rebel', baseGround[0], 1, 'rebel-base');
+          sideAutoApplied.push({ sourceSystemId: 'rebel-base', slot: 1, unitTypeId: baseGround[0] });
+        } else {
+          sidePicks.push({
+            sourceSystemId: 'rebel-base', slot: 1,
+            iconType: 'ground', iconShape: 'triangle',
+            legalUnitTypes: baseGround,
+            available: availabilityFor(G, baseGround),
+          });
         }
         // Space triangle — use the shared icon→units map so the Rebel Base
         // offers the same space-triangle options as any other system
@@ -5553,7 +5600,7 @@ export function playImmediateActionCard(G: GameState, cardId: string): { ok: boo
 }
 
 /** Per-card Immediate-action-card effect dispatch. New cards add a switch case. */
-function applyImmediateActionCardEffect(G: GameState, side: Side, cardId: string): void {
+function applyImmediateActionCardEffect(G: GameState, side: Side, cardId: string, viaFlush = false): void {
   switch (cardId) {
     case 'under-the-radar': {
       // RAW: "Look at the top 4 probe cards. Keep 1 facedown, replace the
@@ -5641,6 +5688,12 @@ function applyImmediateActionCardEffect(G: GameState, side: Side, cardId: string
       break;
     }
   }
+  // A flush-triggered card's sub-choice must, when resolved, re-enter
+  // advanceCommandTurn to chain the next Immediate card and continue the turn.
+  // A MANUALLY played card must NOT advance the turn — so tag only flush plays.
+  if (viaFlush && G.pendingChoice) {
+    (G.pendingChoice as { autoFlush?: boolean }).autoFlush = true;
+  }
 }
 
 /** Apply the RECRUIT branch of Early Promotion / Rebel Extremist (the
@@ -5689,7 +5742,11 @@ export function resolveStartingCardBranch(G: GameState, action: 'draw' | 'recrui
   } else {
     applyStartingCardRecruitBranch(G, pc.cardId);
   }
+  const autoFlush = (pc as { autoFlush?: boolean }).autoFlush;
   G.pendingChoice = undefined;
+  // Only when this was auto-triggered on draw: drain further Immediate cards
+  // and continue the turn. A manual play just resolves the card.
+  if (autoFlush) advanceCommandTurn(G);
   return { ok: true };
 }
 
