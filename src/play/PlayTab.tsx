@@ -66,6 +66,19 @@ const REGION_FILL = [
 // radial-wedge approximation lived here; it was replaced by these traced cells.
 const FALLBACK_TERRITORIES = effectiveRegions();
 
+/** Ray-cast point-in-polygon test (image-native coords). Used to assign each
+ *  system to the territory cell that contains its boardPos. */
+function pointInPoly(p: [number, number], poly: [number, number][]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+    const intersect = ((yi > p[1]) !== (yj > p[1])) &&
+      (p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
 const LS_CURRENT = 'rebellion-game-current';
 const LS_HISTORY = 'rebellion-games-history';
 // encodedAt ids of completed games already uploaded, so we don't re-send them
@@ -7228,6 +7241,27 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
   // specifically — useArtLoaded re-renders this on load so it stays reactive.
   const mapImageReady = typeof getCachedArtUrlSync('Map.png') === 'string';
   const [hoverSystemId, setHoverSystemId] = useState<string | null>(null);
+
+  // Whole-territory hover/select: assign each system to the traced cell that
+  // contains its boardPos. A cell with one system IS that system's hit area; a
+  // cell with several (the untraced central blob) resolves to the nearest owned
+  // system at the cursor; a cell with none is inert. Self-heals to 1:1 as cells
+  // are subdivided in the dev 'territories' tab.
+  const sysById = useMemo(() => new Map(systems.map((s) => [s.id, s])), [systems]);
+  const interactiveTerritories = useMemo(() =>
+    FALLBACK_TERRITORIES
+      .map((t) => ({
+        exterior: t.exterior,
+        systemIds: systems
+          .filter((s) => pointInPoly([s.boardPos.x, s.boardPos.y], t.exterior))
+          .map((s) => s.id),
+      }))
+      .filter((t) => t.systemIds.length > 0),
+    [systems]);
+  const coveredSystemIds = useMemo(
+    () => new Set(interactiveTerritories.flatMap((t) => t.systemIds)),
+    [interactiveTerritories],
+  );
   const [hoverRebelBase, setHoverRebelBase] = useState<boolean>(false);
   // #98 follow-up (player request): let the Empire PIN the probe overlay by
   // clicking the Rebel Base marker, so the ruled-out X's stay visible while
@@ -7574,9 +7608,53 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
           );
         })}
 
-        {/* Invisible hover targets per system, sized generously for easy mouseover.
-            In picker mode, a highlighted candidate's target also fires onSystemClick. */}
-        {systems.map((s) => {
+        {/* Whole-territory hover/select surface (replaces the old per-token
+            rect). The traced cell is the hit area: hovering it shows the
+            system, and in picker mode clicking it selects the system. It's
+            transparent — over the map (image mode) or the colored cell
+            (no-art) — with a faint highlight on the hovered cell. A cell
+            holding several systems resolves to the nearest one at the cursor. */}
+        {interactiveTerritories.map((t, ti) => {
+          const points = t.exterior.map(([x, y]) => `${x * SCALE},${y * SCALE}`).join(' ');
+          const single = t.systemIds.length === 1;
+          const nearestOwned = (e: React.MouseEvent, pool: string[]): string => {
+            if (pool.length === 1) return pool[0];
+            const svg = (e.currentTarget as SVGElement).ownerSVGElement;
+            const rb = svg?.getBoundingClientRect();
+            const px = e.clientX - (rb?.left ?? 0), py = e.clientY - (rb?.top ?? 0);
+            let best = pool[0], bd = Infinity;
+            for (const id of pool) {
+              const s = sysById.get(id);
+              if (!s) continue;
+              const dx = s.boardPos.x * SCALE - px, dy = s.boardPos.y * SCALE - py;
+              const d = dx * dx + dy * dy;
+              if (d < bd) { bd = d; best = id; }
+            }
+            return best;
+          };
+          const highlightedOwned = onSystemClick
+            ? t.systemIds.filter((id) => highlightSystemIds?.has(id))
+            : [];
+          const clickable = highlightedOwned.length > 0;
+          const hoveredHere = hoverSystemId != null && t.systemIds.includes(hoverSystemId);
+          return (
+            <polygon
+              key={`terr-hit-${ti}`}
+              points={points}
+              fill={hoveredHere ? 'rgba(255,255,255,0.10)' : 'transparent'}
+              stroke={hoveredHere ? 'rgba(255,255,255,0.55)' : 'none'}
+              strokeWidth={hoveredHere ? 1.5 : 0}
+              pointerEvents="all"
+              style={clickable ? { cursor: 'pointer' } : undefined}
+              onMouseEnter={(e) => setHoverSystemId(nearestOwned(e, t.systemIds))}
+              onMouseMove={single ? undefined : (e) => setHoverSystemId(nearestOwned(e, t.systemIds))}
+              onMouseLeave={() => setHoverSystemId(null)}
+              onClick={clickable ? (e) => onSystemClick!(nearestOwned(e, highlightedOwned)) : undefined}
+            />
+          );
+        })}
+        {/* Token-rect fallback for any system not inside a traced cell. */}
+        {systems.filter((s) => !coveredSystemIds.has(s.id)).map((s) => {
           const x = s.boardPos.x * SCALE;
           const y = s.boardPos.y * SCALE;
           const clickable = !!onSystemClick && (highlightSystemIds?.has(s.id) ?? false);
