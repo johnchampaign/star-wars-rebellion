@@ -1104,7 +1104,11 @@ function AttackerTacticsPanel({ G, choice, onPersist }: {
     (cid.includes('take-it-down') || cid.includes('critical-hit') || cid.includes('onslaught'))
     && G.catalog.tactics[cid]?.requiresSpecial !== true
   );
+  // No Escape (free space tactic): trap the defending fleet — they can't
+  // retreat this round. Only space combat surfaces it (hand is theater-filtered).
+  const noEscape = choice.hand.find((cid) => cid.includes('no-escape')) ?? null;
   const [useCF, setUseCF] = useState(false);
+  const [useNE, setUseNE] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const label = (cid: string) => G.catalog.tactics[cid]?.name ?? cid;
   const bonus = (cid: string) =>
@@ -1116,6 +1120,7 @@ function AttackerTacticsPanel({ G, choice, onPersist }: {
     const r = combat.resolveCombatAttackerTactics(G, {
       concentrateFireCardId: useCF ? cf : null,
       damageBoostCardIds: Array.from(picked),
+      noEscapeCardId: useNE ? noEscape : null,
     });
     if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
     onPersist();
@@ -1150,13 +1155,19 @@ function AttackerTacticsPanel({ G, choice, onPersist }: {
             <CardHover G={G} cardId={cid}>{label(cid)}</CardHover> ({bonus(cid)} damage)
           </label>
         ))}
-        {!cf && damageBoosts.length === 0 && (
+        {noEscape && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <input type="checkbox" checked={useNE} onChange={(e) => setUseNE(e.target.checked)} />
+            <CardHover G={G} cardId={noEscape}>{label(noEscape)}</CardHover> (opponent can't retreat this round)
+          </label>
+        )}
+        {!cf && !noEscape && damageBoosts.length === 0 && (
           <span style={{ color: '#666', fontStyle: 'italic', fontSize: 12 }}>
             No playable tactic cards in hand.
           </span>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <button onClick={() => { setUseCF(false); setPicked(new Set()); submit(); }}
+          <button onClick={() => { setUseCF(false); setUseNE(false); setPicked(new Set()); submit(); }}
             style={btn('#2a2c33')}>Skip</button>
           <button onClick={submit} style={btn(SIDE_COLOR[choice.side])}>Apply</button>
         </div>
@@ -1180,8 +1191,12 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
   // (#122). A card spent as the sacrifice just can't ALSO be played as the
   // free block, which the mutual-exclusion below enforces.
   const sacrificeCandidates = choice.hand.filter((cid) => cid !== paid);
+  // No Escape (free space tactic): the defender can trap the attacking fleet so
+  // it can't retreat this round. Independent of blocks (it prevents no damage).
+  const defNoEscape = choice.hand.find((cid) => cid.includes('no-escape')) ?? null;
   const [useFree, setUseFree] = useState(false);
   const [usePaid, setUsePaid] = useState(false);
+  const [useNE, setUseNE] = useState(false);
   const [sacrifice, setSacrifice] = useState<string | null>(sacrificeCandidates[0] ?? null);
   const label = (cid: string) => G.catalog.tactics[cid]?.name ?? cid;
 
@@ -1193,7 +1208,10 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
   if (usePaid && paid && sacrifice) { blocks.push(paid); sacs.push(sacrifice); }
 
   const submit = (b: string[], s: string[]) => {
-    const r = combat.resolveCombatDefenderTactics(G, { blockCardIds: b, sacrificeCardIds: s });
+    const r = combat.resolveCombatDefenderTactics(G, {
+      blockCardIds: b, sacrificeCardIds: s,
+      noEscapeCardId: useNE ? defNoEscape : null,
+    });
     if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
     onPersist();
   };
@@ -1249,7 +1267,13 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
             )}
           </span>
         )}
-        {!free && !paid && (
+        {defNoEscape && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            <input type="checkbox" checked={useNE} onChange={(e) => setUseNE(e.target.checked)} />
+            <CardHover G={G} cardId={defNoEscape}>{label(defNoEscape)}</CardHover> (attacker can't retreat this round)
+          </label>
+        )}
+        {!free && !paid && !defNoEscape && (
           <span style={{ color: '#666', fontStyle: 'italic', fontSize: 12 }}>
             No defensive cards in hand.
           </span>

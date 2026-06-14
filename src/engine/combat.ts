@@ -1153,7 +1153,7 @@ export function resolveSpecialDieSpend(
  *  then queue defender-tactics choice. */
 export function resolveCombatAttackerTactics(
   G: GameState,
-  plays: { concentrateFireCardId?: string | null; damageBoostCardIds?: string[] },
+  plays: { concentrateFireCardId?: string | null; damageBoostCardIds?: string[]; noEscapeCardId?: string | null },
 ): { ok: boolean; reason?: string } {
   const c = G.pendingCombat;
   if (!c) return { ok: false, reason: 'no-pending-combat' };
@@ -1207,6 +1207,24 @@ export function resolveCombatAttackerTactics(
     (pa.bonusDamageSources ??= []).push({ source: cid, amount });
     pa.tacticsPlayed.push({ card: cid, detail: `+${amount} damage` });
     log(G, { kind: 'combat-tactic', side: pa.side, payload: { card: cid, bonusDamage: amount } });
+  }
+
+  // No Escape (free space tactic): "your opponent cannot retreat this round."
+  // The attacker plays it to trap the defending fleet. The effect persists
+  // through the round's retreat step (combat.ts retreat loop honours the flag)
+  // and is cleared at end-of-round. Base combat only (cinematic has its own deck).
+  if (plays.noEscapeCardId) {
+    const cid = plays.noEscapeCardId;
+    if (hand.includes(cid) && cid.includes('no-escape') && !c.cinematic
+        && G.catalog.tactics[cid]?.theater === pa.theater) {
+      discardCard(G, hand, cid);
+      const opp = other(pa.side);
+      c.flags ??= {};
+      c.flags.cannotRetreatThisRound ??= {};
+      c.flags.cannotRetreatThisRound[opp] = true;
+      pa.tacticsPlayed.push({ card: cid, detail: 'No Escape: opponent cannot retreat this round' });
+      log(G, { kind: 'combat-tactic', side: pa.side, payload: { card: cid, suppressesRetreat: true } });
+    }
   }
 
   // Log the resolved attack roll now (post-rerolls).
@@ -1263,7 +1281,7 @@ export function resolveCombatAttackerTactics(
 /** Resume attack after defender's block plays. Apply blocks, then damage. */
 export function resolveCombatDefenderTactics(
   G: GameState,
-  plays: { blockCardIds: string[]; sacrificeCardIds: string[] },
+  plays: { blockCardIds: string[]; sacrificeCardIds: string[]; noEscapeCardId?: string | null },
 ): { ok: boolean; reason?: string } {
   const c = G.pendingCombat;
   if (!c) return { ok: false, reason: 'no-pending-combat' };
@@ -1273,6 +1291,21 @@ export function resolveCombatDefenderTactics(
 
   const defenderSide = other(pa.side);
   const defHand = defenderSide === c.attackerSide ? c.attackerHand : c.defenderHand;
+
+  // No Escape (free space tactic): the defender plays it so the attacking
+  // fleet cannot retreat this round. opp here is the attacker (pa.side).
+  if (plays.noEscapeCardId) {
+    const cid = plays.noEscapeCardId;
+    if (defHand.includes(cid) && cid.includes('no-escape') && !c.cinematic
+        && G.catalog.tactics[cid]?.theater === pa.theater) {
+      discardCard(G, defHand, cid);
+      c.flags ??= {};
+      c.flags.cannotRetreatThisRound ??= {};
+      c.flags.cannotRetreatThisRound[pa.side] = true;
+      pa.tacticsPlayed.push({ card: cid, detail: 'No Escape: opponent cannot retreat this round' });
+      log(G, { kind: 'combat-tactic', side: defenderSide, payload: { card: cid, suppressesRetreat: true } });
+    }
+  }
 
   let blocks = 0;
   let sacrificeIdx = 0;
