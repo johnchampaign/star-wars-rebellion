@@ -8,7 +8,7 @@ import { UNIT_IMAGE, groupByType, groupTypeIds, getUnitStyle, setUnitStyle, next
 import { capturePageScreenshot } from './screenshot';
 import { missionTargets, missionLeaderTargets } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce } from './randomAI';
-import { effectiveRegions, territoryFill } from '../data/territories';
+import { TERRITORIES, territoryFill } from '../data/territories';
 import {
   loadVmodFromFile, getVmodMeta, clearVmodCache, preloadAllBlobUrls,
   notifyArtChanged, useArtLoaded, getCachedFilenames, getCachedArtUrlSync,
@@ -60,11 +60,12 @@ const REGION_FILL = [
   '#3a4a63', '#5a4a63', '#3a5a52', '#63523a', '#4a3a63', '#3a6352', '#634a4a', '#52633a', '#3a4a4a',
 ];
 
-// Territory polygons for the no-art vector fallback, traced from the printed
-// board and editable via the dev 'territories' tab. Resolved once at module
-// load (picks up the dev tab's localStorage edits on reload). Earlier a
-// radial-wedge approximation lived here; it was replaced by these traced cells.
-const FALLBACK_TERRITORIES = effectiveRegions();
+// Territory polygons for the no-art vector fallback. The play board uses the
+// CANONICAL committed data (territories.json) — NOT the dev tab's localStorage
+// working copy, which would otherwise shadow shipped updates (e.g. someone who
+// edited cells locally wouldn't see newly-committed barriers). Edit + Export in
+// the dev 'territories' tab to change this; the dev tab shows local edits.
+const FALLBACK_TERRITORIES = TERRITORIES.regions;
 
 /** Ray-cast point-in-polygon test (image-native coords). Used to assign each
  *  system to the territory cell that contains its boardPos. */
