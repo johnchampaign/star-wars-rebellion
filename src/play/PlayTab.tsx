@@ -59,26 +59,49 @@ const REGION_FILL = [
   '#3a4a63', '#5a4a63', '#3a5a52', '#63523a', '#4a3a63', '#3a6352', '#634a4a', '#52633a', '#3a4a4a',
 ];
 
-/** Convex hull (Andrew's monotone chain) of {x,y} points — used to draw region
- *  boundaries on the vector-galaxy fallback. */
-function convexHull(points: { x: number; y: number }[]): { x: number; y: number }[] {
-  if (points.length <= 2) return points.slice();
-  const pts = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
-  const cross = (o: { x: number; y: number }, a: { x: number; y: number }, b: { x: number; y: number }) =>
-    (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
-  const lower: { x: number; y: number }[] = [];
-  for (const p of pts) {
-    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
-    lower.push(p);
+// --- Vector-galaxy region wedges -------------------------------------------
+// The printed board divides the galaxy into 8 regions radiating out from the
+// core as curved pie-slices (the thick orange borders on the map art). For the
+// vector fallback we reproduce that radial layout: each region is a wedge from
+// the core, spanning the angular range its 4 systems occupy. Boundaries are the
+// midpoints between adjacent regions' mean angles, so the wedges tile the full
+// circle with no gaps or overlaps. Angles in degrees, measured with atan2 from
+// the galaxy core (image-native ~1590,795) — y points down, so positive angles
+// sweep clockwise. This is a first-pass trace of the map; tweak per region.
+const GALAXY_CORE = { x: 1590, y: 795 }; // image-native coords (3180×1590)
+const REGION_WEDGES: Record<number, [number, number]> = {
+  1: [177, 223],
+  2: [223, 283],
+  3: [283, 339.5],
+  8: [339.5, 368],
+  4: [368, 406.5],
+  7: [406.5, 459.5],
+  6: [459.5, 498.5],
+  5: [498.5, 537],
+};
+// Inner/outer radius of the wedges in image-native px. Outer is large enough to
+// reach the board corners; the SVG clipPath trims the overhang to the board.
+const WEDGE_INNER_R = 70;
+const WEDGE_OUTER_R = 1850;
+
+/** Build an SVG points string for a region wedge in DISPLAY coords (already
+ *  multiplied by `scale`). Samples the outer and inner arcs so the curved
+ *  border reads like the printed orange region line. */
+function wedgePoints(a0Deg: number, a1Deg: number, scale: number): string {
+  const cx = GALAXY_CORE.x * scale, cy = GALAXY_CORE.y * scale;
+  const rIn = WEDGE_INNER_R * scale, rOut = WEDGE_OUTER_R * scale;
+  const rad = (d: number) => (d * Math.PI) / 180;
+  const pts: string[] = [];
+  const steps = Math.max(2, Math.ceil(Math.abs(a1Deg - a0Deg) / 6));
+  for (let i = 0; i <= steps; i++) {
+    const a = rad(a0Deg + ((a1Deg - a0Deg) * i) / steps);
+    pts.push(`${(cx + rOut * Math.cos(a)).toFixed(1)},${(cy + rOut * Math.sin(a)).toFixed(1)}`);
   }
-  const upper: { x: number; y: number }[] = [];
-  for (let i = pts.length - 1; i >= 0; i--) {
-    const p = pts[i];
-    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
-    upper.push(p);
+  for (let i = steps; i >= 0; i--) {
+    const a = rad(a0Deg + ((a1Deg - a0Deg) * i) / steps);
+    pts.push(`${(cx + rIn * Math.cos(a)).toFixed(1)},${(cy + rIn * Math.sin(a)).toFixed(1)}`);
   }
-  lower.pop(); upper.pop();
-  return lower.concat(upper);
+  return pts.join(' ');
 }
 
 const LS_CURRENT = 'rebellion-game-current';
@@ -7297,33 +7320,24 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
         {/* Region boundaries — only on the vector fallback (no map art). Draw a
             padded convex hull per region behind everything so systems read as
             grouped into their galactic regions, like the printed board. */}
-        {!mapImageReady && (() => {
-          const byRegion = new Map<number, { x: number; y: number }[]>();
-          for (const s of systems) {
-            const arr = byRegion.get(s.region) ?? [];
-            arr.push({ x: s.boardPos.x * SCALE, y: s.boardPos.y * SCALE });
-            byRegion.set(s.region, arr);
-          }
-          return [...byRegion.entries()].map(([region, pts]) => {
-            const hull = convexHull(pts);
-            if (hull.length < 3) return null;
-            // Expand each hull vertex outward from the region centroid so the
-            // boundary clears the planet circles.
-            const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
-            const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
-            const pad = 30;
-            const poly = hull.map((p) => {
-              const dx = p.x - cx, dy = p.y - cy;
-              const d = Math.hypot(dx, dy) || 1;
-              return `${(p.x + (dx / d) * pad).toFixed(1)},${(p.y + (dy / d) * pad).toFixed(1)}`;
-            }).join(' ');
-            const fill = REGION_FILL[region % REGION_FILL.length];
-            return (
-              <polygon key={`region-${region}`} points={poly}
-                style={{ fill: `${fill}22`, stroke: fill, strokeWidth: 1.5, strokeLinejoin: 'round' }} />
-            );
-          });
-        })()}
+        {!mapImageReady && (
+          <defs>
+            <clipPath id="board-clip">
+              <rect x={0} y={0} width={DISPLAY_W} height={DISPLAY_H} />
+            </clipPath>
+          </defs>
+        )}
+        {!mapImageReady && (
+          <g clipPath="url(#board-clip)">
+            {Object.entries(REGION_WEDGES).map(([region, [a0, a1]]) => {
+              const fill = REGION_FILL[Number(region) % REGION_FILL.length];
+              return (
+                <polygon key={`region-${region}`} points={wedgePoints(a0, a1, SCALE)}
+                  style={{ fill: `${fill}33`, stroke: '#b5662e', strokeWidth: 2, strokeLinejoin: 'round' }} />
+              );
+            })}
+          </g>
+        )}
         {/* Adjacency edges — on the vector fallback, draw a line between every
             pair of adjacent systems (behind the planets) so reachability is
             visible without the printed map's hyperlane art. */}
