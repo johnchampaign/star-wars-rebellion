@@ -809,7 +809,7 @@ export function relocateLeader(
 
 /** Capture a Rebel leader. Only one 'captured' ring exists at a time (rr p.3);
  *  if a second leader is captured, the first is rescued. */
-export function captureLeader(G: GameState, leaderId: LeaderId, ring: 'captured' | 'carbonite' = 'captured'): void {
+export function captureLeader(G: GameState, leaderId: LeaderId, ring: 'captured' | 'carbonite' = 'captured', opts?: { deferAutoRescue?: boolean }): void {
   const r = G.rebel;
   const e = G.empire;
   if (!e.capturedLeaders) e.capturedLeaders = [];
@@ -878,9 +878,12 @@ export function captureLeader(G: GameState, leaderId: LeaderId, ring: 'captured'
   if (postNobleSacrifice) {
     G.pendingChoice = { kind: 'NobleSacrificeOffer', side: 'Rebel' };
     log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'NobleSacrificeOffer' } });
-  } else {
+  } else if (!opts?.deferAutoRescue) {
     // If no Imperial units are at the captured leader's system, the leader is
-    // immediately rescued (rr p.3).
+    // immediately rescued (rr p.3). Collect Bounty defers this: it captures at
+    // the (Rebel) mission system, THEN relocates the leader to the nearest
+    // Imperial system — so the rescue must run AFTER that move, not now
+    // (player #259: the leader was auto-freed at capture before relocation).
     maybeAutoRescue(G, capturedSystemId);
   }
 }

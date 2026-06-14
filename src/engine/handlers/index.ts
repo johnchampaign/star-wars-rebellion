@@ -620,7 +620,10 @@ const collectBounty: EffectHandler = (G, ctx) => {
     if (!best) return true;
     capturedId = best.lid;
   }
-  M.captureLeader(G, capturedId, 'captured');
+  // Defer the auto-rescue: the capture happens at the (Rebel) mission system,
+  // which usually has no Imperial units — so an immediate rescue would free the
+  // leader before we relocate them to the nearest Imperial system (player #259).
+  M.captureLeader(G, capturedId, 'captured', { deferAutoRescue: true });
 
   // BFS from sysId for nearest system containing an Imperial unit.
   const hasImperial = (id: string): boolean => {
@@ -639,16 +642,21 @@ const collectBounty: EffectHandler = (G, ctx) => {
     }
   }
   if (!dest) {
+    // No Imperial unit anywhere — the leader can't be relocated, so the
+    // deferred auto-rescue resolves now (no Imperial guards → rescued, rr p.3).
     log(G, { kind: 'collect-bounty-no-imperial-system', side: 'Empire',
       payload: { sourceSystemId: sysId, capturedLeaderId: capturedId } });
+    M.maybeAutoRescue(G, sysId);
     return true;
   }
 
-  // Update captured leader's recorded location.
+  // Update captured leader's recorded location, then run the (deferred) rescue
+  // check at the NEW location — dest has Imperials, so the leader stays held.
   if (G.empire.capturedLeaders) {
     const cap = G.empire.capturedLeaders.find((c) => c.leaderId === capturedId);
     if (cap) cap.systemId = dest;
   }
+  M.maybeAutoRescue(G, dest);
 
   // Move the bounty-hunter leader(s) (those assigned to the mission) to dest.
   const moved: string[] = [];
