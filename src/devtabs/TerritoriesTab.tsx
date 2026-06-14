@@ -362,7 +362,9 @@ export default function TerritoriesTab() {
                       if (n) { setSelectedId(r.id); insertVertexAt(r.id, n); }
                     }}
                     style={{
-                      fill: r.barrier ? 'none' : (sel ? `${fill}66` : `${fill}33`),
+                      // Outline-only by default so the board art shows through for
+                      // tracing; only the selected cell gets a light fill.
+                      fill: sel && !r.barrier ? `${fill}33` : 'none',
                       stroke: sel ? '#ffd54a' : border,
                       strokeWidth: sel ? 2.5 : (r.barrier || contained.length !== 1 ? 2 : 1.2),
                       strokeDasharray: r.barrier ? '6,3' : undefined,
