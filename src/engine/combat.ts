@@ -854,9 +854,14 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
     }
   }
 
-  // 2) Special-die spend — only for the attacker, only if specials present.
+  // 2) Special-die spend (BASE GAME only) — draw/play base tactic cards with ★.
+  //     In CINEMATIC combat the base tactic deck is off entirely: ★ dice are
+  //     consumed by the cinematic reroll/heal windows above, so this window must
+  //     NOT fire — otherwise a side could draw and play base tactic cards mid-
+  //     cinematic-combat (player report #244: AI using base tactics with
+  //     cinematic enabled).
   const specials = pa.dice.filter((d) => d.face === 'special').length;
-  if (specials > 0 && !pa.specialsResolved) {
+  if (specials > 0 && !pa.specialsResolved && !c.cinematic) {
     const hand = pa.side === c.attackerSide ? c.attackerHand : c.defenderHand;
     const specialCards = hand.filter((cid) => {
       const card = G.catalog.tactics[cid];
