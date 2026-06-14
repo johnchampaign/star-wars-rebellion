@@ -214,6 +214,9 @@ export default function TerritoriesTab() {
       if ((e.key === 'Delete' || e.key === 'Backspace') && selectedVertex !== null) {
         e.preventDefault();
         deleteVertex();
+      } else if (e.key === 'Escape') {
+        setSelectedId(null);
+        setSelectedVertex(null);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -435,10 +438,24 @@ export default function TerritoriesTab() {
           <img src={mapSrc} width={DISPLAY_W} height={DISPLAY_H} alt="Board" draggable={false} />
           <svg ref={svgRef} width={DISPLAY_W} height={DISPLAY_H}
             onMouseMove={handleMouseMove}
+            onDoubleClick={(e) => {
+              if (draft !== null) return; // drawing mode handles its own clicks
+              const n = toNative(e.clientX, e.clientY);
+              if (!n) return;
+              // Add a vertex to the SELECTED cell at this location (its nearest
+              // edge). If nothing's selected, select the cell under the cursor
+              // first. This lets you extend a cell's outline anywhere, even
+              // outside its current border.
+              let target = selectedId;
+              if (target === null) {
+                const hit = regions.find((r) => pointInPoly(n, r.exterior));
+                if (hit) { setSelectedId(hit.id); target = hit.id; }
+              }
+              if (target !== null) { setSelectedId(target); insertVertexAt(target, n); }
+            }}
             style={{ position: 'absolute', top: 0, left: 0, cursor: 'default', pointerEvents: 'all' }}>
-            {/* backstop: click empty space to deselect */}
-            <rect x={0} y={0} width={DISPLAY_W} height={DISPLAY_H} fill="transparent"
-              onMouseDown={() => { setSelectedId(null); setSelectedVertex(null); }} />
+            {/* backstop so empty-space clicks land on the svg (Esc deselects) */}
+            <rect x={0} y={0} width={DISPLAY_W} height={DISPLAY_H} fill="transparent" />
 
             {regions.map((r) => {
               const sel = selectedId === r.id;
@@ -454,11 +471,6 @@ export default function TerritoriesTab() {
                 <g key={r.id}>
                   <polygon points={pts}
                     onMouseDown={(e) => { e.stopPropagation(); setSelectedId(r.id); setSelectedVertex(null); }}
-                    onDoubleClick={(e) => {
-                      e.stopPropagation();
-                      const n = toNative(e.clientX, e.clientY);
-                      if (n) { setSelectedId(r.id); insertVertexAt(r.id, n); }
-                    }}
                     style={{
                       // Outline-only by default so the board art shows through for
                       // tracing; only the selected cell gets a light fill.
@@ -556,9 +568,10 @@ export default function TerritoriesTab() {
         </p>
         <p style={{ margin: '4px 0' }}>
           <strong>Reshape:</strong> click a cell to select it — drag a pink vertex handle to move
-          it, <strong>double-click an edge</strong> to insert a vertex, select a vertex and press
-          <strong> Delete</strong> to remove it, or drag the cyan centroid handle to slide the whole
-          cell. <strong>Mark as barrier</strong> turns a cell into an impassable border.
+          it, <strong>double-click anywhere</strong> to add a vertex to the selected cell at that
+          spot (even outside its current border), select a vertex and press <strong>Delete</strong>
+          to remove it, or drag the cyan centroid handle to slide the whole cell. <strong>Esc</strong>
+          deselects. <strong>Mark as barrier</strong> turns a cell into an impassable border.
         </p>
         <p style={{ margin: '4px 0' }}>
           <strong>Split a cell in two:</strong> drag one vertex onto another vertex of the same cell
