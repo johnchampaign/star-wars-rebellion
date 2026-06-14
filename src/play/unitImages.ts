@@ -40,9 +40,9 @@ export const UNIT_IMAGE: Record<string, string> = {
   'ion-cannon':                     'UnitIonCannon.png',
   // Rebel — Rise of the Empire
   'u-wing':                         'UnitUWing.png',
-  'nebulon-b-frigate':              'UnitNebulonBFrigate.png',
+  'nebulon-b-frigate':              'UnitNebulonB.png',
   'rebel-vanguard':                 'UnitRebelVanguard.png',
-  'golan-arms-turret':              'UnitGolanArmsTurret.png',
+  'golan-arms-turret':              'UnitGolanTurret.png',
 };
 
 const STYLE_KEY = 'rebellion-unit-image-style';
