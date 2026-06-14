@@ -9,6 +9,7 @@ const { register } = await import('tsx/esm/api');
 register();
 const { createGame } = await import('../src/engine/setup.ts');
 const phases = await import('../src/engine/phases.ts');
+const M = await import('../src/engine/mechanics.ts');
 const loadJson = (p) => JSON.parse(readFileSync(join(ROOT, 'assets', p), 'utf-8'));
 const data = {
   systems: loadJson('systems.json'), adjacency: loadJson('adjacency.json'),
@@ -22,6 +23,10 @@ const check = (n, ok, x = '') => { console.log(`  ${ok ? '✓' : '✗'} ${n}${ok
 const G = createGame(data, { seed: 7, roeUnits: true, roeMissions: true });
 check('he-means-well in catalog', !!G.catalog.actions['he-means-well']);
 check('cassian recruitable', phases.leaderRecruitable(G, 'Rebel', 'cassian-andor'));
+
+// Pre-attach the R2-D2 ring to Mon Mothma so she should be EXCLUDED from the
+// later K-2SO candidate list ("non-ringed leader" only).
+M.attachRing(G, 'mon-mothma', 'r2d2');
 
 // Skip Assignment + Command so the round rolls into Refresh (time -> 2 = recruit).
 phases.skipAssignment(G, 'Rebel'); phases.skipAssignment(G, 'Empire');
@@ -41,6 +46,10 @@ c = G.pendingChoice;
 check('ring offered immediately (AttachRingPick, viaRecruit)',
   c?.kind === 'AttachRingPick' && c.cardId === 'he-means-well' && c.ringId === 'k2so' && c.viaRecruit === true,
   `got ${c?.kind} via=${c?.viaRecruit}`);
+check('already-ringed Mon Mothma excluded from candidates',
+  Array.isArray(c?.candidates) && !c.candidates.includes('mon-mothma'),
+  JSON.stringify(c?.candidates));
+check('non-ringed Cassian still a candidate', c?.candidates?.includes('cassian-andor'));
 
 const target = c?.candidates?.includes('cassian-andor') ? 'cassian-andor' : c?.candidates?.[0];
 const r2 = phases.resolveAttachRing(G, target);

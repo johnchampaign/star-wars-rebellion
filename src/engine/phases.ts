@@ -4784,7 +4784,7 @@ function maybeOfferRecruitRing(G: GameState, side: Side, cardId: string): boolea
   // Leader requirement (He Means Well needs Cassian, just recruited above).
   const reqs = G.catalog.actions[cardId]?.leaderRequirement ?? [];
   if (reqs.length > 0 && !reqs.some((lid) => f.leaderPool.includes(lid))) return false;
-  const candidates = allLeadersOf(G, side);
+  const candidates = nonRingedLeadersOf(G, side); // card targets a non-ringed leader
   if (candidates.length === 0) return false;
   G.pendingChoice = { kind: 'AttachRingPick', side, cardId, ringId, candidates, viaRecruit: true };
   log(G, { kind: 'choice-request', side, payload: { kind: 'AttachRingPick', cardId, ringId, candidates } });
@@ -5513,6 +5513,21 @@ function allLeadersOf(G: GameState, side: Side): LeaderId[] {
   return [...set];
 }
 
+// The three droid rings. Yoda / dark-side / bounty are other attachment kinds,
+// NOT rings, so they don't make a leader "ringed".
+const DROID_RINGS = ['r2d2', 'c3po', 'k2so'] as const;
+
+/** Legal targets for a droid ring: a side's leaders that don't already bear a
+ *  ring. The ring cards specify a "non-ringed leader" — you can't stack a
+ *  second droid ring on a leader who already has one. */
+function nonRingedLeadersOf(G: GameState, side: Side): LeaderId[] {
+  const att = G.leaderAttachments ?? {};
+  return allLeadersOf(G, side).filter((lid) => {
+    const rings = att[lid] ?? [];
+    return !DROID_RINGS.some((r) => rings.includes(r));
+  });
+}
+
 /** Resolve the player's choice of which leader to attach a droid ring to. */
 export function resolveAttachRing(G: GameState, leaderId: LeaderId): { ok: boolean; reason?: string } {
   const pc = G.pendingChoice;
@@ -5984,7 +5999,7 @@ export function playAssignmentActionCard(G: GameState, cardId: string): { ok: bo
   // Droid ring card → pick a leader to attach the ring to (not a system).
   const ringId = DROID_RING_CARDS[cardId];
   if (ringId) {
-    const candidates = allLeadersOf(G, side);
+    const candidates = nonRingedLeadersOf(G, side); // card targets a non-ringed leader
     if (candidates.length === 0) return { ok: false, reason: 'no-leader-to-attach' };
     G.pendingChoice = { kind: 'AttachRingPick', side, cardId, ringId, candidates };
     log(G, { kind: 'choice-request', side, payload: { kind: 'AttachRingPick', cardId, ringId, candidates } });
