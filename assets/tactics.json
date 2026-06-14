@@ -76,7 +76,7 @@
       "id": "ground-escape-plan",
       "name": "Escape Plan",
       "theater": "ground",
-      "requiresSpecial": false,
+      "requiresSpecial": true,
       "effectKey": "",
       "rulesText": "During this combat round, your units can retreat ignoring transport restrictions",
       "image": "TacticGroundEscapePlan.png",
