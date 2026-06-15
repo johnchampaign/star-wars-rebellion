@@ -454,6 +454,29 @@ function oppositionTargetTerm(G: GameState, attackerSide: Side, missionId: strin
   return -2 - oppSkill * 2; // -2 (any leader) down through -2/skill-icon
 }
 
+/** True when revealing this Empire mission at this system would accomplish
+ *  nothing, so the AI shouldn't burn the leader + card on it (players #276/#277). */
+export function missionRevealIsPointless(G: GameState, side: Side, missionId: string, sysId: SystemId): boolean {
+  if (side !== 'Empire') return false;
+  const ss = G.map.systems[sysId];
+  if (missionId === 'draw-them-out') {
+    // "Choose a Rebel leader in the leader pool; place that leader here." With
+    // an empty Rebel pool there's no leader to place — the mission does nothing.
+    return (G.rebel.leaderPool?.length ?? 0) === 0;
+  }
+  if (missionId === 'single-reactor-ignition') {
+    // Resolves on the Empire's own Death Star, so the Empire already occupies
+    // the system — the base would have auto-revealed on entry, making the
+    // "reveal the base if it's here" clause moot. It only accomplishes anything
+    // if there are Rebel ground units to destroy or target markers to remove.
+    const rebelGround = (ss?.units ?? []).some(
+      (u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground');
+    const markers = (ss?.targetMarkers?.length ?? 0) > 0;
+    return !rebelGround && !markers;
+  }
+  return false;
+}
+
 function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: SystemId): number {
   let s = 0;
   const sys = G.catalog.systems[targetSysId];
@@ -730,7 +753,11 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
     const targets = missionTargets(G, side, am.missionId);
     // If the encoder couldn't narrow targets (permissive), allow all systems;
     // otherwise restrict to the engine-legal list.
-    const candidateSystems = targets.permissive ? allSystemIds : targets.systemIds;
+    let candidateSystems = targets.permissive ? allSystemIds : targets.systemIds;
+    // Drop targets where the mission would do nothing (e.g. Draw Them Out with
+    // an empty Rebel pool, Single Reactor Ignition with no Rebel ground or
+    // markers) so the AI doesn't waste it (#276/#277).
+    candidateSystems = candidateSystems.filter((sid) => !missionRevealIsPointless(G, side, am.missionId, sid));
     if (candidateSystems.length === 0) continue;
     const baseValue = missionBaseValue(am.missionId, side) + missionSituationalAdjust(G, am.missionId, side);
     let bestTarget: SystemId | null = null;
