@@ -1000,6 +1000,16 @@ export type ChoiceRequest =
       candidates: string[];
     }
   | {
+      // RoE False Orders: played at the END of the Assignment phase (after the
+      // Empire has finished assigning). The Rebel may return 1 lone Imperial
+      // leader to the pool and its mission to the Imperial hand — or decline
+      // and keep the card. `candidates` lists each lone Imperial assignment.
+      kind: 'FalseOrdersWindow';
+      side: Side; // 'Rebel'
+      cardId: string;
+      candidates: { missionId: string; leaderId: LeaderId }[];
+    }
+  | {
       // Some action cards need a system target. Posted after the card
       // is picked; legal systems are pre-filtered per the card's text.
       kind: 'ActionCardSystemPick';

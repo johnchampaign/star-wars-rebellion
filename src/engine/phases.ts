@@ -699,8 +699,10 @@ export function skipAssignment(G: GameState, side: Side): { ok: boolean; reason?
 
   const done = assignmentDone(G);
   if (done.has('Rebel') && done.has('Empire')) {
-    // Both done — advance to Command.
-    enterCommandPhase(G);
+    // Both done — offer the Rebel an end-of-Assignment False Orders window
+    // (#293). If it posts a choice, the resolver advances to Command afterward;
+    // otherwise advance now.
+    if (!maybeOfferFalseOrders(G)) enterCommandPhase(G);
   } else if (done.has('Rebel') && !done.has('Empire')) {
     G.currentPlayer = 'Empire';
   } else if (done.has('Empire') && !done.has('Rebel')) {
@@ -5544,6 +5546,11 @@ export function playableAssignmentActionCards(G: GameState, side: Side): string[
       continue;
     }
     if (card.timing !== 'Assignment') continue;
+    // End-of-phase cards (False Orders) are NOT offered during a normal
+    // Assignment turn — they get a dedicated window after BOTH sides finish
+    // assigning (maybeOfferFalseOrders). Playing them earlier does nothing
+    // because the Empire hasn't assigned its leaders yet (#293).
+    if (END_OF_ASSIGNMENT_CARDS.has(cid)) continue;
     // Leader requirement: at least one named leader must be in the pool.
     const reqs = card.leaderRequirement ?? [];
     if (reqs.length > 0 && !reqs.some((lid) => f.leaderPool.includes(lid))) continue;
@@ -5551,6 +5558,11 @@ export function playableAssignmentActionCards(G: GameState, side: Side): string[
   }
   return out;
 }
+
+/** Assignment-timing cards that resolve at the END of the phase rather than on
+ *  the player's own turn. False Orders targets the Empire's just-made
+ *  assignments, so it must wait until the Empire is done (#293). */
+const END_OF_ASSIGNMENT_CARDS = new Set<string>(['false-orders']);
 
 /** All of a side's leaders (pool + on-board + on-missions), deduped — the legal
  *  attach targets for a droid ring. */
@@ -5648,6 +5660,68 @@ export function cancelAssignmentActionCardPlay(G: GameState): { ok: boolean; rea
   if (!pc || pc.kind !== 'PlayAssignmentActionCard') return { ok: false, reason: 'no-pending' };
   G.pendingChoice = undefined;
   log(G, { kind: 'choice-cancel', side: pc.side, payload: { kind: 'PlayAssignmentActionCard' } });
+  return { ok: true };
+}
+
+// ===== RoE False Orders — end-of-Assignment window (#293) ====================
+
+/** Apply False Orders to one lone Imperial assignment: return its leader to the
+ *  Empire pool and the mission card to the Empire hand. */
+function applyFalseOrdersTo(
+  G: GameState, lone: GameState['empire']['leadersOnMissions'][number],
+): void {
+  const lid = lone.leaderIds[0];
+  const mid = lone.missionId;
+  const idx = G.empire.leadersOnMissions.indexOf(lone);
+  if (idx >= 0) G.empire.leadersOnMissions.splice(idx, 1);
+  if (!G.empire.leaderPool.includes(lid)) G.empire.leaderPool.push(lid);
+  G.empire.missionHand.push(mid);
+  log(G, { kind: 'false-orders', side: 'Rebel', payload: { targetLeaderId: lid, missionId: mid } });
+}
+
+/** Offer the Rebel a False Orders play at the end of the Assignment phase, once
+ *  the Empire has finished assigning. Returns true (and posts a choice) when the
+ *  Rebel holds the card AND there's a lone Imperial leader to target; otherwise
+ *  returns false so the caller proceeds straight to Command. */
+function maybeOfferFalseOrders(G: GameState): boolean {
+  if (G.pendingChoice) return false;
+  if (!G.rebel.actionHand.includes('false-orders')) return false;
+  const candidates = G.empire.leadersOnMissions
+    .filter((m) => m.leaderIds.length === 1)
+    .map((m) => ({ missionId: m.missionId, leaderId: m.leaderIds[0] as LeaderId }));
+  if (candidates.length === 0) return false;
+  G.currentPlayer = 'Rebel';
+  G.pendingChoice = { kind: 'FalseOrdersWindow', side: 'Rebel', cardId: 'false-orders', candidates };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'FalseOrdersWindow', candidates: candidates.map((c) => c.leaderId),
+  }});
+  return true;
+}
+
+/** Resolve the False Orders window. `targetLeaderId === null` declines (keeps the
+ *  card); otherwise return that lone Imperial leader to the pool and its mission
+ *  to the Imperial hand, discarding False Orders. Either way, advance to Command. */
+export function resolveFalseOrders(
+  G: GameState, targetLeaderId: LeaderId | null,
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'FalseOrdersWindow') return { ok: false, reason: 'no-pending' };
+  if (targetLeaderId !== null) {
+    const lone = G.empire.leadersOnMissions.find(
+      (m) => m.leaderIds.length === 1 && m.leaderIds[0] === targetLeaderId);
+    if (!lone) return { ok: false, reason: 'not-a-candidate' };
+    // Discard False Orders from the Rebel hand.
+    const i = G.rebel.actionHand.indexOf('false-orders');
+    if (i >= 0) { G.rebel.actionHand.splice(i, 1); G.rebel.actionDiscard.push('false-orders'); }
+    log(G, { kind: 'action-card-play', side: 'Rebel', payload: {
+      cardId: 'false-orders', leaderId: null, systemId: null, timing: 'Assignment',
+    }});
+    applyFalseOrdersTo(G, lone);
+  } else {
+    log(G, { kind: 'choice-cancel', side: 'Rebel', payload: { kind: 'FalseOrdersWindow' } });
+  }
+  G.pendingChoice = undefined;
+  enterCommandPhase(G);
   return { ok: true };
 }
 
@@ -6539,29 +6613,13 @@ function applyAssignmentActionCardEffect(
       break;
     }
     case 'false-orders': {
-      // RAW: choose 1 LONE Imperial leader currently assigned to a mission.
-      // Return that leader to the pool and the mission to Imperial hand.
-      // Auto-picks the first such mission. (RAW timing is "End of
-      // Assignment" — the Rebel should play it after Empire has assigned;
-      // playing it earlier yields nothing.)
+      // Reached only via the dedicated end-of-Assignment window now (#293);
+      // kept as a defensive no-op for the generic dispatch path. The real
+      // effect runs in resolveFalseOrders against the player-chosen target.
       const lone = G.empire.leadersOnMissions.find((m) => m.leaderIds.length === 1);
-      if (!lone) {
-        log(G, { kind: 'action-card-noop', side: 'Rebel', payload: {
-          cardId, reason: 'no-lone-imperial-assignment',
-        }});
-        break;
-      }
-      const lid = lone.leaderIds[0];
-      const mid = lone.missionId;
-      // Strip the assignment.
-      const idx = G.empire.leadersOnMissions.indexOf(lone);
-      if (idx >= 0) G.empire.leadersOnMissions.splice(idx, 1);
-      // Return leader to Empire pool.
-      if (!G.empire.leaderPool.includes(lid)) G.empire.leaderPool.push(lid);
-      // Return mission card to Empire hand.
-      G.empire.missionHand.push(mid);
-      log(G, { kind: 'false-orders', side: 'Rebel', payload: {
-        targetLeaderId: lid, missionId: mid,
+      if (lone) applyFalseOrdersTo(G, lone);
+      else log(G, { kind: 'action-card-noop', side: 'Rebel', payload: {
+        cardId, reason: 'no-lone-imperial-assignment',
       }});
       break;
     }

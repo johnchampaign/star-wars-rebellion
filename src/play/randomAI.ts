@@ -1476,6 +1476,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'PlayAssignmentActionCard' && G.pendingChoice.side === side) {
     return phases.cancelAssignmentActionCardPlay(G).ok;
   }
+  // False Orders end-of-Assignment window (#293): the AI plays it to disrupt
+  // the first lone Imperial assignment (a free tempo hit — return a leader +
+  // mission to the Empire). Resolves the choice either way so it can't stall.
+  if (G.pendingChoice && G.pendingChoice.kind === 'FalseOrdersWindow' && G.pendingChoice.side === side) {
+    const target = G.pendingChoice.candidates[0]?.leaderId ?? null;
+    return phases.resolveFalseOrders(G, target).ok;
+  }
   // Droid ring attach (R2-D2 / C-3PO). The AI doesn't proactively open this,
   // but resolve it if posted so the game can't deadlock: prefer a leader
   // already on the board (the ring only works in that leader's system).
