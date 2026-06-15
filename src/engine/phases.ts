@@ -2857,11 +2857,15 @@ function maybePostMissionRingTrigger(G: GameState, pm: MissionResolution): boole
       }});
       return true;
     }
-    // Son of Skywalker: Luke present + card in hand + Seek Yoda or Daring Rescue in deck.
+    // Son of Skywalker: Luke present + card in hand + Seek Yoda or Daring Rescue
+    // in deck. The expansion mission deck swaps Daring Rescue for its RoE
+    // equivalent, Critical Rescue, so accept that id too — otherwise only Seek
+    // Yoda was ever offered in an expansion game (#296).
     const hasSoS = G.rebel.actionHand.includes('son-of-skywalker');
     const lukePresent = (pm.leaderIds as LeaderId[]).some((l) => l === 'luke-skywalker' || l === 'luke-skywalker-jedi');
     if (hasSoS && lukePresent) {
-      const sosCandidates = G.rebel.missionDeck.filter((mid) => mid === 'seek-yoda' || mid === 'daring-rescue');
+      const sosCandidates = G.rebel.missionDeck.filter(
+        (mid) => mid === 'seek-yoda' || mid === 'daring-rescue' || mid === 'critical-rescue');
       if (sosCandidates.length > 0) {
         G.pendingChoice = {
           kind: 'SonOfSkywalkerOffer',
@@ -5961,7 +5965,10 @@ function applyStartingCardRecruitBranch(G: GameState, cardId: string): void {
     const targetSys = Object.entries(G.map.systems)
       .find(([_sid, ss]) => ss.loyalty === 'imperial' || ss.subjugated)?.[0];
     if (targetSys) {
-      for (const lid of ['motti', 'tarkin'] as LeaderId[]) {
+      // Tarkin's leader id is 'grand-moff-tarkin', not 'tarkin' — the wrong id
+      // meant indexOf never found him, so Early Promotion placed Motti but left
+      // Tarkin stranded in the pool (#266).
+      for (const lid of ['motti', 'grand-moff-tarkin'] as LeaderId[]) {
         const i = G.empire.leaderPool.indexOf(lid);
         if (i >= 0) {
           G.empire.leaderPool.splice(i, 1);
