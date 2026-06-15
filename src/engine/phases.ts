@@ -674,6 +674,13 @@ export function unassignLeader(G: GameState, side: Side, missionId: string): { o
   //    conflicted with #89's "don't put the fetched card in hand".)
   if (entry.fromDeck) {
     if (!f.missionDeck.includes(missionId)) f.missionDeck.push(missionId);
+    // The action card that fetched it was discarded when played — return it to
+    // hand too, so undoing the mission fully undoes the play (player #279).
+    if (entry.viaCard) {
+      const di = (f.actionDiscard ?? []).indexOf(entry.viaCard);
+      if (di >= 0) f.actionDiscard.splice(di, 1);
+      if (!f.actionHand.includes(entry.viaCard)) f.actionHand.push(entry.viaCard);
+    }
   } else if (!f.missionHand.includes(missionId)) {
     f.missionHand.push(missionId);
   }
@@ -3564,7 +3571,7 @@ export function resolveOurMostDesperateHourPick(
   // on it — exactly like a normally-assigned mission (which lives only in
   // leadersOnMissions, not in hand). Do NOT also add it to the hand, or it
   // shows up twice and can be "taken back" from hand (player report #89).
-  f.leadersOnMissions.push({ missionId, leaderIds: ['princess-leia'], fromDeck: true });
+  f.leadersOnMissions.push({ missionId, leaderIds: ['princess-leia'], fromDeck: true, viaCard: 'our-most-desperate-hour' });
   log(G, { kind: 'our-most-desperate-hour-applied', side: 'Rebel', payload: {
     missionId, leaderId: 'princess-leia',
   }});
@@ -3596,7 +3603,7 @@ export function resolveProceedingAsPlannedPick(
   // Assigned only (like a normal assignment) — not also added to hand, which
   // would duplicate it and let it be taken back (cf. #89 for the Rebel twin).
   // fromDeck so un-assigning returns it to the project deck, not hand (#108).
-  f.leadersOnMissions.push({ missionId, leaderIds: [leaderId], fromDeck: true });
+  f.leadersOnMissions.push({ missionId, leaderIds: [leaderId], fromDeck: true, viaCard: 'proceeding-as-planned' });
   log(G, { kind: 'proceeding-as-planned-applied', side: 'Empire', payload: {
     missionId, leaderId,
   }});

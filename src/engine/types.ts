@@ -111,6 +111,11 @@ export type AssignedMission = {
   // hand — otherwise you could search the deck, assign, un-assign, and keep
   // any mission in hand for free (player report #108).
   fromDeck?: boolean;
+  // The action card that fetched this mission from the deck (Our Most Desperate
+  // Hour / Proceeding As Planned). It was discarded when played; un-assigning
+  // the mission returns this card to the owner's hand too, fully undoing the
+  // play (player report #279).
+  viaCard?: string;
 };
 
 export type CapturedLeader = {

@@ -22,11 +22,14 @@ let pass=0,fail=0; const check=(n,ok,x='')=>{console.log(`  ${ok?'✓':'✗'} ${
   // simulate OMDH: pull from deck onto a mission with Leia (fromDeck)
   G.rebel.missionDeck = G.rebel.missionDeck.filter(m => m !== mid);
   G.rebel.leaderPool = G.rebel.leaderPool.filter(l => l !== 'princess-leia');
-  G.rebel.leadersOnMissions.push({ missionId: mid, leaderIds: ['princess-leia'], fromDeck: true });
+  // OMDH card was discarded when played; track it via viaCard (#279)
+  (G.rebel.actionDiscard ??= []).push('our-most-desperate-hour');
+  G.rebel.leadersOnMissions.push({ missionId: mid, leaderIds: ['princess-leia'], fromDeck: true, viaCard: 'our-most-desperate-hour' });
   const r = phases.unassignLeader(G, 'Rebel', mid);
   check('unassign ok', r.ok, r.reason);
   check('fetched mission returned to DECK (not hand)', G.rebel.missionDeck.includes(mid) && !(G.rebel.missionHand ?? []).includes(mid));
   check('Leia returned to pool', G.rebel.leaderPool.includes('princess-leia'));
+  check('OMDH action card returned to HAND (#279)', (G.rebel.actionHand ?? []).includes('our-most-desperate-hour') && !(G.rebel.actionDiscard ?? []).includes('our-most-desperate-hour'));
 }
 
 // #280 control: a normally-assigned mission still returns to HAND.
