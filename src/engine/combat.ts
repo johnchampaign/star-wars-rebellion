@@ -1813,10 +1813,13 @@ function applyStartOfCombatActionCardEffect(G: GameState, c: CombatState, side: 
       return;
     }
     case 'its-a-trap': {
-      // RAW: During round 1, opponent cannot play space tactic cards.
+      // RAW: During round 1, opponent cannot play space tactic cards. Record
+      // WHICH side is locked (the opponent of the player) so isCinematicLocked
+      // can enforce it — the flag was previously set but never read (#272).
       c.flags = c.flags ?? {};
       c.flags.opponentNoSpaceTacticsRound = 1;
-      log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'empire-no-space-tactics-round-1' } });
+      c.flags.noSpaceTacticsRound1Side = other(side);
+      log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: `${other(side).toLowerCase()}-no-space-tactics-round-1` } });
       return;
     }
     case 'point-blank-assault': {

@@ -362,6 +362,10 @@ function availableCards(G: GameState, side: Side, theater: Theater): string[] {
 /** Is `side` locked out of playing a tactic card in `theater` this round?
  *  (Entrapment / Air Superiority / Outrun Them / Escape Plan secondaries.) */
 export function isCinematicLocked(c: CombatState, side: Side, theater: Theater): boolean {
+  // It's a Trap (#272): the named side cannot play SPACE tactic cards in round 1.
+  if (theater === 'space' && c.round === 1 && c.flags?.noSpaceTacticsRound1Side === side) {
+    return true;
+  }
   const lockedThrough = c.cinematicDeckLock?.[`${side}:${theater}`];
   return lockedThrough != null && c.round <= lockedThrough;
 }

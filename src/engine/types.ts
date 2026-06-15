@@ -1567,6 +1567,10 @@ export type CombatState = {
     // - opponentNoSpaceTacticsRound: integer round number (1-based) in which
     //   the named side may not play space tactic cards. Set by "It's a Trap".
     opponentNoSpaceTacticsRound?: number;
+    // - noSpaceTacticsRound1Side: the side that cannot play space cinematic
+    //   tactic cards during round 1 (the opponent of whoever played It's a
+    //   Trap). Consulted by isCinematicLocked (#272).
+    noSpaceTacticsRound1Side?: Side;
     // - allUnitsMinusOneHealthApplied: marker that Point Blank Assault has
     //   already been applied (so a second play in the same combat is a no-op).
     allUnitsMinusOneHealthApplied?: boolean;
