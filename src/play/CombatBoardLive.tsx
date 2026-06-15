@@ -1633,7 +1633,17 @@ function YodaRerollPanel({ G, choice, onPersist }: {
             Reroll die #{idx + 1}
           </button>
         ))}
-        <button onClick={() => submit(null)} style={btn('#2a2c33')}>Skip</button>
+        {/* Light fill + border so "Skip" reads as an obviously-clickable choice,
+            not a disabled button (dark-grey-on-black looked dead — player #282,
+            same issue as the retreat "Stay and fight" button in #66). */}
+        <button
+          onClick={() => submit(null)}
+          style={{ padding: '6px 14px', background: '#d7dae0', color: '#000',
+            border: '2px solid #9aa0ad', borderRadius: 3, cursor: 'pointer',
+            fontWeight: 700, fontSize: 12 }}
+        >
+          Skip (no reroll)
+        </button>
       </div>
     </div>
   );
@@ -2204,7 +2214,12 @@ function RetreatPanel({ G, choice, onPersist }: {
   const capacity = carriers.reduce((s, u) => s + (G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0), 0);
   const ignoresTransport = !!G.pendingCombat?.flags?.retreatIgnoresTransport?.[choice.side];
 
-  const [dest, setDest] = useState<string | null>(choice.legalDestinations[0] ?? null);
+  // With more than one legal destination, start UNSELECTED so the player has to
+  // consciously pick where to retreat — otherwise the dropdown silently defaulted
+  // to the first system and a quick "Retreat" click sent them somewhere they
+  // didn't choose (player #283). A single destination auto-selects (no real choice).
+  const [dest, setDest] = useState<string | null>(
+    choice.legalDestinations.length === 1 ? choice.legalDestinations[0] : null);
   // RAW: one leader leads the retreat (the units follow it). Default to the
   // first present; let the player choose if they have more than one here.
   const [leader, setLeader] = useState<string | null>(choice.leadersInSystem[0] ?? null);
@@ -2304,8 +2319,12 @@ function RetreatPanel({ G, choice, onPersist }: {
               <select
                 value={dest ?? ''}
                 onChange={(e) => setDest(e.target.value || null)}
-                style={{ background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '2px 4px', fontSize: 12 }}
+                style={{ background: '#0c0d10', color: dest ? '#fff' : '#ffcf66',
+                  border: `1px solid ${dest ? '#555' : '#ffcf66'}`, padding: '2px 4px', fontSize: 12 }}
               >
+                {choice.legalDestinations.length > 1 && (
+                  <option value="" disabled>— choose a system —</option>
+                )}
                 {choice.legalDestinations.map((sid) => (
                   <option key={sid} value={sid}>{sysName(sid)}</option>
                 ))}
