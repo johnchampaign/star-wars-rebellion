@@ -972,6 +972,41 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         if (dToBase === 2) ts += 10;
         else if (dToBase === 3) ts += 5;
       }
+      // #246/#237: don't feed a leader + units into a battle we're clearly
+      // going to lose. For an attack on a NON-base system holding Rebel units
+      // (the revealed base has its own readiness logic above), weigh the Empire
+      // force we can actually bring — units already here plus pullable force
+      // from adjacent, non-leader-blocked systems — against the Rebel
+      // defenders. Two guards: overall strength (an obviously-outnumbered
+      // assault, #246) and ground strength specifically (committing a leader to
+      // a ground fight it can't win can't take the system AND hands the Rebel a
+      // free Confrontation kill, #237). Pullable-adjacent matches the base
+      // invasion estimate above, so a real marching column still attacks.
+      if (hasEnemyUnits && !(G.rebelBaseRevealed && sysId === G.rebelBaseSystemId)) {
+        const strengthOf = (u: { typeId: string }): number => {
+          const t = G.catalog.unitTypes[u.typeId];
+          if (!t) return 0;
+          return (t.attack.red ?? 0) + (t.attack.black ?? 0) + (t.attack.green ?? 0) + (t.health?.value ?? 0);
+        };
+        const isGround = (u: { typeId: string }): boolean =>
+          G.catalog.unitTypes[u.typeId]?.theater === 'ground';
+        let empAll = 0, empGround = 0, rebAll = 0, rebGround = 0;
+        for (const u of sys.units) {
+          if (u.side === 'Empire') { empAll += strengthOf(u); if (isGround(u)) empGround += strengthOf(u); }
+          else if (u.side === 'Rebel') { rebAll += strengthOf(u); if (isGround(u)) rebGround += strengthOf(u); }
+        }
+        for (const a of (G.catalog.adjacency[sysId] ?? [])) {
+          if ((G.empire.leadersOnBoard[a] ?? []).length > 0) continue; // RAW p.2: leader-blocked
+          for (const u of (G.map.systems[a]?.units ?? [])) {
+            if (u.side === 'Empire') { empAll += strengthOf(u); if (isGround(u)) empGround += strengthOf(u); }
+          }
+        }
+        // Overall outnumbered — scale the penalty by how lopsided it is.
+        if (rebAll > 0 && empAll < rebAll) ts -= empAll < rebAll * 0.6 ? 24 : 12;
+        // Can't win the ground fight (and the defender has ground to Confront a
+        // leader / hold the system).
+        if (rebGround > 0 && empGround < rebGround) ts -= 14;
+      }
       // Don't waste activations on Coruscant or systems already saturated.
       if (sysId === 'coruscant') ts -= 3;
     } else {
