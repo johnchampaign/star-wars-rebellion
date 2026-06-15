@@ -987,6 +987,12 @@ export function activateSystem(
     const src = moveOrders[0]?.fromSystemId ?? targetSystemId;
     beginCombat(G, side, src, targetSystemId);
     runCombat(G);
+    // The command hand-off after a fight is done in finishCombatTail once combat
+    // FULLY resolves — combat is resumable and pauses across rounds for player
+    // choices. Advancing here would flip the turn mid-combat, or (if an
+    // immediate-card flush inside advanceCommandTurn short-circuits) leave the
+    // turn un-advanced entirely, so the same player goes again (#268).
+    return { ok: true };
   }
   if (G.isGameOver) return { ok: true };
 

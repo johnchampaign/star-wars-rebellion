@@ -9315,7 +9315,11 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
             {sources.map((sysId) => {
               const src = sysId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[sysId];
               const name = sysId === 'rebel-base-space' ? 'Rebel Base space' : (G.catalog.systems[sysId]?.name ?? sysId);
-              const byType = groupByType(src.units.filter((u) => u.side === side));
+              // Immobile units (structures: shield generator, ion cannon, Golan
+              // turret) can never move — don't offer them as movable (#271). The
+              // engine rejects them too, but they shouldn't appear in the picker.
+              const byType = groupByType(src.units.filter(
+                (u) => u.side === side && !G.catalog.unitTypes[u.typeId]?.transport.immobile));
               // Live transport summary for this source. Sums capacity provided
               // by SELECTED capacity-ships against capacity needed by SELECTED
               // ground / restriction-icon units. Surfaces the "I have an AC

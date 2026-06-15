@@ -2874,6 +2874,16 @@ function finishCombatTail(G: GameState, c: CombatState): void {
       const next: Side = G.currentPlayer === 'Rebel' ? 'Empire' : 'Rebel';
       if (!G.passedThisCommand.includes(next)) G.currentPlayer = next;
     }
+  } else if (!G.isGameOver && !G.pendingChoice && !G.pendingMission && G.phase === 'Command') {
+    // Activate-triggered combat (#268): the activation was the current player's
+    // ONE command action, so once combat fully resolves the turn passes to the
+    // opponent — mirroring the mission-combat hand-off above. activateSystem no
+    // longer advances while combat is pending (it would flip mid-combat, or an
+    // immediate-card flush could short-circuit and leave the turn un-advanced).
+    // The activator never passed to reach here, so "both passed -> Refresh"
+    // can't apply; we only flip to the opponent (skipping them if they passed).
+    const next: Side = G.currentPlayer === 'Rebel' ? 'Empire' : 'Rebel';
+    if (!G.passedThisCommand.includes(next)) G.currentPlayer = next;
   }
 }
 
