@@ -995,10 +995,18 @@ function SidePanel({ G, side, units, leaderIds, align, damageAssign, isYou }: {
               border: '1px solid #7a2f2a', borderRadius: 3, padding: 3,
               // Lethally damaged — destroyed at end of the combat round.
               opacity: 0.7,
-            }} title="Lethally damaged — destroyed at the end of this combat round (unless a heal removes the damage first). Can't take more hits.">
-              {doomed.map((u) => (
-                <UnitIcon key={u.instanceId} G={G} unit={u} />
-              ))}
+            }} title="Lethally damaged — destroyed at the end of this combat round unless a heal removes the damage first. You can still pile extra damage on it (overdamage) to insure the kill against a heal.">
+              {doomed.map((u) => {
+                const legal = damageAssign?.legalUnitIds.has(u.instanceId) ?? false;
+                const assignedCount = damageAssign?.assignedCountByUnit.get(u.instanceId) ?? 0;
+                return (
+                  <UnitIcon key={u.instanceId} G={G} unit={u}
+                    legalTarget={legal}
+                    assignedCount={assignedCount}
+                    onClick={legal && damageAssign ? () => damageAssign.onUnitClick(u.instanceId) : undefined}
+                  />
+                );
+              })}
             </div>
           )}
         </div>

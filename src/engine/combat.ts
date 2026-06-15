@@ -1410,11 +1410,18 @@ function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): vo
   // Defender's blocks knock off the first N hits.
   const applicableHits = rawHits.slice(blocksApplied);
 
-  // Compute eligible targets (color-matched, not already staged for death,
-  // skip Death Star which has health.color === null).
+  // Compute eligible targets (color-matched, skip Death Star which has
+  // health.color === null).
+  // In BASE combat a unit that reached lethal damage this theatre step is
+  // "staged" (destroyed at end of step) and must not be re-targeted. In
+  // CINEMATIC combat, lethally-damaged units stay on the board until the end of
+  // the round and a heal can still save them — so the attacker is allowed to
+  // pile extra damage onto an already-damaged unit ("overdamage") to insure the
+  // kill against a heal. RAW permits assigning hits to it, so don't exclude
+  // staged units from targeting in cinematic (#274).
   const stagedSet = new Set(c.theaterStaged ?? []);
   const liveTargets = unitsOf(G, other(pa.side), c.systemId, pa.theater)
-    .filter((u) => !stagedSet.has(u.instanceId));
+    .filter((u) => c.cinematic || !stagedSet.has(u.instanceId));
 
   // RoE Shield Bunker (rules p.8): "Death Stars and DSUC cannot be destroyed
   // or be assigned damage when a Shield Bunker is in the system." Filter the
@@ -1531,10 +1538,12 @@ export function resolveCombatAssignDamage(
     if (!choice.targetsByHit[i].includes(target)) {
       return { ok: false, reason: `illegal-target-at-hit-${i}:${target}` };
     }
-    if (stagedSet.has(target)) {
-      // Target is already dead from an earlier hit this same assignment.
-      // Skip the hit (the engine doesn't auto-redirect — that's the
-      // attacker's responsibility in RAW; we don't pick for them).
+    if (!c.cinematic && stagedSet.has(target)) {
+      // BASE combat: target is already dead from an earlier hit this same
+      // assignment. Skip the hit (the engine doesn't auto-redirect — that's the
+      // attacker's responsibility in RAW; we don't pick for them). In CINEMATIC
+      // combat the attacker may deliberately pile extra damage on a lethally-
+      // damaged unit (overdamage) to beat a heal, so we DON'T skip it (#274).
       continue;
     }
     const dead = M.damageUnit(G, target, 1);
