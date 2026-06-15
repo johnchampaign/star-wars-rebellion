@@ -2024,8 +2024,12 @@ export function resolveUnderTheRadarKeep(G: GameState, probeId: string): { ok: b
   G.probeDeck.splice(idx, 1);
   G.rebel.heldProbe = probeId;
   log(G, { kind: 'under-the-radar-keep', side: 'Rebel', payload: { probeId } });
-  const autoFlush = (pc as { autoFlush?: boolean }).autoFlush;
+  const autoFlush = pc.autoFlush;
+  const viaRecruit = pc.viaRecruit;
   G.pendingChoice = undefined;
+  // Fired immediately on being recruited (#289): resume the paused recruit/
+  // refresh flow so the rest of refresh proceeds.
+  if (viaRecruit) return continueRecruitFlow(G);
   // Only when auto-triggered on draw: chain + continue the turn (manual play
   // just resolves the card without advancing).
   if (autoFlush) advanceCommandTurn(G);
@@ -4842,6 +4846,39 @@ function maybeOfferRecruitRing(G: GameState, side: Side, cardId: string): boolea
   return true;
 }
 
+/** RAW (Rules Reference, "Immediate"): an Immediate action card "must be used
+ *  as soon as the player gains the card … immediately revealed and resolved."
+ *  When a non-ring Immediate card (e.g. Under the Radar) is recruited and its
+ *  leader requirement is now satisfied, fire its effect right away instead of
+ *  letting it sit in hand for an at-will play (#289). Returns true if the effect
+ *  posted a sub-choice (the recruit flow pauses; the sub-choice's resolver
+ *  resumes it); false otherwise (the caller continues the recruit flow). */
+function maybeFireRecruitImmediate(G: GameState, side: Side, cardId: string): boolean {
+  const card = G.catalog.actions[cardId];
+  if (!card || card.timing !== 'Immediate') return false;
+  if (DROID_RING_CARDS[cardId]) return false;       // handled by the ring path
+  if (cardId === 'the-milleninium-falcon') return false; // passive from-hand trigger
+  const f = faction(G, side);
+  if (!f.actionHand.includes(cardId)) return false;
+  const reqs = card.leaderRequirement ?? [];
+  if (reqs.length > 0 && !reqs.some((lid) => f.leaderPool.includes(lid))) return false;
+  // Reveal + resolve now; the card leaves the hand to the discard.
+  const i = f.actionHand.indexOf(cardId);
+  f.actionHand.splice(i, 1);
+  f.actionDiscard.push(cardId);
+  log(G, { kind: 'action-card-play', side, payload: {
+    cardId, leaderId: null, systemId: null, timing: 'Immediate', viaRecruit: true,
+  }});
+  applyImmediateActionCardEffect(G, side, cardId);
+  // If the effect posted a sub-choice (Under the Radar's keep pick), tag it so
+  // its resolver resumes the recruit/refresh flow rather than ending a turn.
+  if (G.pendingChoice?.kind === 'UnderTheRadarKeep') {
+    G.pendingChoice.viaRecruit = true;
+    return true;
+  }
+  return !!G.pendingChoice;
+}
+
 /** After a recruit pick is fully resolved (card kept + leader chosen),
  *  advance to the next side's recruit pick, else proceed to the build step /
  *  finish the refresh. Shared by the card-pick and leader-pick resolvers. */
@@ -4937,6 +4974,7 @@ export function resolveRecruitActionCardPick(G: GameState, keepCardId: string): 
   // resolver then continues the flow. (#62)
   if (recruitLeaderFromCard(G, cur.side, keepCardId)) return { ok: true };
   if (maybeOfferRecruitRing(G, cur.side, keepCardId)) return { ok: true };
+  if (maybeFireRecruitImmediate(G, cur.side, keepCardId)) return { ok: true };
   return continueRecruitFlow(G);
 }
 
@@ -4952,6 +4990,7 @@ export function resolveRecruitLeaderPick(G: GameState, leaderId: LeaderId): { ok
   log(G, { kind: 'recruit-leader', side: c.side, payload: { leaderId, cardId: c.cardId } });
   G.pendingChoice = undefined;
   if (maybeOfferRecruitRing(G, c.side, c.cardId)) return { ok: true };
+  if (maybeFireRecruitImmediate(G, c.side, c.cardId)) return { ok: true };
   return continueRecruitFlow(G);
 }
 

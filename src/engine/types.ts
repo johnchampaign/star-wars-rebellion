@@ -717,6 +717,11 @@ export type ChoiceRequest =
       kind: 'UnderTheRadarKeep';
       side: Side; // 'Rebel'
       candidates: string[]; // the top-N probe card ids (<= 4)
+      // Set when the card auto-fired on a Command turn (resolve → advance turn).
+      autoFlush?: boolean;
+      // Set when the card fired immediately on being recruited (RAW "Immediate"
+      // timing) — the resolver resumes the paused recruit/refresh flow (#289).
+      viaRecruit?: boolean;
     }
   | {
       // Under the Radar return offer: at the start of a Rebel Command turn

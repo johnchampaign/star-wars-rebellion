@@ -8231,6 +8231,17 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
           if (entries.length === 0) return null;
           return <Row label="Rings" value={entries.join(' · ')} />;
         })()}
+        {side === 'Rebel' && f.heldProbe && (
+          // Under the Radar (#289): the Rebel peeked and is holding a probe
+          // facedown. Show its target system to the Rebel (it's their secret),
+          // and just a count to the Empire (the card is faceup in play, but
+          // which probe is hidden). Returnable at the start of a Command turn.
+          <Row label="Held probe" value={
+            side === humanSide
+              ? `${G.catalog.probes[f.heldProbe]?.systemName ?? f.heldProbe} (return at start of your Command turn)`
+              : '1 (hidden)'
+          } />
+        )}
         <Row label="Mission hand" value={
           side === humanSide
             ? <HandTip count={f.missionHand.length} cards={f.missionHand.map((cid) => {
