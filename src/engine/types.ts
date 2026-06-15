@@ -1316,6 +1316,17 @@ export type ChoiceRequest =
       // for color matching and "not already staged for destruction"). Same
       // length as `hits`.
       targetsByHit: UnitInstanceId[][];
+    }
+  | {
+      // Cinematic targeted-deal pick (RoE p.9). Cards like Tow Cables ("Deal 4
+      // damage to 1 AT-AT or AT-ST") and Ion Blast let the playing side choose
+      // which eligible enemy unit takes the burst, when 2+ are legal (#290).
+      kind: 'CinematicTargetPick';
+      side: Side;
+      theater: Theater;
+      systemId: SystemId;
+      amount: number;
+      candidates: UnitInstanceId[];
     };
 
 export type CombatActionOption =
@@ -1532,6 +1543,10 @@ export type CombatState = {
     // at this key (`${opp}:${theatre}:${round}`). Cleared when the retreat
     // resolves (whether or not they retreated).
     escapePlanCancel?: { cancelKey: string };
+    // RoE Cinematic targeted-deal (Tow Cables / Ion Blast): a CinematicTargetPick
+    // is open; once the player chooses a unit, apply `amount` damage to it. The
+    // card is already discarded; this just carries the pending application (#290).
+    cinematicTargetPick?: { side: Side; theater: Theater; cardId: string; useTop: boolean; amount: number };
     // Start-of-combat action card flags:
     // - accordingToMyDesignActive: Rebel rolls 1 fewer red die and 2 fewer
     //   black dice in round 1 (both theaters).

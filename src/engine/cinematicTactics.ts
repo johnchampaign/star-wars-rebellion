@@ -806,6 +806,33 @@ function resolveTargetDeal(G: GameState, c: CombatState, side: Side, theater: Th
   return eff.amount;
 }
 
+/** Is the chosen ability a targeted-deal (Tow Cables / Ion Blast)? Returns the
+ *  effect if so — used by the interactive target-pick path (#290). */
+export function targetDealAbilityFor(cardId: string, useTop: boolean): TargetDealEffect | null {
+  const abilities = ABILITIES[cardId];
+  if (!abilities) return null;
+  const ab = useTop ? abilities[0] : abilities[1];
+  return ab && ab.kind === 'targetDeal' ? ab : null;
+}
+
+/** Legal targets (enemy AT-AT/AT-ST, capital ship, …) for an interactive
+ *  targeted-deal pick — the instanceIds the player may choose among (#290). */
+export function cinematicTargetDealCandidates(
+  G: GameState, c: CombatState, side: Side, theater: Theater, eff: TargetDealEffect,
+): string[] {
+  return targetClassUnits(G, c, side, theater, eff.targetClass).map((u) => u.instanceId);
+}
+
+/** Apply a player-chosen targeted deal to a specific enemy unit (#290). The
+ *  card has already been discarded by the caller. A killed unit is staged for
+ *  end-of-round destruction (a heal this round can still save it). */
+export function applyChosenTargetDeal(
+  G: GameState, c: CombatState, instanceId: string, amount: number,
+): void {
+  const dead = M.damageUnit(G, instanceId, amount);
+  if (dead) (c.theaterStaged ??= []).push(instanceId);
+}
+
 /** Destroy-without-rolling — remove 1 eligible enemy unit (smallest health
  *  first, so the card spends its destroy on the cheapest valid target the
  *  AI would otherwise have to roll for). */

@@ -15,7 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -545,6 +545,32 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
         // Can't actually retreat (no destination/leader) — no cancel.
         c.flags.escapePlanCancel = undefined;
         continue;
+      }
+      // Interactive targeted-deal pick (RoE p.9, #290): cards like Tow Cables
+      // ("Deal 4 to 1 AT-AT or AT-ST") let the playing side choose the target
+      // when 2+ are legal. Discard the card now, post the pick, and apply the
+      // damage in resolveCinematicTargetPick. With 0–1 candidates there's no
+      // choice — fall through to the auto-resolving applyCinematicAbility.
+      if (sel && !sel.noAbility) {
+        const td = targetDealAbilityFor(sel.cardId, sel.useTop);
+        if (td) {
+          const cands = cinematicTargetDealCandidates(G, c, side, theater, td);
+          if (cands.length >= 2) {
+            const f = side === 'Rebel' ? G.rebel : G.empire;
+            (f.cinematicTacticDiscard ??= []).push(sel.cardId);
+            c.cinematicTacticDoneThisRound.push(key);
+            c.flags = c.flags ?? {};
+            c.flags.cinematicTargetPick = { side, theater, cardId: sel.cardId, useTop: sel.useTop, amount: td.amount };
+            G.pendingChoice = {
+              kind: 'CinematicTargetPick', side, theater, systemId: c.systemId,
+              amount: td.amount, candidates: cands,
+            };
+            log(G, { kind: 'choice-request', side, payload: {
+              kind: 'CinematicTargetPick', theater, amount: td.amount, candidates: cands.length,
+            }});
+            return; // paused — resolveCinematicTargetPick applies the damage
+          }
+        }
       }
       if (sel) applyCinematicAbility(G, c, side, theater, sel.cardId, sel.useTop);
       else log(G, { kind: 'cinematic-tactic-skip', side, payload: { theater, round: c.round } });
@@ -2215,6 +2241,29 @@ export function resolveCinematicTacticSelect(
     selection = null; // genuinely no card available even after recycle
   }
   (c.cinematicSelections ??= {})[key] = selection;
+  G.pendingChoice = undefined;
+  runCombat(G);
+  return { ok: true };
+}
+
+/** Resolve a cinematic targeted-deal pick (#290): apply the card's burst to the
+ *  enemy unit the player chose, staging it if killed, then re-enter runCombat.
+ *  The card was already discarded when the choice was posted. */
+export function resolveCinematicTargetPick(
+  G: GameState, instanceId: string
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'CinematicTargetPick') return { ok: false, reason: 'no-pending' };
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  if (!pc.candidates.includes(instanceId as UnitInstanceId)) return { ok: false, reason: 'not-a-candidate' };
+  const ctx = c.flags?.cinematicTargetPick;
+  applyChosenTargetDeal(G, c, instanceId, pc.amount);
+  log(G, { kind: 'cinematic-tactic-play', side: pc.side, payload: {
+    cardId: ctx?.cardId, ability: ctx?.useTop ? 'primary' : 'secondary',
+    theater: pc.theater, targetDealt: pc.amount, target: instanceId,
+  }});
+  if (c.flags) c.flags.cinematicTargetPick = undefined;
   G.pendingChoice = undefined;
   runCombat(G);
   return { ok: true };

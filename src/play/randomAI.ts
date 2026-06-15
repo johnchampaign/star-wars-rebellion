@@ -1204,6 +1204,25 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'CombatAssignDamage' && G.pendingChoice.side === side) {
     return handleCombatAssignDamage(G);
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'CinematicTargetPick' && G.pendingChoice.side === side) {
+    // AI: spend the targeted burst on the most-damaged eligible enemy unit
+    // (likeliest kill) — matches the old auto-pick heuristic.
+    const c = G.pendingChoice;
+    const findUnit = (id: string) => {
+      for (const sys of Object.values(G.map.systems)) {
+        const u = sys.units?.find((x) => x.instanceId === id);
+        if (u) return u;
+      }
+      return undefined;
+    };
+    const remaining = (id: string) => {
+      const u = findUnit(id);
+      if (!u) return Infinity;
+      return (G.catalog.unitTypes[u.typeId]?.health.value ?? 0) - u.damage;
+    };
+    const target = [...c.candidates].sort((a, b) => remaining(a) - remaining(b))[0];
+    return combat.resolveCinematicTargetPick(G, target).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'YodaReroll' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
     if (c.context === 'dsplans') {

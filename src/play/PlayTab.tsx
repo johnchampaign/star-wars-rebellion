@@ -190,6 +190,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'CombatAttackerTactics':    return pc.side === side;
     case 'CombatDefenderTactics':    return pc.side === side;
     case 'CombatAssignDamage':       return pc.side === side;
+    case 'CinematicTargetPick':      return pc.side === side;
     case 'YodaReroll':               return pc.side === side;
     case 'R2D2Flip':                 return pc.side === side;
     case 'SpecialDieSpend':          return pc.side === side;

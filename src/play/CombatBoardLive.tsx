@@ -210,6 +210,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
     pc?.kind === 'CombatAttackerTactics' ? pc.side :
     pc?.kind === 'CombatDefenderTactics' ? pc.side :
     pc?.kind === 'CombatAssignDamage'    ? pc.side :
+    pc?.kind === 'CinematicTargetPick'   ? pc.side :
     pc?.kind === 'YodaReroll'            ? pc.side :
     pc?.kind === 'R2D2Flip'              ? pc.side :
     pc?.kind === 'OneInAMillionOffer'    ? pc.side :
@@ -634,6 +635,9 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
         )}
         {pc?.kind === 'TargetTheGeneratorPick' && isHumanDecision && (
           <TargetTheGeneratorPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'CinematicTargetPick' && isHumanDecision && (
+          <CinematicTargetPickPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'ReadyForActionLeaderPick' && isHumanDecision && (
           <ReadyForActionPanel G={G} choice={pc} onPersist={onPersist} />
@@ -1879,6 +1883,44 @@ function TargetTheGeneratorPanel({ G, choice, onPersist }: {
           return (
             <button key={iid} onClick={() => submit(iid)} style={btn('#ff8866')}>
               {t?.name ?? u?.typeId ?? iid}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------- Cinematic targeted-deal pick (Tow Cables / Ion Blast, #290) ----------
+
+function CinematicTargetPickPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'CinematicTargetPick' }>;
+  onPersist: () => void;
+}) {
+  const ss = G.map.systems[choice.systemId];
+  const submit = (instanceId: string) => {
+    const r = combat.resolveCinematicTargetPick(G, instanceId);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>{choice.side} — choose a target:</b> deal {choice.amount} damage to 1 enemy unit.
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {choice.candidates.map((iid) => {
+          const u = ss?.units.find((x) => x.instanceId === iid);
+          const t = u ? G.catalog.unitTypes[u.typeId] : null;
+          const hp = t?.health.value ?? 0;
+          const remaining = hp - (u?.damage ?? 0);
+          return (
+            <button key={iid} onClick={() => submit(iid)} style={btn('#ffcc55')}>
+              {t?.name ?? u?.typeId ?? iid}
+              {hp > 0 && (
+                <span style={{ fontSize: 10, opacity: 0.75 }}> ({remaining}/{hp} hp)</span>
+              )}
             </button>
           );
         })}
