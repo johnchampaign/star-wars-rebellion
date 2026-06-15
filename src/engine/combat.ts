@@ -1018,9 +1018,13 @@ export function resolveYodaReroll(
       color: pa.dice[rerollIndex].color, oldFace: 'blank', newFace: fresh.face,
     }});
     pa.dice[rerollIndex] = fresh;
-    c.yodaRerollUsedRound = c.round;
-    G.yodaRerollUsedThisRound = true;
   }
+  // Mark the once-per-round Yoda reroll as USED whether or not a die was
+  // rerolled — skipping still spends the opportunity. Without this the skip
+  // didn't set the flags, so advanceAttackToTactics re-queued the same prompt
+  // and the player could never get past it (#305).
+  c.yodaRerollUsedRound = c.round;
+  G.yodaRerollUsedThisRound = true;
   G.pendingChoice = undefined;
   advanceAttackToTactics(G, c);
   return { ok: true };

@@ -910,8 +910,12 @@ function SidePanel({ G, side, units, leaderIds, align, damageAssign, isYou }: {
   const buckets: UnitInstance[][] = Array.from({ length: lanes }, () => []);
   const doomed: UnitInstance[] = [];
   for (const u of units) {
-    const ownHp = G.catalog.unitTypes[u.typeId]?.health.value ?? 1;
-    if ((u.damage ?? 0) >= ownHp) { doomed.push(u); continue; }
+    const t = G.catalog.unitTypes[u.typeId];
+    const ownHp = t?.health.value ?? 1;
+    // The Death Star (health.color === null) is invulnerable — it can never be
+    // "doomed." Its health.value is 0, which would otherwise trip `damage >=
+    // ownHp` (0 >= 0) and wrongly show an untouched Death Star as destroyed (#306).
+    if (t?.health.color !== null && (u.damage ?? 0) >= ownHp) { doomed.push(u); continue; }
     buckets[Math.min(u.damage ?? 0, lanes - 1)].push(u);
   }
   const cols = lanes + (doomed.length ? 1 : 0);
