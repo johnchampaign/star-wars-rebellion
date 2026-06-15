@@ -35,7 +35,8 @@
       "leaderPortrait": null,
       "effectKey": "",
       "rulesText": "Resolve in any Imperial system. Place units on the build queue using this system's resource icons and number.",
-      "image": "MissionEmpireAddressDelays.png"
+      "image": "MissionEmpireAddressDelays.png",
+      "copies": 2
     },
     {
       "id": "capture-rebel-operative",
@@ -247,7 +248,8 @@
       "leaderPortrait": null,
       "effectKey": "",
       "rulesText": "Attempt in any Rebel system. If successful, the Rebel player draws 8 cards from the probe deck. He gives you all cards belonging to systems that contain an Imperial unit. Then he shuffles the other cards back into the deck.",
-      "image": "MissionEmpireInterceptTransmissions.png"
+      "image": "MissionEmpireInterceptTransmissions.png",
+      "copies": 2
     },
     {
       "id": "interrogation",
@@ -261,7 +263,8 @@
       "leaderPortrait": null,
       "effectKey": "",
       "rulesText": "Attempt against a captured leader. If successful, the Rebel player must reveal his hand of objective cards.",
-      "image": "MissionEmpireInterrogation.png"
+      "image": "MissionEmpireInterrogation.png",
+      "copies": 2
     },
     {
       "id": "interrogation-droid",
@@ -402,7 +405,8 @@
       "leaderPortrait": null,
       "effectKey": "",
       "rulesText": "Resolve in any Imperial system. Draw 2 project cards.",
-      "image": "MissionEmpireSecretWeaponsResearch.png"
+      "image": "MissionEmpireSecretWeaponsResearch.png",
+      "copies": 2
     },
     {
       "id": "superlaser-online",
@@ -431,7 +435,8 @@
       "leaderPortrait": null,
       "effectKey": "",
       "rulesText": "Attempt in any populous system. If successful, gain 1 loyalty in this system.",
-      "image": "MissionEmpireTradeNegotiations.png"
+      "image": "MissionEmpireTradeNegotiations.png",
+      "copies": 2
     },
     {
       "id": "base-defenses",
@@ -501,7 +506,8 @@
       "leaderPortrait": null,
       "effectKey": "",
       "rulesText": "Attempt in any system that contains a captured leader. If successful, rescue that leader.",
-      "image": "MissionRebelDaringRescue.png"
+      "image": "MissionRebelDaringRescue.png",
+      "copies": 2
     },
     {
       "id": "demolition",
@@ -557,7 +563,8 @@
       "leaderPortrait": null,
       "effectKey": "",
       "rulesText": "Resolve in any system that does not contain an Imperial unit. Move units from the \"Rebel Base\" space to this system as if they were adjacent. Leaders in the \"Rebel Base\" space do not prevent this movement.",
-      "image": "MissionRebelHiddenFleet.png"
+      "image": "MissionRebelHiddenFleet.png",
+      "copies": 3
     },
     {
       "id": "hit-and-run",
@@ -571,7 +578,8 @@
       "leaderPortrait": null,
       "effectKey": "",
       "rulesText": "Attempt in any system. If successful, destroy up to 2-health worth of units of your choice in this system.",
-      "image": "MissionRebelHitAndRun.png"
+      "image": "MissionRebelHitAndRun.png",
+      "copies": 2
     },
     {
       "id": "ignite-rebellion",
@@ -585,7 +593,8 @@
       "leaderPortrait": null,
       "effectKey": "",
       "rulesText": "Attempt in any subjugated system. If successful, gain 3 Rebel Troopers in this system. Then resolve a combat.",
-      "image": "MissionRebelIgniteRebellion.png"
+      "image": "MissionRebelIgniteRebellion.png",
+      "copies": 2
     },
     {
       "id": "infiltration",
@@ -782,7 +791,8 @@
       "effectKey": "interdictor-development",
       "rulesText": "Place 1 Interdictor on build space 2. If 2 leaders are assigned, place on space 1 and return the card.",
       "image": "Interdictor Deployment_p.png",
-      "set": "rote"
+      "set": "rote",
+      "projectCopies": 2
     },
     {
       "id": "single-reactor-ignition",
@@ -872,7 +882,8 @@
       "effectKey": "deployment",
       "rulesText": "Attempt on a system with no Rebel units or loyalty. Gain 1 triangle ground unit.",
       "image": "Deployment.png",
-      "set": "rote"
+      "set": "rote",
+      "copies": 2
     },
     {
       "id": "message-from-high-command",
@@ -902,7 +913,8 @@
       "effectKey": "stolen-intel",
       "rulesText": "Attempt on a Rebel system. Draw a probe card. Look at the Rebel hand of missions and discard one (not a starter).",
       "image": "Stolen Intel.png",
-      "set": "rote"
+      "set": "rote",
+      "copies": 2
     },
     {
       "id": "were-the-bait",
@@ -932,7 +944,8 @@
       "effectKey": "exploit-weakness",
       "rulesText": "Attempt on a captured leader. Rebel reveals 1 random Objective card from hand and places it on top of the deck.",
       "image": "Exploit Weakness.png",
-      "set": "rote"
+      "set": "rote",
+      "copies": 2
     },
     {
       "id": "break-their-will",
@@ -977,7 +990,8 @@
       "effectKey": "imperial-might",
       "rulesText": "Resolve on a Death Star, DSUC, or Shield Bunker with no Rebel units. Take 4 Imperial units from space 1 of the build queue and place them in this system. If 2 leaders are assigned, move those leaders to Coruscant.",
       "image": "Imperial Might.png",
-      "set": "rote"
+      "set": "rote",
+      "copies": 2
     },
     {
       "id": "imperial-promotion",
@@ -1099,7 +1113,8 @@
       "effectKey": "safe-haven",
       "rulesText": "Attempt on a Rebel system with no Imperial units. Take up to 2 units from the build queue and deploy them here.",
       "image": "Safe Haven.png",
-      "set": "rote"
+      "set": "rote",
+      "copies": 2
     },
     {
       "id": "regional-aid",
@@ -1129,7 +1144,8 @@
       "effectKey": "reconnaissance",
       "rulesText": "Attempt on an Imperial system. Choose a discarded mission and return it to your hand.",
       "image": "Reconnaissance.png",
-      "set": "rote"
+      "set": "rote",
+      "copies": 2
     },
     {
       "id": "critical-rescue",
@@ -1159,7 +1175,8 @@
       "effectKey": "assault",
       "rulesText": "Attempt on a subjugated system. Roll even if unopposed. If more successes than the Imperial player, destroy up to 3 Stormtroopers, up to the difference in successes.",
       "image": "Assault.png",
-      "set": "rote"
+      "set": "rote",
+      "copies": 2
     },
     {
       "id": "plant-explosives",
@@ -1189,7 +1206,8 @@
       "effectKey": "behind-enemy-lines",
       "rulesText": "Resolve on a subjugated or Rebel system. Move 5 units from the Rebel Base, ignoring leaders and adjacency. Resolve combat.",
       "image": "Behind Enemy Lines.png",
-      "set": "rote"
+      "set": "rote",
+      "copies": 2
     },
     {
       "id": "my-only-hope",

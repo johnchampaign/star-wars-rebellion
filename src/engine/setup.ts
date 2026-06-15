@@ -569,8 +569,15 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   rebel.missionHand = [...rebelStartingMissions];
   empire.missionHand = [...empireStartingMissions];
 
-  rebel.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Rebel' && !m.isStarting && missionInDeck(m)).map((m) => m.id));
-  empire.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Empire' && !m.isStarting && !m.isProject && missionInDeck(m)).map((m) => m.id));
+  // Each mission appears `copies` times in the deck (most are 1; several have 2,
+  // Hidden Fleet has 3 — per the printed mission reference). Duplicate ids are
+  // fine: a card leaves the deck by index, and OMDH can search out a second copy
+  // even when the first is in hand (player #287). Mirrors the project-deck copies
+  // handling below.
+  const expandCopies = (m: { id: string; copies?: number }) =>
+    Array.from({ length: m.copies ?? 1 }, () => m.id);
+  rebel.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Rebel' && !m.isStarting && missionInDeck(m)).flatMap(expandCopies));
+  empire.missionDeck = shuffle(rng, Object.values(catalog.missions).filter((m) => m.side === 'Empire' && !m.isStarting && !m.isProject && missionInDeck(m)).flatMap(expandCopies));
   // Project deck: each project name appears `projectCopies` times (rr base
   // deck = 10 cards across 5 names). Duplicate ids are fine — a project leaves
   // the deck by index when drawn, and only one copy is ever active at a time.
