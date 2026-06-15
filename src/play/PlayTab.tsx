@@ -9753,8 +9753,8 @@ function TurnTrack({ G }: { G: GameState }) {
   return (
     <div style={{
       background: '#15171c', borderRadius: 4, padding: 10, marginBottom: 10,
-      display: 'flex', alignItems: 'center', gap: 8,
     }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <span style={{ fontSize: 12, color: '#aaa', minWidth: 70 }}>Turn track:</span>
       <div style={{ display: 'flex', gap: 4, flex: 1 }}>
         {visibleTurns.map((t) => {
@@ -9805,6 +9805,22 @@ function TurnTrack({ G }: { G: GameState }) {
       <span style={{ fontSize: 11, color: '#888', marginLeft: 8 }}>
         Reputation: <span style={{ color: '#aae0ff', fontWeight: 600 }}>{G.reputationMarker}</span> · <span style={{ color: '#888' }}>R=Recruit, B=Build</span>
       </span>
+    </div>
+    {/* Rebel objectives scored for reputation (player request: Foggy Leggy). */}
+    {(G.rebel.scoredObjectives?.length ?? 0) > 0 && (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', marginTop: 8 }}>
+        <span style={{ fontSize: 12, color: '#aaa', minWidth: 70 }}>Scored:</span>
+        {(G.rebel.scoredObjectives ?? []).map((s, i) => (
+          <span key={i} title={`Scored on turn ${s.turn} · +${s.reputation} reputation`} style={{
+            fontSize: 11, background: '#0c1620', border: '1px solid #2a4a5a',
+            borderRadius: 3, padding: '1px 6px', color: '#aae0ff',
+          }}>
+            {G.catalog.objectives[s.objectiveId]?.name ?? s.objectiveId}{' '}
+            <span style={{ color: '#7fd6a8', fontWeight: 600 }}>+{s.reputation}</span>
+          </span>
+        ))}
+      </div>
+    )}
     </div>
   );
 }

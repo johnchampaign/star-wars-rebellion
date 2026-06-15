@@ -192,6 +192,10 @@ export type FactionState = {
   objectiveDeck?: string[];
   objectiveHand?: string[];
   objectiveDiscard?: string[];
+  // Every objective the Rebel has SCORED for reputation, in order, for the UI's
+  // scored-objectives list (player request: Foggy Leggy). Distinct from
+  // objectiveDiscard, which also holds objectives discarded without scoring.
+  scoredObjectives?: { objectiveId: string; reputation: number; turn: number }[];
   // RoE persistent place-on-play objectives (Rebel Cell, Raid Outposts) that
   // have already placed their marker(s), so the Refresh pre-step doesn't
   // re-prompt placement after the markers are later removed/scored.
@@ -1436,6 +1440,10 @@ export type CombatState = {
   // included in attacker eligibility (RR p.5 — dying units still attack).
   // Cleared at the end of each theater step.
   theaterStaged?: string[];
+  // Every unit destroyed during this combat (any cause), in order, for the
+  // combat screen's "units removed" panel (player request: Foggy Leggy). Lives
+  // and dies with the CombatState, so it resets each battle.
+  removed?: { typeId: UnitTypeId; side: Side }[];
   // Index of the round bucket within report.rounds that the current theater
   // step is writing into. Persists across pauses so post-resume attack
   // reports attach to the right round.

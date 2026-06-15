@@ -547,6 +547,10 @@ export function destroyUnit(G: GameState, unitInstanceId: UnitInstanceId, cause:
     }
     units.splice(i, 1);
     log(G, { kind: 'destroy-unit', side: u.side, payload: { unit: u.instanceId, typeId: u.typeId, systemId: sysId, cause } });
+    // While a battle is in progress, record the loss for the combat screen's
+    // "units removed" panel (Foggy Leggy request). Combat is atomic, so any
+    // destroy during a pending combat is a combat loss.
+    if (G.pendingCombat) (G.pendingCombat.removed ??= []).push({ typeId: u.typeId, side: u.side });
     return true;
   };
   for (const [sysId, ss] of Object.entries(G.map.systems)) {
@@ -712,7 +716,7 @@ export function systemsWithTargetMarker(G: GameState, source: string): SystemId[
 export function removeRaidOutpostMarker(G: GameState, sysId: SystemId): boolean {
   if (!hasTargetMarker(G, sysId, 'raid-outposts-2')) return false;
   removeTargetMarker(G, sysId, 'raid-outposts-2', 'Rebel');
-  (G.objectiveReports ??= []).push({ objectiveId: 'raid-outposts-2', reputation: 1, via: 'refresh' });
+  recordObjectiveScored(G, 'raid-outposts-2', 1, 'refresh');
   log(G, { kind: 'raid-outposts-score', side: 'Rebel', payload: { systemId: sysId, reputation: 1 } });
   gainReputation(G, 1);
   return true;
@@ -1122,6 +1126,19 @@ export function gainReputation(G: GameState, n: number = 1): void {
     recomputeGameEnd(G);
     if (G.isGameOver) return;
   }
+}
+
+/** Record a Rebel objective scoring: queue the report-modal entry AND append to
+ *  the persistent scored-objectives list the UI shows (Foggy Leggy request).
+ *  Single chokepoint for every objective-scoring site. Does NOT grant the
+ *  reputation itself — callers still call gainReputation. */
+export function recordObjectiveScored(
+  G: GameState, objectiveId: string, reputation: number, via: string, seq?: number,
+): void {
+  const report: { objectiveId: string; reputation: number; via: string; seq?: number } = { objectiveId, reputation, via };
+  if (seq !== undefined) report.seq = seq;
+  (G.objectiveReports ??= []).push(report);
+  (G.rebel.scoredObjectives ??= []).push({ objectiveId, reputation, turn: G.timeMarker });
 }
 
 export function loseReputation(G: GameState, n: number = 1): void {

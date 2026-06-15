@@ -4163,7 +4163,7 @@ function playRefreshObjective(G: GameState, objectiveId: string, rep: number): v
   log(G, { kind: 'play-objective', side: 'Rebel', payload: {
     objectiveId, reputation: rep,
   }});
-  (G.objectiveReports ??= []).push({ objectiveId, reputation: rep, via: 'refresh', seq: G.turnLog.length });
+  M.recordObjectiveScored(G, objectiveId, rep, 'refresh', G.turnLog.length);
   M.gainReputation(G, rep);
 }
 
@@ -4218,7 +4218,7 @@ export function processPersistentObjectives(G: GameState): void {
     // So decide scoring on the board state at entry, THEN place if missing.
     const presentAtStart = M.systemsWithTargetMarker(G, 'show-no-fear-3').length > 0;
     if (presentAtStart) {
-      (G.objectiveReports ??= []).push({ objectiveId: 'show-no-fear-3', reputation: 1, via: 'refresh', seq: G.turnLog.length });
+      M.recordObjectiveScored(G, 'show-no-fear-3', 1, 'refresh', G.turnLog.length);
       log(G, { kind: 'show-no-fear-score', side: 'Rebel', payload: { reputation: 1 } });
       M.gainReputation(G, 1);
     } else {
@@ -4462,7 +4462,7 @@ export function resolveRebelCellDiscard(
     if (i >= 0) hand.splice(i, 1);
     (G.rebel.objectiveDiscard ??= []).push(objectiveId);
     log(G, { kind: 'rebel-cell-discard', side: 'Rebel', payload: { discarded: objectiveId } });
-    (G.objectiveReports ??= []).push({ objectiveId: 'rebel-cell-2', reputation: 1, via: 'refresh', seq: G.turnLog.length });
+    M.recordObjectiveScored(G, 'rebel-cell-2', 1, 'refresh', G.turnLog.length);
     M.gainReputation(G, 1);
     G.refreshRebelCellDiscardTaken = true;
   }

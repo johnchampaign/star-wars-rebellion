@@ -509,6 +509,32 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
         </div>
       )}
 
+      {/* Running tally of units destroyed in this battle (Foggy Leggy request). */}
+      {(c.removed?.length ?? 0) > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6, fontSize: 12 }}>
+          <span style={{ color: '#888' }}>Units removed:</span>
+          {(['Rebel', 'Empire'] as const).map((s) => {
+            const lost = (c.removed ?? []).filter((r) => r.side === s);
+            if (lost.length === 0) return null;
+            const counts = new Map<string, number>();
+            for (const r of lost) counts.set(r.typeId, (counts.get(r.typeId) ?? 0) + 1);
+            return (
+              <span key={s} style={{
+                background: '#0c0d10', border: `1px solid ${SIDE_COLOR[s]}88`,
+                borderRadius: 3, padding: '2px 6px',
+              }}>
+                <span style={{ color: SIDE_COLOR[s], fontWeight: 700, marginRight: 4 }}>{s}</span>
+                {[...counts].map(([tid, n], i) => (
+                  <span key={tid} style={{ marginLeft: i ? 8 : 0, color: '#cbb' }}>
+                    {n}× {G.catalog.unitTypes[tid]?.name ?? tid}
+                  </span>
+                ))}
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12, minHeight: 0 }}>
         <TheaterPanel
           G={G} c={c} theater="space" humanSide={humanSide}

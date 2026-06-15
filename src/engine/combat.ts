@@ -2743,7 +2743,7 @@ function playCombatObjective(G: GameState, oid: string): void {
   log(G, { kind: 'objective-played', side: 'Rebel', payload: {
     objectiveId: oid, reputation: rep, timing: 'Combat',
   }});
-  (G.objectiveReports ??= []).push({ objectiveId: oid, reputation: rep, via: 'combat', seq: G.turnLog.length });
+  M.recordObjectiveScored(G, oid, rep, 'combat', G.turnLog.length);
 }
 
 /** Resolve the player's combat-objective choice (which one to score), then
@@ -3031,7 +3031,7 @@ function finalizeDsPlans(G: GameState): { ok: boolean; reason?: string } {
       objectiveId: pc.objectiveId, systemId: pc.systemId, destroyed: targetId,
       faces, reputation: rep,
     }});
-    (G.objectiveReports ??= []).push({ objectiveId: pc.objectiveId, reputation: rep, via: 'death-star-plans', seq: G.turnLog.length });
+    M.recordObjectiveScored(G, pc.objectiveId, rep, 'death-star-plans', G.turnLog.length);
   } else {
     // No direct hit — RAW: "Otherwise return this card to your hand." It's
     // already in hand (we don't remove it on reveal); just log.
