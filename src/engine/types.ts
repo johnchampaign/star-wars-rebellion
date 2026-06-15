@@ -1594,6 +1594,9 @@ export type SystemActivationReport = {
   /** True if this activation brought both sides into the target and a battle
    *  began (the combat board / combat report follows). */
   startedCombat: boolean;
+  /** Monotonic ordering stamp (turnLog length at queue time) so reports of all
+   *  kinds display in true chronological order, not by a fixed priority. */
+  seq?: number;
 };
 
 export type CombatReport = {
@@ -1652,6 +1655,8 @@ export type RefreshReport = {
   builds: { systemId: SystemId | 'rebel-base'; unitTypeId: string; slot: 1 | 2 | 3 }[];
   /** Units that deployed off this side's build queue (slid off slot 1). */
   deployed: { unitTypeId: string; systemId: SystemId }[];
+  /** Monotonic ordering stamp (turnLog length at queue time). */
+  seq?: number;
 };
 
 // ---------- Pending state ----------
@@ -1838,7 +1843,7 @@ export type GameState = {
   // objective like Major Victory gained reputation silently). Same lifecycle:
   // engine appends when a Rebel objective is scored, player dismisses one at a
   // time. `via` describes how it scored (combat / refresh / death-star-plans).
-  objectiveReports?: { objectiveId: string; reputation: number; via: string }[];
+  objectiveReports?: { objectiveId: string; reputation: number; via: string; seq?: number }[];
 
   // RoE Cinematic Confrontation: Imperial leaders marked for elimination at the
   // end of the current Command phase (the last Imperial ground unit was

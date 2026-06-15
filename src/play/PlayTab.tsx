@@ -1688,66 +1688,45 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           it's not your turn, the modal isn't shown, so it can never lock. The
           report is cleared by whoever currently holds the turn, via onAckReport
           (server-persisted acknowledge online). */}
-      {/* Combat + mission report modals — when BOTH are queued, show them in
-          true chronological order via the seq stamp (turnLog length at queue
-          time). Previously both rendered at once and the mission modal (later
-          in the JSX) stacked on top, so an AI turn that fought a battle THEN
-          ran a mission showed the mission result first (#178). Legacy reports
-          without seq sort as 0 → combat-first, which matches that flow. */}
+      {/* Event-report modals (combat / mission / objective / refresh /
+          activation). Only ONE shows at a time, and it's the chronologically
+          EARLIEST queued report by its seq stamp (turnLog length at queue
+          time) — so an AI turn that, say, moved units THEN ran a mission shows
+          the move first, and combat shows before a mission that followed it
+          (#178/#193/#220). Ties break by a stable kind priority. Activation
+          reports are only eligible once nothing is mid-resolution, since a
+          combat-triggering activation must surface its combat report first. */}
       {(() => {
+        if (online && !online.yourTurn) return null;
         const cr = G.combatReports?.[0];
         const mr = G.missionReports?.[0];
-        if (online && !online.yourTurn) return null;
-        const combatFirst = !!cr && (!mr || (cr.seq ?? 0) <= (mr.seq ?? Number.MAX_SAFE_INTEGER));
-        if (cr && combatFirst) {
-          return <CombatReportModal G={G} report={cr} onDismiss={() => onAckReport('combat')} />;
+        const or = G.objectiveReports?.[0];
+        const rr = G.refreshReports?.[0];
+        const ar = G.activationReports?.[0];
+        const activationEligible = !!ar && !G.pendingMission && !G.pendingCombat && !G.pendingChoice;
+        const candidates: { kind: string; seq: number; prio: number }[] = [];
+        if (cr) candidates.push({ kind: 'combat', seq: cr.seq ?? 0, prio: 0 });
+        if (mr) candidates.push({ kind: 'mission', seq: mr.seq ?? 0, prio: 1 });
+        if (or) candidates.push({ kind: 'objective', seq: or.seq ?? 0, prio: 2 });
+        if (rr) candidates.push({ kind: 'refresh', seq: rr.seq ?? 0, prio: 3 });
+        if (activationEligible) candidates.push({ kind: 'activation', seq: ar!.seq ?? 0, prio: 4 });
+        if (candidates.length === 0) return null;
+        candidates.sort((a, b) => (a.seq - b.seq) || (a.prio - b.prio));
+        switch (candidates[0].kind) {
+          case 'combat':
+            return <CombatReportModal G={G} report={cr!} onDismiss={() => onAckReport('combat')} />;
+          case 'mission':
+            return <MissionReportModal G={G} report={mr!} onDismiss={() => onAckReport('mission')} />;
+          case 'objective':
+            return <ObjectiveReportModal G={G} report={or!} onDismiss={() => onAckReport('objective')} />;
+          case 'refresh':
+            return <RefreshReportModal G={G} report={rr!} humanSide={humanSide} onDismiss={() => onAckReport('refresh')} />;
+          case 'activation':
+            return <ActivationReportModal G={G} report={ar!} onDismiss={() => onAckReport('activation')} />;
+          default:
+            return null;
         }
-        if (mr) {
-          return <MissionReportModal G={G} report={mr} onDismiss={() => onAckReport('mission')} />;
-        }
-        return null;
       })()}
-
-      {G.objectiveReports && G.objectiveReports.length > 0
-        && (!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && (!online || online.yourTurn) && (
-        <ObjectiveReportModal
-          G={G}
-          report={G.objectiveReports[0]}
-          onDismiss={() => onAckReport('objective')}
-        />
-      )}
-
-      {G.refreshReports && G.refreshReports.length > 0
-        && (!G.missionReports || G.missionReports.length === 0)
-        && (!G.objectiveReports || G.objectiveReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && (!online || online.yourTurn) && (
-        <RefreshReportModal
-          G={G}
-          report={G.refreshReports[0]}
-          humanSide={humanSide}
-          onDismiss={() => onAckReport('refresh')}
-        />
-      )}
-
-      {/* Activation reports — lowest priority. Gated behind every other report
-         AND any in-flight resolution (a combat-triggering activation surfaces
-         its combat report/board first), so only one modal is ever on screen. */}
-      {G.activationReports && G.activationReports.length > 0
-        && (!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && (!G.objectiveReports || G.objectiveReports.length === 0)
-        && (!G.refreshReports || G.refreshReports.length === 0)
-        && !G.pendingMission && !G.pendingCombat && !G.pendingChoice
-        && (!online || online.yourTurn) && (
-        <ActivationReportModal
-          G={G}
-          report={G.activationReports[0]}
-          onDismiss={() => onAckReport('activation')}
-        />
-      )}
 
       {/* Sub-choice modals: only render when no report is queued in front,
          so the player sees the mission's report FIRST and then chooses. */}
@@ -9578,12 +9557,24 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
               // highlight that leader in the pool (+2 successes if assigned).
               const picturedLeaderId = pickerMissionId
                 ? G.catalog.missions[pickerMissionId]?.leaderPortrait : undefined;
+              // #232: also highlight leaders who carry the mission's required
+              // skill, so the player can see at a glance who's worth assigning.
+              const requiredSkill = pickerMissionId
+                ? G.catalog.missions[pickerMissionId]?.skill : undefined;
+              const skillValueFor = (leader: typeof G.catalog.leaders[string]) =>
+                ((leader.skills as Record<string, number>)?.[requiredSkill as string] ?? 0)
+                + ((leader.minorSkills as Record<string, number> | undefined)?.[requiredSkill as string] ?? 0);
               return f.leaderPool.map((lid) => {
               const leader = G.catalog.leaders[lid];
               if (!leader) return null;
               const selectable = pickerMissionId !== null;
               const isSelected = selectedLeaders.includes(lid);
               const isPictured = !!picturedLeaderId && lid === picturedLeaderId;
+              const skillValue = requiredSkill ? skillValueFor(leader) : 0;
+              // Show the skill highlight only when it isn't already the pictured
+              // leader (gold takes precedence) and isn't selected.
+              const skillMatch = skillValue > 0 && !isPictured;
+              const accent = isSelected ? color : isPictured ? '#ffb84d' : skillMatch ? '#46c8b8' : '#2a2d34';
               return (
                 <button
                   key={lid}
@@ -9594,8 +9585,9 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
                     padding: '4px 8px',
                     background: isSelected ? color : '#0c0d10',
                     color: isSelected ? '#000' : '#e8e8ea',
-                    border: `${isPictured ? 2 : 1}px solid ${isSelected ? color : isPictured ? '#ffb84d' : '#2a2d34'}`,
-                    boxShadow: isPictured && !isSelected ? '0 0 6px rgba(255,184,77,0.6)' : undefined,
+                    border: `${isPictured || skillMatch ? 2 : 1}px solid ${accent}`,
+                    boxShadow: !isSelected && isPictured ? '0 0 6px rgba(255,184,77,0.6)'
+                      : !isSelected && skillMatch ? '0 0 6px rgba(70,200,184,0.55)' : undefined,
                     borderRadius: 3,
                     cursor: selectable ? 'pointer' : 'default',
                     opacity: selectable ? 1 : 0.5,
@@ -9604,6 +9596,7 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
                 >
                   <strong>{leader.name}</strong>
                   {isPictured && <span style={{ marginLeft: 4, color: isSelected ? '#000' : '#ffb84d', fontWeight: 700 }}>🖼 +2</span>}
+                  {skillMatch && <span style={{ marginLeft: 4, color: isSelected ? '#000' : '#46c8b8', fontWeight: 700 }}>✓{requiredSkill} {skillValue}</span>}
                   <span style={{ marginLeft: 6, color: isSelected ? '#000a' : '#888', fontSize: 10 }}>
                     {Object.entries(leader.skills)
                       .filter(([, v]) => v > 0)
