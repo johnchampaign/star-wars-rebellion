@@ -4288,8 +4288,7 @@ export function flushImmediateObjectiveActivations(G: GameState, resumeKind: imp
     // Fewer than 2 remotes (essentially never): revealed but can't place.
     markPersistentActivated(G, 'raid-outposts-2');
   }
-  // Rebel Cell — the Rebel places 1 marker in a Rebel-loyalty system. If none
-  // exists yet, leave un-activated and retry at the next flush.
+  // Rebel Cell — the Rebel places 1 marker in a Rebel-loyalty system.
   if (hand.includes('rebel-cell-2') && !persistentActivated(G, 'rebel-cell-2')) {
     const rebelSystems = Object.entries(G.map.systems)
       .filter(([, ss]) => ss.loyalty === 'rebel' && !ss.destroyed)
@@ -4300,6 +4299,15 @@ export function flushImmediateObjectiveActivations(G: GameState, resumeKind: imp
       log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'RebelCellPlace' } });
       return true;
     }
+    // RAW: an Immediate objective resolves WHEN DRAWN. With no Rebel-loyalty
+    // system to place the marker in, the ability simply has no effect (no
+    // marker). Mark it resolved so it never fires later at a surprising moment
+    // once a Rebel system happens to appear mid-Command (#262). Mirrors the
+    // raid-outposts-2 "can't place → still activated" handling above.
+    markPersistentActivated(G, 'rebel-cell-2');
+    log(G, { kind: 'objective-immediate-no-target', side: 'Rebel', payload: {
+      objectiveId: 'rebel-cell-2', reason: 'no-rebel-system',
+    }});
   }
   return false;
 }
