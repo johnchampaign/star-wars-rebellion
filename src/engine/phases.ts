@@ -4700,11 +4700,18 @@ export function resolveHandLimitDiscard(G: GameState, missionIds: string[]): { o
   if (!p || p.queue.length === 0) return { ok: false, reason: 'no-queue' };
   const cur = p.queue[0];
   if (missionIds.length !== cur.count) return { ok: false, reason: `expected-${cur.count}-discards` };
-  const seen = new Set<string>();
+  // Validate by COUNT, not set membership: with duplicate mission copies (#287)
+  // a hand can legitimately hold two cards with the same id, so discarding two
+  // of that id is legal as long as you hold that many. The old no-duplicates
+  // check rejected it, which froze the Refresh phase when the AI (or a player)
+  // picked two copies of one mission (#300).
+  const avail = new Map<string, number>();
+  for (const id of cur.discardable) avail.set(id, (avail.get(id) ?? 0) + 1);
+  const used = new Map<string, number>();
   for (const id of missionIds) {
-    if (!cur.discardable.includes(id)) return { ok: false, reason: `not-discardable:${id}` };
-    if (seen.has(id)) return { ok: false, reason: `duplicate:${id}` };
-    seen.add(id);
+    const u = (used.get(id) ?? 0) + 1;
+    used.set(id, u);
+    if (u > (avail.get(id) ?? 0)) return { ok: false, reason: `not-discardable:${id}` };
   }
   const f = faction(G, cur.side);
   for (const id of missionIds) {

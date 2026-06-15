@@ -4005,12 +4005,15 @@ function HandLimitDiscardModal({ G, choice, onSubmit }: {
   choice: { kind: 'HandLimitDiscard'; side: Side; count: number; discardable: string[] };
   onSubmit: (ids: string[]) => void;
 }) {
-  const [picked, setPicked] = useState<Set<string>>(new Set());
-  const toggle = (id: string) => {
+  // Select by INDEX, not id: duplicate mission copies (#287) share an id, so an
+  // id-keyed Set can't represent "discard 2 copies of the same mission" and the
+  // human could never reach the required count (#300, human side).
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const toggle = (idx: number) => {
     setPicked((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else if (next.size < choice.count) next.add(id);
+      if (next.has(idx)) next.delete(idx);
+      else if (next.size < choice.count) next.add(idx);
       return next;
     });
   };
@@ -4028,11 +4031,11 @@ function HandLimitDiscardModal({ G, choice, onSubmit }: {
           discard ({picked.size}/{choice.count} selected). Starting and project cards don't count and can't be discarded.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
-          {choice.discardable.map((id) => {
+          {choice.discardable.map((id, idx) => {
             const m = G.catalog.missions[id];
-            const on = picked.has(id);
+            const on = picked.has(idx);
             return (
-              <button key={id} className="tab-button" onClick={() => toggle(id)}
+              <button key={`${id}-${idx}`} className="tab-button" onClick={() => toggle(idx)}
                 style={{ textAlign: 'left', padding: '8px 10px',
                   border: `1px solid ${on ? accent : '#2a2d34'}`,
                   background: on ? 'rgba(120,80,20,0.35)' : '#0c0d10' }}>
@@ -4047,7 +4050,7 @@ function HandLimitDiscardModal({ G, choice, onSubmit }: {
         <div style={{ textAlign: 'right' }}>
           <button className="tab-button active"
             disabled={picked.size !== choice.count}
-            onClick={() => onSubmit([...picked])}
+            onClick={() => onSubmit([...picked].map((i) => choice.discardable[i]))}
             style={{ padding: '6px 16px', opacity: picked.size === choice.count ? 1 : 0.5 }}>
             Discard {picked.size}
           </button>
@@ -9542,12 +9545,15 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
             {f.missionHand.length === 0 && (
               <div style={{ color: '#666', fontSize: 12, fontStyle: 'italic' }}>(no missions to assign)</div>
             )}
-            {f.missionHand.map((mid) => {
+            {f.missionHand.map((mid, mi) => {
               const card = G.catalog.missions[mid];
               if (!card) return null;
               return (
                 <div
-                  key={mid}
+                  // Index-suffixed key: duplicate mission copies (#287) share an
+                  // id, and a bare id key collides — React then mis-reconciles
+                  // and can leave ghost rows, making 2 copies look like more (#302).
+                  key={`${mid}-${mi}`}
                   style={{
                     padding: '6px 8px', marginBottom: 4, borderRadius: 3,
                     background: '#0c0d10', border: '1px solid #2a2d34',
