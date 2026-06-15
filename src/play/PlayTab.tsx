@@ -10146,6 +10146,10 @@ const ONSCREEN_REDACTED_KINDS = new Set<string>([
   'establish-trade-relations-built',
   // Probe count and identity in deferred Rapid Mobilization.
   'rapid-mobilization-deferred',
+  // False Orders bounces a lone Imperial leader's mission back to the Imperial
+  // hand — the mission is facedown, so its identity stays private (#298). The
+  // occurrence is public; the Rebel already knows which leader they chose.
+  'false-orders',
 ]);
 
 /** Log kinds that are SECRET when they belong to the opponent: leader
@@ -11255,7 +11259,9 @@ function FalseOrdersWindowModal({
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {choice.candidates.map((cand) => {
             const ldr = G.catalog.leaders[cand.leaderId];
-            const mission = G.catalog.missions[cand.missionId];
+            // Pick by LEADER only. Imperial missions are facedown, so the modal
+            // must NOT reveal which mission each leader is on (#298) — the card
+            // doesn't grant that information.
             return (
               <button
                 key={cand.leaderId}
@@ -11264,9 +11270,7 @@ function FalseOrdersWindowModal({
                 style={{ textAlign: 'left', padding: '8px 10px' }}
               >
                 <div style={{ fontWeight: 700, color: '#fff' }}>{ldr?.name ?? cand.leaderId}</div>
-                <div style={{ fontSize: 11, color: '#aaa' }}>
-                  on mission: {mission?.name ?? cand.missionId}
-                </div>
+                <div style={{ fontSize: 11, color: '#aaa' }}>on a facedown mission</div>
               </button>
             );
           })}
