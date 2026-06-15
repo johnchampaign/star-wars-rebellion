@@ -1789,6 +1789,15 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const c = G.pendingChoice;
     return phases.resolveRegionalAidPick(G, c.candidates[0]).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'SuperlaserLoyaltyPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    // Prefer flipping a Rebel-loyal (or subjugated-rebel) system; else the first.
+    const best = c.candidates.find((sid) => {
+      const ss = G.map.systems[sid];
+      return ss?.loyalty === 'rebel';
+    }) ?? c.candidates[0];
+    return phases.resolveSuperlaserLoyaltyPick(G, best).ok;
+  }
   // Break Their Will (Empire/RoE): name a populous, non-ruled-out system —
   // an unchecked region is the most informative probe. Falls back to the
   // first candidate if everything's been ruled out.

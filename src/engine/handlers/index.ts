@@ -364,18 +364,28 @@ const overseeProject: EffectHandler = (G, ctx) => {
 const superlaserOnline: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
+  const sysDef = G.catalog.systems[sysId];
   M.destroySystem(G, sysId);
   if (G.isGameOver) return true;
-  // Gain 1 loyalty in 1 populous system in this region.
-  const sysDef = G.catalog.systems[sysId];
   if (!sysDef) return true;
-  for (const other of Object.values(G.catalog.systems)) {
-    if (other.region === sysDef.region && !other.isRemote && !other.isCoruscant && other.id !== sysId) {
-      M.gainLoyalty(G, 'Empire', other.id, 1);
-      break;
-    }
-  }
-  return true;
+  // "Gain 1 loyalty in 1 populous system in this region" — the EMPIRE chooses
+  // which one; previously the engine auto-picked the first (player #284).
+  const candidates = Object.values(G.catalog.systems)
+    .filter((s) => s.id !== sysId && s.region === sysDef.region && !s.isRemote
+      && !s.isCoruscant && !G.map.systems[s.id]?.destroyed)
+    .map((s) => s.id);
+  if (candidates.length === 0) return true;
+  if (candidates.length === 1) { M.gainLoyalty(G, 'Empire', candidates[0], 1); return true; }
+  G.pendingChoice = {
+    kind: 'SuperlaserLoyaltyPick',
+    side: 'Empire',
+    candidates,
+    destroyedSystemId: sysId,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'SuperlaserLoyaltyPick', candidates: candidates.length, destroyedSystemId: sysId,
+  }});
+  return false;
 };
 
 // ----- Common Imperial -----
@@ -587,6 +597,19 @@ const planetaryConquest: EffectHandler = (G, ctx) => {
 const interrogation: EffectHandler = (G, _ctx) => {
   const hand = G.rebel.objectiveHand ?? [];
   log(G, { kind: 'interrogation-reveal', side: 'Empire', payload: { objectives: [...hand] } });
+  // The Empire EARNED this reveal, but the log line above is filtered as
+  // private info, so the Empire never saw the result (player #285). Surface the
+  // revealed objective names to the Empire as a notice they can read.
+  const names = hand.map((id) => G.catalog.objectives[id]?.name ?? id);
+  pushNotice(
+    G,
+    `interrogation-t${G.timeMarker}-${G.turnLog.length}`,
+    'Interrogation — Rebel objectives revealed',
+    names.length > 0
+      ? `The Rebel reveals their objective hand: ${names.join(', ')}.`
+      : 'The Rebel has no objective cards in hand right now.',
+    'Empire',
+  );
   return true;
 };
 

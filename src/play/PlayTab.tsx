@@ -261,6 +261,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'ReconnaissancePick':       return pc.side === side;
     case 'DrawThemOutPick':          return pc.side === side;
     case 'RegionalAidPick':          return pc.side === side;
+    case 'SuperlaserLoyaltyPick':    return pc.side === side;
     case 'BehindEnemyLinesUnits':    return pc.side === side;
     case 'WereTheBaitUnits':         return pc.side === side;
     case 'ImperialMightUnits':       return pc.side === side;
@@ -2459,6 +2460,23 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           candidates={G.pendingChoice.candidates}
           onPick={(sid) => {
             const r = phases.resolveRegionalAidPick(G, sid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'SuperlaserLoyaltyPick'
+        && G.pendingChoice.side === humanSide && (
+        <MapPickerOverlay
+          G={G} systems={systemsRef.current} masks={masksRef.current} humanSide={humanSide}
+          color={sideColor(G.pendingChoice.side)}
+          title="Superlaser Online — gain loyalty in the region"
+          instructions="Pick a populous system in the destroyed system's region to gain 1 Imperial loyalty."
+          candidates={G.pendingChoice.candidates}
+          onPick={(sid) => {
+            const r = phases.resolveSuperlaserLoyaltyPick(G, sid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />

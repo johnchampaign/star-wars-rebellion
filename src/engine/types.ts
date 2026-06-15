@@ -637,6 +637,15 @@ export type ChoiceRequest =
       targetSystemId: SystemId;
     }
   | {
+      // Superlaser Online (Empire project): after destroying the system, the
+      // Empire picks 1 populous system in the same region to gain Imperial
+      // loyalty on (it's the player's choice, not auto-picked — player #284).
+      kind: 'SuperlaserLoyaltyPick';
+      side: Side; // 'Empire'
+      candidates: SystemId[];
+      destroyedSystemId: SystemId;
+    }
+  | {
       // Behind Enemy Lines (Rebel, RoE): pick up to 5 units (ANY theatre)
       // from the Rebel Base to move to the target system, ignoring leaders
       // and adjacency, then resolve combat. Like LeadStrikeTeamUnits but

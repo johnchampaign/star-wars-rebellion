@@ -3051,6 +3051,21 @@ export function resolveRegionalAidPick(G: GameState, systemId: SystemId): { ok: 
   return { ok: true };
 }
 
+/** Superlaser Online: the Empire picks which populous system in the region
+ *  gains 1 Imperial loyalty (player #284). */
+export function resolveSuperlaserLoyaltyPick(G: GameState, systemId: SystemId): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'SuperlaserLoyaltyPick') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(systemId)) return { ok: false, reason: 'not-a-candidate' };
+  M.gainLoyalty(G, pc.side, systemId, 1);
+  log(G, { kind: 'superlaser-loyalty', side: pc.side, payload: {
+    systemId, destroyedSystemId: pc.destroyedSystemId,
+  }});
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Draw Them Out (Empire/Krennic, RoE): Empire picks which Rebel leader
  *  to pull from the pool and place at the target system. */
 export function resolveDrawThemOutPick(G: GameState, leaderId: LeaderId): { ok: boolean; reason?: string } {
