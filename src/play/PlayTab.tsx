@@ -5076,7 +5076,7 @@ function SimpleLeaderPickModal({ G, color, title, candidates, onPick }: {
 /** Destroy Up To N Health — generic unit-checklist with budget tracking. */
 function DestroyUpToHealthModal({ G, choice, onSubmit }: {
   G: GameState;
-  choice: { kind: 'DestroyUpToHealth'; systemId: string; candidates: string[]; budget: number; cardName: string; side: Side };
+  choice: { kind: 'DestroyUpToHealth'; systemId: string; candidates: string[]; budget: number; unitCap?: number; cardName: string; side: Side };
   onSubmit: (ids: string[]) => void;
 }) {
   const ss = G.map.systems[choice.systemId] ?? G.map.rebelBaseSpace;
@@ -5087,6 +5087,7 @@ function DestroyUpToHealthModal({ G, choice, onSubmit }: {
   });
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const spent = Array.from(picked).reduce((s, uid) => s + (cands.find((c) => c.uid === uid)?.hp ?? 0), 0);
+  const atUnitCap = choice.unitCap != null && picked.size >= choice.unitCap;
   const color = sideColor(choice.side);
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
@@ -5097,11 +5098,12 @@ function DestroyUpToHealthModal({ G, choice, onSubmit }: {
           {choice.cardName} — destroy up to {choice.budget} health
         </div>
         <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
-          Spent: {spent} / {choice.budget}
+          Spent: {spent} / {choice.budget} health
+          {choice.unitCap != null && ` · ${picked.size} / ${choice.unitCap} units`}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
           {cands.map((c) => {
-            const willFit = picked.has(c.uid) || spent + c.hp <= choice.budget;
+            const willFit = picked.has(c.uid) || (spent + c.hp <= choice.budget && !atUnitCap);
             return (
               <label key={c.uid} style={{ display: 'flex', gap: 6, padding: 4, background: '#1f2128',
                 borderRadius: 3, cursor: willFit ? 'pointer' : 'not-allowed', fontSize: 13, opacity: willFit ? 1 : 0.5 }}>
@@ -6384,7 +6386,7 @@ function MissionReportModal({ G, report, onDismiss }: {
             {report.result === 'failure'
               ? '✗ Mission effect does NOT fire. No card play, no peek, no objective change.'
               : report.result === 'auto-success'
-                ? '✓ Mission effect fires — no opposition possible.'
+                ? '✓ Mission effect fires — unopposed (the opponent committed no leader to oppose).'
                 : '✓ Mission effect fires.'}
           </div>
         </div>

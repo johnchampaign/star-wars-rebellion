@@ -323,6 +323,10 @@ export type ChoiceRequest =
       systemId: SystemId;
       candidates: UnitInstanceId[];
       budget: number;
+      // Optional cap on the NUMBER of units (separate from the health budget).
+      // Plant Explosives: "destroy up to 3 ground units, combined health up to
+      // the difference in successes" — 3 units AND health <= margin (#303).
+      unitCap?: number;
       cardName: string;
     }
   | {

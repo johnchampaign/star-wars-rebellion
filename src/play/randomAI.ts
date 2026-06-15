@@ -2227,6 +2227,7 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const picks: string[] = [];
     for (const x of sorted) {
       if (spent + x.hp > c.budget) continue;
+      if (c.unitCap != null && picks.length >= c.unitCap) break; // Plant Explosives: ≤3 units (#303)
       picks.push(x.uid); spent += x.hp;
     }
     return phases.resolveDestroyUpToHealth(G, picks).ok;

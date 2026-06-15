@@ -50,6 +50,7 @@ function queueDestroyUpToHealth(
   healthBudget: number,
   cardName: string,
   theater?: 'space' | 'ground',
+  unitCap?: number,
 ): boolean {
   const ss = sysId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[sysId];
   if (!ss) return false;
@@ -69,10 +70,11 @@ function queueDestroyUpToHealth(
     systemId: sysId,
     candidates,
     budget: healthBudget,
+    unitCap,
     cardName,
   };
   log(G, { kind: 'choice-request', side: resolvingSide, payload: {
-    kind: 'DestroyUpToHealth', card: cardName, candidates: candidates.length, budget: healthBudget,
+    kind: 'DestroyUpToHealth', card: cardName, candidates: candidates.length, budget: healthBudget, unitCap,
   }});
   return true;
 }
@@ -1771,14 +1773,18 @@ const heist: EffectHandler = (G, ctx) => {
 const plantExplosives: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  const budget = Math.min(3, ctx.successMargin ?? 3);
-  if (budget <= 0) {
+  // RAW: "destroy up to 3 ground units, combined health up to the difference in
+  // successes." Two SEPARATE limits — at most 3 units AND total health <= the
+  // success margin. The health budget is the full margin (NOT capped at 3); the
+  // 3 is a unit-count cap (#303).
+  const healthBudget = ctx.successMargin ?? 0;
+  if (healthBudget <= 0) {
     log(G, { kind: 'plant-explosives-no-margin', side: 'Rebel', payload: { systemId: sysId } });
     return true;
   }
   // queueDestroyUpToHealth posts a choice (returns true) or no-ops if there
   // are no candidates. Either way the mission flow continues.
-  queueDestroyUpToHealth(G, 'Rebel', 'Empire', sysId, budget, 'Plant Explosives', 'ground');
+  queueDestroyUpToHealth(G, 'Rebel', 'Empire', sysId, healthBudget, 'Plant Explosives', 'ground', 3);
   return true;
 };
 

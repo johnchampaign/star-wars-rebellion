@@ -2334,6 +2334,9 @@ export function resolveDestroyUpToHealth(G: GameState, instanceIds: string[]): {
     totalH += G.catalog.unitTypes[u.typeId]?.health.value ?? 0;
   }
   if (totalH > choice.budget) return { ok: false, reason: `over-budget:${totalH}/${choice.budget}` };
+  if (choice.unitCap != null && instanceIds.length > choice.unitCap) {
+    return { ok: false, reason: `over-unit-cap:${instanceIds.length}/${choice.unitCap}` };
+  }
   for (const uid of instanceIds) M.destroyUnit(G, uid, 'mission-effect');
   log(G, { kind: 'destroy-up-to-health', side: choice.side, payload: { card: choice.cardName, killed: instanceIds.length, totalHealth: totalH } });
   G.pendingChoice = undefined;
