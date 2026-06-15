@@ -1001,6 +1001,9 @@ export type ChoiceRequest =
       // Set when the prompt is offered the instant the card is recruited
       // (issue #221), so the resolver resumes the recruit flow afterward.
       viaRecruit?: boolean;
+      // Set when offered for a droid ring sitting in the opening hand at game
+      // start, so the resolver chains to the next un-attached starting ring.
+      viaStartingHand?: boolean;
     }
   | {
       // Refresh recruit step: drew (at least) 2 action cards, keep 1 (into

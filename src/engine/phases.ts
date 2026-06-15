@@ -579,6 +579,10 @@ function maybeAdvanceFromSetup(G: GameState): void {
     G.phase = 'Assignment';
     G.currentPlayer = 'Rebel';
     log(G, { kind: 'phase', payload: { phase: 'Assignment', via: 'setup-complete' } });
+    // A droid ring (R2-D2 / C-3PO) in the opening hand attaches immediately at
+    // game start, before the first Assignment turn (Immediate timing; mirrors
+    // recruit-time attachment, #221). Posts an AttachRingPick if one is waiting.
+    flushStartingRings(G);
   }
 }
 
@@ -5538,6 +5542,32 @@ function nonRingedLeadersOf(G: GameState, side: Side): LeaderId[] {
   });
 }
 
+/** Droid-ring action cards (R2-D2 / C-3PO) are dealt in the Rebel's opening
+ *  hand and carry an Immediate "attach this ring" effect, so — exactly like a
+ *  ring acquired by recruiting (#221) — the ring should attach the moment the
+ *  game begins rather than waiting for the player to play the card manually.
+ *  Offer the first un-attached droid ring still in the Rebel's hand as an
+ *  AttachRingPick; resolveAttachRing chains to the next via the viaStartingHand
+ *  tag. Returns true (caller pauses) if it posted a choice. Idempotent: a ring
+ *  already on a leader is skipped, so re-entry is a no-op. */
+export function flushStartingRings(G: GameState): boolean {
+  if (G.pendingChoice) return false;
+  const f = faction(G, 'Rebel');
+  for (const cid of f.actionHand) {
+    const ringId = DROID_RING_CARDS[cid];
+    if (!ringId) continue;
+    if (M.findRingHolder(G, ringId)) continue; // already attached
+    const reqs = G.catalog.actions[cid]?.leaderRequirement ?? [];
+    if (reqs.length > 0 && !reqs.some((lid) => f.leaderPool.includes(lid))) continue;
+    const candidates = nonRingedLeadersOf(G, 'Rebel');
+    if (candidates.length === 0) continue;
+    G.pendingChoice = { kind: 'AttachRingPick', side: 'Rebel', cardId: cid, ringId, candidates, viaStartingHand: true };
+    log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'AttachRingPick', cardId: cid, ringId, candidates } });
+    return true;
+  }
+  return false;
+}
+
 /** Resolve the player's choice of which leader to attach a droid ring to. */
 export function resolveAttachRing(G: GameState, leaderId: LeaderId): { ok: boolean; reason?: string } {
   const pc = G.pendingChoice;
@@ -5554,10 +5584,14 @@ export function resolveAttachRing(G: GameState, leaderId: LeaderId): { ok: boole
     cardId: pc.cardId, leaderId, systemId: null, timing: 'attach-ring',
   }});
   const viaRecruit = pc.viaRecruit;
+  const viaStartingHand = pc.viaStartingHand;
   G.pendingChoice = undefined;
   // When the ring was offered at recruit time (#221), resume the paused
   // refresh recruit flow so the rest of recruit/build proceeds.
   if (viaRecruit) return continueRecruitFlow(G);
+  // When offered from the opening hand, chain to the next un-attached starting
+  // ring (a hand could hold both R2-D2 and C-3PO).
+  if (viaStartingHand) { flushStartingRings(G); return { ok: true }; }
   return { ok: true };
 }
 
