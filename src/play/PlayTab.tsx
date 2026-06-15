@@ -5644,6 +5644,21 @@ function BehindEnemyLinesUnitsModal({ G, choice, onSubmit }: {
     });
   };
 
+  // Transport check (#281): the card waives leaders + adjacency, NOT transport.
+  // Ground units and restriction-icon fighters in the selection each need 1
+  // carrier capacity from a ship that's ALSO moving. Mirror the engine's
+  // validateMoveOrderTransport so the UI blocks an untransportable selection.
+  let capacity = 0, capacityShips = 0, required = 0;
+  for (const u of units) {
+    if (!picked.has(u.instanceId)) continue;
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t) continue;
+    if (t.transport.capacity > 0) { capacity += t.transport.capacity; capacityShips++; }
+    if (t.transport.restriction) required++;
+    if (t.theater === 'ground' && t.class !== 'structure') required++;
+  }
+  const transportOk = required === 0 || (capacityShips >= 1 && capacity >= required);
+
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
@@ -5658,7 +5673,8 @@ function BehindEnemyLinesUnitsModal({ G, choice, onSubmit }: {
         </div>
         <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>
           Choose up to {choice.max} units (any theatre) from the Rebel Base to move to {targetName}
-          {' '}(ignoring leaders, transport, and adjacency). Combat resolves immediately after.
+          {' '}(ignoring leaders and adjacency). Ground units and fighters still need a
+          {' '}transport ship moving with them. Combat resolves immediately after.
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
           {units.map((u) => {
@@ -5686,13 +5702,17 @@ function BehindEnemyLinesUnitsModal({ G, choice, onSubmit }: {
           })}
         </div>
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
-          <span style={{ color: '#888', fontSize: 11, marginRight: 'auto' }}>
+          <span style={{ color: transportOk ? '#888' : '#e0625a', fontSize: 11, marginRight: 'auto' }}>
             {picked.size}/{choice.max} selected
+            {!transportOk && ` · need a transport ship (capacity ${capacity}/${required})`}
           </span>
           <button
-            onClick={() => onSubmit(Array.from(picked))}
-            style={{ padding: '6px 18px', background: '#aae0ff', color: '#000',
-              border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
+            onClick={() => transportOk && onSubmit(Array.from(picked))}
+            disabled={!transportOk}
+            style={{ padding: '6px 18px', background: transportOk ? '#aae0ff' : '#2a2c33',
+              color: transportOk ? '#000' : '#777',
+              border: 'none', borderRadius: 3, cursor: transportOk ? 'pointer' : 'not-allowed',
+              fontWeight: 600, fontSize: 13 }}
           >
             Send {picked.size} unit{picked.size === 1 ? '' : 's'} & start combat
           </button>

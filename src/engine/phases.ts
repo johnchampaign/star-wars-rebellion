@@ -662,13 +662,21 @@ export function unassignLeader(G: GameState, side: Side, missionId: string): { o
     if (!f.leaderPool.includes(lid)) f.leaderPool.push(lid);
   }
   f.leadersOnMissions.splice(idx, 1);
-  // An un-revealed assigned mission returns to the player's hand — including
-  // ones fetched from the deck by Our Most Desperate Hour / Proceeding As
-  // Planned. Per RR "Pass", an assigned-but-unrevealed mission goes to hand
-  // with no special exception for fetched cards (RAW review of #108). This
-  // matches the end-of-round Refresh cleanup, which also returns to hand, so
-  // both paths now agree.
-  if (!f.missionHand.includes(missionId)) f.missionHand.push(missionId);
+  // Where the unassigned mission goes:
+  //  - A normally-assigned mission (drawn into hand) returns to the HAND, per
+  //    RR "Pass" — matching the end-of-round Refresh cleanup.
+  //  - A mission FETCHED from the deck by Our Most Desperate Hour / Proceeding
+  //    As Planned was never in hand; it was pulled out with a specific leader
+  //    on it (Leia for OMDH). Returning it to hand lets the player re-assign it
+  //    to anyone, dropping the compulsory leader and effectively keeping a
+  //    deck-searched card for free (player #280). It returns to the DECK
+  //    instead, undoing the search. (Corrects the #108 hand-return ruling, which
+  //    conflicted with #89's "don't put the fetched card in hand".)
+  if (entry.fromDeck) {
+    if (!f.missionDeck.includes(missionId)) f.missionDeck.push(missionId);
+  } else if (!f.missionHand.includes(missionId)) {
+    f.missionHand.push(missionId);
+  }
   log(G, { kind: 'unassign-leader', side, payload: { missionId, leaderIds: entry.leaderIds, fromDeck: !!entry.fromDeck } });
   return { ok: true };
 }
@@ -1942,6 +1950,11 @@ export function resolveBehindEnemyLinesUnits(G: GameState, unitIds: string[]): {
     seen.add(uid);
   }
   const { targetSystemId, sourceSystemId } = choice;
+  // Behind Enemy Lines waives leaders and adjacency but NOT transport (#281):
+  // ground units still need carrier capacity among the moved ships. Reject a
+  // selection that can't be transported.
+  const v = validateMoveOrderTransport(G, 'Rebel', { fromSystemId: sourceSystemId as SystemId, unitInstanceIds: unitIds });
+  if (!v.ok) return { ok: false, reason: `transport:${v.reason}` };
   for (const uid of unitIds) M.moveUnit(G, uid, sourceSystemId, targetSystemId);
   log(G, { kind: 'behind-enemy-lines', side: 'Rebel', payload: {
     systemId: targetSystemId, moved: unitIds.length,

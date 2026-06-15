@@ -1994,14 +1994,11 @@ const behindEnemyLines: EffectHandler = (G, ctx) => {
     triggerCombatAt(G, 'Rebel', sysId);
     return true;
   }
-  if (rebelUnits.length <= 5) {
-    for (const u of rebelUnits) M.moveUnit(G, u.instanceId, baseSourceId, sysId);
-    log(G, { kind: 'behind-enemy-lines', side: 'Rebel', payload: {
-      systemId: sysId, moved: rebelUnits.length, auto: true,
-    }});
-    triggerCombatAt(G, 'Rebel', sysId);
-    return true;
-  }
+  // Always let the player choose the (up to 5) units to send. The card waives
+  // leaders and adjacency but NOT transport (player #281) — ground units still
+  // need carrier capacity among the moved ships — so the selection has to be
+  // transport-validated, which resolveBehindEnemyLinesUnits does. (Previously a
+  // <=5-unit base auto-moved everything, ignoring transport.)
   G.pendingChoice = {
     kind: 'BehindEnemyLinesUnits',
     side: 'Rebel',
