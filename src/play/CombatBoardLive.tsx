@@ -871,12 +871,20 @@ function SidePanel({ G, side, units, leaderIds, align, damageAssign, isYou }: {
   // damage lanes to render). Cap at 5 (the SSD's max HP).
   const maxHp = Math.max(1, ...units.map((u) => G.catalog.unitTypes[u.typeId]?.health.value ?? 1));
   const lanes = Math.min(5, maxHp); // 0..maxHp-1 damage shown; >=maxHp dies
-  // Bucket each instance into its damage lane (0 = pristine).
+  // Bucket each instance into its damage lane (0 = pristine). A unit at or past
+  // its OWN health is lethally damaged — in cinematic combat it's "staged",
+  // destroyed at end of round but still on the board. It goes in a separate
+  // "doomed" lane rather than being clamped into the last damage lane, which
+  // previously showed e.g. a 2-HP AT-ST with 2 damage as merely "1 dmg" and
+  // hid that it was already dead (players #264/#265).
   const buckets: UnitInstance[][] = Array.from({ length: lanes }, () => []);
+  const doomed: UnitInstance[] = [];
   for (const u of units) {
-    const dmg = Math.min(u.damage ?? 0, lanes - 1);
-    buckets[dmg].push(u);
+    const ownHp = G.catalog.unitTypes[u.typeId]?.health.value ?? 1;
+    if ((u.damage ?? 0) >= ownHp) { doomed.push(u); continue; }
+    buckets[Math.min(u.damage ?? 0, lanes - 1)].push(u);
   }
+  const cols = lanes + (doomed.length ? 1 : 0);
 
   return (
     <div style={{
@@ -909,7 +917,7 @@ function SidePanel({ G, side, units, leaderIds, align, damageAssign, isYou }: {
       ) : (
         <div style={{
           display: 'grid',
-          gridTemplateColumns: `repeat(${lanes}, minmax(56px, 1fr))`,
+          gridTemplateColumns: `repeat(${cols}, minmax(56px, 1fr))`,
           gap: 4, marginTop: 2,
         }}>
           {/* Lane headers */}
@@ -921,6 +929,14 @@ function SidePanel({ G, side, units, leaderIds, align, damageAssign, isYou }: {
               {lane === 0 ? 'undmg' : `${lane} dmg`}
             </div>
           ))}
+          {doomed.length > 0 && (
+            <div key="h-doomed" style={{
+              fontSize: 9, color: '#e0625a', textAlign: 'center',
+              textTransform: 'uppercase', letterSpacing: 0.4, fontWeight: 700,
+            }}>
+              destroyed
+            </div>
+          )}
           {/* Lane contents — per-instance icons */}
           {buckets.map((bucket, lane) => (
             <div key={`b-${lane}`} style={{
@@ -944,6 +960,21 @@ function SidePanel({ G, side, units, leaderIds, align, damageAssign, isYou }: {
               })}
             </div>
           ))}
+          {doomed.length > 0 && (
+            <div key="b-doomed" style={{
+              display: 'flex', flexWrap: 'wrap', gap: 2,
+              justifyContent: 'center', alignItems: 'flex-start',
+              minHeight: 30,
+              background: 'rgba(224,98,90,0.18)',
+              border: '1px solid #7a2f2a', borderRadius: 3, padding: 3,
+              // Lethally damaged — destroyed at end of the combat round.
+              opacity: 0.7,
+            }} title="Lethally damaged — destroyed at the end of this combat round (unless a heal removes the damage first). Can't take more hits.">
+              {doomed.map((u) => (
+                <UnitIcon key={u.instanceId} G={G} unit={u} />
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
