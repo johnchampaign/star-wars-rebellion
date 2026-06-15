@@ -8158,17 +8158,25 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
         } />
         <Row label="Action deck" value={`${f.actionDeck.length} cards`} />
         {side === 'Rebel' && (() => {
-          // Show where the R2-D2 / C-3PO rings are attached (the discard
-          // ability only works in the bearer's system).
+          // Show where every ring is attached. Previously only the R2-D2 / C-3PO
+          // droid rings were listed, so a leader awarded the Master Yoda ring via
+          // Seek Yoda (or the K-2SO / bounty / dark-side rings) showed nothing and
+          // looked like they got no ring at all (player report #275).
+          const RING_LABELS: Record<string, string> = {
+            r2d2: 'R2-D2', c3po: 'C-3PO', k2so: 'K-2SO',
+            yoda: 'Yoda', bounty: 'Bounty', 'dark-side': 'Dark Side',
+          };
           const att = G.leaderAttachments ?? {};
           const entries: string[] = [];
           for (const lid of Object.keys(att)) {
             const name = G.catalog.leaders[lid]?.name ?? lid;
-            if (att[lid].includes('r2d2')) entries.push(`R2-D2 → ${name}`);
-            if (att[lid].includes('c3po')) entries.push(`C-3PO → ${name}`);
+            for (const ring of att[lid]) {
+              const label = RING_LABELS[ring];
+              if (label) entries.push(`${label} → ${name}`);
+            }
           }
           if (entries.length === 0) return null;
-          return <Row label="Droid rings" value={entries.join(' · ')} />;
+          return <Row label="Rings" value={entries.join(' · ')} />;
         })()}
         <Row label="Mission hand" value={
           side === humanSide
