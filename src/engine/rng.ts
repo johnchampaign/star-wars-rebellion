@@ -43,10 +43,16 @@ export function pick<T>(rng: SeededRngState, arr: readonly T[]): T {
 
 /** Roll a single die face. Probabilities per the SWR custom dice:
  *  red:   2 hits, 1 direct hit, 1 special, 2 blanks (6 faces)
- *  black: 3 hits, 1 special, 2 blanks (6 faces)
- *  green: per Rise of Empire; ignored in base game */
+ *  black: 2 hits, 1 direct hit, 1 special, 2 blanks (6 faces)
+ *  green: per Rise of Empire; ignored in base game
+ *  The black die's faces match the red die's (the colour only governs which
+ *  units a regular hit may damage). The printed black die (images/Black 1-6.PNG)
+ *  reads blank, blank, hit, hit, DIRECT-HIT, special — identical symbols to the
+ *  red die. The engine previously rolled black with three plain hits and no
+ *  direct hit (player report #263), which under-produced colour-bypassing
+ *  direct hits in every battle. */
 const RED_FACES: import('./types').DieFace[] = ['hit', 'hit', 'direct-hit', 'special', 'blank', 'blank'];
-const BLACK_FACES: import('./types').DieFace[] = ['hit', 'hit', 'hit', 'special', 'blank', 'blank'];
+const BLACK_FACES: import('./types').DieFace[] = ['hit', 'hit', 'direct-hit', 'special', 'blank', 'blank'];
 // RoE green die: 4 blanks + 2 direct hits, no regular hit and no special.
 // Per the printed die (images/Green 1.PNG = blank face, images/Green 5_6.PNG =
 // the direct-hit faces 5 & 6) and confirmed by player reports (green dice only

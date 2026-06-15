@@ -11299,7 +11299,7 @@ function DiceKeyModal({ onClose }: { onClose: () => void }) {
   // Faces per die, matching RED_FACES / BLACK_FACES / GREEN_FACES in rng.ts exactly.
   const dice: { color: 'red' | 'black' | 'green'; faces: { face: string; n: number }[] }[] = [
     { color: 'red',   faces: [{ face: 'hit', n: 2 }, { face: 'direct-hit', n: 1 }, { face: 'special', n: 1 }, { face: 'blank', n: 2 }] },
-    { color: 'black', faces: [{ face: 'hit', n: 3 }, { face: 'special', n: 1 }, { face: 'blank', n: 2 }] },
+    { color: 'black', faces: [{ face: 'hit', n: 2 }, { face: 'direct-hit', n: 1 }, { face: 'special', n: 1 }, { face: 'blank', n: 2 }] },
     { color: 'green', faces: [{ face: 'direct-hit', n: 2 }, { face: 'blank', n: 4 }] },
   ];
   const dieLabel = (c: 'red' | 'black' | 'green') => c === 'red' ? 'Red die' : c === 'black' ? 'Black die' : 'Green die (Rise of the Empire)';
