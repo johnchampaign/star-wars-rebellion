@@ -916,6 +916,18 @@ export type ChoiceRequest =
       candidates: string[]; // missionIds in the Rebel's deck
     }
   | {
+      // FFG FAQ (May 2019): an ability used during the ASSIGNMENT phase that
+      // places a leader on a mission (Our Most Desperate Hour, Proceeding As
+      // Planned) lets the player assign a SECOND leader to that mission — the
+      // 2-leader assignment limit. Offered after the first leader is placed; the
+      // player may decline (null). (#309)
+      kind: 'AssignSecondLeaderPick';
+      side: Side;
+      missionId: string;
+      candidates: LeaderId[]; // the side's pool leaders
+      cardName: string;
+    }
+  | {
       // Proceeding As Planned (Empire action card): Empire searches the
       // project deck for 1 project and assigns this leader to it.
       kind: 'ProceedingAsPlannedPick';

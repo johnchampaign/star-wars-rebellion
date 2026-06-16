@@ -230,6 +230,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'RecruitActionCardPick':    return pc.side === side;
     case 'PlayAssignmentActionCard': return pc.side === side;
     case 'FalseOrdersWindow':        return pc.side === side;
+    case 'AssignSecondLeaderPick':   return pc.side === side;
     case 'PlayImmediateActionCard':  return pc.side === side;
     case 'ArmCardProbePick':         return pc.side === side;
     case 'ActionCardSystemPick':     return pc.side === side;
@@ -2636,6 +2637,16 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           assignedLeaderId={G.pendingChoice.leaderId}
           onPick={(mid) => {
             const r = phases.resolveProceedingAsPlannedPick(G, mid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {G.pendingChoice?.kind === 'AssignSecondLeaderPick'
+        && G.pendingChoice.side === humanSide && (
+        <AssignSecondLeaderModal G={G} choice={G.pendingChoice}
+          onPick={(lid) => {
+            const r = phases.resolveAssignSecondLeader(G, lid);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -11320,6 +11331,50 @@ function PlayAssignmentActionCardModal({
 }
 
 // ----- False Orders end-of-Assignment window (#293) -----
+
+// ----- Optional second leader after OMDH / Proceeding As Planned (#309) -----
+
+function AssignSecondLeaderModal({ G, choice, onPick }: {
+  G: GameState;
+  choice: { kind: 'AssignSecondLeaderPick'; side: Side; missionId: string; candidates: string[]; cardName: string };
+  onPick: (leaderId: string | null) => void;
+}) {
+  const color = sideColor(choice.side);
+  const mission = G.catalog.missions[choice.missionId];
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 600, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
+      }}>
+        <h3 style={{ color, marginTop: 0 }}>{choice.cardName} — assign a second leader?</h3>
+        <div style={{ color: '#aaa', fontSize: 13, marginBottom: 10 }}>
+          Because this was used during the Assignment phase, you may assign one more
+          leader to <b>{mission?.name ?? choice.missionId}</b> (the 2-leader limit), or
+          decline to keep them free.
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {choice.candidates.map((lid) => {
+            const ldr = G.catalog.leaders[lid];
+            return (
+              <button key={lid} className="tab-button" onClick={() => onPick(lid)}
+                style={{ textAlign: 'left', padding: '8px 10px' }}>
+                {ldr?.name ?? lid}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 12, display: 'flex', justifyContent: 'flex-end' }}>
+          <button className="tab-button" onClick={() => onPick(null)}>Decline (keep leaders free)</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function FalseOrdersWindowModal({
   G, choice, onPick,

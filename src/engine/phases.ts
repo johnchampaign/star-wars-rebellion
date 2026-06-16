@@ -3708,6 +3708,49 @@ export function resolveOurMostDesperateHourPick(
   log(G, { kind: 'our-most-desperate-hour-applied', side: 'Rebel', payload: {
     missionId, leaderId: 'princess-leia',
   }});
+  // FFG FAQ (May 2019): used during Assignment, so the Rebel MAY add a second
+  // leader to this mission (#309). Offer it; the resolver clears the choice.
+  maybeOfferSecondLeader(G, 'Rebel', missionId, 'Our Most Desperate Hour');
+  return { ok: true };
+}
+
+/** FFG FAQ (May 2019): an Assignment-phase ability that places a leader on a
+ *  mission (OMDH, Proceeding As Planned) lets the player assign a SECOND leader
+ *  to it. Posts an AssignSecondLeaderPick when the side has a pool leader to add;
+ *  otherwise clears the pending choice. (#309) */
+function maybeOfferSecondLeader(G: GameState, side: Side, missionId: string, cardName: string): void {
+  const f = faction(G, side);
+  const candidates = [...f.leaderPool];
+  if (candidates.length === 0) { G.pendingChoice = undefined; return; }
+  G.pendingChoice = { kind: 'AssignSecondLeaderPick', side, missionId, candidates, cardName };
+  log(G, { kind: 'choice-request', side, payload: {
+    kind: 'AssignSecondLeaderPick', missionId, candidates: candidates.length, cardName,
+  }});
+}
+
+/** Resolve the optional second-leader assignment (#309). `leaderId === null`
+ *  declines; otherwise commit that pool leader to the named mission (max 2). */
+export function resolveAssignSecondLeader(
+  G: GameState, leaderId: LeaderId | null
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'AssignSecondLeaderPick') return { ok: false, reason: 'no-pending' };
+  if (leaderId !== null) {
+    if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'not-a-candidate' };
+    const f = faction(G, pc.side);
+    const i = f.leaderPool.indexOf(leaderId);
+    if (i < 0) return { ok: false, reason: 'leader-not-in-pool' };
+    const am = f.leadersOnMissions.find((m) => m.missionId === pc.missionId);
+    if (!am) return { ok: false, reason: 'mission-not-assigned' };
+    if (am.leaderIds.length >= 2) return { ok: false, reason: 'already-two-leaders' };
+    f.leaderPool.splice(i, 1);
+    am.leaderIds.push(leaderId);
+    log(G, { kind: 'assign-leader', side: pc.side, payload: {
+      missionId: pc.missionId, leaderIds: [leaderId], via: pc.cardName,
+    }});
+  } else {
+    log(G, { kind: 'choice-cancel', side: pc.side, payload: { kind: 'AssignSecondLeaderPick' } });
+  }
   G.pendingChoice = undefined;
   return { ok: true };
 }
@@ -3740,7 +3783,9 @@ export function resolveProceedingAsPlannedPick(
   log(G, { kind: 'proceeding-as-planned-applied', side: 'Empire', payload: {
     missionId, leaderId,
   }});
-  G.pendingChoice = undefined;
+  // FFG FAQ (May 2019): Assignment-phase ability → the Empire MAY add a second
+  // leader to this project (#309).
+  maybeOfferSecondLeader(G, 'Empire', missionId, 'Proceeding As Planned');
   return { ok: true };
 }
 

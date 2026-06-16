@@ -2027,6 +2027,11 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const c = G.pendingChoice;
     return phases.resolveProceedingAsPlannedPick(G, c.candidates[0]).ok;
   }
+  // Second-leader offer after OMDH / Proceeding As Planned (#309): decline —
+  // keep the leader free for its own action rather than doubling up.
+  if (G.pendingChoice && G.pendingChoice.kind === 'AssignSecondLeaderPick' && G.pendingChoice.side === side) {
+    return phases.resolveAssignSecondLeader(G, null).ok;
+  }
   // Start The Evacuation: pick the first non-Imperial system, move all
   // mobile Rebel Base units that fit.
   if (G.pendingChoice && G.pendingChoice.kind === 'StartEvacuationPick' && G.pendingChoice.side === side) {
