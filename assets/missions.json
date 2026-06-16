@@ -1041,6 +1041,38 @@
       "missionSet": "base"
     },
     {
+      "id": "subversion-new-rebel",
+      "name": "Subversion New",
+      "side": "Rebel",
+      "isStarting": false,
+      "isProject": false,
+      "skill": "intel",
+      "skillCost": 0,
+      "isAttempt": false,
+      "leaderPortrait": null,
+      "effectKey": "subversion-new-rebel",
+      "rulesText": "Reveal this mission after the Imperial player reveals a mission. Place all of your leaders assigned to \"Subversion\" in the targeted system. You roll 1 additional die for this opposition.",
+      "image": "Subversion Rebel RotE.jpg",
+      "set": "rote",
+      "missionSet": "rote"
+    },
+    {
+      "id": "subversion-original-rebel",
+      "name": "Subversion Original",
+      "side": "Rebel",
+      "isStarting": false,
+      "isProject": false,
+      "skill": "intel",
+      "skillCost": 0,
+      "isAttempt": false,
+      "leaderPortrait": null,
+      "effectKey": "subversion-original-rebel",
+      "rulesText": "Reveal this mission after the Imperial player reveals a mission. Place all of your leaders assigned to \"Subversion\" in the targeted system. You roll 1 additional die for this opposition.",
+      "image": "Subversion Rebel Core.jpg",
+      "set": "rote",
+      "missionSet": "base"
+    },
+    {
       "id": "aggressive-negotiations",
       "name": "Aggressive Negotiations",
       "side": "Rebel",

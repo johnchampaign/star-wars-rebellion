@@ -37,6 +37,16 @@ const ROLL_EVEN_IF_UNOPPOSED: ReadonlySet<string> = new Set([
   'plant-explosives', 'assault',
 ]);
 
+/** Subversion is an "Oppose" mission: you assign leaders to it, and it
+ *  auto-triggers when the OPPONENT reveals a mission (you can't reveal it
+ *  yourself). Both factions have New + Original variants — the New/Original pair
+ *  just matches the active mission deck. The opposition logic is side-agnostic;
+ *  these ids gate the auto-trigger lookup + the manual-reveal block. */
+const SUBVERSION_MISSION_IDS: ReadonlySet<string> = new Set([
+  'subversion-new', 'subversion-original',           // Empire (oppose a Rebel mission)
+  'subversion-new-rebel', 'subversion-original-rebel', // Rebel (oppose an Imperial mission)
+]);
+
 /** Roll N mission dice and count successes. Per Rules Reference "Reveal a
  *  Mission" panel: each player rolls dice of any color, hit = 1 success,
  *  direct-hit = 2 successes. Per RR p.6 "Component Limitations": each player
@@ -1044,7 +1054,7 @@ export function revealMission(
   // they auto-fire from resolveOpposition when their owning side opposes
   // an enemy mission. Refuse a direct reveal so a player can't sidestep
   // the trigger by clicking Reveal at any system.
-  if (missionId === 'subversion-new' || missionId === 'subversion-original') {
+  if (SUBVERSION_MISSION_IDS.has(missionId)) {
     return { ok: false, reason: 'subversion-auto-triggers' };
   }
 
@@ -1336,9 +1346,8 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
   // active mission deck (New for roeMissions=on, Original for off).
   let subversionBonus = 0;
   const opposerFaction = c.opposerSide === 'Rebel' ? G.rebel : G.empire;
-  const SUBVERSION_IDS = ['subversion-new', 'subversion-original'];
   const subvAssigned = opposerFaction.leadersOnMissions.find(
-    (m) => SUBVERSION_IDS.includes(m.missionId),
+    (m) => SUBVERSION_MISSION_IDS.has(m.missionId),
   );
   if (subvAssigned) {
     for (const lid of subvAssigned.leaderIds) {
