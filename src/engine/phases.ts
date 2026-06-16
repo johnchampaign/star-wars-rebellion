@@ -4989,13 +4989,16 @@ function maybeFireRecruitImmediate(G: GameState, side: Side, cardId: string): bo
     cardId, leaderId: null, systemId: null, timing: 'Immediate', viaRecruit: true,
   }});
   applyImmediateActionCardEffect(G, side, cardId);
-  // If the effect posted a sub-choice (Under the Radar's keep pick), tag it so
-  // its resolver resumes the recruit/refresh flow rather than ending a turn.
-  if (G.pendingChoice?.kind === 'UnderTheRadarKeep') {
-    G.pendingChoice.viaRecruit = true;
-    return true;
-  }
-  return !!G.pendingChoice;
+  // If the effect posted a sub-choice, tag it `viaRecruit` so its resolver
+  // resumes the paused recruit/refresh flow instead of stranding it. Recruitable
+  // Immediate cards post one of: UnderTheRadarKeep (Under the Radar) or
+  // ArmCardProbePick (Secret Facility / Sweep the Area). BOTH resolvers honour
+  // the flag. A new recruitable Immediate card that posts a DIFFERENT sub-choice
+  // MUST teach that choice's resolver to resume on viaRecruit, or recruiting it
+  // will freeze the Refresh (regression #314/#310 — Sweep the Area).
+  const pc = G.pendingChoice as { viaRecruit?: boolean } | undefined;
+  if (pc) { pc.viaRecruit = true; return true; }
+  return false;
 }
 
 /** After a recruit pick is fully resolved (card kept + leader chosen),
@@ -6127,10 +6130,14 @@ export function resolveArmCardProbePick(G: GameState, probeId: string): { ok: bo
     probeSystemId: probe.systemId,
     armedAt: G.timeMarker,
   });
+  const viaRecruit = pc.viaRecruit;
   G.pendingChoice = undefined;
   log(G, { kind: 'arm-card', side: 'Empire', payload: {
     cardId: pc.cardId, probeSystemId: probe.systemId, probeId,
   }});
+  // Armed via an Immediate card that fired on being recruited (#314): resume the
+  // paused recruit/refresh flow so the phase doesn't dead-stop.
+  if (viaRecruit) return continueRecruitFlow(G);
   return { ok: true };
 }
 

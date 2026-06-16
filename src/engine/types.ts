@@ -554,6 +554,9 @@ export type ChoiceRequest =
       side: Side; // 'Empire'
       cardId: string; // 'secret-facility' | 'sweep-the-area'
       candidates: string[]; // probe card ids in the player's probe hand
+      // Set when the card auto-fired on being recruited (RAW Immediate timing):
+      // the resolver resumes the paused recruit/refresh flow afterward (#314).
+      viaRecruit?: boolean;
     }
   | {
       // Post Bounty (Empire/Jabba, RoE Special): after a Rebel mission fails,

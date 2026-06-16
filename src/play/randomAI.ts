@@ -1845,16 +1845,35 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   // dice and take the top `max`.
   if (G.pendingChoice && G.pendingChoice.kind === 'BehindEnemyLinesUnits' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
-    const scored = c.availableUnitIds.map((uid) => {
-      const container = c.sourceSystemId === 'rebel-base-space'
-        ? G.map.rebelBaseSpace : G.map.systems[c.sourceSystemId];
+    // Behind Enemy Lines waives leaders/adjacency but NOT transport (#281): ground
+    // and restriction-icon fighters still need carrier capacity from the moved
+    // ships. A naive "highest-attack" pick can exceed capacity and the resolver
+    // rejects it, stalling the AI (#314 follow-up). Build a TRANSPORT-VALID set:
+    // take carriers first, then free units, then needy units within capacity.
+    const container = c.sourceSystemId === 'rebel-base-space'
+      ? G.map.rebelBaseSpace : G.map.systems[c.sourceSystemId];
+    const avail = c.availableUnitIds.map((uid) => {
       const u = container?.units.find((x) => x.instanceId === uid);
       const t = u ? G.catalog.unitTypes[u.typeId] : undefined;
+      const cap = t?.transport.capacity ?? 0;
+      const needs = t && (t.transport.restriction || (t.theater === 'ground' && t.class !== 'structure')) ? 1 : 0;
       const atk = t ? (t.attack.red + t.attack.black + t.attack.green) : 0;
-      return { uid, atk };
+      return { uid, cap, needs, atk };
     });
-    scored.sort((a, b) => b.atk - a.atk);
-    const pick = scored.slice(0, c.max).map((s) => s.uid);
+    const pick: string[] = [];
+    let capSum = 0, needSum = 0;
+    for (const x of avail.filter((a) => a.cap > 0).sort((a, b) => b.cap - a.cap)) {
+      if (pick.length >= c.max) break;
+      pick.push(x.uid); capSum += x.cap;
+    }
+    for (const x of avail.filter((a) => a.cap === 0 && a.needs === 0).sort((a, b) => b.atk - a.atk)) {
+      if (pick.length >= c.max) break;
+      pick.push(x.uid);
+    }
+    for (const x of avail.filter((a) => a.cap === 0 && a.needs > 0).sort((a, b) => b.atk - a.atk)) {
+      if (pick.length >= c.max || needSum + x.needs > capSum) continue;
+      pick.push(x.uid); needSum += x.needs;
+    }
     return phases.resolveBehindEnemyLinesUnits(G, pick).ok;
   }
   // We're the Bait (Empire/RoE): drag as many Rebel ground units as the
