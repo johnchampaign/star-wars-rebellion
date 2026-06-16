@@ -6,7 +6,7 @@
 
 import type {
   GameState, Side, SystemId, LeaderId, MissionResolution, UnitTypeId,
-  ArmedActionCard,
+  ArmedActionCard, UnitInstanceId,
 } from './types';
 // (Phase advances from Setup → Assignment internally; no extra imports needed.)
 import * as M from './mechanics';
@@ -3067,6 +3067,96 @@ export function resolveRegionalAidPick(G: GameState, systemId: SystemId): { ok: 
   }});
   G.pendingChoice = undefined;
   resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
+// ---- Superlaser Online destruction aftermath (#284 loyalty + #286 cull) ----
+
+/** The Empire's ground at `sysId` that exceeds the transport capacity of its
+ *  ships there — but only when there's a genuine CHOICE of which to lose, i.e.
+ *  capacity > 0 (some survive) and the ground isn't all one interchangeable
+ *  type. Returns null otherwise: capacity 0 (all ground lost) and no-excess are
+ *  left to the destroySystem auto-cull invariant. RR p.7 "Destroyed Systems". */
+function empireDestroyedCull(
+  G: GameState, sysId: SystemId
+): { candidates: UnitInstanceId[]; destroyCount: number } | null {
+  const ss = G.map.systems[sysId];
+  if (!ss || ss.destroyed) return null; // already destroyed → cull already applied
+  const ground = ss.units.filter(
+    (u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground');
+  const capacity = ss.units
+    .filter((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'space')
+    .reduce((s, u) => s + (G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0), 0);
+  const excess = ground.length - capacity;
+  if (excess <= 0 || capacity <= 0) return null;             // none survive a choice
+  if (new Set(ground.map((u) => u.typeId)).size < 2) return null; // all same type → no real pick
+  return { candidates: ground.map((u) => u.instanceId), destroyCount: excess };
+}
+
+/** Post the Empire's "choose which excess ground to lose" pick when a system is
+ *  being destroyed and a genuine choice exists. Returns true (and pauses) if a
+ *  choice was posted; false otherwise. Called BEFORE the system is destroyed so
+ *  the auto-cull invariant (which only acts on destroyed systems) can't preempt
+ *  the choice. (#286) */
+export function postDestroyedSystemCull(G: GameState, sysId: SystemId): boolean {
+  const cull = empireDestroyedCull(G, sysId);
+  if (!cull) return false;
+  G.pendingChoice = {
+    kind: 'DestroyedSystemCull', side: 'Empire', systemId: sysId,
+    candidates: cull.candidates, destroyCount: cull.destroyCount,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'DestroyedSystemCull', systemId: sysId, destroyCount: cull.destroyCount, candidates: cull.candidates.length,
+  }});
+  return true;
+}
+
+/** Destroy the system, then run the Superlaser loyalty pick (#284): post a
+ *  SuperlaserLoyaltyPick for 2+ candidates, auto-apply for 1, no-op for 0.
+ *  Sets G.pendingChoice when it pauses for the pick. Shared by the handler and
+ *  the cull resolver. */
+export function superlaserAftermath(G: GameState, sysId: SystemId): void {
+  const sysDef = G.catalog.systems[sysId];
+  M.destroySystem(G, sysId);
+  if (G.isGameOver || !sysDef) return;
+  const candidates = Object.values(G.catalog.systems)
+    .filter((s) => s.id !== sysId && s.region === sysDef.region && !s.isRemote
+      && !s.isCoruscant && !G.map.systems[s.id]?.destroyed)
+    .map((s) => s.id);
+  if (candidates.length === 0) return;
+  if (candidates.length === 1) { M.gainLoyalty(G, 'Empire', candidates[0], 1); return; }
+  G.pendingChoice = {
+    kind: 'SuperlaserLoyaltyPick', side: 'Empire', candidates, destroyedSystemId: sysId,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'SuperlaserLoyaltyPick', candidates: candidates.length, destroyedSystemId: sysId,
+  }});
+}
+
+/** Resolve the Empire's choice of which excess ground to lose when a system is
+ *  destroyed (#286): destroy the chosen units, then finish the superlaser
+ *  (destroy the system + loyalty pick), then resume the mission unless the
+ *  loyalty pick is now pending. */
+export function resolveDestroyedSystemCull(
+  G: GameState, instanceIds: string[]
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'DestroyedSystemCull') return { ok: false, reason: 'no-pending' };
+  if (instanceIds.length !== pc.destroyCount) return { ok: false, reason: `expected-${pc.destroyCount}-units` };
+  const seen = new Set<string>();
+  for (const uid of instanceIds) {
+    if (!pc.candidates.includes(uid as never)) return { ok: false, reason: `not-a-candidate:${uid}` };
+    if (seen.has(uid)) return { ok: false, reason: `duplicate:${uid}` };
+    seen.add(uid);
+  }
+  const sysId = pc.systemId;
+  for (const uid of instanceIds) M.destroyUnit(G, uid, 'destroyed-system-overflow');
+  log(G, { kind: 'destroyed-system-cull', side: 'Empire', payload: {
+    systemId: sysId, destroyed: instanceIds.length,
+  }});
+  G.pendingChoice = undefined;
+  superlaserAftermath(G, sysId);
+  if (!G.pendingChoice) resumeMissionAfterChoice(G);
   return { ok: true };
 }
 

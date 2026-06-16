@@ -650,6 +650,19 @@ export type ChoiceRequest =
       destroyedSystemId: SystemId;
     }
   | {
+      // Destroyed-system overflow (RR p.7 "Destroyed Systems"): when a system is
+      // destroyed (Superlaser Online) and the Empire's ground there exceeds the
+      // transport capacity of its ships in the system, the EMPIRE chooses which
+      // excess ground units to destroy. Only posted for a genuine choice
+      // (capacity > 0 and mixed unit types); the 0-capacity / no-excess cases
+      // are auto-handled. (#286)
+      kind: 'DestroyedSystemCull';
+      side: Side; // 'Empire'
+      systemId: SystemId;
+      candidates: UnitInstanceId[]; // the Empire's ground units in the system
+      destroyCount: number;         // how many must be destroyed
+    }
+  | {
       // Behind Enemy Lines (Rebel, RoE): pick up to 5 units (ANY theatre)
       // from the Rebel Base to move to the target system, ignoring leaders
       // and adjacency, then resolve combat. Like LeadStrikeTeamUnits but

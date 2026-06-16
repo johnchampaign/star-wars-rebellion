@@ -1804,6 +1804,21 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const c = G.pendingChoice;
     return phases.resolveRegionalAidPick(G, c.candidates[0]).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'DestroyedSystemCull' && G.pendingChoice.side === side) {
+    // Superlaser overflow (#286): keep the most valuable ground, destroy the
+    // cheapest (square < circle < triangle), matching the old auto-cull order.
+    const c = G.pendingChoice;
+    const ss = G.map.systems[c.systemId];
+    const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+    const sorted = [...c.candidates].sort((a, b) => {
+      const ua = ss?.units.find((x) => x.instanceId === a);
+      const ub = ss?.units.find((x) => x.instanceId === b);
+      const ra = tierRank[G.catalog.unitTypes[ua?.typeId ?? '']?.tier ?? 'triangle'] ?? 0;
+      const rb = tierRank[G.catalog.unitTypes[ub?.typeId ?? '']?.tier ?? 'triangle'] ?? 0;
+      return ra - rb; // cheapest (lowest tier rank) first
+    });
+    return phases.resolveDestroyedSystemCull(G, sorted.slice(0, c.destroyCount)).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'SuperlaserLoyaltyPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
     // Prefer flipping a Rebel-loyal (or subjugated-rebel) system; else the first.

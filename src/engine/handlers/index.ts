@@ -8,7 +8,7 @@ import { register, type EffectHandler } from './registry';
 import { beginCombat, runCombat } from '../combat';
 import { notImplemented, log, pushNotice } from '../log';
 import { shuffle, nextInt, rollDie } from '../rng';
-import { leaderRecruitable } from '../phases';
+import { leaderRecruitable, postDestroyedSystemCull, superlaserAftermath } from '../phases';
 
 /** Resolve a combat at `sysId` initiated by `attackerSide`. Used by mission
  *  effects that spawn units and then "resolve a combat" (Ignite Rebellion,
@@ -366,28 +366,15 @@ const overseeProject: EffectHandler = (G, ctx) => {
 const superlaserOnline: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  const sysDef = G.catalog.systems[sysId];
-  M.destroySystem(G, sysId);
-  if (G.isGameOver) return true;
-  if (!sysDef) return true;
-  // "Gain 1 loyalty in 1 populous system in this region" — the EMPIRE chooses
-  // which one; previously the engine auto-picked the first (player #284).
-  const candidates = Object.values(G.catalog.systems)
-    .filter((s) => s.id !== sysId && s.region === sysDef.region && !s.isRemote
-      && !s.isCoruscant && !G.map.systems[s.id]?.destroyed)
-    .map((s) => s.id);
-  if (candidates.length === 0) return true;
-  if (candidates.length === 1) { M.gainLoyalty(G, 'Empire', candidates[0], 1); return true; }
-  G.pendingChoice = {
-    kind: 'SuperlaserLoyaltyPick',
-    side: 'Empire',
-    candidates,
-    destroyedSystemId: sysId,
-  };
-  log(G, { kind: 'choice-request', side: 'Empire', payload: {
-    kind: 'SuperlaserLoyaltyPick', candidates: candidates.length, destroyedSystemId: sysId,
-  }});
-  return false;
+  // RR p.7: if the Empire's ground here exceeds its in-system ship transport,
+  // the EMPIRE chooses which excess units to lose — posted BEFORE the system is
+  // destroyed so the auto-cull invariant can't preempt the choice (#286). When
+  // there's no genuine choice this is a no-op and we fall through.
+  if (postDestroyedSystemCull(G, sysId)) return false;
+  // Destroy the system + "gain 1 loyalty in 1 populous system in this region"
+  // (the EMPIRE chooses which — player #284). Sets a pending pick when needed.
+  superlaserAftermath(G, sysId);
+  return !G.pendingChoice;
 };
 
 // ----- Common Imperial -----

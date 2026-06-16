@@ -264,6 +264,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'DrawThemOutPick':          return pc.side === side;
     case 'RegionalAidPick':          return pc.side === side;
     case 'SuperlaserLoyaltyPick':    return pc.side === side;
+    case 'DestroyedSystemCull':      return pc.side === side;
     case 'BehindEnemyLinesUnits':    return pc.side === side;
     case 'WereTheBaitUnits':         return pc.side === side;
     case 'ImperialMightUnits':       return pc.side === side;
@@ -2492,6 +2493,16 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           candidates={G.pendingChoice.candidates}
           onPick={(sid) => {
             const r = phases.resolveSuperlaserLoyaltyPick(G, sid);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {G.pendingChoice?.kind === 'DestroyedSystemCull'
+        && G.pendingChoice.side === humanSide && (
+        <DestroyedSystemCullModal G={G} choice={G.pendingChoice}
+          onSubmit={(ids) => {
+            const r = phases.resolveDestroyedSystemCull(G, ids);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -5067,6 +5078,65 @@ function SimpleLeaderPickModal({ G, color, title, candidates, onPick }: {
               </button>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Destroyed-system overflow (#286): the Empire picks EXACTLY `destroyCount` of
+ *  its ground units to destroy when a superlaser'd system can't transport them all. */
+function DestroyedSystemCullModal({ G, choice, onSubmit }: {
+  G: GameState;
+  choice: { kind: 'DestroyedSystemCull'; systemId: string; candidates: string[]; destroyCount: number; side: Side };
+  onSubmit: (ids: string[]) => void;
+}) {
+  const ss = G.map.systems[choice.systemId];
+  const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  const keepCount = choice.candidates.length - choice.destroyCount;
+  // Select by index so two identical-type units are individually choosable.
+  const [picked, setPicked] = useState<Set<number>>(new Set());
+  const toggle = (idx: number) => setPicked((prev) => {
+    const next = new Set(prev);
+    if (next.has(idx)) next.delete(idx);
+    else if (next.size < choice.destroyCount) next.add(idx);
+    return next;
+  });
+  const color = sideColor(choice.side);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100 }}>
+      <div style={{ background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto' }}>
+        <h3 style={{ color, marginTop: 0 }}>{sysName} destroyed — not enough transport</h3>
+        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          Your ships here can only carry {keepCount} ground unit{keepCount === 1 ? '' : 's'} off
+          the destroyed planet. Choose {choice.destroyCount} to destroy ({picked.size}/{choice.destroyCount} selected).
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
+          {choice.candidates.map((uid, idx) => {
+            const u = ss?.units.find((x) => x.instanceId === uid);
+            const t = u ? G.catalog.unitTypes[u.typeId] : null;
+            const on = picked.has(idx);
+            return (
+              <button key={`${uid}-${idx}`} className="tab-button" onClick={() => toggle(idx)}
+                style={{ textAlign: 'left', padding: '8px 10px',
+                  border: `1px solid ${on ? color : '#2a2d34'}`,
+                  background: on ? 'rgba(120,40,40,0.35)' : '#0c0d10' }}>
+                <span style={{ fontWeight: 700, color: on ? '#ff9b9b' : '#fff' }}>
+                  {on ? '✗ ' : ''}{t?.name ?? u?.typeId ?? uid}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <button className="tab-button active"
+            disabled={picked.size !== choice.destroyCount}
+            onClick={() => onSubmit([...picked].map((i) => choice.candidates[i]))}
+            style={{ padding: '6px 16px', opacity: picked.size === choice.destroyCount ? 1 : 0.5 }}>
+            Destroy {picked.size}
+          </button>
         </div>
       </div>
     </div>
