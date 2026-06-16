@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, useCallback, useMemo, createContext, useCo
 import { loadAllForEngine, loadBoardMask, MAP_IMAGE_URL, MARKER_IMAGE_BASE, UNIT_IMAGE_BASE, LEADER_IMAGE_BASE, CARD_IMAGE_BASE, IMG_BUST, diceImageUrl, vmodAssetUrl, mapImageUrl } from '../data/loadAssets';
 import { UNIT_IMAGE, groupByType, groupTypeIds, getUnitStyle, setUnitStyle, nextStyle, unitImageUrl, type UnitImageStyle } from './unitImages';
 import { capturePageScreenshot } from './screenshot';
-import { missionTargets, missionLeaderTargets } from '../engine/missionTargets';
+import { missionTargets, missionLeaderTargets, missionRevealIsPointless } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce } from './randomAI';
 import { TERRITORIES, territoryFill } from '../data/territories';
 import {
@@ -8972,6 +8972,18 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
     // Target-less missions: the engine ignores the system, so pass any valid one.
     const target = revealNeedsTarget ? revealTargetSysId : (revealTargetSysId ?? Object.keys(G.map.systems)[0]);
     if (!target) return;
+    // Warn before wasting a mission whose effect would do nothing at this target
+    // (e.g. Imperial Propaganda in a region with no Rebel loyalty) — the same
+    // board-state check the AI uses to skip such targets (#304).
+    if (revealNeedsTarget && missionRevealIsPointless(G, side, revealMissionId, target)) {
+      const mName = G.catalog.missions[revealMissionId]?.name ?? revealMissionId;
+      const sName = G.catalog.systems[target]?.name ?? target;
+      const ok = window.confirm(
+        `${mName} at ${sName} won't accomplish anything right now — there's `
+        + `nothing here for its effect to act on, so the mission would be wasted. `
+        + `Reveal it anyway?`);
+      if (!ok) return;
+    }
     const ok = onReveal(revealMissionId, target, revealTargetLeaderId ?? undefined);
     if (ok !== false) {
       setRevealMissionId(null);

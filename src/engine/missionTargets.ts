@@ -381,3 +381,59 @@ export function missionTargets(G: GameState, _side: Side, missionId: string): Ta
   const systemIds = candidates.filter(finalPred);
   return { systemIds, permissive: false, note: noteParts.join(' + ') + '.' };
 }
+
+// ============================================================================
+// Pointless-effect evaluation
+// ============================================================================
+//
+// Some missions are RAW-legal to attempt anywhere their target filter allows,
+// but their EFFECT is conditional on board state — so at a given target they
+// can succeed yet accomplish nothing (a no-op). Examples:
+//   - Imperial Propaganda: flips Rebel-loyal systems in the region to neutral —
+//     useless in a region with no Rebel loyalty.
+//   - Draw Them Out: places a Rebel pool leader — useless with an empty pool.
+//   - Single Reactor Ignition: destroys Rebel ground / removes markers — useless
+//     with neither present.
+// This is the single source of truth for "would this reveal pay off here?",
+// shared by the AI (skip such targets) and the play UI (warn the human before
+// they waste a mission). Default: not pointless. Add a case per mission.
+export function missionRevealIsPointless(
+  G: GameState, side: Side, missionId: string, sysId: SystemId
+): boolean {
+  const ss = G.map.systems[sysId];
+  switch (missionId) {
+    case 'imperial-propaganda': {
+      // "each system in this region that has Rebel loyalty becomes neutral" —
+      // a no-op when no system in the target's region is Rebel-loyal.
+      const region = G.catalog.systems[sysId]?.region;
+      if (region == null) return false;
+      return !Object.values(G.catalog.systems).some(
+        (d) => d.region === region && G.map.systems[d.id]?.loyalty === 'rebel');
+    }
+    case 'draw-them-out':
+      // Empire places a Rebel leader from the pool here — nothing to place when
+      // the Rebel pool is empty.
+      return side === 'Empire' && (G.rebel.leaderPool?.length ?? 0) === 0;
+    case 'single-reactor-ignition': {
+      // Resolves on the Empire's own Death Star (so the Empire already occupies
+      // the system and the base would have auto-revealed). It only does
+      // something if there are Rebel ground units to destroy or markers to clear.
+      const rebelGround = (ss?.units ?? []).some(
+        (u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground');
+      const markers = (ss?.targetMarkers?.length ?? 0) > 0;
+      return !rebelGround && !markers;
+    }
+    default:
+      return false;
+  }
+}
+
+/** How many systems in `sysId`'s region currently hold Rebel loyalty — the
+ *  "payoff size" for Imperial Propaganda. 0 means the mission would be wasted
+ *  there (see missionRevealIsPointless). Exposed for AI target scoring. */
+export function rebelLoyalSystemsInRegion(G: GameState, sysId: SystemId): number {
+  const region = G.catalog.systems[sysId]?.region;
+  if (region == null) return 0;
+  return Object.values(G.catalog.systems).filter(
+    (d) => d.region === region && G.map.systems[d.id]?.loyalty === 'rebel').length;
+}

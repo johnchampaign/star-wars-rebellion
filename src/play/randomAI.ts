@@ -23,7 +23,10 @@ import type { GameState, Side, LeaderId, SystemId } from '../engine/types';
 import * as phases from '../engine/phases';
 import * as combat from '../engine/combat';
 import { pickBestCinematicPlay } from '../engine/cinematicTactics';
-import { missionTargets } from '../engine/missionTargets';
+import { missionTargets, missionRevealIsPointless, rebelLoyalSystemsInRegion } from '../engine/missionTargets';
+// Re-exported so existing callers/tests that import it from the AI module keep
+// working now that the canonical definition lives in the engine (#304).
+export { missionRevealIsPointless } from '../engine/missionTargets';
 import { COST_OBJECTIVES } from '../engine/objectives';
 
 // AI randomness. Defaults to Math.random (live app), but the tournament
@@ -456,27 +459,6 @@ function oppositionTargetTerm(G: GameState, attackerSide: Side, missionId: strin
 
 /** True when revealing this Empire mission at this system would accomplish
  *  nothing, so the AI shouldn't burn the leader + card on it (players #276/#277). */
-export function missionRevealIsPointless(G: GameState, side: Side, missionId: string, sysId: SystemId): boolean {
-  if (side !== 'Empire') return false;
-  const ss = G.map.systems[sysId];
-  if (missionId === 'draw-them-out') {
-    // "Choose a Rebel leader in the leader pool; place that leader here." With
-    // an empty Rebel pool there's no leader to place — the mission does nothing.
-    return (G.rebel.leaderPool?.length ?? 0) === 0;
-  }
-  if (missionId === 'single-reactor-ignition') {
-    // Resolves on the Empire's own Death Star, so the Empire already occupies
-    // the system — the base would have auto-revealed on entry, making the
-    // "reveal the base if it's here" clause moot. It only accomplishes anything
-    // if there are Rebel ground units to destroy or target markers to remove.
-    const rebelGround = (ss?.units ?? []).some(
-      (u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground');
-    const markers = (ss?.targetMarkers?.length ?? 0) > 0;
-    return !rebelGround && !markers;
-  }
-  return false;
-}
-
 function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: SystemId): number {
   let s = 0;
   const sys = G.catalog.systems[targetSysId];
@@ -505,6 +487,13 @@ function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: 
   // production (player report #199). Strongly prefer a sabotaged Imperial system
   // as the target so Option B cleans it up.
   if (missionId === 'research-and-development' && sysState?.sabotage) s += 25;
+  // Imperial Propaganda flips every Rebel-loyal system in the target's REGION to
+  // neutral — so its value scales with how many Rebel-loyal systems that region
+  // holds. Aim it at the region with the most to convert; a region with none is
+  // already dropped by missionRevealIsPointless before scoring (#304).
+  if (missionId === 'imperial-propaganda') {
+    s += rebelLoyalSystemsInRegion(G, targetSysId) * 12;
+  }
   // Prefer an undefended target so the attempt auto-succeeds (see helper).
   s += oppositionTargetTerm(G, 'Empire', missionId, targetSysId);
   return s;
