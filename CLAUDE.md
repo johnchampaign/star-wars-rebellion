@@ -256,12 +256,14 @@ behavior.
 
 The Claude Code TaskList is the canonical "what's left." Open items as of
 the most recent session are #85 (verify unit stats), #94 (combat-board UX),
-#97 (Collect Bounty relocate — likely already implemented; verify-and-close),
 #99 (action card play paths — partially done). Don't add new tasks without
 checking the list first to avoid duplicates.
 
-Completed: #98 (Empire base-hover probe overlay) — done, including the
-pin/unpin follow-up; the whole `from-game` GitHub queue is also cleared.
+Completed: #97 (Collect Bounty relocate) — capture + relocate both leaders to
+the nearest Imperial-unit system, with the distance-0 and no-Imperial-unit
+auto-rescue edges; verified by test-collect-bounty-97. #98 (Empire base-hover
+probe overlay) — done, including the pin/unpin follow-up. The whole `from-game`
+GitHub queue is also cleared.
 
 ## Things NOT to do
 
