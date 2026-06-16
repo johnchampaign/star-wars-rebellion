@@ -255,15 +255,18 @@ behavior.
 ## Audit / task list
 
 The Claude Code TaskList is the canonical "what's left." Open items as of
-the most recent session are #85 (verify unit stats), #94 (combat-board UX),
-#99 (action card play paths — partially done). Don't add new tasks without
-checking the list first to avoid duplicates.
+the most recent session are #85 (verify unit stats) and #94 (combat-board UX).
+Don't add new tasks without checking the list first to avoid duplicates.
 
-Completed: #97 (Collect Bounty relocate) — capture + relocate both leaders to
-the nearest Imperial-unit system, with the distance-0 and no-Imperial-unit
-auto-rescue edges; verified by test-collect-bounty-97. #98 (Empire base-hover
-probe overlay) — done, including the pin/unpin follow-up. The whole `from-game`
-GitHub queue is also cleared.
+Completed: #99 (action card play paths) — audited all 48 action cards; every one
+has a wired play path (Assignment/StartOfCombat/Immediate switches, droid-ring &
+passive Immediate triggers, and the Special *Offer hooks). Guarded by
+test-action-card-coverage-99 (a tripwire so a new card can't ship unwired).
+#97 (Collect Bounty relocate) — capture + relocate both leaders to the nearest
+Imperial-unit system, with the distance-0 and no-Imperial-unit auto-rescue edges;
+verified by test-collect-bounty-97. #98 (Empire base-hover probe overlay) — done,
+including the pin/unpin follow-up. The whole `from-game` GitHub queue is also
+cleared.
 
 ## Things NOT to do
 
