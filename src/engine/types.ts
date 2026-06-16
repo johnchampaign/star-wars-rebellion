@@ -237,6 +237,11 @@ export type ChoiceRequest =
       attackerPortrait: number; // +successes from the mission's pictured leader (rr p.9)
       poolLeaders: LeaderId[];  // opposer's pool leaders available to send
       existingAtTarget: LeaderId[]; // already-there opposer leaders (auto-oppose)
+      // Set when the opposer has a Subversion mission assigned: revealing it is a
+      // "may" (RAW), so the opposer chooses whether to use it (moves these leaders
+      // to the target + rolls 1 extra die). resolveOpposition's `useSubversion`
+      // controls it. (#311)
+      subversion?: { missionId: string; leaderIds: LeaderId[] };
     }
   | { kind: 'AssignDamage'; dice: DieResult[]; targets: UnitInstanceId[] }
   | { kind: 'PlayTacticCard'; hand: string[]; allowSkip: boolean }

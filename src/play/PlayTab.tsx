@@ -2926,8 +2926,8 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <OpposeMissionModal
           G={G}
           choice={G.pendingChoice}
-          onResolve={(leaderId) => {
-            const r = phases.resolveOpposition(G, leaderId);
+          onResolve={(leaderId, useSubversion) => {
+            const r = phases.resolveOpposition(G, leaderId, useSubversion);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }}
@@ -3043,12 +3043,16 @@ function OpposeMissionModal({ G, choice, onResolve }: {
     attackerPortrait: number;
     poolLeaders: string[];
     existingAtTarget: string[];
+    subversion?: { missionId: string; leaderIds: string[] };
   };
-  onResolve: (opposerLeaderId: string | null) => void;
+  onResolve: (opposerLeaderId: string | null, useSubversion: boolean) => void;
 }) {
   const card = G.catalog.missions[choice.missionId];
   const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
   const color = sideColor(choice.opposerSide);
+  // Subversion is a "may" (#311): default ON (it's usually good), but let the
+  // opposer turn it off so they aren't forced to commit those leaders.
+  const [useSubversion, setUseSubversion] = useState(true);
   const existingDice = choice.existingAtTarget.reduce((acc, lid) => {
     const ld = G.catalog.leaders[lid];
     return acc + (ld ? (ld.skills as Record<string, number>)[choice.skill] ?? 0 : 0);
@@ -3109,6 +3113,18 @@ function OpposeMissionModal({ G, choice, onResolve }: {
           </div>
         )}
 
+        {choice.subversion && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
+            color: '#cbe6ff', marginBottom: 10, background: 'rgba(20,60,90,0.5)',
+            border: '1px solid #2a5a7a', borderRadius: 3, padding: '6px 8px', cursor: 'pointer' }}>
+            <input type="checkbox" checked={useSubversion} onChange={(e) => setUseSubversion(e.target.checked)} />
+            <span>
+              Use <b>Subversion</b>: move {choice.subversion.leaderIds.map((l) => G.catalog.leaders[l]?.name ?? l).join(', ')}
+              {' '}to {targetName} to oppose with <b>+1 die</b> (the card is then spent). Uncheck to keep them on the mission.
+            </span>
+          </label>
+        )}
+
         <div style={{ fontSize: 12, color: '#aaa', marginBottom: 4 }}>
           Pool leaders available to send:
         </div>
@@ -3123,7 +3139,7 @@ function OpposeMissionModal({ G, choice, onResolve }: {
             return (
               <button
                 key={lid}
-                onClick={() => onResolve(lid)}
+                onClick={() => onResolve(lid, useSubversion)}
                 style={{
                   padding: '6px 10px',
                   background: '#0c0d10',
@@ -3145,7 +3161,7 @@ function OpposeMissionModal({ G, choice, onResolve }: {
         <div style={{ display: 'flex', gap: 6 }}>
           <button
             className="tab-button active"
-            onClick={() => onResolve(null)}
+            onClick={() => onResolve(null, useSubversion)}
             style={{ fontWeight: 700 }}
           >
             {choice.existingAtTarget.length > 0 ? "Don't send extra (use existing only)" : "Don't oppose (attacker rolls unopposed)"}

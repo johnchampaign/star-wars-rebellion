@@ -1202,6 +1202,11 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
     const attackerDice = attSkill.major + attSkill.minor
       + missionExtraAttackerDice(G, pending.missionId, pending.targetSystemId);
 
+    // Subversion (#311): if the opposer has a Subversion mission assigned, using
+    // it is a "may" — surface it so the opposer can choose (resolveOpposition's
+    // useSubversion). Blindside suppresses it (the opposer is locked out).
+    const subvAssigned = pending.blindsideActive ? undefined
+      : oppFaction.leadersOnMissions.find((m) => SUBVERSION_MISSION_IDS.has(m.missionId));
     G.pendingChoice = {
       kind: 'OpposeMission',
       missionId: pending.missionId, targetSystemId: pending.targetSystemId, opposerSide: oppSide,
@@ -1209,6 +1214,9 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
       attackerPortrait: portraitBonus(G, pending.missionId, pending.leaderIds as LeaderId[]),
       poolLeaders: pool,
       existingAtTarget: existing,
+      subversion: subvAssigned
+        ? { missionId: subvAssigned.missionId, leaderIds: subvAssigned.leaderIds as LeaderId[] }
+        : undefined,
     };
     log(G, { kind: 'choice-request', side: oppSide, payload: {
       kind: 'OpposeMission', missionId: pending.missionId, attackerDice, existing, poolSize: pool.length,
@@ -1318,7 +1326,9 @@ function resumeMissionAfterChoice(G: GameState): void {
 /** Resolve a pending OpposeMission choice. `opposerLeaderId = null` declines
  *  opposition (auto-succeed if no existing leaders at the target); a leader id
  *  sends that leader from pool to the target system and rolls. */
-export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null): { ok: boolean; reason?: string } {
+export function resolveOpposition(
+  G: GameState, opposerLeaderId: LeaderId | null, useSubversion = true,
+): { ok: boolean; reason?: string } {
   const c = G.pendingChoice;
   if (!c || c.kind !== 'OpposeMission') return { ok: false, reason: 'no-pending-opposition' };
   const pm = G.pendingMission;
@@ -1337,18 +1347,17 @@ export function resolveOpposition(G: GameState, opposerLeaderId: LeaderId | null
   }
 
   // RoE "Subversion" (Empire or Rebel, RoE Oppose-timing mission). When the
-  // opposing side has Subversion (New or Original) assigned in
-  // leadersOnMissions, it auto-fires here: the assigned leaders join the
-  // opposition at the target system, the Subversion mission card discards,
-  // and the opposition rolls +1 die. Auto-fire is the strict-upside play —
-  // RAW lets the opposer choose, but they almost always would. Both
-  // Subversion variants share the same effect; they exist to match the
-  // active mission deck (New for roeMissions=on, Original for off).
+  // opposing side has Subversion (New or Original) assigned and CHOOSES to use
+  // it (`useSubversion` — RAW "may", #311): the assigned leaders join the
+  // opposition at the target system, the Subversion mission card discards, and
+  // the opposition rolls +1 die. Both Subversion variants share the same effect;
+  // they exist to match the active mission deck (New for roeMissions=on, Original
+  // for off).
   let subversionBonus = 0;
   const opposerFaction = c.opposerSide === 'Rebel' ? G.rebel : G.empire;
-  const subvAssigned = opposerFaction.leadersOnMissions.find(
-    (m) => SUBVERSION_MISSION_IDS.has(m.missionId),
-  );
+  const subvAssigned = useSubversion
+    ? opposerFaction.leadersOnMissions.find((m) => SUBVERSION_MISSION_IDS.has(m.missionId))
+    : undefined;
   if (subvAssigned) {
     for (const lid of subvAssigned.leaderIds) {
       M.placeLeader(G, c.opposerSide, lid, pm.targetSystemId);
