@@ -423,6 +423,17 @@ export function missionRevealIsPointless(
       const markers = (ss?.targetMarkers?.length ?? 0) > 0;
       return !rebelGround && !markers;
     }
+    case 'superlaser-online': {
+      // Fires at the Death Star's OWN system, destroying everything there —
+      // including the Empire's own escorts. Worth it only when there's Rebel
+      // value to destroy: Rebel units (incl. the base, which always has units)
+      // or a Rebel-loyal system. Otherwise it's self-harm for a marginal loyalty
+      // tick — the AI shouldn't blow up its own forces over rubble (#313).
+      if (side !== 'Empire') return false;
+      const hasRebelUnits = (ss?.units ?? []).some((u) => u.side === 'Rebel');
+      const rebelLoyal = ss?.loyalty === 'rebel';
+      return !hasRebelUnits && !rebelLoyal;
+    }
     default:
       return false;
   }
