@@ -15,7 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal, dealAbilityFor, cinematicDealCandidates } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -552,24 +552,29 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
       // damage in resolveCinematicTargetPick. With 0–1 candidates there's no
       // choice — fall through to the auto-resolving applyCinematicAbility.
       if (sel && !sel.noAbility) {
+        // A targeted-deal (Tow Cables / Ion Blast) OR a plain deal (Bombing Run,
+        // Rogue Squadron Support, …) both let the playing side choose which
+        // enemy unit eats the damage when 2+ are legal (#290/#312). Compute the
+        // amount + candidates from whichever applies and post one CinematicTargetPick.
         const td = targetDealAbilityFor(sel.cardId, sel.useTop);
-        if (td) {
-          const cands = cinematicTargetDealCandidates(G, c, side, theater, td);
-          if (cands.length >= 2) {
-            const f = side === 'Rebel' ? G.rebel : G.empire;
-            (f.cinematicTacticDiscard ??= []).push(sel.cardId);
-            c.cinematicTacticDoneThisRound.push(key);
-            c.flags = c.flags ?? {};
-            c.flags.cinematicTargetPick = { side, theater, cardId: sel.cardId, useTop: sel.useTop, amount: td.amount };
-            G.pendingChoice = {
-              kind: 'CinematicTargetPick', side, theater, systemId: c.systemId,
-              amount: td.amount, candidates: cands,
-            };
-            log(G, { kind: 'choice-request', side, payload: {
-              kind: 'CinematicTargetPick', theater, amount: td.amount, candidates: cands.length,
-            }});
-            return; // paused — resolveCinematicTargetPick applies the damage
-          }
+        const dl = td ? null : dealAbilityFor(sel.cardId, sel.useTop);
+        const amount = td ? td.amount : (dl ? dl.amount : 0);
+        const cands = td ? cinematicTargetDealCandidates(G, c, side, theater, td)
+          : (dl ? cinematicDealCandidates(G, c, side, theater, dl) : []);
+        if ((td || dl) && cands.length >= 2) {
+          const f = side === 'Rebel' ? G.rebel : G.empire;
+          (f.cinematicTacticDiscard ??= []).push(sel.cardId);
+          c.cinematicTacticDoneThisRound.push(key);
+          c.flags = c.flags ?? {};
+          c.flags.cinematicTargetPick = { side, theater, cardId: sel.cardId, useTop: sel.useTop, amount };
+          G.pendingChoice = {
+            kind: 'CinematicTargetPick', side, theater, systemId: c.systemId,
+            amount, candidates: cands,
+          };
+          log(G, { kind: 'choice-request', side, payload: {
+            kind: 'CinematicTargetPick', theater, amount, candidates: cands.length,
+          }});
+          return; // paused — resolveCinematicTargetPick applies the damage
         }
       }
       if (sel) applyCinematicAbility(G, c, side, theater, sel.cardId, sel.useTop);

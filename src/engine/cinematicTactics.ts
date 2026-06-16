@@ -819,6 +819,31 @@ export function targetDealAbilityFor(cardId: string, useTop: boolean): TargetDea
   return ab && ab.kind === 'targetDeal' ? ab : null;
 }
 
+/** Is the chosen ability a plain deal-damage (Bombing Run, Rogue Squadron
+ *  Support, …)? Returns the effect so the player can choose which enemy unit
+ *  takes the hit instead of an auto-pick (#312). */
+export function dealAbilityFor(cardId: string, useTop: boolean): DealEffect | null {
+  const abilities = ABILITIES[cardId];
+  if (!abilities) return null;
+  const ab = useTop ? abilities[0] : abilities[1];
+  return ab && ab.kind === 'deal' ? ab : null;
+}
+
+/** Legal targets for an interactive plain-deal pick: enemy units whose health
+ *  colour matches the deal's colour (or any colour when uncoloured), excluding
+ *  the indestructible Death Star (#312). Staged units stay eligible so the
+ *  player may pile on extra damage to beat a heal (overdamage, #274). */
+export function cinematicDealCandidates(
+  G: GameState, c: CombatState, side: Side, theater: Theater, eff: DealEffect,
+): string[] {
+  return unitsOf(G, other(side), c.systemId, theater).filter((u) => {
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t || t.health.color === null) return false; // Death Star: invulnerable
+    if (eff.color && t.health.color !== eff.color) return false;
+    return true;
+  }).map((u) => u.instanceId);
+}
+
 /** Legal targets (enemy AT-AT/AT-ST, capital ship, …) for an interactive
  *  targeted-deal pick — the instanceIds the player may choose among (#290). */
 export function cinematicTargetDealCandidates(
