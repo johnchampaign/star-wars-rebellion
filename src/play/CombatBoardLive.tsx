@@ -114,9 +114,12 @@ function CardHover({ G, cardId, children }: {
   );
 }
 
-export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onShowDiceKey, onShowTacticKey, online }: {
+export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportProblem, onShowDiceKey, onShowTacticKey, online }: {
   G: GameState;
   humanSide: Side;
+  /** One In A Million is opt-in (#340): only show its panel when the player has
+   *  armed it; otherwise PlayTab auto-skips the offer. */
+  oiamArmed?: boolean;
   onPersist: () => void;
   /** Online mode: when set, combat resolvers submit a RebellionAction to the
    *  server instead of mutating local state, and the local AI combat-stepper is
@@ -622,7 +625,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
         {pc?.kind === 'R2D2Flip' && pc.context === 'combat' && isHumanDecision && (
           <R2D2FlipPanel G={G} choice={pc} c={c} onPersist={onPersist} />
         )}
-        {pc?.kind === 'OneInAMillionOffer' && pc.context === 'combat' && isHumanDecision && (
+        {pc?.kind === 'OneInAMillionOffer' && pc.context === 'combat' && isHumanDecision && oiamArmed && (
           <OneInAMillionPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'SpecialDieSpend' && isHumanDecision && (

@@ -86,6 +86,7 @@ const LS_HISTORY = 'rebellion-games-history';
 // encodedAt ids of completed games already uploaded, so we don't re-send them
 // (player report #125 — uploads kept re-submitting old, already-stored logs).
 const LS_UPLOADED = 'rebellion-uploaded-logs';
+const LS_OIAM_ARMED = 'rebellion-oiam-armed';
 // Stable per-device reporter ID. Generated once on first problem-report
 // submission, persisted forever. Lets us tie GitHub issues back to the
 // reporter so we can surface our resolution comment to them on next visit
@@ -367,6 +368,17 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   const [reportScreenshot, setReportScreenshot] = useState<string | null>(null);
   const [showUploadLogs, setShowUploadLogs] = useState(false);
   const [showSupply, setShowSupply] = useState(false);
+  // One In A Million is OFF by default — the engine offers it on every eligible
+  // roll, which nagged players who didn't want to spend their one-time power
+  // (#340). When un-armed, the offer is auto-skipped (card kept). The player
+  // arms it from a toggle when they actually want to use it.
+  const [oiamArmed, setOiamArmedState] = useState<boolean>(() => {
+    try { return localStorage.getItem(LS_OIAM_ARMED) === '1'; } catch { return false; }
+  });
+  const setOiamArmed = useCallback((v: boolean) => {
+    setOiamArmedState(v);
+    try { localStorage.setItem(LS_OIAM_ARMED, v ? '1' : '0'); } catch { /* ignore */ }
+  }, []);
   // Queue of unseen "objective scored" notices for the human side. Populated
   // by an effect that watches turnLog for new play-objective entries; each
   // one becomes a modal that the user acknowledges before the next shows.
@@ -896,6 +908,22 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     if (G && !G.isGameOver && gameOverAck) setGameOverAck(false);
   }, [G, G?.isGameOver, gameOverAck]);
 
+  // One In A Million: when the player hasn't armed it, auto-skip the offer so
+  // they aren't prompted to spend their one-time power on every roll (#340).
+  // The skip keeps the card in hand; the engine continues normally.
+  useEffect(() => {
+    if (online || oiamArmed) return;
+    const Gn = gameRef.current;
+    const pc = Gn?.pendingChoice;
+    if (!Gn || !pc || pc.kind !== 'OneInAMillionOffer' || pc.side !== humanSide) return;
+    const r = pc.context === 'combat' ? combat.resolveOneInAMillionCombat(Gn, [])
+      : pc.context === 'dsplans' ? combat.resolveDsPlansOneInAMillion(Gn, [])
+      : phases.resolveOneInAMillionMission(Gn, []);
+    // Only advance on a clean skip — never re-run a failing resolve (would loop).
+    if (r.ok) { persist(); refresh(); }
+    else console.warn('[oiam] auto-skip failed:', r.reason);
+  }, [tick, oiamArmed, humanSide, online, persist, refresh]);
+
   // #193 instrumentation: report-ordering diagnostics. When the player reports
   // that a combat summary shows out of order (e.g. after the opponent's
   // mission/activation), the cause is which queued report the UI picks to show
@@ -1287,6 +1315,13 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             title="See how many of each unit type are left in the supply">
             Supply
           </button>
+          {humanSide === 'Rebel' && (G.rebel.actionHand ?? []).includes('one-in-a-million') && (
+            <button className="tab-button" onClick={() => setOiamArmed(!oiamArmed)}
+              title="One In A Million is a one-time card. ON = the game prompts you to set dice on your rolls; OFF (default) = it stays in your hand, no interruptions. Flip it ON just before the roll you want to use it on."
+              style={oiamArmed ? { borderColor: '#aae0ff', color: '#aae0ff', fontWeight: 700 } : undefined}>
+              One in a Million: {oiamArmed ? 'ON' : 'off'}
+            </button>
+          )}
           <button className="tab-button" onClick={startNew}>New game</button>
           {G.phase === 'Setup' && (
             <button className="tab-button" onClick={() => onSetupAutoFill(G.currentPlayer)}>
@@ -2234,7 +2269,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'OneInAMillionOffer'
         && (G.pendingChoice.context === 'mission' || G.pendingChoice.context === 'dsplans')
-        && G.pendingChoice.side === humanSide && (
+        && G.pendingChoice.side === humanSide && oiamArmed && (
         <OneInAMillionMissionModal choice={G.pendingChoice}
           onSubmit={(picks) => {
             // DSP context routes to the Death Star Plans resolver (#186).
@@ -2969,6 +3004,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <CombatBoardLive
           G={G}
           humanSide={humanSide}
+          oiamArmed={oiamArmed}
           online={online ? { submit: online.submit, yourTurn: online.yourTurn } : undefined}
           onPersist={() => { persist(); refresh(); }}
           onShowDiceKey={() => setShowDiceKey(true)}
