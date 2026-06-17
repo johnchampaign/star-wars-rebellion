@@ -2363,6 +2363,15 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     }
     return phases.resolveMisdirectionPick(G, best).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'TrustInTheForceDestroyPick' && G.pendingChoice.side === side) {
+    // AI: destroy the highest-health triangle ground unit (assault-tank over a
+    // stormtrooper) — spend the free kill where it hurts most.
+    const c = G.pendingChoice;
+    const ss = G.map.systems[c.systemId];
+    const hv = (id: string) => G.catalog.unitTypes[ss?.units.find((u) => u.instanceId === id)?.typeId ?? '']?.health.value ?? 0;
+    const target = [...c.candidates].sort((a, b) => hv(b) - hv(a))[0];
+    return phases.resolveTrustInTheForceDestroyPick(G, target).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'ResearchAndDevelopmentOption' && side === 'Empire') {
     // AI: cleanse sabotage if available (B), else peek-and-keep (A).
     const c = G.pendingChoice;

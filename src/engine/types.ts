@@ -1409,6 +1409,17 @@ export type ChoiceRequest =
       candidates: UnitInstanceId[];
     }
   | {
+      // Trust in the Force (Rebel/RoE): after placing the leader and gaining
+      // loyalty, "destroy 1 triangle ground unit in the system" — the Rebel
+      // chooses which when 2+ exist (a stormtrooper vs an assault-tank are
+      // different; #316 audit). `candidates` are eligible Imperial triangle
+      // ground unit instanceIds.
+      kind: 'TrustInTheForceDestroyPick';
+      side: Side; // 'Rebel'
+      systemId: SystemId;
+      candidates: UnitInstanceId[];
+    }
+  | {
       // Cinematic "destroy 1 X without rolling" pick (Intercept / Hold Them Back
       // / Support of the 501st / cinematic Target the Generator). The playing
       // side picks which eligible enemy unit is removed when 2+ are legal,

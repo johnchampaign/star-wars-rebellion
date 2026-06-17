@@ -2833,6 +2833,13 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           candidates={G.pendingChoice.candidates}
           onPick={(lid) => { const r = phases.resolveMisdirectionPick(G, lid); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
       )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'TrustInTheForceDestroyPick'
+        && G.pendingChoice.side === humanSide && (
+        <TrustInTheForceModal G={G} choice={G.pendingChoice}
+          onPick={(iid) => { const r = phases.resolveTrustInTheForceDestroyPick(G, iid); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
+      )}
 
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
@@ -5220,6 +5227,40 @@ function DestroyUpToHealthModal({ G, choice, onSubmit }: {
               border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600 }}>
             Destroy {picked.size} unit{picked.size === 1 ? '' : 's'}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Trust in the Force — Rebel picks 1 triangle ground unit to destroy (#316). */
+function TrustInTheForceModal({ G, choice, onPick }: {
+  G: GameState;
+  choice: { kind: 'TrustInTheForceDestroyPick'; systemId: string; candidates: string[]; side: Side };
+  onPick: (instanceId: string) => void;
+}) {
+  const ss = G.map.systems[choice.systemId];
+  const color = sideColor(choice.side);
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
+      <div style={{ background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 20, maxWidth: 460, width: '90%' }}>
+        <div style={{ fontSize: 14, color, fontWeight: 700, marginBottom: 10 }}>
+          Trust in the Force — destroy 1 triangle ground unit
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {choice.candidates.map((iid) => {
+            const u = ss?.units.find((x) => x.instanceId === iid);
+            const t = u ? G.catalog.unitTypes[u.typeId] : null;
+            return (
+              <button key={iid} onClick={() => onPick(iid)}
+                style={{ padding: '6px 14px', background: color, color: '#000',
+                  border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600 }}>
+                {t?.name ?? u?.typeId ?? iid}{t ? ` (${t.health.value} hp)` : ''}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

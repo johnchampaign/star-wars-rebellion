@@ -2505,6 +2505,17 @@ export function resolveMisdirectionPick(G: GameState, leaderId: string): { ok: b
   return { ok: true };
 }
 
+/** Trust in the Force: Rebel picks which triangle ground unit to destroy. The
+ *  destroy is the card's final effect, so just apply it and clear (#316). */
+export function resolveTrustInTheForceDestroyPick(G: GameState, instanceId: string): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'TrustInTheForceDestroyPick') return { ok: false, reason: 'no-pending' };
+  if (!choice.candidates.includes(instanceId)) return { ok: false, reason: `bad-target:${instanceId}` };
+  M.destroyUnit(G, instanceId, 'trust-in-the-force');
+  G.pendingChoice = undefined;
+  return { ok: true };
+}
+
 /** Resolve Covert Operation's keep-vs-bottom pick. Distinct from
  *  Infiltration: the kept card lands in HAND, not back on top of the deck. */
 export function resolveCovertOperationPick(G: GameState, keepInHandId: string): { ok: boolean; reason?: string } {
@@ -6823,13 +6834,23 @@ function applyAssignmentActionCardEffect(
       M.gainLoyalty(G, 'Rebel', systemId, 1);
       const ss = G.map.systems[systemId];
       if (ss) {
-        const triangleGround = ss.units.find((u) => {
+        const triangleGround = ss.units.filter((u) => {
           if (u.side !== 'Empire') return false;
           const t = G.catalog.unitTypes[u.typeId];
           return t?.theater === 'ground' && t?.tier === 'triangle';
         });
-        if (triangleGround) {
-          M.destroyUnit(G, triangleGround.instanceId, 'trust-in-the-force');
+        if (triangleGround.length === 1) {
+          M.destroyUnit(G, triangleGround[0].instanceId, 'trust-in-the-force');
+        } else if (triangleGround.length >= 2) {
+          // 2+ distinct targets (e.g. stormtrooper vs assault-tank) → the Rebel
+          // chooses which to destroy (#316 audit).
+          G.pendingChoice = {
+            kind: 'TrustInTheForceDestroyPick', side: 'Rebel', systemId,
+            candidates: triangleGround.map((u) => u.instanceId),
+          };
+          log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+            kind: 'TrustInTheForceDestroyPick', candidates: triangleGround.length,
+          }});
         }
       }
       break;
