@@ -2727,8 +2727,14 @@ function stepOnceInner(G: GameState, side: Side): boolean {
             else if (t.transport.restriction) fighters.push(u);
           }
           // Empire subjugation reserve: keep 1 ground at subjugated systems
-          // so the subjugation marker stays.
-          const groundReserve = (side === 'Empire' && ss.subjugated && ground.length > 0) ? 1 : 0;
+          // so the subjugation marker stays — EXCEPT once the Rebel base is
+          // revealed, when capturing it wins the game outright and holding
+          // subjugations is worthless: commit every ground unit to the assault
+          // (log diagnosis 2026-06-17: the Empire was leaving ~6-10 ground
+          // stranded as subjugation garrisons while it failed to muster an
+          // assault force at the exposed base).
+          const groundReserve = (side === 'Empire' && ss.subjugated && ground.length > 0
+            && !G.rebelBaseRevealed) ? 1 : 0;
           const groundCandidates = ground.slice(0, Math.max(0, ground.length - groundReserve));
           // Transport-capacity math: capital ships' total capacity must
           // cover (fighters + ground) we move. Bring all capitals (they're
