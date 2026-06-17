@@ -822,6 +822,33 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
       if (n > largestEmpireStackSize) { largestEmpireStackSize = n; largestEmpireStackSys = sysId; }
     }
   }
+  // PRE-REVEAL STAGING (log diagnosis 2026-06-17): the AI finds the base about
+  // as fast as a human but converts only ~44% of base-invasions, because force
+  // isn't massed near the base BEFORE the reveal — so a late reveal can't be
+  // finished before reputation-time runs out (it then spins leader-only x0
+  // activations on the base with nothing to bring). The human pre-stages: once
+  // probes narrow the base to a handful of candidates, march the column toward
+  // the single most-probable one so ground force arrives massed and a reveal
+  // converts same-turn. Pick the most-likely UNCLEARED candidate — Rebel-loyal
+  // first (Rebels favor their own loyalty for placement), then the one nearest
+  // the existing column to avoid backtracking.
+  let suspectFocus: string | null = null;
+  if (side === 'Empire' && !G.rebelBaseRevealed && largestEmpireStackSize >= 4 && baseCandidateSet) {
+    const colDist = largestEmpireStackSys ? bfsDistances(G, largestEmpireStackSys, 12) : null;
+    let bestScore = -Infinity;
+    for (const cid of baseCandidateSet) {
+      const ss = G.map.systems[cid];
+      if (!ss) continue;
+      const cleared = ss.units.some((u) => u.side === 'Empire') || ss.loyalty === 'imperial' || ss.subjugated;
+      if (cleared) continue; // already swept — base would have auto-revealed
+      let s = 0;
+      if (ss.loyalty === 'rebel') s += 12;
+      if (ss.units.some((u) => u.side === 'Rebel')) s += 6;
+      if (colDist) s -= distFrom(colDist, cid) * 1.5; // prefer a reachable focus
+      if (s > bestScore) { bestScore = s; suspectFocus = cid; }
+    }
+  }
+  const suspectDist = suspectFocus ? bfsDistances(G, suspectFocus, 4) : null;
   const systemScore = new Map<string, number>();
   for (const sysId of allSystemIds) {
     let ts = 0;
@@ -987,6 +1014,17 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         const dToBase = distFrom(revealedBaseDist, sysId);
         if (dToBase === 2) ts += 10;
         else if (dToBase === 3) ts += 5;
+      }
+      // Pre-reveal staging gradient: before the base is even revealed, flow the
+      // marching column toward the suspected base region so ground force is
+      // already adjacent when it's found (so the reveal converts same-turn). A
+      // hair smaller than the revealed-base gradient so an actual reveal still
+      // takes priority. Skipped on the focus system itself (it gets the
+      // candidate bonus) and where a leader already sits (can't pull units out).
+      if (suspectDist && empireLeadersHere === 0 && sysId !== suspectFocus) {
+        const dToFocus = distFrom(suspectDist, sysId);
+        if (dToFocus === 1) ts += 9;
+        else if (dToFocus === 2) ts += 5;
       }
       // #246/#237: don't feed a leader + units into a battle we're clearly
       // going to lose. For an attack on a NON-base system holding Rebel units
