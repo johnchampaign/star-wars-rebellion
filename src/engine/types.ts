@@ -1409,6 +1409,16 @@ export type ChoiceRequest =
       candidates: UnitInstanceId[];
     }
   | {
+      // Tractor Beam (Empire/RoE cinematic): "if you have a Star Destroyer but
+      // the Rebels have no ships, capture 1 leader." When 2+ Rebel leaders are
+      // in the combat the Empire chooses which to capture (#316 audit).
+      // `candidates` are Rebel leader ids in the system.
+      kind: 'TractorBeamCapturePick';
+      side: Side; // 'Empire'
+      systemId: SystemId;
+      candidates: LeaderId[];
+    }
+  | {
       // Trust in the Force (Rebel/RoE): after placing the leader and gaining
       // loyalty, "destroy 1 triangle ground unit in the system" — the Rebel
       // chooses which when 2+ exist (a stormtrooper vs an assault-tank are

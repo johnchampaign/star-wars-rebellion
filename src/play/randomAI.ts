@@ -1212,6 +1212,16 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const target = [...c.candidates].sort((a, b) => remaining(a) - remaining(b))[0];
     return combat.resolveCinematicTargetPick(G, target).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'TractorBeamCapturePick' && G.pendingChoice.side === side) {
+    // AI (Empire): capture the highest combined-tactic-value Rebel leader.
+    const c = G.pendingChoice;
+    const v = (lid: string) => {
+      const l = G.catalog.leaders[lid];
+      return l ? (l.tacticValues.space + l.tacticValues.ground + l.skills.diplomacy + l.skills.intel + l.skills.specOps + l.skills.logistics) : 0;
+    };
+    const target = [...c.candidates].sort((a, b) => v(b) - v(a))[0];
+    return combat.resolveTractorBeamCapturePick(G, target).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'CinematicDestroyPick' && G.pendingChoice.side === side) {
     // AI: destroy the highest-health eligible enemy unit (the one the opponent
     // would most value / be hardest to roll down) — matches the old heuristic's

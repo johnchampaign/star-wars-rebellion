@@ -2379,6 +2379,22 @@ export function resolveCinematicTargetPick(
   return { ok: true };
 }
 
+/** Resolve a Tractor Beam capture pick (#316 audit): the Empire captures the
+ *  chosen Rebel leader, then combat resumes (any queued Confrontation runs). */
+export function resolveTractorBeamCapturePick(
+  G: GameState, leaderId: LeaderId
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'TractorBeamCapturePick') return { ok: false, reason: 'no-pending' };
+  if (!G.pendingCombat) return { ok: false, reason: 'no-pending-combat' };
+  if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'not-a-candidate' };
+  M.captureLeader(G, leaderId);
+  log(G, { kind: 'cinematic-tractor-beam-capture', side: 'Empire', payload: { leaderId, systemId: pc.systemId } });
+  G.pendingChoice = undefined;
+  runCombat(G);
+  return { ok: true };
+}
+
 /** Resolve a cinematic destroy-without-rolling pick (#316 audit): remove the
  *  enemy unit the player chose, then re-enter runCombat. The card was already
  *  discarded when the choice was posted. */

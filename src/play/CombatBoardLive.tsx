@@ -226,6 +226,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
     pc?.kind === 'CinematicTacticSelect' ? pc.side :
     pc?.kind === 'RogueOneChoice'        ? pc.side :
     pc?.kind === 'ConfrontationLeaderPick' ? pc.side :
+    pc?.kind === 'TractorBeamCapturePick' ? pc.side :
     pc?.kind === 'CinematicReroll'       ? pc.side :
     pc?.kind === 'CinematicHeal'         ? pc.side :
     pc?.kind === 'CinematicDeferredHeal' ? pc.side :
@@ -662,6 +663,9 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
         )}
         {pc?.kind === 'ConfrontationLeaderPick' && isHumanDecision && (
           <ConfrontationLeaderPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'TractorBeamCapturePick' && isHumanDecision && (
+          <TractorBeamCapturePanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'CinematicReroll' && isHumanDecision && (
           <CinematicRerollPanel G={G} choice={pc} onPersist={onPersist} />
@@ -2131,6 +2135,32 @@ function RogueOneChoicePanel({ G, choice, onPersist }: {
         {choice.markerSources.map((src) => (
           <button key={`m-${src}`} onClick={() => submit(`marker:${src}`)} style={btn('#80b0dc')}>
             Remove “{src}” marker
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TractorBeamCapturePanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'TractorBeamCapturePick' }>;
+  onPersist: () => void;
+}) {
+  const submit = (leaderId: string) => {
+    const r = combat.resolveTractorBeamCapturePick(G, leaderId as never);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>Tractor Beam</b> — capture <i>1 Rebel leader</i> stranded in this system.
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {choice.candidates.map((lid) => (
+          <button key={lid} onClick={() => submit(lid)} style={btn('#dc8078')}>
+            Capture {G.catalog.leaders[lid]?.name ?? lid}
           </button>
         ))}
       </div>

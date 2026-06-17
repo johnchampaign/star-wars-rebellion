@@ -807,6 +807,16 @@ export function resolveCinematicEndOfRound(G: GameState, c: CombatState): boolea
     if (!haveSD || oppShips > 0) continue;
     const leaders = G.rebel.leadersOnBoard[c.systemId] ?? [];
     if (leaders.length === 0) continue;
+    if (leaders.length >= 2) {
+      // RAW: the Empire CHOOSES which leader to capture. Pause for the pick;
+      // clear the capture entries now so they don't re-fire on resume (#316).
+      c.cinematicEndOfRound = queue.filter((q) => q.kind !== 'capture');
+      G.pendingChoice = { kind: 'TractorBeamCapturePick', side: e.side, systemId: c.systemId, candidates: [...leaders] };
+      log(G, { kind: 'choice-request', side: e.side, payload: {
+        kind: 'TractorBeamCapturePick', systemId: c.systemId, candidates: leaders.length,
+      }});
+      return true;
+    }
     const leaderId = leaders[0];
     M.captureLeader(G, leaderId);
     log(G, { kind: 'cinematic-tractor-beam-capture', side: e.side, payload: { leaderId, systemId: c.systemId } });
