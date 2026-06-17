@@ -31,6 +31,7 @@ import * as _phases from '../engine/phases';
 import type { MoveOrder } from '../engine/phases';
 import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
 import * as _combat from '../engine/combat';
+import { unitsAvailableInSupply } from '../engine/mechanics';
 import { CombatBoardLive } from './CombatBoardLive';
 import { encode, decode, canEncode } from '../engine/codec';
 import type { GameState, Side, LeaderId } from '../engine/types';
@@ -365,6 +366,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   const [showReport, setShowReport] = useState(false);
   const [reportScreenshot, setReportScreenshot] = useState<string | null>(null);
   const [showUploadLogs, setShowUploadLogs] = useState(false);
+  const [showSupply, setShowSupply] = useState(false);
   // Queue of unseen "objective scored" notices for the human side. Populated
   // by an effect that watches turnLog for new play-objective entries; each
   // one becomes a modal that the user acknowledges before the next shows.
@@ -1281,6 +1283,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           >
             Upload logs
           </button>
+          <button className="tab-button" onClick={() => setShowSupply(true)}
+            title="See how many of each unit type are left in the supply">
+            Supply
+          </button>
           <button className="tab-button" onClick={startNew}>New game</button>
           {G.phase === 'Setup' && (
             <button className="tab-button" onClick={() => onSetupAutoFill(G.currentPlayer)}>
@@ -1556,6 +1562,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           onClose={() => { setShowReport(false); setReportScreenshot(null); }}
         />
       )}
+      {showSupply && (
+        <SupplyPanel G={G} onClose={() => setShowSupply(false)} />
+      )}
+
       {showUploadLogs && (
         <UploadLogsDialog
           onClose={() => setShowUploadLogs(false)}
@@ -11208,6 +11218,65 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
           in the play header. Unit abbreviations, dice glyphs, and system summary lines carry
           the UI without art.
         </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Supply tracker (#337): how many of each unit type are left in the supply —
+ *  so a player deciding whether to recruit/build (e.g. another Mon Calamari
+ *  Cruiser) can see whether any tokens remain. Supply is a hard cap in RAW. */
+function SupplyPanel({ G, onClose }: { G: GameState; onClose: () => void }) {
+  const sides: Side[] = ['Rebel', 'Empire'];
+  const column = (side: Side) => {
+    const rows = Object.values(G.catalog.unitTypes)
+      .filter((t) => t.side === side && typeof t.supplyCount === 'number')
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((t) => {
+        const total = t.supplyCount as number;
+        const remaining = unitsAvailableInSupply(G, t.id);
+        return { id: t.id, name: t.name, total, remaining };
+      });
+    return (
+      <div style={{ flex: 1, minWidth: 220 }}>
+        <div style={{ fontWeight: 700, color: sideColor(side), marginBottom: 6 }}>{side}</div>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <tbody>
+            {rows.map((r) => {
+              const out = r.remaining === 0;
+              return (
+                <tr key={r.id} style={{ borderBottom: '1px solid #23252b' }}>
+                  <td style={{ padding: '3px 6px', color: out ? '#e88' : '#e8e8ea' }}>{r.name}</td>
+                  <td style={{ padding: '3px 6px', textAlign: 'right', color: out ? '#e88' : '#cfd2d6', fontVariantNumeric: 'tabular-nums' }}>
+                    <b>{r.remaining}</b> <span style={{ color: '#888' }}>/ {r.total} left</span>
+                    {out && <span style={{ color: '#e88', marginLeft: 6 }}>none left</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 6000 }}
+      onClick={onClose}>
+      <div style={{ background: '#15171c', border: '2px solid #555', borderRadius: 8,
+        padding: 20, maxWidth: 640, width: '94%', maxHeight: '88vh', overflowY: 'auto' }}
+        onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Unit supply</div>
+        <div style={{ fontSize: 12, color: '#9a9da2', marginBottom: 14 }}>
+          Tokens left in the supply (total minus everything already in play or on a build queue).
+          You can't recruit, build, or deploy a unit type with none left.
+        </div>
+        <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap' }}>
+          {sides.map((s) => <div key={s} style={{ flex: 1, minWidth: 220 }}>{column(s)}</div>)}
+        </div>
+        <div style={{ textAlign: 'right', marginTop: 16 }}>
+          <button className="tab-button active" onClick={onClose} style={{ padding: '6px 18px' }}>Close</button>
         </div>
       </div>
     </div>
