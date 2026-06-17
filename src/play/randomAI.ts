@@ -731,6 +731,11 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   const rebelDefendDist = (side === 'Rebel' && G.rebelBaseRevealed && G.rebelBaseSystemId)
     ? bfsDistances(G, G.rebelBaseSystemId, 4)
     : null;
+  // Held Rebel objectives — used to PURSUE combat objectives (ai-divergence
+  // tempo gap: the AI wins ~10 rounds vs the expert's ~6, scoring too few
+  // objectives because it never steers play toward them; the Rebel wins faster
+  // the faster it earns reputation, and objectives are the main source).
+  const rebelObjHand = side === 'Rebel' ? (G.rebel.objectiveHand ?? []) : [];
   // Precompute the set of probe-eliminated systems for the Empire.
   const eliminatedByProbe = side === 'Empire'
     ? new Set((G.empire.probeHand ?? [])
@@ -1134,7 +1139,32 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         const dFromBase = baseDist ? distFrom(baseDist, sysId) : Infinity;
         if (hasEnemyUnits && impAll > 0) {
           // Winnable attack (overall edge AND can clear the ground to hold it).
-          if (rebAll >= impAll * 1.2 && rebGround >= impGround) ts += 12;
+          if (rebAll >= impAll * 1.2 && rebGround >= impGround) {
+            ts += 12;
+            // OBJECTIVE PURSUIT: a win here that satisfies a held combat
+            // objective scores reputation now — the fastest path to the
+            // reputation-time win. Steer the attack toward objective-relevant
+            // targets (only inside the strength gate, so we never suicide for a
+            // card). Bonus per matching held objective.
+            if (rebelObjHand.length > 0) {
+              const impUnits = sys.units.filter((u) => u.side === 'Empire');
+              const hpIn = (theater: 'ground' | 'space') => impUnits
+                .filter((u) => G.catalog.unitTypes[u.typeId]?.theater === theater)
+                .reduce((acc, u) => acc + (G.catalog.unitTypes[u.typeId]?.health.value ?? 0), 0);
+              const impGroundHp = hpIn('ground'), impShipHp = hpIn('space');
+              const hasSD = impUnits.some((u) => u.typeId === 'star-destroyer' || u.typeId === 'super-star-destroyer');
+              const hasImpShips = impShipHp > 0, hasImpGround = impGroundHp > 0;
+              const resCount = def?.resources?.length ?? 0;
+              const has = (id: string) => rebelObjHand.includes(id);
+              if (has('crippling-blow-1') && impGroundHp >= 3) ts += 10;
+              if (has('rebel-assault-1') && hasSD) ts += 10;
+              if (has('major-victory-3') && impShipHp >= 3) ts += 10;
+              if (has('liberation-2') && sys.subjugated && hasImpGround) ts += 10;
+              if (has('raid-imperial-factory-3') && resCount > 0) ts += 8;
+              if (has('seize-control-2') && sys.sabotage) ts += 8;
+              if (has('decisive-victory-1') && hasImpShips && hasImpGround) ts += 8;
+            }
+          }
         } else if (!hasEnemyUnits && sys.loyalty !== 'rebel' && !def?.isRemote
                    && sysId !== 'coruscant' && bringable > 0 && dFromBase >= 2) {
           // Build presence on an uncontested core system (gain loyalty / deny
