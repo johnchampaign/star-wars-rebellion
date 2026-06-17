@@ -1031,6 +1031,31 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         if (dToBase === 2) ts += 10;
         else if (dToBase === 3) ts += 5;
       }
+      // Carrier-ferry consolidation (assault logistics, log diagnosis): in lost
+      // invasions the Empire has carriers AND ground within ~2 hops of the
+      // exposed base, but at DIFFERENT systems — the ground sits stranded with
+      // no carrier to lift it. Reward activating a near-base system that holds
+      // stranded Empire ground (ground present, no local carrier): a carrier
+      // pulled in from an adjacent source co-locates with it, so next turn it
+      // can ship the ground to the assault. Only fires when a carrier is
+      // actually adjacent (else the activation can't load anything).
+      if (revealedBaseDist && G.rebelBaseSystemId && sysId !== G.rebelBaseSystemId) {
+        const dToBase = distFrom(revealedBaseDist, sysId);
+        if (dToBase <= 2) {
+          const hasCap = (u: { typeId: string }) => (G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0) > 0;
+          const isGrnd = (u: { typeId: string }) => {
+            const t = G.catalog.unitTypes[u.typeId];
+            return !!t && t.theater === 'ground' && t.class !== 'structure' && !t.transport.immobile;
+          };
+          const strandedGround = sys.units.filter((u) => u.side === 'Empire' && isGrnd(u)).length;
+          const carrierHere = sys.units.some((u) => u.side === 'Empire' && hasCap(u));
+          if (strandedGround > 0 && !carrierHere) {
+            const carrierAdj = (G.catalog.adjacency[sysId] ?? []).some((a) =>
+              (G.map.systems[a]?.units ?? []).some((u) => u.side === 'Empire' && hasCap(u)));
+            if (carrierAdj) ts += Math.min(strandedGround, 4) * 4; // pull a carrier in to lift it
+          }
+        }
+      }
       // Pre-reveal staging gradient: before the base is even revealed, flow the
       // marching column toward the suspected base region so ground force is
       // already adjacent when it's found (so the reveal converts same-turn). A
