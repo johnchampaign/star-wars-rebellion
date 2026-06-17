@@ -524,14 +524,25 @@ function rebelMissionTargetScore(
   const loyaltyGainMissions = new Set([
     'establish-trade-relations', 'build-alliance',
     'wookie-uprising', 'support-of-mon-calamari',
+    // regional-aid gains loyalty in its target too, but was missing here, so
+    // it had NO already-loyal penalty and the AI burned it on already-Rebel
+    // systems — the #1 source of the "loyalty-wasted" divergence (ai-divergence
+    // 2026-06-17: AI 0.45 vs expert 0.22/round).
+    'regional-aid',
   ]);
   if (loyaltyGainMissions.has(missionId)) {
     s += (sysDef.resources?.length ?? 0) * 2;
-    // Already Rebel-loyal & not subjugated → no loyalty to gain. Make this
-    // strongly negative so the AI picks an unaligned/Imperial target (or,
-    // if none qualifies, the assignment planner's situational damping skips
-    // the mission entirely) rather than burning a leader on a no-op.
-    if (sysState?.loyalty === 'rebel' && !sysState.subjugated) s -= 30;
+    // Underlying loyalty already Rebel → no loyalty to gain (a successful
+    // mission just logs "loyalty-already" and wastes the leader). Strongly avoid
+    // so the AI targets a neutral/Imperial system instead. NOTE: this must fire
+    // even when the system is SUBJUGATED — a subjugated-Rebel system's loyalty
+    // field is still 'rebel', and that was the actual waste source (build-
+    // alliance kept targeting subjugated-Rebel systems because the old
+    // `!subjugated` guard skipped them; ai-divergence loyalty-wasted gap).
+    // (Deliberately NOT preferring Imperial targets — an early experiment that
+    // did so sent the Rebel to attempt flips on defended Imperial strongholds,
+    // where the mission failed and loyalty-gain crashed.)
+    if (sysState?.loyalty === 'rebel') s -= 30;
   }
   // Sabotage (Rebel mission) should target ENEMY systems, never own.
   // Issues #10, #13: the AI was sabotaging Bespin / Alderaan when those
@@ -1920,7 +1931,20 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   // or Imperial-loyal system; MVP keeps it simple.
   if (G.pendingChoice && G.pendingChoice.kind === 'RegionalAidPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
-    return phases.resolveRegionalAidPick(G, c.candidates[0]).ok;
+    // Regional Aid's second loyalty gain — was blindly candidates[0], frequently
+    // an already-Rebel system, wasting the loyalty (ai-divergence loyalty-wasted
+    // gap). Prefer flipping an Imperial system (denies the Empire), then a
+    // neutral (straight gain); never an already-Rebel one.
+    const aidScore = (sid: string): number => {
+      const ss = G.map.systems[sid];
+      const res = G.catalog.systems[sid]?.resources?.length ?? 0;
+      if (!ss) return -100;
+      if (ss.loyalty === 'rebel' && !ss.subjugated) return -100; // wasted
+      if (ss.loyalty === 'imperial') return 20 + res;            // flip = deny Empire
+      return 10 + res;                                            // neutral gain
+    };
+    const best = [...c.candidates].sort((a, b) => aidScore(b) - aidScore(a))[0];
+    return phases.resolveRegionalAidPick(G, best).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'DestroyedSystemCull' && G.pendingChoice.side === side) {
     // Superlaser overflow (#286): keep the most valuable ground, destroy the
