@@ -183,8 +183,8 @@ export function objectiveConditionMet(G: GameState, objectiveId: string): boolea
     }
 
     case 'a-time-for-peace-2': {
-      // Playable if the Imperial build queue holds 2 triangle, 1 circle, and
-      // 1 square unit to destroy.
+      // Playable only if the REBEL build queue holds 2 triangle + 1 circle +
+      // 1 square unit to pay as the disarmament cost (#341). All-or-nothing.
       return timeForPeaceQueueTargets(G) !== null;
     }
   }
