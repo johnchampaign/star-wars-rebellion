@@ -1925,32 +1925,14 @@ function applyStartOfCombatActionCardEffect(G: GameState, c: CombatState, side: 
       return;
     }
     case 'baze-s-loyalty': {
-      // RoE (Chirrut): "Destroy 2 health-worth of units." DestroyUpToHealth
-      // is the right UX but its resolver assumes mission/Assignment context
-      // (resumeMissionAfterChoice) — wiring it into the combat-start batch
-      // continuation needs new plumbing. For now, auto-destroy 2 health of
-      // the smallest enemy units in the combat system. Logged as a TODO so
-      // a follow-up can convert this to a real player pick once the
-      // BazesLoyaltyTarget choice + resumeCombat plumbing exists.
-      const opp: Side = side === 'Rebel' ? 'Empire' : 'Rebel';
-      const ss = G.map.systems[c.systemId];
-      const targets = (ss?.units ?? [])
-        .filter((u) => u.side === opp && G.catalog.unitTypes[u.typeId]?.health.color !== null)
-        .slice()
-        .sort((a, b) => (G.catalog.unitTypes[a.typeId]?.health.value ?? 0) - (G.catalog.unitTypes[b.typeId]?.health.value ?? 0));
-      let budget = 2;
-      const killed: string[] = [];
-      for (const u of targets) {
-        const h = G.catalog.unitTypes[u.typeId]?.health.value ?? 0;
-        if (h === 0 || h > budget) continue;
-        M.destroyUnit(G, u.instanceId, 'bazes-loyalty');
-        killed.push(u.typeId);
-        budget -= h;
-        if (budget === 0) break;
+      // RoE (Chirrut): "Destroy 2 health-worth of units." The playing side
+      // chooses which enemy units to destroy, one at a time, within a 2-health
+      // budget (player report #316 — the choice was being auto-resolved).
+      if (!postBazesLoyaltyTarget(G, c, side, 2)) {
+        log(G, { kind: 'combat-action-card-effect', side, payload: {
+          card: cardId, applied: 'no-effect (no affordable target)',
+        }});
       }
-      log(G, { kind: 'combat-action-card-effect', side, payload: {
-        card: cardId, applied: `auto-destroyed ${killed.length} unit(s): ${killed.join(',')}`,
-      }});
       return;
     }
     default: {
@@ -2000,12 +1982,14 @@ function hasStartOfCombatLegalTarget(G: GameState, c: CombatState, cardId: strin
       return hasDeathStar && hasRebelShip;
     }
     case 'baze-s-loyalty': {
-      // RoE: "Destroy 2 health-worth of units." Needs any enemy (Imperial)
-      // unit in the system that can be damaged.
+      // RoE: "Destroy 2 health-worth of units." Needs an enemy (Imperial) unit
+      // whose whole health fits the 2-health budget — a lone 3+-health ship
+      // can't be destroyed, so the card would do nothing.
       return units.some((u) => {
         if (u.side !== 'Empire') return false;
         const t = G.catalog.unitTypes[u.typeId];
-        return t?.health.color !== null;
+        const h = t?.health.value ?? 0;
+        return t?.health.color !== null && h > 0 && h <= 2;
       });
     }
     case 'its-a-trap':
@@ -2164,6 +2148,63 @@ export function resolveTargetTheGeneratorPick(
     card: 'target-the-generator', destroyed: instanceId,
   }});
   G.pendingChoice = undefined;
+  const batchSide = c.startOfCombatBatch?.side ?? pc.side;
+  const finished = processStartOfCombatBatch(G, c);
+  if (!finished) return { ok: true };
+  advanceStartOfCombatAfterSideDone(G, c, batchSide);
+  return { ok: true };
+}
+
+/** Post a Baze's Loyalty target pick if any enemy unit in the combat system is
+ *  affordable within `budget` health-worth. Returns false (posts nothing) when
+ *  no affordable target remains, so the caller can continue the combat batch. */
+function postBazesLoyaltyTarget(
+  G: GameState, c: CombatState, side: Side, budget: number
+): boolean {
+  if (budget <= 0) return false;
+  const opp: Side = side === 'Rebel' ? 'Empire' : 'Rebel';
+  const ss = G.map.systems[c.systemId];
+  const candidates = (ss?.units ?? [])
+    .filter((u) => {
+      if (u.side !== opp) return false;
+      const t = G.catalog.unitTypes[u.typeId];
+      const h = t?.health.value ?? 0;
+      // Destroyable (has a health bar) and the whole unit fits the budget —
+      // you can't partially destroy a unit, so a 3-health ship is untouchable
+      // by a 2-health budget.
+      return t?.health.color !== null && h > 0 && h <= budget;
+    })
+    .map((u) => u.instanceId);
+  if (candidates.length === 0) return false;
+  G.pendingChoice = {
+    kind: 'BazesLoyaltyTarget', side, systemId: c.systemId, candidates, budget,
+  };
+  log(G, { kind: 'choice-request', side, payload: {
+    kind: 'BazesLoyaltyTarget', cardId: 'baze-s-loyalty', candidates: candidates.length, budget,
+  }});
+  return true;
+}
+
+/** Resolve one Baze's Loyalty pick: destroy `instanceId`, decrement the budget
+ *  by its health, then re-post for the next pick or continue combat (#316). */
+export function resolveBazesLoyaltyTarget(
+  G: GameState, instanceId: string
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'BazesLoyaltyTarget') return { ok: false, reason: 'no-pending' };
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  if (!pc.candidates.includes(instanceId)) return { ok: false, reason: 'bad-target' };
+  const ss = G.map.systems[pc.systemId];
+  const u = ss?.units.find((x) => x.instanceId === instanceId);
+  const h = u ? (G.catalog.unitTypes[u.typeId]?.health.value ?? 0) : 0;
+  M.destroyUnit(G, instanceId, 'bazes-loyalty');
+  log(G, { kind: 'combat-action-card-effect', side: pc.side, payload: {
+    card: 'baze-s-loyalty', destroyed: instanceId,
+  }});
+  G.pendingChoice = undefined;
+  // More budget AND an affordable target left → keep picking before resuming.
+  if (postBazesLoyaltyTarget(G, c, pc.side, pc.budget - h)) return { ok: true };
   const batchSide = c.startOfCombatBatch?.side ?? pc.side;
   const finished = processStartOfCombatBatch(G, c);
   if (!finished) return { ok: true };

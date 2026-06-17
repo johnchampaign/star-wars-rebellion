@@ -197,6 +197,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'CombatStartActionCards':   return pc.side === side;
     case 'MoreDangerousTheaterPick': return pc.side === side;
     case 'FullyOperationalTargetPick': return pc.side === side;
+    case 'BazesLoyaltyTarget':       return pc.side === side;
     case 'TargetTheGeneratorPick':   return pc.side === side;
     case 'ReadyForActionLeaderPick': return pc.side === side;
     case 'DeathStarPlansAttempt':    return pc.side === side;

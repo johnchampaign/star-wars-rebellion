@@ -1085,10 +1085,15 @@ const contingencyPlan: EffectHandler = (G, ctx) => {
 const misdirection: EffectHandler = (G, _ctx) => {
   // RAW: "Choose 1 of your leaders. Imperial leaders in the leader pool
   // cannot be sent to oppose that leader's missions this round."
-  // Rebel picks ANY of their leaders (not just the resolver).
+  // Rebel picks ANY of their leaders (not just the resolver) — including
+  // leaders currently out on missions, such as the leader who just performed
+  // Misdirection itself (player report #324: Jan Dodonna was on a mission and
+  // so was missing from the list). Captured leaders are excluded: they can't
+  // run missions, so protecting one does nothing.
   const allRebelLeaders = [
     ...G.rebel.leaderPool,
     ...Object.values(G.rebel.leadersOnBoard).flat(),
+    ...G.rebel.leadersOnMissions.flatMap((m) => m.leaderIds),
   ];
   // Dedupe while preserving order.
   const candidates = Array.from(new Set(allRebelLeaders));

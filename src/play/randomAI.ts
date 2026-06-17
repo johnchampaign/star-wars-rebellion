@@ -1432,6 +1432,16 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     })[0];
     return combat.resolveFullyOperationalTargetPick(G, target).ok;
   }
+  // Baze's Loyalty: spend the 2-health budget on the biggest affordable unit
+  // first (a capital ship is worth more than two fighters). Re-posts itself
+  // until the budget is spent, so one pick per call is fine.
+  if (G.pendingChoice && G.pendingChoice.kind === 'BazesLoyaltyTarget' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const ss = G.map.systems[c.systemId];
+    const hv = (id: string) => G.catalog.unitTypes[ss?.units.find((u) => u.instanceId === id)?.typeId ?? '']?.health.value ?? 0;
+    const target = [...c.candidates].sort((a, b) => hv(b) - hv(a))[0];
+    return combat.resolveBazesLoyaltyTarget(G, target).ok;
+  }
   // Target the Generator: prefer ion-cannon over shield-generator (denies
   // the Rebel base's "ion-cannon-special" defensive bonus first).
   if (G.pendingChoice && G.pendingChoice.kind === 'TargetTheGeneratorPick' && G.pendingChoice.side === side) {

@@ -1298,6 +1298,18 @@ export type ChoiceRequest =
       candidates: string[]; // unit instanceIds
     }
   | {
+      // "Baze's Loyalty" (Chirrut): the playing side destroys up to `budget`
+      // health-worth of enemy units in the system, picking which ones one at a
+      // time. `candidates` are enemy unit instanceIds whose health value is
+      // <= the remaining budget. Re-posts itself after each pick until the
+      // budget is spent or no affordable target remains (player report #316).
+      kind: 'BazesLoyaltyTarget';
+      side: Side;
+      systemId: SystemId;
+      candidates: string[]; // unit instanceIds affordable within `budget`
+      budget: number; // remaining health-worth to destroy
+    }
+  | {
       // "Target the Generator" (General Veers): Empire picks one structure
       // (ion-cannon / shield-generator) in the system to destroy.
       // `candidates` are eligible structure instance ids.

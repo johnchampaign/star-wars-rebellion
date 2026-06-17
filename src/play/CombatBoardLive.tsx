@@ -218,6 +218,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
     pc?.kind === 'CombatStartActionCards' ? pc.side :
     pc?.kind === 'MoreDangerousTheaterPick' ? pc.side :
     pc?.kind === 'FullyOperationalTargetPick' ? pc.side :
+    pc?.kind === 'BazesLoyaltyTarget'    ? pc.side :
     pc?.kind === 'TargetTheGeneratorPick' ? pc.side :
     pc?.kind === 'ReadyForActionLeaderPick' ? pc.side :
     pc?.kind === 'CombatAddLeaderPick'   ? pc.side :
@@ -635,6 +636,9 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
         )}
         {pc?.kind === 'TargetTheGeneratorPick' && isHumanDecision && (
           <TargetTheGeneratorPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'BazesLoyaltyTarget' && isHumanDecision && (
+          <BazesLoyaltyPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'CinematicTargetPick' && isHumanDecision && (
           <CinematicTargetPickPanel G={G} choice={pc} onPersist={onPersist} />
@@ -1887,6 +1891,39 @@ function TargetTheGeneratorPanel({ G, choice, onPersist }: {
           return (
             <button key={iid} onClick={() => submit(iid)} style={btn('#ff8866')}>
               {t?.name ?? u?.typeId ?? iid}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------- "Baze's Loyalty" destroy-2-health pick (Chirrut, #316) ----------
+
+function BazesLoyaltyPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'BazesLoyaltyTarget' }>;
+  onPersist: () => void;
+}) {
+  const ss = G.map.systems[choice.systemId];
+  const submit = (instanceId: string) => {
+    const r = combat.resolveBazesLoyaltyTarget(G, instanceId);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>Baze's Loyalty:</b> destroy units worth up to {choice.budget} health — pick one.
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {choice.candidates.map((iid) => {
+          const u = ss?.units.find((x) => x.instanceId === iid);
+          const t = u ? G.catalog.unitTypes[u.typeId] : null;
+          return (
+            <button key={iid} onClick={() => submit(iid)} style={btn('#ff8866')}>
+              {t?.name ?? u?.typeId ?? iid}{t ? ` (${t.health.value}♥)` : ''}
             </button>
           );
         })}
