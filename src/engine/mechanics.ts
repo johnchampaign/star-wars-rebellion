@@ -216,9 +216,35 @@ function cullOverTransportInDestroyed(G: GameState, affected?: SystemId[]): void
   }
 }
 
+/** RoE p.7 "Removing Target Markers": when a player has a GROUND unit in a
+ *  system that holds the opponent's target marker AND the opponent (the marker's
+ *  owner) has no ground units there, the marker is removed (and any removal
+ *  effect resolves). Removing the opponent's marker is always to the remover's
+ *  benefit — re-enables Death Star Plans (Secure the Plans), scores reputation
+ *  (Raid Outposts), or ends the opponent's immediate objective (Rebel Cell /
+ *  Show No Fear) — so we resolve it automatically (#321). Skipped while a combat
+ *  is mid-resolution so transient ground counts don't strip a marker early. */
+function processTargetMarkerRemovals(G: GameState, affected?: SystemId[]): void {
+  if (G.pendingCombat) return;
+  const ids = affected ?? Object.keys(G.map.systems);
+  for (const id of ids) {
+    const ss = G.map.systems[id];
+    if (!ss?.targetMarkers?.length) continue;
+    const hasGround = (side: Side) => ss.units.some(
+      (u) => u.side === side && G.catalog.unitTypes[u.typeId]?.theater === 'ground');
+    for (const m of [...ss.targetMarkers]) {
+      const remover: Side = m.placedBy === 'Rebel' ? 'Empire' : 'Rebel';
+      if (!hasGround(remover) || hasGround(m.placedBy)) continue;
+      if (m.source === 'raid-outposts-2') removeRaidOutpostMarker(G, id);
+      else removeTargetMarker(G, id, m.source, remover);
+    }
+  }
+}
+
 function applyInvariants(G: GameState, affected?: SystemId[]): void {
   recomputeSubjugation(G, affected);
   cullOverTransportInDestroyed(G, affected);
+  processTargetMarkerRemovals(G, affected);
   recomputeRebelBaseReveal(G);
   recordEmpireSearched(G, affected);
   // If a captured leader's system no longer has Imperial units, auto-rescue

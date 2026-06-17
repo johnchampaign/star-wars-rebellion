@@ -2902,6 +2902,12 @@ function maybePostDeathStarPlansChoice(G: GameState, c: CombatState): void {
   const hand = G.rebel.objectiveHand ?? [];
   const eligibleCardIds = ['death-star-plans-2', 'death-star-plans-3'].filter((id) => hand.includes(id));
   if (eligibleCardIds.length === 0) return;
+  // RoE Secure the Plans: "While the marker remains, Rebels cannot play Death
+  // Star Plans." Block the attempt while any secure-the-plans marker is on the
+  // board (#323).
+  const securePlansActive = Object.values(G.map.systems).some(
+    (s) => (s.targetMarkers ?? []).some((m) => m.source === 'secure-the-plans'));
+  if (securePlansActive) return;
   const ss = G.map.systems[c.systemId];
   if (!ss) return;
   // Rebel fighter alive at the combat system.
