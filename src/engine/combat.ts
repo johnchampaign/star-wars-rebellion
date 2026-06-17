@@ -15,7 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, applyDeferredHealAllocation, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal, dealAbilityFor, cinematicDealCandidates } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, applyDeferredHealAllocation, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal, dealAbilityFor, cinematicDealCandidates, destroyAbilityFor, cinematicDestroyCandidates, applyChosenDestroy } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -575,6 +575,25 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
             kind: 'CinematicTargetPick', theater, amount, candidates: cands.length,
           }});
           return; // paused — resolveCinematicTargetPick applies the damage
+        }
+        // Interactive destroy-without-rolling pick (#316 audit): cards like
+        // Intercept / Hold Them Back / Support of the 501st / cinematic Target
+        // the Generator ("destroy 1 triangle ground unit / 1 structure") let the
+        // playing side choose which eligible enemy unit is removed when 2+ are
+        // legal — fall through to the auto-resolver when 0–1.
+        const de = destroyAbilityFor(sel.cardId, sel.useTop);
+        const dcands = de ? cinematicDestroyCandidates(G, c, side, theater, de) : [];
+        if (de && dcands.length >= 2) {
+          const f = side === 'Rebel' ? G.rebel : G.empire;
+          (f.cinematicTacticDiscard ??= []).push(sel.cardId);
+          c.cinematicTacticDoneThisRound.push(key);
+          G.pendingChoice = {
+            kind: 'CinematicDestroyPick', side, theater, systemId: c.systemId, candidates: dcands,
+          };
+          log(G, { kind: 'choice-request', side, payload: {
+            kind: 'CinematicDestroyPick', theater, candidates: dcands.length,
+          }});
+          return; // paused — resolveCinematicDestroyPick removes the chosen unit
         }
       }
       if (sel) applyCinematicAbility(G, c, side, theater, sel.cardId, sel.useTop);
@@ -2355,6 +2374,26 @@ export function resolveCinematicTargetPick(
     theater: pc.theater, targetDealt: pc.amount, target: instanceId,
   }});
   if (c.flags) c.flags.cinematicTargetPick = undefined;
+  G.pendingChoice = undefined;
+  runCombat(G);
+  return { ok: true };
+}
+
+/** Resolve a cinematic destroy-without-rolling pick (#316 audit): remove the
+ *  enemy unit the player chose, then re-enter runCombat. The card was already
+ *  discarded when the choice was posted. */
+export function resolveCinematicDestroyPick(
+  G: GameState, instanceId: string
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'CinematicDestroyPick') return { ok: false, reason: 'no-pending' };
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  if (!pc.candidates.includes(instanceId as UnitInstanceId)) return { ok: false, reason: 'not-a-candidate' };
+  applyChosenDestroy(G, c, instanceId);
+  log(G, { kind: 'cinematic-tactic-play', side: pc.side, payload: {
+    theater: pc.theater, destroyed: instanceId,
+  }});
   G.pendingChoice = undefined;
   runCombat(G);
   return { ok: true };

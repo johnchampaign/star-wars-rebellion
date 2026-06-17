@@ -211,6 +211,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
     pc?.kind === 'CombatDefenderTactics' ? pc.side :
     pc?.kind === 'CombatAssignDamage'    ? pc.side :
     pc?.kind === 'CinematicTargetPick'   ? pc.side :
+    pc?.kind === 'CinematicDestroyPick'  ? pc.side :
     pc?.kind === 'YodaReroll'            ? pc.side :
     pc?.kind === 'R2D2Flip'              ? pc.side :
     pc?.kind === 'OneInAMillionOffer'    ? pc.side :
@@ -643,6 +644,9 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
         )}
         {pc?.kind === 'CinematicTargetPick' && isHumanDecision && (
           <CinematicTargetPickPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'CinematicDestroyPick' && isHumanDecision && (
+          <CinematicDestroyPickPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'ReadyForActionLeaderPick' && isHumanDecision && (
           <ReadyForActionPanel G={G} choice={pc} onPersist={onPersist} />
@@ -1937,6 +1941,37 @@ function BazesLoyaltyPanel({ G, choice, onPersist }: {
 }
 
 // ---------- Cinematic targeted-deal pick (Tow Cables / Ion Blast, #290) ----------
+
+function CinematicDestroyPickPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'CinematicDestroyPick' }>;
+  onPersist: () => void;
+}) {
+  const ss = G.map.systems[choice.systemId];
+  const submit = (instanceId: string) => {
+    const r = combat.resolveCinematicDestroyPick(G, instanceId);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>{choice.side} — choose a target:</b> destroy 1 enemy unit (no dice rolled).
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {choice.candidates.map((iid) => {
+          const u = ss?.units.find((x) => x.instanceId === iid);
+          const t = u ? G.catalog.unitTypes[u.typeId] : null;
+          return (
+            <button key={iid} onClick={() => submit(iid)} style={btn('#ff8866')}>
+              {t?.name ?? u?.typeId ?? iid}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function CinematicTargetPickPanel({ G, choice, onPersist }: {
   G: GameState;

@@ -1212,6 +1212,21 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const target = [...c.candidates].sort((a, b) => remaining(a) - remaining(b))[0];
     return combat.resolveCinematicTargetPick(G, target).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'CinematicDestroyPick' && G.pendingChoice.side === side) {
+    // AI: destroy the highest-health eligible enemy unit (the one the opponent
+    // would most value / be hardest to roll down) — matches the old heuristic's
+    // intent of spending the free kill where it hurts most.
+    const c = G.pendingChoice;
+    const hv = (id: string) => {
+      for (const sys of Object.values(G.map.systems)) {
+        const u = sys.units?.find((x) => x.instanceId === id);
+        if (u) return G.catalog.unitTypes[u.typeId]?.health.value ?? 0;
+      }
+      return 0;
+    };
+    const target = [...c.candidates].sort((a, b) => hv(b) - hv(a))[0];
+    return combat.resolveCinematicDestroyPick(G, target).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'YodaReroll' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
     if (c.context === 'dsplans') {

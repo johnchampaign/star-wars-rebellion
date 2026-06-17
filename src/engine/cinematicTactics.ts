@@ -937,6 +937,30 @@ export function cinematicDealCandidates(
   }).map((u) => u.instanceId);
 }
 
+/** Is the chosen ability a destroy-without-rolling (Intercept / Hold Them Back /
+ *  Support of the 501st / cinematic Target the Generator)? Returns the effect so
+ *  the playing side can choose which eligible enemy unit is removed when 2+ are
+ *  legal, instead of an auto-pick (#316 audit). */
+export function destroyAbilityFor(cardId: string, useTop: boolean): DestroyEffect | null {
+  const abilities = ABILITIES[cardId];
+  if (!abilities) return null;
+  const ab = useTop ? abilities[0] : abilities[1];
+  return ab && ab.kind === 'destroy' ? ab : null;
+}
+
+/** Legal targets for an interactive destroy pick (the eligible enemy units). */
+export function cinematicDestroyCandidates(
+  G: GameState, c: CombatState, side: Side, theater: Theater, eff: DestroyEffect,
+): string[] {
+  return destroyTargets(G, c, side, theater, eff).map((u) => u.instanceId);
+}
+
+/** Destroy a player-chosen unit for a cinematic destroy ability. The card has
+ *  already been discarded by the caller. */
+export function applyChosenDestroy(G: GameState, _c: CombatState, instanceId: string): void {
+  M.destroyUnit(G, instanceId, 'cinematic-destroy');
+}
+
 /** Legal targets (enemy AT-AT/AT-ST, capital ship, …) for an interactive
  *  targeted-deal pick — the instanceIds the player may choose among (#290). */
 export function cinematicTargetDealCandidates(

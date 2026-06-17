@@ -1407,6 +1407,18 @@ export type ChoiceRequest =
       systemId: SystemId;
       amount: number;
       candidates: UnitInstanceId[];
+    }
+  | {
+      // Cinematic "destroy 1 X without rolling" pick (Intercept / Hold Them Back
+      // / Support of the 501st / cinematic Target the Generator). The playing
+      // side picks which eligible enemy unit is removed when 2+ are legal,
+      // instead of an auto-pick (#316 audit). `candidates` are the eligible
+      // enemy unit instanceIds.
+      kind: 'CinematicDestroyPick';
+      side: Side;
+      theater: Theater;
+      systemId: SystemId;
+      candidates: UnitInstanceId[];
     };
 
 export type CombatActionOption =
