@@ -16,7 +16,7 @@ import * as Handlers from './handlers/registry';
 import { missionTargets } from './missionTargets';
 import { PROJECT_ONLY_UNIT_IDS } from './units';
 import { rollDie, shuffle } from './rng';
-import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck, objectiveReturnsToHand, postPlayObjectiveChoice, PERSISTENT_OBJECTIVES, COST_OBJECTIVES, timeForPeaceQueueTargets } from './objectives';
+import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck, objectiveReturnsToHand, postPlayObjectiveChoice, PERSISTENT_OBJECTIVES, COST_OBJECTIVES, OPT_IN_OBJECTIVES, timeForPeaceQueueTargets } from './objectives';
 
 /** Time-track turns on which the Rebel recruits a new leader, per the printed
  *  16-space board (turns 2-5). Single source of truth shared by the engine's
@@ -4756,7 +4756,8 @@ export function resolvePlayObjectivePick(
  *  Collect every eligible StartOfRefresh objective the Rebel holds whose
  *  condition is met. If exactly one, play it; if 2+, post a PlayObjective
  *  choice (returns true = paused) so the player picks which to score. */
-function refreshPlayStartOfRefreshObjectives(G: GameState, logStart: number): boolean {
+/** Exported for tests. */
+export function refreshPlayStartOfRefreshObjectives(G: GameState, logStart: number): boolean {
   const hand = G.rebel.objectiveHand;
   if (!hand || hand.length === 0) return false;
   type Eligible = { id: string; rep: number };
@@ -4796,12 +4797,15 @@ function refreshPlayStartOfRefreshObjectives(G: GameState, logStart: number): bo
   // objectives, #183) must be opt-in: route them through the choice with a
   // decline option so the player isn't forced to pay the cost. 2+ eligible
   // always prompts.
-  const anyCost = eligible.some((e) => COST_OBJECTIVES.has(e.id));
-  if (eligible.length === 1 && !anyCost) {
+  // Objectives that must prompt rather than auto-play: cost objectives (pay
+  // your own cards) and opt-in objectives (free but a big irreversible board
+  // change — A Time for Peace, #325). Both get a decline option.
+  const needsPrompt = eligible.some((e) => COST_OBJECTIVES.has(e.id) || OPT_IN_OBJECTIVES.has(e.id));
+  if (eligible.length === 1 && !needsPrompt) {
     playRefreshObjective(G, eligible[0].id, eligible[0].rep);
     return false;
   }
-  postPlayObjectiveChoice(G, eligible.map((e) => e.id), 'refresh', logStart, anyCost);
+  postPlayObjectiveChoice(G, eligible.map((e) => e.id), 'refresh', logStart, needsPrompt);
   return true;
 }
 

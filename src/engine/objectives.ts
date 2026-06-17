@@ -30,6 +30,14 @@ export function postPlayObjectiveChoice(
  *  Long War discards 2 of your OTHER objectives as a cost (#183). */
 export const COST_OBJECTIVES = new Set<string>(['the-long-war-1']);
 
+/** Objectives that are free to the Rebel but make a big, IRREVERSIBLE board
+ *  change when scored, so auto-playing them robs the player of the RR p.10 "you
+ *  MAY play an objective" decision. A Time for Peace destroys four Imperial
+ *  build-queue units — the player should choose whether to apply it or keep the
+ *  units on the queue (player report #325). Routed through the play-objective
+ *  prompt with a decline option, like cost objectives. */
+export const OPT_IN_OBJECTIVES = new Set<string>(['a-time-for-peace-2']);
+
 /** Return true if the given objective's condition is satisfied in the
  *  current state. Caller should already have verified the timing matches. */
 export function objectiveConditionMet(G: GameState, objectiveId: string): boolean {
