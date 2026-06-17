@@ -2868,7 +2868,12 @@ function handleOpposeMission(G: GameState, side: Side): boolean {
       sentLeader = best.lid;
     }
   }
-  const r = phases.resolveOpposition(G, sentLeader);
+  // Only spend Subversion when it AUGMENTS a real opposition — i.e. we're
+  // sending a leader or already have opposers at the target. Don't burn the
+  // card to oppose a mission we've otherwise decided to let through (mirrors the
+  // human "Don't oppose" = no Subversion fix, #343).
+  const useSubv = sentLeader !== null || c.existingAtTarget.length > 0;
+  const r = phases.resolveOpposition(G, sentLeader, useSubv);
   return r.ok;
 }
 

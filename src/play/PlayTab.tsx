@@ -3221,14 +3221,28 @@ function OpposeMissionModal({ G, choice, onResolve }: {
           })}
         </div>
 
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button
             className="tab-button active"
-            onClick={() => onResolve(null, useSubversion)}
+            // Declining is a FULL decline — never fire Subversion (it's a form
+            // of opposition; you can't subvert a mission you choose not to
+            // oppose). The checkbox above only governs whether SENDING a pool
+            // leader also plays Subversion (player report #343: "Don't oppose"
+            // still triggered Subversion because it passed the checkbox state).
+            onClick={() => onResolve(null, false)}
             style={{ fontWeight: 700 }}
           >
             {choice.existingAtTarget.length > 0 ? "Don't send extra (use existing only)" : "Don't oppose (attacker rolls unopposed)"}
           </button>
+          {choice.subversion && (
+            <button
+              className="tab-button"
+              onClick={() => onResolve(null, true)}
+              title="Oppose using ONLY your assigned Subversion leader(s) for +1 die — send no pool leader."
+            >
+              Oppose with Subversion only (+1 die)
+            </button>
+          )}
         </div>
       </div>
     </div>
