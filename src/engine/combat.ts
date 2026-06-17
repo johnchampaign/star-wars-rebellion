@@ -108,6 +108,14 @@ export function beginCombat(
     rounds: [], structureDestructions: [],
     retreatDestructions: [],
     winner: null, totalRounds: 0,
+    // Stamp chronological order at combat START, not end. A combat is multi-step
+    // (dice, tactics, the opponent's responses), and a mission that resolves
+    // WHILE it's still going would otherwise get a lower end-of-combat seq and
+    // jump ahead of it in the report queue — so a combat the player initiated
+    // first showed AFTER a mission that happened during it (player report #331,
+    // "results out of order"). Start-stamping keeps "combat shows before a
+    // mission that followed it" (the documented intent of #178).
+    seq: G.turnLog.length,
   };
   const state: CombatState = {
     systemId, attackerSide, attackerSourceSystemId,
@@ -2887,9 +2895,8 @@ function endCombat(G: GameState): void {
   else if (!attackerLeft && !defenderLeft) c.report.winner = 'draw';
   else c.report.winner = null;
   if (!G.combatReports) G.combatReports = [];
-  // Stamp queue-time ordering so the UI shows this report in true
-  // chronological order relative to queued mission reports (#178).
-  c.report.seq = G.turnLog.length;
+  // seq was stamped at combat START (see beginCombat) so this report orders by
+  // when the fight began, not when it finished — #331. Don't overwrite it here.
   G.combatReports.push(c.report);
 
   log(G, { kind: 'combat-end', payload: { systemId: c.systemId, rounds: c.round, winner: c.report.winner } });
