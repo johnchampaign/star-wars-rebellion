@@ -1742,6 +1742,13 @@ export type CombatReport = {
   // combat-end objective check sees them. Same shape as
   // structureDestructions — one entry per retreat decision.
   retreatDestructions: { side: Side; typeIds: string[] }[];
+  // Units destroyed DURING the combat by a card effect rather than by dice —
+  // Baze's Loyalty, Target the Generator, Fully Operational, etc. Per RAW these
+  // were "destroyed in this combat" and so count toward combat objectives like
+  // Crippling Blow (player report #317: a stormtrooper killed by Baze's Loyalty
+  // plus an AT-ST killed by dice = 3 ground HP, but the card kill wasn't being
+  // counted). Optional for backward-compat with old saved reports.
+  cardDestructions?: { side: Side; typeId: string }[];
   /** Retreats that happened during this combat — who pulled out and to where,
    *  so the end-of-combat report can say "Empire retreated to X" instead of
    *  the player having to scan the log/map (player request: MightyFaben).

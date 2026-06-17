@@ -2141,6 +2141,16 @@ export function resolveMoreDangerousTheaterPick(
 
 /** "Fully Operational" target pick. `instanceId` = the Rebel ship to
  *  destroy. Continues the start-of-combat batch. */
+/** Destroy a unit during an active combat via a CARD effect (not dice),
+ *  recording it in the report so it counts toward combat objectives such as
+ *  Crippling Blow (player report #317). */
+function destroyViaCombatCard(G: GameState, c: CombatState, instanceId: string, cause: string): void {
+  const ss = G.map.systems[c.systemId];
+  const u = ss?.units.find((x) => x.instanceId === instanceId);
+  if (u) (c.report.cardDestructions ??= []).push({ side: u.side, typeId: u.typeId });
+  M.destroyUnit(G, instanceId, cause);
+}
+
 export function resolveFullyOperationalTargetPick(
   G: GameState, instanceId: string
 ): { ok: boolean; reason?: string } {
@@ -2149,7 +2159,7 @@ export function resolveFullyOperationalTargetPick(
   const c = G.pendingCombat;
   if (!c) return { ok: false, reason: 'no-pending-combat' };
   if (!pc.candidates.includes(instanceId)) return { ok: false, reason: 'bad-target' };
-  M.destroyUnit(G, instanceId, 'fully-operational');
+  destroyViaCombatCard(G, c, instanceId, 'fully-operational');
   log(G, { kind: 'combat-action-card-effect', side: pc.side, payload: {
     card: 'fully-operational', destroyed: instanceId,
   }});
@@ -2171,7 +2181,7 @@ export function resolveTargetTheGeneratorPick(
   const c = G.pendingCombat;
   if (!c) return { ok: false, reason: 'no-pending-combat' };
   if (!pc.candidates.includes(instanceId)) return { ok: false, reason: 'bad-target' };
-  M.destroyUnit(G, instanceId, 'target-the-generator');
+  destroyViaCombatCard(G, c, instanceId, 'target-the-generator');
   log(G, { kind: 'combat-action-card-effect', side: pc.side, payload: {
     card: 'target-the-generator', destroyed: instanceId,
   }});
@@ -2226,7 +2236,7 @@ export function resolveBazesLoyaltyTarget(
   const ss = G.map.systems[pc.systemId];
   const u = ss?.units.find((x) => x.instanceId === instanceId);
   const h = u ? (G.catalog.unitTypes[u.typeId]?.health.value ?? 0) : 0;
-  M.destroyUnit(G, instanceId, 'bazes-loyalty');
+  destroyViaCombatCard(G, c, instanceId, 'bazes-loyalty');
   log(G, { kind: 'combat-action-card-effect', side: pc.side, payload: {
     card: 'baze-s-loyalty', destroyed: instanceId,
   }});

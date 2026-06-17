@@ -344,6 +344,14 @@ function sumDestroyedHp(
       hp += t.health.value ?? 1;
     }
   }
+  // Units destroyed by a card effect during the combat (Baze's Loyalty, etc.)
+  // also count as "destroyed in this combat" toward objectives (#317).
+  for (const d of (report.cardDestructions ?? [])) {
+    if (d.side !== destroyedSide) continue;
+    const t = G.catalog.unitTypes[d.typeId];
+    if (!t || t.theater !== theater) continue;
+    hp += t.health.value ?? 1;
+  }
   return hp;
 }
 
@@ -361,6 +369,9 @@ function countDestroyed(report: import('./types').CombatReport, typeIds: string[
     for (const typeId of entry.typeIds) {
       if (typeIds.includes(typeId)) n++;
     }
+  }
+  for (const d of (report.cardDestructions ?? [])) {
+    if (typeIds.includes(d.typeId)) n++;
   }
   return n;
 }
