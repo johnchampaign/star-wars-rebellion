@@ -2252,6 +2252,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   // resolved). Pre-fix, the gate trapped them and caused freezes.)
 
   // If a player choice is pending and this side owns it, resolve it first.
+  if (G.pendingChoice && G.pendingChoice.kind === 'PrepareForBattleDeckPick' && G.pendingChoice.side === side) {
+    // AI: peek whichever tactic deck is larger (more to gain from arranging).
+    const c = G.pendingChoice;
+    const sz = (k: string) => k === 'space-tactic' ? (G.spaceTacticDeck?.length ?? 0) : (G.groundTacticDeck?.length ?? 0);
+    const pick = [...c.options].sort((a, b) => sz(b) - sz(a))[0];
+    return phases.resolvePrepareForBattleDeckPick(G, pick).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'StolenPlansReorder' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
     // Pick the highest-rep remaining card to place next on top.

@@ -1152,8 +1152,20 @@ export type ChoiceRequest =
       kind: 'StolenPlansReorder';
       side: Side;
       missionId: string;
-      remaining: string[];      // objective card IDs still to be picked
+      remaining: string[];      // card IDs still to be picked
       orderedTop: string[];     // accumulated pick order (index 0 = topmost)
+      // Which deck the reordered cards go back on top of. Defaults to the Rebel
+      // objective deck (Stolen Plans / Lord Vader's Orders). Prepare For Battle
+      // reorders a base tactic deck instead (#329).
+      deckKind?: 'objective' | 'space-tactic' | 'ground-tactic';
+    }
+  | {
+      // Prepare For Battle (Rebel/RoE, base combat): "look at the top 4 cards of
+      // ANY tactic deck and place them top/bottom in any order" — first pick
+      // which tactic deck, then reorder via StolenPlansReorder (#329).
+      kind: 'PrepareForBattleDeckPick';
+      side: Side; // 'Rebel'
+      options: ('space-tactic' | 'ground-tactic')[];
     }
   | {
       // Attacker's window to play tactic cards after rolling their attack:

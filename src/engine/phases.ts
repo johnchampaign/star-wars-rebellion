@@ -1861,16 +1861,49 @@ export function resolveStolenPlansPick(G: GameState, cardId: string): { ok: bool
   const [card] = choice.remaining.splice(idx, 1);
   choice.orderedTop.push(card);
   if (choice.remaining.length === 0) {
-    // Place orderedTop back on the deck. orderedTop[0] should be the topmost.
-    // unshift in reverse so [0] ends up at index 0.
-    if (!G.rebel.objectiveDeck) G.rebel.objectiveDeck = [];
+    // Place orderedTop back on the chosen deck. orderedTop[0] is topmost, so
+    // unshift in reverse to land [0] at index 0. Prepare For Battle targets a
+    // base tactic deck; everything else the Rebel objective deck (#329).
+    const deck =
+      choice.deckKind === 'space-tactic' ? (G.spaceTacticDeck ??= []) :
+      choice.deckKind === 'ground-tactic' ? (G.groundTacticDeck ??= []) :
+      (G.rebel.objectiveDeck ??= []);
     for (let i = choice.orderedTop.length - 1; i >= 0; i--) {
-      G.rebel.objectiveDeck.unshift(choice.orderedTop[i]);
+      deck.unshift(choice.orderedTop[i]);
     }
-    log(G, { kind: 'stolen-plans-reorder', side: choice.side, payload: { order: [...choice.orderedTop] } });
+    log(G, { kind: 'stolen-plans-reorder', side: choice.side, payload: { order: [...choice.orderedTop], deck: choice.deckKind ?? 'objective' } });
     G.pendingChoice = undefined;
     resumeMissionAfterChoice(G);
   }
+  return { ok: true };
+}
+
+/** Prepare For Battle (base combat): the Rebel chose which tactic deck to peek;
+ *  draw the top 4 and reorder them via the StolenPlansReorder modal (#329). */
+export function resolvePrepareForBattleDeckPick(
+  G: GameState, deckKind: 'space-tactic' | 'ground-tactic'
+): { ok: boolean; reason?: string } {
+  const choice = G.pendingChoice;
+  if (!choice || choice.kind !== 'PrepareForBattleDeckPick') return { ok: false, reason: 'no-pending' };
+  if (!choice.options.includes(deckKind)) return { ok: false, reason: 'not-an-option' };
+  const deck = deckKind === 'space-tactic' ? (G.spaceTacticDeck ??= []) : (G.groundTacticDeck ??= []);
+  const n = Math.min(4, deck.length);
+  const drawn = deck.splice(0, n);
+  if (drawn.length < 2) {
+    // Nothing to reorder — put it back and finish the mission.
+    for (let i = drawn.length - 1; i >= 0; i--) deck.unshift(drawn[i]);
+    log(G, { kind: 'prepare-for-battle-peek', side: 'Rebel', payload: { deck: deckKind, cards: [...drawn] } });
+    G.pendingChoice = undefined;
+    resumeMissionAfterChoice(G);
+    return { ok: true };
+  }
+  G.pendingChoice = {
+    kind: 'StolenPlansReorder', side: 'Rebel', missionId: 'prepare-for-battle',
+    remaining: drawn, orderedTop: [], deckKind,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'StolenPlansReorder', count: drawn.length, via: 'prepare-for-battle', deck: deckKind,
+  }});
   return { ok: true };
 }
 

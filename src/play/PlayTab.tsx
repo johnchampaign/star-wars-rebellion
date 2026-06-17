@@ -2927,6 +2927,14 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         />
       )}
 
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'PrepareForBattleDeckPick'
+        && G.pendingChoice.side === humanSide && (
+        <PrepareForBattleDeckModal choice={G.pendingChoice}
+          onPick={(deckKind) => { const r = phases.resolvePrepareForBattleDeckPick(G, deckKind); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
+      )}
+
       {G.pendingChoice?.kind === 'OpposeMission' && G.pendingChoice.opposerSide === humanSide
         && (!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
@@ -3184,12 +3192,46 @@ function OpposeMissionModal({ G, choice, onResolve }: {
 // Stolen Plans Reorder Modal — Rebel sees top 4 objectives, picks order
 // ============================================================================
 
+/** Prepare For Battle — pick which base tactic deck to peek & reorder (#329). */
+function PrepareForBattleDeckModal({ choice, onPick }: {
+  choice: { kind: 'PrepareForBattleDeckPick'; options: ('space-tactic' | 'ground-tactic')[] };
+  onPick: (deckKind: 'space-tactic' | 'ground-tactic') => void;
+}) {
+  const label = (k: 'space-tactic' | 'ground-tactic') => k === 'space-tactic' ? 'Space tactic deck' : 'Ground tactic deck';
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
+      <div style={{ background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6, padding: 20, maxWidth: 460, width: '90%' }}>
+        <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
+          Prepare For Battle — look at the top 4 of a tactic deck
+        </div>
+        <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>
+          Choose a tactic deck. You'll see its top 4 cards and set their order.
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {choice.options.map((k) => (
+            <button key={k} onClick={() => onPick(k)}
+              style={{ padding: '8px 16px', background: '#aae0ff', color: '#000', border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600 }}>
+              {label(k)}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StolenPlansReorderModal({ G, choice, onPick, onUndo }: {
   G: GameState;
-  choice: { kind: 'StolenPlansReorder'; remaining: string[]; orderedTop: string[] };
+  choice: { kind: 'StolenPlansReorder'; remaining: string[]; orderedTop: string[]; deckKind?: 'objective' | 'space-tactic' | 'ground-tactic' };
   onPick: (cardId: string) => void;
   onUndo: () => void;
 }) {
+  // Stolen Plans / Lord Vader's Orders reorder objective cards; Prepare For
+  // Battle reorders tactic cards (#329) — look the card up in whichever catalog.
+  const look = (cid: string): { name?: string; image?: string; rulesText?: string; reputation?: number } =>
+    (G.catalog.objectives[cid] as never) ?? (G.catalog.tactics[cid] as never) ?? {};
+  const isTactic = choice.deckKind === 'space-tactic' || choice.deckKind === 'ground-tactic';
   const totalCount = choice.remaining.length + choice.orderedTop.length;
   const nextSlot = choice.orderedTop.length + 1; // 1-based for display
   return (
@@ -3205,7 +3247,7 @@ function StolenPlansReorderModal({ G, choice, onPick, onUndo }: {
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
-          Stolen Plans — pick the order for the top {totalCount} objectives
+          {isTactic ? 'Prepare For Battle' : 'Stolen Plans'} — pick the order for the top {totalCount} {isTactic ? 'tactic cards' : 'objectives'}
         </div>
         <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
           Choose which card goes at <strong style={{ color: '#ffd54a' }}>position {nextSlot}</strong> from
@@ -3219,7 +3261,7 @@ function StolenPlansReorderModal({ G, choice, onPick, onUndo }: {
             </div>
             <ol style={{ margin: 0, paddingLeft: 18, color: '#e8e8ea' }}>
               {choice.orderedTop.map((cid) => {
-                const o = G.catalog.objectives[cid];
+                const o = look(cid);
                 return (
                   <li key={cid} style={{ fontSize: 12 }}>
                     <CardNameHover name={o?.name ?? cid} image={o?.image} rulesText={o?.rulesText}>
@@ -3241,7 +3283,7 @@ function StolenPlansReorderModal({ G, choice, onPick, onUndo }: {
         <div style={{ fontSize: 12, color: '#aaa', marginBottom: 4 }}>Remaining cards:</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 8 }}>
           {choice.remaining.map((cid) => {
-            const o = G.catalog.objectives[cid];
+            const o = look(cid);
             return (
               <button
                 key={cid}

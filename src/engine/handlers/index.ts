@@ -1954,12 +1954,32 @@ const aggressiveNegotiations: EffectHandler = (G, ctx) => {
  *  hand. */
 const prepareForBattle: EffectHandler = (G, ctx) => {
   for (const lid of ctx.leaderIds) M.returnLeader(G, 'Rebel', lid);
-  pushNotice(G, `pfb-t${G.timeMarker}`, 'Prepare For Battle',
-    'Assigned leaders are back in the pool. Now look at the top 4 of any ' +
-    'tactic deck and rearrange, or return discarded Rebel advanced tactic ' +
-    'cards to their decks. Resolve the choice manually until the tactic-deck ' +
-    'UI lands.');
-  return true;
+  // RAW: "Look at the top 4 cards of any tactic deck and place them top/bottom
+  // in any order, OR return discarded Rebel advanced tactic cards to their
+  // decks." The two halves map cleanly onto the combat mode (#329):
+  //  - Cinematic combat: there is no ordered tactic deck (advanced cards are
+  //    drawn from a computed available set), so the meaningful effect is to
+  //    return the Rebel's discarded advanced cards to availability.
+  //  - Base combat: peek the top 4 of a chosen base tactic deck and reorder.
+  if (G.expansion?.cinematicCombat) {
+    const elim = new Set(G.rebel.cinematicTacticEliminated ?? []);
+    const discard = G.rebel.cinematicTacticDiscard ?? [];
+    const returned = discard.filter((id) => !elim.has(id));
+    // Keep only eliminated cards in the discard; the rest become available again.
+    G.rebel.cinematicTacticDiscard = discard.filter((id) => elim.has(id));
+    log(G, { kind: 'prepare-for-battle-return-advanced', side: 'Rebel', payload: { returned } });
+    return true;
+  }
+  const options: ('space-tactic' | 'ground-tactic')[] = [];
+  if ((G.spaceTacticDeck?.length ?? 0) > 0) options.push('space-tactic');
+  if ((G.groundTacticDeck?.length ?? 0) > 0) options.push('ground-tactic');
+  if (options.length === 0) {
+    log(G, { kind: 'prepare-for-battle-no-deck', side: 'Rebel', payload: {} });
+    return true;
+  }
+  G.pendingChoice = { kind: 'PrepareForBattleDeckPick', side: 'Rebel', options };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'PrepareForBattleDeckPick', options } });
+  return false; // paused — resolvePrepareForBattleDeckPick continues the mission
 };
 
 /** Secret Mission (Andor): "Look at the top 6 mission cards; keep 1 and
