@@ -1091,6 +1091,47 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         }
       }
       if (sys.loyalty === 'imperial') ts += 3;
+      // OFFENSIVE MANEUVER (ai-divergence 2026-06-17): the expert Rebel moves
+      // units ~2x as often (2.58 vs 1.19/round), attacks 22% more, and gains
+      // 35% more loyalty — it pushes force OUT to contest Imperial territory,
+      // while this AI hoards everything at the hidden base and mission-spams.
+      // While the base is hidden, reward sortieing force toward a BEATABLE
+      // Imperial position, and building presence on an uncontested non-Rebel
+      // core system. A strength gate (the Rebel had none — it was Empire-only)
+      // keeps it from feeding a losing attack.
+      if (!G.rebelBaseRevealed) {
+        const strengthOf = (u: { typeId: string }): number => {
+          const t = G.catalog.unitTypes[u.typeId];
+          return t ? ((t.attack.red ?? 0) + (t.attack.black ?? 0) + (t.attack.green ?? 0) + (t.health?.value ?? 0)) : 0;
+        };
+        const isGround = (u: { typeId: string }): boolean => G.catalog.unitTypes[u.typeId]?.theater === 'ground';
+        // Rebel force we can actually bring here = units present + pullable from
+        // adjacent, leader-unblocked systems (mirrors the Empire estimate).
+        let rebAll = 0, rebGround = 0, impAll = 0, impGround = 0, bringable = 0;
+        for (const u of sys.units) {
+          if (u.side === 'Rebel') { rebAll += strengthOf(u); if (isGround(u)) rebGround += strengthOf(u); }
+          else if (u.side === 'Empire') { impAll += strengthOf(u); if (isGround(u)) impGround += strengthOf(u); }
+        }
+        for (const a of (G.catalog.adjacency[sysId] ?? [])) {
+          if ((G.rebel.leadersOnBoard[a] ?? []).length > 0) continue; // RAW p.2: leader-blocked
+          for (const u of (G.map.systems[a]?.units ?? [])) {
+            if (u.side !== 'Rebel') continue;
+            rebAll += strengthOf(u); bringable++;
+            if (isGround(u)) rebGround += strengthOf(u);
+          }
+        }
+        const dFromBase = baseDist ? distFrom(baseDist, sysId) : Infinity;
+        if (hasEnemyUnits && impAll > 0) {
+          // Winnable attack (overall edge AND can clear the ground to hold it).
+          if (rebAll >= impAll * 1.2 && rebGround >= impGround) ts += 12;
+        } else if (!hasEnemyUnits && sys.loyalty !== 'rebel' && !def?.isRemote
+                   && sysId !== 'coruscant' && bringable > 0 && dFromBase >= 2) {
+          // Build presence on an uncontested core system (gain loyalty / deny
+          // the Empire) — only force already away from the base, to not
+          // telegraph its location.
+          ts += 4 + (def?.resources?.length ?? 0);
+        }
+      }
     }
     if (hasOwnUnits && side === 'Rebel') ts += 1;
     // UNIVERSAL RULE (per user playtesting): never activate without troops.
