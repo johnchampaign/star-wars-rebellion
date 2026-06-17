@@ -2070,6 +2070,11 @@ function CinematicTacticSelectPanel({ G, choice, onPersist }: {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
         {choice.options.map((opt) => {
           const sel = picked === opt.cardId;
+          // The top ability of every advanced tactic requires a specific unit in
+          // this combat (RoE p.9); surface it so players know why a top ability
+          // is/isn't available (#315).
+          const reqUnitId = G.catalog.tactics[opt.cardId]?.primaryUnit;
+          const reqUnitName = reqUnitId ? (G.catalog.unitTypes[reqUnitId]?.name ?? reqUnitId) : null;
           return (
             <div
               key={opt.cardId}
@@ -2083,7 +2088,12 @@ function CinematicTacticSelectPanel({ G, choice, onPersist }: {
               <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 4 }}>{opt.name}</div>
               <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 6 }}>
                 <div><b>Top:</b> {opt.primaryText}{!opt.primaryUsable && <span style={{ color: '#e07b7b' }}> (prereq not met)</span>}</div>
-                <div><b>Bottom:</b> {opt.secondaryText}</div>
+                {reqUnitName && (
+                  <div style={{ fontSize: 10, color: opt.primaryUsable ? '#9bd' : '#e07b7b', marginTop: 2 }}>
+                    Top requires a {reqUnitName} in this combat{opt.primaryUsable ? ' ✓' : ' — not present'}
+                  </div>
+                )}
+                <div style={{ marginTop: 4 }}><b>Bottom:</b> {opt.secondaryText} <span style={{ opacity: 0.6 }}>(no requirement)</span></div>
               </div>
               {sel && (
                 <div style={{ display: 'flex', gap: 6 }}>
