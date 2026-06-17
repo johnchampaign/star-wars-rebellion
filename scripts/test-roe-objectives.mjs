@@ -132,21 +132,21 @@ console.log('[ the-long-war-1: discard 2 other objectives ]');
 console.log('[ a-time-for-peace-2: destroy 2 triangle + 1 circle + 1 square in queue ]');
 {
   const G = newG();
-  G.empire.buildQueue = { 1: [], 2: [], 3: [] };
+  G.rebel.buildQueue = { 1: [], 2: [], 3: [] };
   // Not enough: only 1 triangle
-  G.empire.buildQueue[1] = ['tie-fighter', 'star-destroyer', 'assault-carrier'];
+  G.rebel.buildQueue[1] = ['tie-fighter', 'star-destroyer', 'assault-carrier'];
   check('missing a triangle → not met', !Obj.objectiveConditionMet(G, 'a-time-for-peace-2'));
   // Enough across slots: 2 triangle (tie-fighter, stormtrooper), 1 circle (at-st), 1 square (at-at) + extra
-  G.empire.buildQueue[1] = ['tie-fighter', 'star-destroyer'];      // triangle, square
-  G.empire.buildQueue[2] = ['stormtrooper', 'at-st'];              // triangle, circle
-  G.empire.buildQueue[3] = ['at-at', 'tie-fighter'];               // square, triangle (extra)
+  G.rebel.buildQueue[1] = ['tie-fighter', 'star-destroyer'];      // triangle, square
+  G.rebel.buildQueue[2] = ['stormtrooper', 'at-st'];              // triangle, circle
+  G.rebel.buildQueue[3] = ['at-at', 'tie-fighter'];               // square, triangle (extra)
   check('2T+1C+1S present → met', Obj.objectiveConditionMet(G, 'a-time-for-peace-2'));
-  const before = G.empire.buildQueue[1].length + G.empire.buildQueue[2].length + G.empire.buildQueue[3].length;
+  const before = G.rebel.buildQueue[1].length + G.rebel.buildQueue[2].length + G.rebel.buildQueue[3].length;
   Phases.applyObjectiveScoreSideEffect(G, 'a-time-for-peace-2');
-  const after = G.empire.buildQueue[1].length + G.empire.buildQueue[2].length + G.empire.buildQueue[3].length;
+  const after = G.rebel.buildQueue[1].length + G.rebel.buildQueue[2].length + G.rebel.buildQueue[3].length;
   check('exactly 4 units removed from queue', before - after === 4);
   // one tie-fighter (triangle) should remain (we only needed 2 triangle)
-  const remainingTriangles = [...G.empire.buildQueue[1], ...G.empire.buildQueue[2], ...G.empire.buildQueue[3]]
+  const remainingTriangles = [...G.rebel.buildQueue[1], ...G.rebel.buildQueue[2], ...G.rebel.buildQueue[3]]
     .filter((t) => G.catalog.unitTypes[t]?.tier === 'triangle').length;
   check('1 extra triangle left behind', remainingTriangles === 1);
 }

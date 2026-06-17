@@ -32,10 +32,10 @@ const check = (name, ok, extra = '') => {
 function setup(seed) {
   const G = createGame(data, { seed, expansion: { enabled: true, roeUnits: true, roeMissions: true } });
   G.rebel.objectiveHand = ['a-time-for-peace-2'];
-  G.empire.buildQueue = { 1: ['tie-fighter', 'star-destroyer'], 2: ['stormtrooper', 'at-st'], 3: ['at-at'] };
+  G.rebel.buildQueue = { 1: ['tie-fighter', 'star-destroyer'], 2: ['stormtrooper', 'at-st'], 3: ['at-at'] };
   return G;
 }
-const queueSize = (G) => G.empire.buildQueue[1].length + G.empire.buildQueue[2].length + G.empire.buildQueue[3].length;
+const queueSize = (G) => G.rebel.buildQueue[1].length + G.rebel.buildQueue[2].length + G.rebel.buildQueue[3].length;
 
 console.log('\n[ #325 A Time for Peace prompts instead of auto-scoring ]');
 {

@@ -4434,9 +4434,9 @@ export function applyObjectiveScoreSideEffect(G: GameState, objectiveId: string)
     G.rebel.objectiveDiscard.push(...discarded);
     log(G, { kind: 'the-long-war-discard', side: 'Rebel', payload: { discarded } });
   } else if (objectiveId === 'a-time-for-peace-2') {
-    // Destroy 2 triangle + 1 circle + 1 square Imperial units from the build
-    // queue. Remove high-index-first within each slot so earlier indices stay
-    // valid as we splice.
+    // Destroy 2 triangle + 1 circle + 1 square units from the REBEL's OWN build
+    // queue (the disarmament cost to play the card — #341). Remove high-index-
+    // first within each slot so earlier indices stay valid as we splice.
     const targets = timeForPeaceQueueTargets(G);
     if (targets) {
       const destroyed: string[] = [];
@@ -4449,7 +4449,7 @@ export function applyObjectiveScoreSideEffect(G: GameState, objectiveId: string)
       }
       for (const [slot, indices] of bySlot) {
         indices.sort((a, b) => b - a);
-        for (const idx of indices) G.empire.buildQueue[slot].splice(idx, 1);
+        for (const idx of indices) G.rebel.buildQueue[slot].splice(idx, 1);
       }
       log(G, { kind: 'a-time-for-peace-destroy', side: 'Rebel', payload: { destroyed } });
     }

@@ -25,18 +25,19 @@ export function postPlayObjectiveChoice(
   log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'PlayObjective', window, legal, allowDecline } });
 }
 
-/** Objectives whose play carries a real COST to the Rebel, so they must NOT
- *  be auto-played — the player decides whether the benefit is worth it. The
- *  Long War discards 2 of your OTHER objectives as a cost (#183). */
-export const COST_OBJECTIVES = new Set<string>(['the-long-war-1']);
+/** Objectives whose play carries a real COST to the Rebel, so they must NOT be
+ *  auto-played — the player decides whether the benefit is worth it, and the AI
+ *  declines rather than pay blindly. The Long War discards 2 of your OTHER
+ *  objectives (#183); A Time for Peace destroys 2 triangle + 1 circle + 1 square
+ *  units off your OWN build queue (a disarmament cost — #341, correcting #325's
+ *  belief that it hit the Imperial queue). */
+export const COST_OBJECTIVES = new Set<string>(['the-long-war-1', 'a-time-for-peace-2']);
 
 /** Objectives that are free to the Rebel but make a big, IRREVERSIBLE board
  *  change when scored, so auto-playing them robs the player of the RR p.10 "you
- *  MAY play an objective" decision. A Time for Peace destroys four Imperial
- *  build-queue units — the player should choose whether to apply it or keep the
- *  units on the queue (player report #325). Routed through the play-objective
- *  prompt with a decline option, like cost objectives. */
-export const OPT_IN_OBJECTIVES = new Set<string>(['a-time-for-peace-2']);
+ *  MAY play an objective" decision. Routed through the play-objective prompt
+ *  with a decline option, like cost objectives. (Currently empty.) */
+export const OPT_IN_OBJECTIVES = new Set<string>([]);
 
 /** Return true if the given objective's condition is satisfied in the
  *  current state. Caller should already have verified the timing matches. */
@@ -209,7 +210,10 @@ export function timeForPeaceQueueTargets(
   const need: Record<'triangle' | 'circle' | 'square', number> = { triangle: 2, circle: 1, square: 1 };
   const picked: { slot: 1 | 2 | 3; index: number; typeId: string }[] = [];
   for (const slot of [1, 2, 3] as const) {
-    const q = G.empire.buildQueue[slot] ?? [];
+    // RAW (card art): "Destroy the following units on the REBEL build queue to
+    // play this card." It's the Rebel's OWN units — a disarmament COST, not an
+    // attack on the Empire (player report #341 correcting #325).
+    const q = G.rebel.buildQueue[slot] ?? [];
     for (let index = 0; index < q.length; index++) {
       const typeId = q[index];
       const tier = G.catalog.unitTypes[typeId]?.tier as 'triangle' | 'circle' | 'square' | undefined;
