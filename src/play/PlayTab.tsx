@@ -1376,6 +1376,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           winReason={G.winReason ?? null}
           humanSide={humanSide}
           onDismiss={() => setGameOverAck(true)}
+          onUploadLogs={() => { setGameOverAck(true); setShowUploadLogs(true); }}
         />
       )}
 
@@ -14284,12 +14285,13 @@ function ContingencyPlanPickModal({
 }
 
 function GameOverModal({
-  winner, winReason, humanSide, onDismiss,
+  winner, winReason, humanSide, onDismiss, onUploadLogs,
 }: {
   winner: Side | null;
   winReason: string | null;
   humanSide: Side;
   onDismiss: () => void;
+  onUploadLogs: () => void;
 }) {
   const won = winner != null && winner === humanSide;
   // Plain-language explanation of HOW the game ended.
@@ -14331,9 +14333,18 @@ function GameOverModal({
         <div style={{ fontSize: 14, color: '#cfd2d6', lineHeight: 1.5, marginBottom: 20 }}>
           {reasonText}
         </div>
-        <button className="tab-button active" onClick={onDismiss} style={{ padding: '8px 20px' }}>
-          Close
-        </button>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+          <button className="tab-button active" onClick={onDismiss} style={{ padding: '8px 20px' }}>
+            Close
+          </button>
+          <button className="tab-button" onClick={onUploadLogs} style={{ padding: '8px 20px' }}
+            title="Send this game's log to the developer to help improve the AI and catch bugs">
+            Upload game log
+          </button>
+        </div>
+        <div style={{ fontSize: 11, color: '#8a8d92', marginTop: 12, lineHeight: 1.4 }}>
+          Uploading your game's log helps tune the AI and squash bugs — thank you!
+        </div>
       </div>
     </div>
   );
