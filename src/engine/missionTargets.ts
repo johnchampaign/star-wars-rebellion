@@ -423,6 +423,17 @@ export function missionRevealIsPointless(
       const markers = (ss?.targetMarkers?.length ?? 0) > 0;
       return !rebelGround && !markers;
     }
+    case 'hunt-them-down':
+    case 'hit-and-run':
+    case 'rogue-squadron-raid': {
+      // "Destroy up to N health worth of units of your choice IN THE SYSTEM" —
+      // a no-op when the opponent has no destroyable units there. The Empire
+      // shouldn't waste Hunt Them Down on a system with no Rebel units, and the
+      // Rebel raids likewise need Imperial units present (#326).
+      const opp: Side = side === 'Empire' ? 'Rebel' : 'Empire';
+      return !(ss?.units ?? []).some(
+        (u) => u.side === opp && G.catalog.unitTypes[u.typeId]?.health.color !== null);
+    }
     case 'superlaser-online': {
       // Fires at the Death Star's OWN system, destroying everything there —
       // including the Empire's own escorts. Worth it only when there's Rebel

@@ -656,7 +656,7 @@
         "jyn-erso"
       ],
       "effectKey": "something-to-fight-for",
-      "rulesText": "After you win a battle, choose a discarded objective card and place it on top of the deck.",
+      "rulesText": "After you win a battle, choose a discarded objective card and place it on top of the deck. (FAQ p.6: \"a battle\" means winning either the space or the ground battle — not the whole combat.)",
       "image": "Something to fight for.png",
       "set": "rote"
     }

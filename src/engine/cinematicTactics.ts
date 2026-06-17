@@ -468,9 +468,15 @@ export function pickBestCinematicPlay(
   return best ? { cardId: best.cardId, useTop: best.useTop } : null;
 }
 
-/** Apply a chosen advanced-card ability (top/bottom) and discard the card. */
+/** Apply a chosen advanced-card ability (top/bottom) and discard the card.
+ *  `isExtra` marks a card played as a SECOND card via an "extra card" effect:
+ *  per the RoE rulebook such a card can neither contain a cancelling effect nor
+ *  be cancelled (#328). Being cancelled is already impossible — extra cards
+ *  resolve immediately, outside the cancel loop — so this only voids a cancel
+ *  ABILITY on the extra card itself. */
 export function applyCinematicAbility(
   G: GameState, c: CombatState, side: Side, theater: Theater, cardId: string, useTop: boolean,
+  isExtra = false,
 ): void {
   const abilities = ABILITIES[cardId];
   if (!abilities) return;
@@ -517,11 +523,17 @@ export function applyCinematicAbility(
   } else if (ab.kind === 'cancel') {
     // Cancel the opponent's tactic play this round in this theatre. Only bites
     // if they haven't resolved yet (sequential order: attacker plays first).
-    const opp = other(side);
-    const oppKey = `${opp}:${theater}:${c.round}`;
-    const tooLate = (c.cinematicTacticDoneThisRound ?? []).includes(oppKey);
-    if (!tooLate) (c.cinematicCancel ??= {})[oppKey] = true;
-    logPlay({ cancel: { side: opp, theater, applied: !tooLate, note: tooLate ? 'opponent already resolved' : undefined } });
+    // A card played as a SECOND card via an "extra card" effect cannot contain a
+    // cancelling effect (RoE; #328) — void it.
+    if (isExtra) {
+      logPlay({ cancel: { side: other(side), theater, applied: false, note: 'extra card cannot cancel' } });
+    } else {
+      const opp = other(side);
+      const oppKey = `${opp}:${theater}:${c.round}`;
+      const tooLate = (c.cinematicTacticDoneThisRound ?? []).includes(oppKey);
+      if (!tooLate) (c.cinematicCancel ??= {})[oppKey] = true;
+      logPlay({ cancel: { side: opp, theater, applied: !tooLate, note: tooLate ? 'opponent already resolved' : undefined } });
+    }
   } else if (ab.kind === 'shieldAbsorb') {
     logPlay({ absorbed: resolveShieldAbsorb(G, side, c.systemId, ab) });
     restageTheater(G, c); // un-stage ground units healed by the shield absorb

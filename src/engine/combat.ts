@@ -2317,8 +2317,11 @@ export function resolveCinematicTacticSelect(
 
   if (pc.extra) {
     // EXTRA play — apply immediately (outside the simultaneous ordering). May
-    // itself grant another extra, so chain while grants and cards remain.
-    if (cardId !== null) applyCinematicAbility(G, c, pc.side, pc.theater, cardId, useTop);
+    // itself grant another extra, so chain while grants and cards remain. Played
+    // as a second card via an extra-card effect, so its cancel ability is void
+    // and it's inherently uncancellable (it resolves now, not via the cancel
+    // loop) — RoE #328.
+    if (cardId !== null) applyCinematicAbility(G, c, pc.side, pc.theater, cardId, useTop, true);
     else log(G, { kind: 'cinematic-tactic-skip', side: pc.side, payload: { theater: pc.theater, round: pc.round } });
     const extras = c.cinematicExtraPlays?.[key] ?? 0;
     if (cardId !== null && extras > 0) {
@@ -2907,13 +2910,22 @@ function endCombat(G: GameState): void {
   }
 
   // RoE "Something to Fight For" (Rebel/Jyn Special): after winning a
-  // battle, may discard this card to pick a discarded objective card and
-  // put it on top of the deck. Triggers only when the Rebel won, Jyn is
-  // in the Rebel pool (RAW leader requirement), the card is in the Rebel
-  // hand, and the objective discard has at least one card.
+  // BATTLE, may discard this card to pick a discarded objective card and put
+  // it on top of the deck. Per the FFG FAQ/errata (p.6) the trigger is "win a
+  // battle" — winning either the space OR the ground battle — NOT winning the
+  // whole combat. So fire when the Rebel cleared the enemy from any theater a
+  // battle was actually fought in, even if the other theater is unresolved or
+  // the overall combat is a draw (player report #327). Requires Jyn in the
+  // Rebel pool (RAW leader requirement), the card in hand, and a discard.
+  const foughtIn = (th: Theater) => c.report.rounds.some(
+    (r) => r.attacks.some((a) => a.theater === th && a.damageApplied > 0));
+  const rebelWonABattle = (['space', 'ground'] as const).some((th) =>
+    foughtIn(th)
+    && unitsOf(G, 'Rebel', c.systemId, th).length > 0
+    && unitsOf(G, 'Empire', c.systemId, th).length === 0);
   if (!G.pendingChoice
       && G.expansion?.enabled
-      && c.report.winner === 'Rebel'
+      && (c.report.winner === 'Rebel' || rebelWonABattle)
       && G.rebel.actionHand.includes('something-to-fight-for')
       && G.rebel.leaderPool.includes('jyn-erso')
       && (G.rebel.objectiveDiscard ?? []).length > 0) {
