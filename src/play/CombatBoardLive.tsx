@@ -227,6 +227,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
     pc?.kind === 'ConfrontationLeaderPick' ? pc.side :
     pc?.kind === 'CinematicReroll'       ? pc.side :
     pc?.kind === 'CinematicHeal'         ? pc.side :
+    pc?.kind === 'CinematicDeferredHeal' ? pc.side :
     pc?.kind === 'RetreatDecision'       ? pc.side : null;
   const isHumanDecision = decisionSide === humanSide;
   // Online, the opponent is a remote human (or a SERVER-driven AI seat) — either
@@ -663,6 +664,9 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
         )}
         {pc?.kind === 'CinematicHeal' && isHumanDecision && (
           <CinematicHealPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'CinematicDeferredHeal' && isHumanDecision && (
+          <CinematicDeferredHealPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'RetreatDecision' && isHumanDecision && (
           <RetreatPanel G={G} choice={pc} onPersist={onPersist} />
@@ -2230,6 +2234,62 @@ function CinematicHealPanel({ G, choice, onPersist }: {
         <button onClick={() => submit(alloc)} style={btn('#80dc78')}>Apply heal</button>
         <button onClick={() => { const m: Record<string, number> = {}; choice.suggested.forEach((s) => { m[s.instanceId] = s.amount; }); setAlloc(m); }} style={btn('#80b0dc')}>Use suggested</button>
         <button onClick={() => submit({})} style={btn('#ffd54a')}>Spend none</button>
+      </div>
+    </div>
+  );
+}
+
+// ---------- Draw Their Fire / Energy Shield deferred heal (#322) ----------
+
+function CinematicDeferredHealPanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'CinematicDeferredHeal' }>;
+  onPersist: () => void;
+}) {
+  const initial: Record<string, number> = {};
+  choice.suggested.forEach((s) => { initial[s.instanceId] = s.amount; });
+  const [alloc, setAlloc] = useState<Record<string, number>>(initial);
+  const used = choice.candidates.reduce((n, c) => n + (alloc[c.instanceId] ?? 0), 0);
+  const inc = (cand: typeof choice.candidates[number]) => {
+    if ((alloc[cand.instanceId] ?? 0) < cand.damage && used < choice.amount) {
+      setAlloc((a) => ({ ...a, [cand.instanceId]: (a[cand.instanceId] ?? 0) + 1 }));
+    }
+  };
+  const dec = (cand: typeof choice.candidates[number]) =>
+    setAlloc((a) => ({ ...a, [cand.instanceId]: Math.max(0, (a[cand.instanceId] ?? 0) - 1) }));
+  const submit = (map: Record<string, number>) => {
+    const allocation = Object.entries(map).map(([instanceId, amount]) => ({ instanceId, amount })).filter((x) => x.amount > 0);
+    const r = combat.resolveCinematicDeferredHeal(G, allocation);
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>Remove damage</b> — pull up to {choice.amount} damage off your own
+        {' '}{choice.theater} units (Draw Their Fire / Energy Shield).{' '}
+        <span style={{ opacity: 0.7 }}>{used}/{choice.amount} used</span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
+        {choice.candidates.map((cand) => {
+          const cur = alloc[cand.instanceId] ?? 0;
+          return (
+            <div key={cand.instanceId} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ minWidth: 150 }}>{G.catalog.unitTypes[cand.typeId]?.name ?? cand.typeId}</span>
+              <span style={{ fontSize: 11, opacity: 0.7, minWidth: 90 }}>
+                dmg {cand.damage}{cand.staged ? ' ⚠ dying' : ''}
+              </span>
+              <button onClick={() => dec(cand)} style={btn('#777')}>−</button>
+              <span style={{ minWidth: 20, textAlign: 'center' }}>{cur}</span>
+              <button onClick={() => inc(cand)} style={btn('#80dc78')}>+</button>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={() => submit(alloc)} style={btn('#80dc78')}>Apply heal</button>
+        <button onClick={() => { const m: Record<string, number> = {}; choice.suggested.forEach((s) => { m[s.instanceId] = s.amount; }); setAlloc(m); }} style={btn('#80b0dc')}>Use suggested</button>
+        <button onClick={() => submit({})} style={btn('#ffd54a')}>Remove none</button>
       </div>
     </div>
   );

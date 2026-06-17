@@ -584,24 +584,117 @@ function resolveRemoveDamage(
   return removed;
 }
 
+/** Is `u` currently at lethal damage (staged for end-of-theatre destruction)? */
+function isLethal(G: GameState, u: { typeId: string; damage: number }): boolean {
+  const h = G.catalog.unitTypes[u.typeId]?.health.value ?? 0;
+  return h > 0 && u.damage >= h;
+}
+
+/** Build the suggested heal allocation: spend the budget saving lethally-damaged
+ *  ships first (cheapest-to-save first, so the most ships survive), then pour any
+ *  remainder onto the most-damaged survivors. This is both the AI's play and the
+ *  human's pre-filled default. */
+function suggestHealAllocation(
+  G: GameState, units: { instanceId: string; typeId: string; damage: number }[], amount: number,
+): { instanceId: string; amount: number }[] {
+  const out: { instanceId: string; amount: number }[] = [];
+  let budget = amount;
+  const bump = (id: string, n: number) => {
+    const ex = out.find((s) => s.instanceId === id);
+    if (ex) ex.amount += n; else out.push({ instanceId: id, amount: n });
+  };
+  const remaining = new Map(units.map((u) => [u.instanceId, u.damage]));
+  // 1) Save staged ships we can actually afford to save, cheapest first.
+  const staged = units
+    .filter((u) => isLethal(G, u))
+    .map((u) => ({ id: u.instanceId, cost: u.damage - (G.catalog.unitTypes[u.typeId]?.health.value ?? 0) + 1 }))
+    .sort((a, b) => a.cost - b.cost);
+  for (const s of staged) {
+    if (s.cost <= budget) { bump(s.id, s.cost); budget -= s.cost; remaining.set(s.id, (remaining.get(s.id) ?? 0) - s.cost); }
+  }
+  // 2) Remaining budget on the most-damaged, one point at a time.
+  while (budget > 0) {
+    let best: string | null = null, bestDmg = 0;
+    for (const [id, dmg] of remaining) { if (dmg > bestDmg) { best = id; bestDmg = dmg; } }
+    if (!best) break;
+    bump(best, 1); budget -= 1; remaining.set(best, bestDmg - 1);
+  }
+  return out;
+}
+
 /** Apply any deferred "remove damage after the opponent attacks" heals (Draw
  *  Their Fire / Energy Shield) for `theater`. Called by combat.ts AFTER the
  *  theatre's attacks resolve and BEFORE finalizeTheaterDestructions, so a heal
- *  can pull a just-damaged ship back below lethal and save it (#225). */
-export function applyDeferredCinematicHeals(G: GameState, c: CombatState, theater: Theater): void {
+ *  can pull a just-damaged ship back below lethal and save it (#225).
+ *
+ *  Returns true if it posted an interactive choice (the playing side has a
+ *  meaningful allocation decision — more total damage than the heal budget) and
+ *  the caller must pause; the resolver (resolveCinematicDeferredHeal) finishes
+ *  the entry and re-enters combat. Forced cases (heal everything / nothing
+ *  wounded) auto-apply with no pause (player report #322). */
+export function applyDeferredCinematicHeals(G: GameState, c: CombatState, theater: Theater): boolean {
   const queue = c.cinematicDeferredHeal;
-  if (!queue?.length) return;
-  const keep: typeof queue = [];
-  for (const h of queue) {
-    if (h.theater !== theater) { keep.push(h); continue; }
-    const removed = resolveRemoveDamage(G, h.side, c.systemId, theater,
-      { kind: 'removeDamage', amount: h.amount, exceptTypeId: h.exceptTypeId });
-    restageTheater(G, c); // un-stage units healed back below lethal
-    log(G, { kind: 'cinematic-remove-damage', side: h.side, payload: {
-      theater, round: c.round, removed, except: h.exceptTypeId,
+  if (!queue?.length) return false;
+  // Process entries for this theatre in order; pause on the first that needs a
+  // real choice (leaving it queued for the resolver to consume).
+  while (true) {
+    const idx = queue.findIndex((h) => h.theater === theater);
+    if (idx < 0) return false;
+    const h = queue[idx];
+    const wounded = unitsOf(G, h.side, c.systemId, theater)
+      .filter((u) => u.typeId !== h.exceptTypeId && u.damage > 0)
+      .map((u) => ({ instanceId: u.instanceId, typeId: u.typeId, damage: u.damage }));
+    const totalDamage = wounded.reduce((s, u) => s + u.damage, 0);
+    if (wounded.length === 0 || h.amount <= 0 || totalDamage <= h.amount) {
+      // Forced (or empty): remove all the damage we can, no decision to make.
+      const removed = resolveRemoveDamage(G, h.side, c.systemId, theater,
+        { kind: 'removeDamage', amount: h.amount, exceptTypeId: h.exceptTypeId });
+      restageTheater(G, c);
+      log(G, { kind: 'cinematic-remove-damage', side: h.side, payload: {
+        theater, round: c.round, removed, except: h.exceptTypeId,
+      }});
+      queue.splice(idx, 1);
+      continue;
+    }
+    // Meaningful allocation → hand it to the playing side (human modal / AI).
+    G.pendingChoice = {
+      kind: 'CinematicDeferredHeal',
+      side: h.side, theater, systemId: c.systemId, amount: h.amount,
+      candidates: wounded.map((u) => ({ ...u, staged: isLethal(G, u) })),
+      suggested: suggestHealAllocation(G, wounded, h.amount),
+    };
+    log(G, { kind: 'choice-request', side: h.side, payload: {
+      kind: 'CinematicDeferredHeal', theater, amount: h.amount, wounded: wounded.length,
     }});
+    return true;
   }
-  c.cinematicDeferredHeal = keep;
+}
+
+/** Apply a chosen Draw Their Fire / Energy Shield heal allocation and drop the
+ *  consumed queue entry. `alloc` is clamped to each unit's damage and to the
+ *  entry's total budget. Returns the damage actually removed. */
+export function applyDeferredHealAllocation(
+  G: GameState, c: CombatState, theater: Theater, side: Side,
+  alloc: { instanceId: string; amount: number }[],
+): number {
+  const queue = c.cinematicDeferredHeal ?? [];
+  const idx = queue.findIndex((h) => h.theater === theater && h.side === side);
+  const budget = idx >= 0 ? queue[idx].amount : 0;
+  let spent = 0, removed = 0;
+  const units = unitsOf(G, side, c.systemId, theater);
+  for (const a of alloc) {
+    if (spent >= budget) break;
+    const u = units.find((x) => x.instanceId === a.instanceId);
+    if (!u) continue;
+    const take = Math.max(0, Math.min(a.amount, u.damage, budget - spent));
+    u.damage -= take; spent += take; removed += take;
+  }
+  if (idx >= 0) queue.splice(idx, 1);
+  restageTheater(G, c);
+  log(G, { kind: 'cinematic-remove-damage', side, payload: {
+    theater, round: c.round, removed, chosen: true,
+  }});
+  return removed;
 }
 
 /** Re-sync c.theaterStaged to units that are CURRENTLY at lethal damage. Call

@@ -15,7 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal, dealAbilityFor, cinematicDealCandidates } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, applyDeferredHealAllocation, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal, dealAbilityFor, cinematicDealCandidates } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -617,7 +617,7 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
   // damage" — Draw Their Fire / Energy Shield) resolve now: after this
   // theatre's attacks, before destruction, so they can save a just-damaged
   // ship from being destroyed below (#225).
-  if (c.cinematic) applyDeferredCinematicHeals(G, c, theater);
+  if (c.cinematic && applyDeferredCinematicHeals(G, c, theater)) return; // paused for a heal pick
 
   // Apply destructions (RR p.5 — end of theater step).
   finalizeTheaterDestructions(G, c, theater);
@@ -1105,6 +1105,34 @@ export function resolveCinematicHeal(
   pa.cinematicHealResolved = true;
   G.pendingChoice = undefined;
   advanceAttackToTactics(G, c);
+  return { ok: true };
+}
+
+/** Resolve a Draw Their Fire / Energy Shield heal allocation (#322). `allocation`
+ *  is the chosen damage-removal per unit; it's validated and clamped, then the
+ *  consumed deferred-heal entry is dropped and combat resumes (the theatre's
+ *  destruction step and any later theatre continue). */
+export function resolveCinematicDeferredHeal(
+  G: GameState, allocation: { instanceId: string; amount: number }[]
+): { ok: boolean; reason?: string } {
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'CinematicDeferredHeal') return { ok: false, reason: 'no-choice' };
+  // Validate: every target is a listed candidate and within its damage; the
+  // total fits the heal budget.
+  let total = 0;
+  for (const a of allocation) {
+    if (a.amount <= 0) continue;
+    const cand = pc.candidates.find((x) => x.instanceId === a.instanceId);
+    if (!cand) return { ok: false, reason: `not-a-candidate:${a.instanceId}` };
+    if (a.amount > cand.damage) return { ok: false, reason: `over-damage:${a.instanceId}` };
+    total += a.amount;
+  }
+  if (total > pc.amount) return { ok: false, reason: 'over-budget' };
+  G.pendingChoice = undefined;
+  applyDeferredHealAllocation(G, c, pc.theater, pc.side, allocation);
+  runCombat(G); // resume: finalize this theatre's destructions and continue
   return { ok: true };
 }
 

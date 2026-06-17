@@ -842,6 +842,22 @@ export type ChoiceRequest =
       suggested: { instanceId: string; amount: number }[];
     }
   | {
+      // Draw Their Fire / Energy Shield (RoE cinematic): "After the opponent
+      // assigns damage, remove up to N damage from your ships." Interactive for
+      // the human — they pick which units to pull damage off (player report
+      // #322: the heal was auto-applied with no prompt). `amount` = the heal
+      // budget; `candidates` = own wounded units in the theatre (the excluded
+      // type, e.g. Nebulon-B, is already filtered out); `suggested` = the
+      // save-staged-then-most-damaged default.
+      kind: 'CinematicDeferredHeal';
+      side: Side;
+      theater: Theater;
+      systemId: SystemId;
+      amount: number;
+      candidates: { instanceId: string; typeId: string; damage: number; staged: boolean }[];
+      suggested: { instanceId: string; amount: number }[];
+    }
+  | {
       // Undercover (Rebel/Lando|Obi-Wan): when the Empire reveals an attempt
       // mission, may discard this card to relocate Lando or Obi-Wan from
       // their current system to the mission's target system. The relocated

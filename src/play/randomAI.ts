@@ -1288,6 +1288,10 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     // AI: take the suggested ★-spend (most-damaged matching-colour units first).
     return combat.resolveCinematicHeal(G, G.pendingChoice.suggested.map((s) => ({ ...s }))).ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'CinematicDeferredHeal' && G.pendingChoice.side === side) {
+    // AI: take the suggested allocation (save staged ships first, then most-damaged).
+    return combat.resolveCinematicDeferredHeal(G, G.pendingChoice.suggested.map((s) => ({ ...s }))).ok;
+  }
   if (G.pendingChoice && G.pendingChoice.kind === 'CombatAddLeaderPick' && G.pendingChoice.side === side) {
     // AI: always add the highest-tactic-value pool leader. Captures are bad
     // but missing the tactic-card draws is worse for a side that has units
