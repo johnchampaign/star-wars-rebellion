@@ -112,7 +112,7 @@
         "soontir-fel"
       ],
       "effectKey": "",
-      "rulesText": "Rebel player must keep tactic cards faceup.",
+      "rulesText": "Rebel player must keep tactic cards faceup. If using advanced tactic cards, you do not choose a tactic card until after the Rebel player's card has been revealed each round.",
       "image": "ActionCardEmpireGoodIntel.png"
     },
     {

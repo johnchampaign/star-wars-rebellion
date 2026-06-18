@@ -336,7 +336,12 @@ const constructFactory: EffectHandler = (G, ctx) => {
 const constructSuperStarDestroyer: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
-  M.buildToQueue(G, 'Empire', 'super-star-destroyer', 3);
+  // RoE (card art): "Place 1 Super Star Destroyer on space 3 of the build queue.
+  // If 2 leaders are assigned to this mission, place it on space 2 instead"
+  // (it finishes a turn sooner). The base printing only has the space-3 line —
+  // player report #347.
+  const slot = ctx.leaderIds.length >= 2 ? 2 : 3;
+  M.buildToQueue(G, 'Empire', 'super-star-destroyer', slot);
   return true;
 };
 

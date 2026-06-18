@@ -158,7 +158,13 @@ function portraitBonus(G: GameState, missionId: string, leaderIds: LeaderId[]): 
 function missionTargetsCapturedLeader(G: GameState, missionId: string): boolean {
   const card = G.catalog.missions[missionId];
   if (!card) return false;
-  return card.rulesText.toLowerCase().includes('against a captured leader');
+  // Match ALL the wordings a "target a captured leader" mission uses — base
+  // "against a captured leader" AND the RoE paraphrases "on a captured leader",
+  // "on a captured leader's system", "on a captured leader in a remote system"
+  // (We're the Bait, Break Their Will, Exploit Weakness, Make an Example). The
+  // narrow "against" match silently dropped those, so the prisoner never rolled
+  // opposition (player reports #356/#357). Mirrors missionTargets' own check.
+  return card.rulesText.toLowerCase().includes('captured leader');
 }
 
 /** Opposing leaders at a system: normally just the side's leadersOnBoard
@@ -5261,10 +5267,10 @@ export function legalUnitsForIcon(
         ? ['tie-fighter', 'tie-striker']
         : ['tie-fighter'];
       if (shape === 'circle')   return ['assault-carrier'];
-      // Interdictor is a normal square space build in RoE (not a project).
-      if (shape === 'square')   return roe
-        ? ['star-destroyer', 'interdictor']
-        : ['star-destroyer']; // SSD is a project, not an icon-build
+      // The Interdictor is NOT an icon-build: it only enters the queue via the
+      // "Interdictor Development" project (player report #349). So a square space
+      // icon builds a Star Destroyer in both base and RoE.
+      if (shape === 'square')   return ['star-destroyer']; // SSD + Interdictor are project-only
     } else {
       if (shape === 'triangle') return roe
         ? ['stormtrooper', 'assault-tank']

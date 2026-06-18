@@ -121,7 +121,7 @@
       "isAttempt": false,
       "leaderPortrait": null,
       "effectKey": "",
-      "rulesText": "Resolve in any Imperial system that has a blue square resource icon. Place 1 Super Star Destroyer on space 3 of the build queue.",
+      "rulesText": "Resolve in any Imperial system that has a blue square resource icon. Place 1 Super Star Destroyer on space 3 of the build queue. If 2 leaders are assigned to this mission, place it on space 2 instead.",
       "image": "MissionEmpireProjectConstructSuperStarDestroyer.png"
     },
     {

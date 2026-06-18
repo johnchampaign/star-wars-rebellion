@@ -32,6 +32,9 @@ export const PROJECT_ONLY_UNIT_IDS: ReadonlySet<string> = new Set([
   'super-star-destroyer',
   'death-star',
   'death-star-under-construction',
+  // The Interdictor only enters the queue via the "Interdictor Development"
+  // project — never as a normal icon-build/recruit (player report #349).
+  'interdictor',
 ]);
 
 export const UNIT_TYPES: UnitType[] = [
