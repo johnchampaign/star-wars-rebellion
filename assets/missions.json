@@ -789,7 +789,7 @@
       "isAttempt": false,
       "leaderPortrait": null,
       "effectKey": "interdictor-development",
-      "rulesText": "Place 1 Interdictor on build space 2. If 2 leaders are assigned, place on space 1 and return the card.",
+      "rulesText": "Resolve in a system that contains an Imperial unit, no Rebel units, and no sabotage marker. Place 1 Interdictor on build space 2. If 2 leaders are assigned, place on space 1 and return the card.",
       "image": "Interdictor Deployment_p.png",
       "set": "rote",
       "projectCopies": 2

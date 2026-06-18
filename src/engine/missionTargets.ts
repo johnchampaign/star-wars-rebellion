@@ -171,7 +171,7 @@ function detectQualifiers(G: GameState, t: string): { preds: Pred[]; notes: stri
     preds.push((id) => !unitsAt(G, id).some((u) => u.side === 'Empire'));
     notes.push('no Imperial units');
   }
-  if (t.includes('does not contain a sabotage marker')) {
+  if (t.includes('does not contain a sabotage marker') || t.includes('no sabotage marker')) {
     preds.push((id) => !G.map.systems[id]?.sabotage);
     notes.push('no sabotage marker');
   }
