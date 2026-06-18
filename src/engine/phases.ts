@@ -68,11 +68,19 @@ function missionDieScore(face: string): number {
 function rollMissionDice(
   G: GameState, n: number, minor: number, _side: Side, _systemId: SystemId,
 ): { successes: number; faces: string[]; colors: ('red' | 'black' | 'green')[] } {
-  // Of the total `n` dice to roll, `minor` come from minor skill icons
-  // (RoE rules p.8) and roll GREEN — capped at 3 per attempt. The rest
-  // roll as the usual red+black split: red up to 5, black up to 5.
-  const greenCount = G.expansion?.enabled ? Math.min(minor, 3) : 0;
-  const major = Math.max(0, n - greenCount);
+  // Of the total `n` dice to roll, `minor` come from minor skill icons.
+  // RoE rulebook ("Minor Skills" / "Green Dice"): "Each minor skill icon
+  // allows the leader to roll 1 green die" and "A player cannot roll more
+  // than 3 green dice when attempting a mission." Crucially, minor skills
+  // roll ONLY green — they never spill over into red/black. So green is
+  // capped at 3 and any minor icons beyond the cap roll NOTHING (player
+  // report #350: we were wrongly promoting the minor-overflow to red/black,
+  // inflating the major-die count). The red+black split covers only the
+  // non-minor dice: the true major icons plus any extra-die bonuses
+  // (e.g. Subversion).
+  const minorRolled = G.expansion?.enabled ? minor : 0;
+  const greenCount = Math.min(minorRolled, 3);
+  const major = Math.max(0, n - minorRolled);
   const red = Math.min(major, 5);
   const black = Math.min(Math.max(0, major - 5), 5);
   const faces: string[] = [];
