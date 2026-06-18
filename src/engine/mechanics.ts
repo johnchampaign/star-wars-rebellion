@@ -187,8 +187,12 @@ export function resetEmpireSearchedForBaseMove(G: GameState): void {
  *  excess is destroyed. This bites in DESTROYED systems (the planet is gone, so
  *  ground can only be there if a ship is carrying it) — e.g. a lone AT-ST moved
  *  into a Superlaser'd planet with no carrier must be destroyed (player report).
- *  Auto-culls the cheapest ground first (a simplification; RAW lets the owner
- *  pick which excess to lose). Splices directly to avoid re-entering invariants. */
+ *  RAW lets the owner pick which excess to lose; we auto-cull the LOWEST-tier
+ *  ground first, which is the owner-optimal pick in every case (ground units
+ *  carry no other state, so you'd always sacrifice the cheapest). Deliberately
+ *  not a player prompt: this runs inside `recompute` after every unit move, which
+ *  is not a pausable context, and the auto-result already matches what the owner
+ *  would choose. Splices directly to avoid re-entering invariants. */
 const GROUND_TIER_RANK: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
 function cullOverTransportInDestroyed(G: GameState, affected?: SystemId[]): void {
   const ids = affected ?? Object.keys(G.map.systems);
