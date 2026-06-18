@@ -1782,6 +1782,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const placements = c.cards.map((cid) => ({ cardId: cid, position: 'bottom' as const }));
     return phases.resolvePlantFalseLeadPlacement(G, placements).ok;
   }
+  // Under the Radar reorder: AI Rebel buries the un-kept peeked probes on the
+  // bottom (same logic as Plant False Lead — deny the Empire that search intel).
+  if (G.pendingChoice && G.pendingChoice.kind === 'UnderTheRadarReorder' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const placements = c.cards.map((cid) => ({ cardId: cid, position: 'bottom' as const }));
+    return phases.resolveUnderTheRadarReorder(G, placements).ok;
+  }
   // Detained: Empire picks any Rebel leader at the target.
   if (G.pendingChoice && G.pendingChoice.kind === 'DetainedTargetPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;

@@ -1917,6 +1917,28 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       )}
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'UnderTheRadarReorder'
+        && humanSide === 'Rebel' && (
+        <PlantFalseLeadModal
+          G={G}
+          cards={G.pendingChoice.cards}
+          title="Under the Radar — replace the remaining probe cards"
+          blurb={
+            <>
+              You held 1 probe facedown. Now place the other {G.pendingChoice.cards.length} back —
+              <b> Bottom</b> buries them (delays the Empire's search); <b>Top</b> feeds one back to
+              the Empire next, wasting their probe on a system you choose.
+            </>
+          }
+          onConfirm={(placements) => {
+            const r = phases.resolveUnderTheRadarReorder(G, placements);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }}
+        />
+      )}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'CarbonFreezingPick'
         && humanSide === 'Empire' && (
         <SimpleLeaderPickModal
@@ -5119,10 +5141,12 @@ function SafeHavenPickModal({ G, choice, onConfirm }: {
 /** Plant False Lead placement modal: the Rebel chose to take these probe
  *  cards from the Empire and decides where each returns — top or bottom of
  *  the deck. (#64 follow-up) */
-function PlantFalseLeadModal({ G, cards, onConfirm }: {
+function PlantFalseLeadModal({ G, cards, onConfirm, title, blurb }: {
   G: GameState;
   cards: string[];
   onConfirm: (placements: { cardId: string; position: 'top' | 'bottom' }[]) => void;
+  title?: string;
+  blurb?: React.ReactNode;
 }) {
   const color = sideColor('Rebel');
   const [pos, setPos] = useState<Record<string, 'top' | 'bottom'>>(() => {
@@ -5145,12 +5169,16 @@ function PlantFalseLeadModal({ G, cards, onConfirm }: {
       <div style={{ background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
         padding: 20, maxWidth: 460, width: '92%', boxShadow: '0 8px 32px rgba(0,0,0,0.7)' }}>
         <div style={{ fontSize: 15, color, fontWeight: 700, marginBottom: 6 }}>
-          Plant False Lead — return the Empire's probe cards
+          {title ?? "Plant False Lead — return the Empire's probe cards"}
         </div>
         <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12, lineHeight: 1.5 }}>
-          You took these {cards.length} probe card{cards.length === 1 ? '' : 's'} from the Empire
-          (systems they'd ruled out). Choose where each goes — <b>Bottom</b> hides it the longest;
-          <b> Top</b> makes the Empire redraw it next, wasting their probe.
+          {blurb ?? (
+            <>
+              You took these {cards.length} probe card{cards.length === 1 ? '' : 's'} from the Empire
+              (systems they'd ruled out). Choose where each goes — <b>Bottom</b> hides it the longest;
+              <b> Top</b> makes the Empire redraw it next, wasting their probe.
+            </>
+          )}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
           {cards.map((c) => (

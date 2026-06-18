@@ -2117,6 +2117,29 @@ export function resolveUnderTheRadarKeep(G: GameState, probeId: string): { ok: b
   const autoFlush = pc.autoFlush;
   const viaRecruit = pc.viaRecruit;
   G.pendingChoice = undefined;
+  // RoE second step: "replace the others at the top or bottom of the deck in
+  // any order." Pull the remaining peeked probes out of the deck and let the
+  // Rebel place them top/bottom. (They may want to feed the Empire a misleading
+  // probe on top while burying the revealing ones.) Skip the pause when there's
+  // nothing left to place.
+  const remaining = pc.candidates.filter((id) => id !== probeId && G.probeDeck.includes(id));
+  if (remaining.length > 0) {
+    for (const id of remaining) {
+      const j = G.probeDeck.indexOf(id);
+      if (j >= 0) G.probeDeck.splice(j, 1);
+    }
+    G.pendingChoice = { kind: 'UnderTheRadarReorder', side: 'Rebel', cards: remaining, autoFlush, viaRecruit };
+    log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+      kind: 'UnderTheRadarReorder', cards: remaining.length,
+    }});
+    return { ok: true };
+  }
+  return finishUnderTheRadar(G, autoFlush, viaRecruit);
+}
+
+/** Shared Under the Radar continuation: resume whatever flow the card fired
+ *  from (recruit, auto-flush on draw, or a plain manual play). */
+function finishUnderTheRadar(G: GameState, autoFlush?: boolean, viaRecruit?: boolean): { ok: boolean; reason?: string } {
   // Fired immediately on being recruited (#289): resume the paused recruit/
   // refresh flow so the rest of refresh proceeds.
   if (viaRecruit) return continueRecruitFlow(G);
@@ -2124,6 +2147,32 @@ export function resolveUnderTheRadarKeep(G: GameState, probeId: string): { ok: b
   // just resolves the card without advancing).
   if (autoFlush) advanceCommandTurn(G);
   return { ok: true };
+}
+
+/** Under the Radar — place each remaining peeked probe on the top or bottom of
+ *  the probe deck (first-listed "top" entry ends up on top), then continue. */
+export function resolveUnderTheRadarReorder(
+  G: GameState,
+  placements: { cardId: string; position: 'top' | 'bottom' }[],
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'UnderTheRadarReorder') return { ok: false, reason: 'no-pending' };
+  const want = [...pc.cards].sort();
+  const got = placements.map((p) => p.cardId).sort();
+  if (got.length !== want.length || got.some((id, i) => id !== want[i])) {
+    return { ok: false, reason: 'placements-must-cover-remaining-probes' };
+  }
+  const top = placements.filter((p) => p.position === 'top').map((p) => p.cardId);
+  const bottom = placements.filter((p) => p.position === 'bottom').map((p) => p.cardId);
+  if (top.length) G.probeDeck.unshift(...top);   // first listed = top of deck
+  if (bottom.length) G.probeDeck.push(...bottom);
+  log(G, { kind: 'under-the-radar-reorder', side: 'Rebel', payload: {
+    top: top.length, bottom: bottom.length,
+  }});
+  const autoFlush = pc.autoFlush;
+  const viaRecruit = pc.viaRecruit;
+  G.pendingChoice = undefined;
+  return finishUnderTheRadar(G, autoFlush, viaRecruit);
 }
 
 /** Under the Radar return offer: at the start of a Rebel Command turn, the
@@ -6109,9 +6158,9 @@ function applyImmediateActionCardEffect(G: GameState, side: Side, cardId: string
       // of your turn in the Command phase, you may return that probe card
       // to the top of the probe deck."
       //
-      // The Rebel picks which of the top 4 to hold facedown; the others
-      // stay on top in their original order (we skip the minor top/bottom
-      // reorder nicety). The held probe is pulled out of the deck and
+      // The Rebel picks which of the top 4 to hold facedown; the keep choice
+      // then chains into UnderTheRadarReorder for placing the others top/bottom
+      // (resolveUnderTheRadarKeep). The held probe is pulled out of the deck and
       // stored on rebel.heldProbe; a return offer fires at the start of
       // each subsequent Rebel Command turn.
       if (G.rebel.heldProbe) {

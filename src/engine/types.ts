@@ -737,8 +737,8 @@ export type ChoiceRequest =
     }
   | {
       // Under the Radar (Rebel, RoE): pick 1 of the top 4 peeked probe
-      // cards to hold facedown (pulled out of the deck). The others stay
-      // on top in their original order.
+      // cards to hold facedown (pulled out of the deck). After the pick, the
+      // Rebel reorders the remaining peeked probes top/bottom (UnderTheRadarReorder).
       kind: 'UnderTheRadarKeep';
       side: Side; // 'Rebel'
       candidates: string[]; // the top-N probe card ids (<= 4)
@@ -746,6 +746,18 @@ export type ChoiceRequest =
       autoFlush?: boolean;
       // Set when the card fired immediately on being recruited (RAW "Immediate"
       // timing) — the resolver resumes the paused recruit/refresh flow (#289).
+      viaRecruit?: boolean;
+    }
+  | {
+      // Under the Radar — second step (RoE): "replace the others at the top or
+      // bottom of the deck in any order." After holding 1 probe, the Rebel
+      // places each remaining peeked probe on the top or bottom of the probe
+      // deck. Carries the same continuation flags so the resolver can resume
+      // the auto-flush / recruit flow once placement is done.
+      kind: 'UnderTheRadarReorder';
+      side: Side; // 'Rebel'
+      cards: string[]; // the remaining peeked probe ids to place
+      autoFlush?: boolean;
       viaRecruit?: boolean;
     }
   | {
