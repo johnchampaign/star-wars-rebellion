@@ -715,7 +715,33 @@ export function removeTargetMarker(
   const removed = ss.targetMarkers.splice(i, 1)[0];
   if (ss.targetMarkers.length === 0) delete ss.targetMarkers;
   log(G, { kind: 'target-marker-remove', side: by ?? removed.placedBy, payload: { systemId: sysId, source } });
+  maybeDiscardDepletedImmediateObjective(G, source);
   return true;
+}
+
+/** The RoE "Immediate" objectives that place target markers and stay in play
+ *  while at least one marker is on the board. */
+const IMMEDIATE_MARKER_OBJECTIVE_IDS: ReadonlySet<string> = new Set([
+  'raid-outposts-2', 'rebel-cell-2', 'show-no-fear-3',
+]);
+
+/** RoE FAQ (sw03 FAQ v2.1, p.6): "An immediate objective stays in play while at
+ *  least one of its corresponding target markers is on the board. When all of
+ *  its target markers are removed, discard the objective card." Centralized so
+ *  it fires from every marker-removal site. Without it a fully-raided Raid
+ *  Outposts lingered in the Rebel's hand, where Exploit Weakness could grab it
+ *  as if it were unused (player report #354). Idempotent — the in-hand check
+ *  guards against double-discard. */
+export function maybeDiscardDepletedImmediateObjective(G: GameState, source: string): void {
+  if (!IMMEDIATE_MARKER_OBJECTIVE_IDS.has(source)) return;
+  if (systemsWithTargetMarker(G, source).length > 0) return; // still in play
+  const hand = G.rebel.objectiveHand;
+  if (!hand) return;
+  const i = hand.indexOf(source);
+  if (i < 0) return; // not in hand (already discarded / scored / never drawn)
+  hand.splice(i, 1);
+  (G.rebel.objectiveDiscard ??= []).push(source);
+  log(G, { kind: 'immediate-objective-discarded', side: 'Rebel', payload: { objectiveId: source } });
 }
 
 /** Does this system carry a target marker from the given card source? */

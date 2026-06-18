@@ -2554,17 +2554,23 @@ export function resolveSomethingToFightForOffer(
     if (!pc.candidates.includes(objectiveId)) return { ok: false, reason: 'bad-objective' };
     const handIdx = G.rebel.actionHand.indexOf('something-to-fight-for');
     if (handIdx < 0) return { ok: false, reason: 'card-not-in-hand' };
-    const discard = G.rebel.objectiveDiscard;
-    const oi = discard?.findIndex((id) => id === objectiveId) ?? -1;
-    if (!discard || oi < 0) return { ok: false, reason: 'objective-not-in-discard' };
-    // Discard the card.
+    // The objective lives in EITHER the discard pile or the scored-objectives
+    // list (RoE FAQ: scored objectives are discarded and retrievable — #344).
+    // Pull it from wherever it is so the same card can't be retrieved twice.
+    const discard = G.rebel.objectiveDiscard ?? [];
+    const di = discard.indexOf(objectiveId);
+    const scored = G.rebel.scoredObjectives ?? [];
+    const si = scored.findIndex((s) => s.objectiveId === objectiveId);
+    if (di < 0 && si < 0) return { ok: false, reason: 'objective-not-retrievable' };
+    // Discard the action card.
     G.rebel.actionHand.splice(handIdx, 1);
     G.rebel.actionDiscard.push('something-to-fight-for');
-    // Move objective from discard to top of objective deck.
-    const [picked] = discard.splice(oi, 1);
-    G.rebel.objectiveDeck?.unshift(picked);
+    // Remove the objective from its current pile and put it on top of the deck.
+    if (di >= 0) discard.splice(di, 1);
+    else scored.splice(si, 1); // a previously-scored objective leaves the scored pile
+    G.rebel.objectiveDeck?.unshift(objectiveId);
     log(G, { kind: 'something-to-fight-for-applied', side: 'Rebel', payload: {
-      objectiveId: picked,
+      objectiveId,
     }});
   } else {
     log(G, { kind: 'something-to-fight-for-skipped', side: 'Rebel', payload: {} });
@@ -2930,19 +2936,37 @@ function endCombat(G: GameState): void {
     foughtIn(th)
     && unitsOf(G, 'Rebel', c.systemId, th).length > 0
     && unitsOf(G, 'Empire', c.systemId, th).length === 0);
+  // RoE FAQ (sw03 FAQ v2.1 p.6): in the expansion "all objective cards are
+  // discarded after use" — a SCORED objective goes to the discard pile, not the
+  // box, so "Something to Fight For" can retrieve it too (player report #344).
+  // We keep `scoredObjectives` as the UI history and treat its entries as part
+  // of the retrievable discard pile. (The engine never adds scored objectives
+  // to `objectiveDiscard`, so we union them here.)
+  const stffCandidates = [
+    ...new Set([
+      ...(G.rebel.objectiveDiscard ?? []),
+      ...(G.rebel.scoredObjectives ?? []).map((s) => s.objectiveId),
+    ]),
+  ];
+  // RoE rulebook (p.8 exception list): an action card requires its matching
+  // leader to be IN THE SYSTEM to resolve (only Sweep the Area / Secret Facility
+  // are exempt). "Something to Fight For" fires off winning a battle, so Jyn
+  // must be at the combat system — NOT merely in the pool (the old gate, which
+  // meant the card never fired when Jyn was the one fighting — player #342/#344).
+  const jynAtBattle = (G.rebel.leadersOnBoard[c.systemId] ?? []).includes('jyn-erso');
   if (!G.pendingChoice
       && G.expansion?.enabled
       && (c.report.winner === 'Rebel' || rebelWonABattle)
       && G.rebel.actionHand.includes('something-to-fight-for')
-      && G.rebel.leaderPool.includes('jyn-erso')
-      && (G.rebel.objectiveDiscard ?? []).length > 0) {
+      && jynAtBattle
+      && stffCandidates.length > 0) {
     G.pendingChoice = {
       kind: 'SomethingToFightForOffer',
       side: 'Rebel',
-      candidates: [...(G.rebel.objectiveDiscard ?? [])],
+      candidates: stffCandidates,
     };
     log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-      kind: 'SomethingToFightForOffer', candidates: (G.rebel.objectiveDiscard ?? []).length,
+      kind: 'SomethingToFightForOffer', candidates: stffCandidates.length,
     }});
     return; // pendingCombat stays set; resolver calls finishCombatTail
   }
