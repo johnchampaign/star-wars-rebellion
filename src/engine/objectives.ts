@@ -272,9 +272,11 @@ export function combatObjectivesTriggered(
   if (has('major-victory-3') && rebelInitiated && empShipsHpLost >= 3) {
     fired.push('major-victory-3');
   }
-  // return-of-the-jedi-3 — After winning a battle in Vader's or
-  // Palpatine's system. (Luke-Jedi sub-effect skipped — needs Jedi
-  // flag we don't track yet.)
+  // return-of-the-jedi-3 — After winning a battle in Vader's or Palpatine's
+  // system; scores reputation. The "if Luke (Jedi) is here, eliminate 1 Imperial
+  // leader" sub-effect is applied in playCombatObjective (combat.ts) when the
+  // objective is actually scored — keyed on the live `luke-skywalker-jedi`
+  // leader id, which the engine does track.
   if (has('return-of-the-jedi-3') && rebelWonOverall) {
     const sys = report.systemId;
     const vaderHere = (G.empire.leadersOnBoard[sys] ?? []).includes('darth-vader');

@@ -3017,6 +3017,45 @@ function playCombatObjective(G: GameState, oid: string): void {
     objectiveId: oid, reputation: rep, timing: 'Combat',
   }});
   M.recordObjectiveScored(G, oid, rep, 'combat', G.turnLog.length);
+
+  // Return of the Jedi (objective): "...If Luke Skywalker (Jedi) is in this
+  // system, eliminate 1 Imperial leader in this system." The reputation half
+  // scored above; this applies the elimination clause, which was previously
+  // dropped. FAQ: a leader that retreated is no longer in the system and can't
+  // be eliminated; Luke counts even if captured or wearing an Imperial ring.
+  // The Rebel chooses which leader — we auto-pick the highest-value Imperial
+  // leader present (virtually always Vader or Palpatine, which is what the
+  // player wants); a pick modal is a future nicety.
+  if (oid === 'return-of-the-jedi-3') {
+    const sysId = G.pendingCombat?.systemId;
+    if (sysId && lukeJediInSystem(G, sysId)) {
+      const impHere = [...(G.empire.leadersOnBoard[sysId] ?? [])];
+      if (impHere.length > 0) {
+        const valueOf = (lid: string) => {
+          const ld = G.catalog.leaders[lid];
+          if (!ld) return 0;
+          const s = ld.skills;
+          return (s.diplomacy ?? 0) + (s.intel ?? 0) + (s.specOps ?? 0) + (s.logistics ?? 0)
+               + ld.tacticValues.space + ld.tacticValues.ground;
+        };
+        const victim = impHere.sort((a, b) => valueOf(b) - valueOf(a))[0];
+        M.eliminateLeader(G, 'Empire', victim);
+        log(G, { kind: 'return-of-the-jedi-eliminate', side: 'Rebel', payload: {
+          systemId: sysId, leaderId: victim,
+        }});
+      }
+    }
+  }
+}
+
+/** True if Luke Skywalker (Jedi) is "in" `sysId` for the Return of the Jedi
+ *  objective — on either side's board there (he may have flipped Imperial via
+ *  Lure of the Dark Side) or held captive there (FAQ: still counts). */
+function lukeJediInSystem(G: GameState, sysId: string): boolean {
+  const lid = 'luke-skywalker-jedi';
+  if ((G.rebel.leadersOnBoard[sysId] ?? []).includes(lid)) return true;
+  if ((G.empire.leadersOnBoard[sysId] ?? []).includes(lid)) return true;
+  return (G.empire.capturedLeaders ?? []).some((c) => c.leaderId === lid && c.systemId === sysId);
 }
 
 /** Resolve the player's combat-objective choice (which one to score), then
