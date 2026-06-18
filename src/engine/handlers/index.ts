@@ -1939,9 +1939,9 @@ const drawThemOut: EffectHandler = (G, ctx) => {
 // ----- Rebel Wave C -----
 
 /** Aggressive Negotiations (Chirrut): rescue the captured leader at the
- *  target system. RAW also has a fail-only side effect ("destroy 1 triangle
- *  ground unit") — that doesn't fire here because handlers only run on
- *  mission success; the fail path is a future enhancement. */
+ *  target system. The fail-only side effect ("destroy 1 triangle ground unit")
+ *  is applied in finalizeMissionRoll (phases.ts) since handlers only run on
+ *  success. */
 const aggressiveNegotiations: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;

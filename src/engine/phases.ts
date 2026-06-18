@@ -1263,7 +1263,7 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
     }
     runMissionEffect(G, pending.resolverSide, pending.missionId, pending.targetSystemId, pending.leaderIds as LeaderId[], pending.targetLeaderId, pending.successMargin);
     if (G.pendingChoice) return { ok: true };
-    discardOrReturnMission(G, pending.resolverSide, pending.missionId);
+    discardOrReturnMission(G, pending.resolverSide, pending.missionId, pending.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pending.stage === 'failed') {
@@ -1294,7 +1294,7 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
         return { ok: true };
       }
     }
-    discardOrReturnMission(G, pending.resolverSide, pending.missionId);
+    discardOrReturnMission(G, pending.resolverSide, pending.missionId, pending.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   }
@@ -1319,7 +1319,7 @@ function resumeMissionAfterChoice(G: GameState): void {
   const pm = G.pendingMission;
   if (!pm) return;
   if (G.pendingChoice) return; // still waiting
-  discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+  discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
   G.pendingMission = undefined;
   if (!G.isGameOver) advanceCommandTurn(G);
   // If a pendingCombat is sitting at its initial AddLeader step because
@@ -1501,11 +1501,11 @@ export function resolveOpposition(
   if (pm.stage === 'effect') {
     runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId, pm.successMargin);
     if (G.pendingChoice) return { ok: true }; // sub-choice triggered (e.g. Infiltration)
-    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pm.stage === 'failed') {
-    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   }
@@ -1584,6 +1584,25 @@ function finalizeMissionRoll(
   // successes" effects. Only meaningful on success; clamp >= 0.
   pm.successMargin = succeeded ? Math.max(0, attackerTotal - oppSuccesses) : 0;
   pm.stage = succeeded ? 'effect' : 'failed';
+
+  // Aggressive Negotiations (Chirrut, RoE): "If the mission fails, you may
+  // destroy 1 triangle ground unit in the system." Destroying an enemy unit is
+  // always to the Rebel's benefit and all triangle ground units are the same
+  // (cheapest) tier, so we auto-apply the "may" — no decline/which-one choice
+  // is needed. Previously the whole fail clause was dropped.
+  if (!succeeded && pm.missionId === 'aggressive-negotiations') {
+    const ss = G.map.systems[pm.targetSystemId];
+    const victim = ss?.units.find((u) =>
+      u.side === 'Empire'
+      && G.catalog.unitTypes[u.typeId]?.theater === 'ground'
+      && G.catalog.unitTypes[u.typeId]?.tier === 'triangle');
+    if (victim) {
+      M.destroyUnit(G, victim.instanceId, 'aggressive-negotiations-fail');
+      log(G, { kind: 'aggressive-negotiations-fail-destroy', side: 'Rebel', payload: {
+        systemId: pm.targetSystemId, unitTypeId: victim.typeId,
+      }});
+    }
+  }
 }
 
 /** Post the mission-context Yoda reroll choice if eligible. Returns true
@@ -1753,11 +1772,11 @@ function continueMissionFromStash(G: GameState, pm: MissionResolution): void {
   if (pm.stage === 'effect') {
     runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId, pm.successMargin);
     if (G.pendingChoice) return;
-    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pm.stage === 'failed') {
-    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   }
@@ -1854,11 +1873,11 @@ export function resolveR2D2MissionFlip(G: GameState, flipIndex: number | null): 
   if (pm.stage === 'effect') {
     runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId, pm.successMargin);
     if (G.pendingChoice) return { ok: true };
-    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pm.stage === 'failed') {
-    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   }
@@ -2965,11 +2984,11 @@ function continueAfterRingTrigger(G: GameState, pm: MissionResolution): void {
   if (pm.stage === 'effect') {
     runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId, pm.successMargin);
     if (G.pendingChoice) return;
-    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pm.stage === 'failed') {
-    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   }
@@ -3038,11 +3057,11 @@ export function resolveOneInAMillionMission(
   if (pm.stage === 'effect') {
     runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId, pm.successMargin);
     if (G.pendingChoice) return { ok: true };
-    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pm.stage === 'failed') {
-    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   }
@@ -3125,7 +3144,7 @@ export function resolvePostBountyOffer(G: GameState, leaderId: LeaderId | null):
   }
   G.pendingChoice = undefined;
   // Run the same failed-mission cleanup tail as the inline branch above.
-  discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+  discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
   G.pendingMission = undefined;
   if (!G.isGameOver) advanceCommandTurn(G);
   return { ok: true };
@@ -3565,7 +3584,7 @@ export function resolveWookieGuardianOffer(G: GameState, accept: boolean): { ok:
     });
     G.pendingChoice = undefined;
     // Continue to the standard 'failed' path directly.
-    discardOrReturnMission(G, pm.resolverSide, pm.missionId);
+    discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
     return { ok: true };
@@ -4186,12 +4205,20 @@ function runMissionEffect(G: GameState, side: Side, missionId: string, targetSys
   Handlers.invokeByKey(G, key, ctx);
 }
 
-function discardOrReturnMission(G: GameState, side: Side, missionId: string): void {
+/** RoE missions whose card text reads "If the mission fails, return this card to
+ *  your hand" — they cycle back instead of being discarded when they FAIL (on
+ *  success they discard normally like any other non-starting mission). */
+const FAIL_RETURNS_TO_HAND: ReadonlySet<string> = new Set([
+  'critical-rescue', 'break-their-will',
+]);
+
+function discardOrReturnMission(G: GameState, side: Side, missionId: string, stage?: string): void {
   const f = faction(G, side);
   const card = G.catalog.missions[missionId];
-  if (card?.isStarting) {
+  const failReturns = stage === 'failed' && FAIL_RETURNS_TO_HAND.has(missionId);
+  if (card?.isStarting || failReturns) {
     f.missionHand.push(missionId);
-    log(G, { kind: 'mission-return-to-hand', side, payload: { missionId } });
+    log(G, { kind: 'mission-return-to-hand', side, payload: { missionId, onFail: failReturns } });
   } else {
     f.missionDiscard.push(missionId);
     log(G, { kind: 'mission-discard', side, payload: { missionId } });
