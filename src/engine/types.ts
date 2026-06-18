@@ -779,6 +779,11 @@ export type ChoiceRequest =
       // Confrontation) — resolved immediately, outside the simultaneous
       // collect-then-resolve ordering used for each side's first card.
       extra?: boolean;
+      // RoE "Good Intel": when the Empire holds it, the Rebel chooses+reveals
+      // its tactic first, then the Empire picks knowing the Rebel's card. This
+      // carries the Rebel's already-revealed selection so the Empire's modal
+      // can show it (null = Rebel skipped / had no card this round).
+      revealedOpponentTactic?: { cardId: string; name: string } | null;
       options: {
         cardId: string;
         name: string;
@@ -1697,6 +1702,12 @@ export type CombatState = {
     //   Action"; needs to be returned to the Empire leader pool at end of
     //   combat. Stored per leader so the end-of-combat hook can return them.
     readyForActionReturn?: LeaderId[];
+    // - goodIntelActive: the Empire played "Good Intel" this combat. Its RoE
+    //   clause delays the Empire's advanced-tactic choice until AFTER the Rebel
+    //   has chosen and revealed each round — so the cinematic SELECT order is
+    //   forced to Rebel-first and the Rebel's card is shown to the Empire before
+    //   it picks. Whole-combat flag (Good Intel is StartOfCombat timing).
+    goodIntelActive?: boolean;
   };
 };
 

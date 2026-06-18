@@ -2070,6 +2070,18 @@ function CinematicTacticSelectPanel({ G, choice, onPersist }: {
         the ability (the card is still discarded). Played cards are discarded (the deck
         recycles once it empties).
       </div>
+      {/* Good Intel: the Empire chooses after the Rebel reveals, so show the Rebel's card. */}
+      {choice.revealedOpponentTactic !== undefined && (
+        <div style={{
+          fontSize: 12, marginBottom: 8, padding: '6px 8px', borderRadius: 6,
+          background: '#241c10', border: '1px solid #806020',
+        }}>
+          <b style={{ color: '#ffd54a' }}>Good Intel:</b>{' '}
+          {choice.revealedOpponentTactic
+            ? <>the Rebel revealed <b>{choice.revealedOpponentTactic.name}</b> — pick your response.</>
+            : <>the Rebel played no tactic card this round.</>}
+        </div>
+      )}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
         {choice.options.map((opt) => {
           const sel = picked === opt.cardId;

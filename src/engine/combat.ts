@@ -486,7 +486,12 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
     // SELECT phase (RoE p.9 "simultaneously"): collect each side's first-card
     // choice WITHOUT resolving — the resolver stores it. The current player is
     // prompted first, but neither effect lands until both have chosen.
-    for (const side of tacticOrder) {
+    //   "Good Intel" (Empire) overrides the order: the Rebel must choose AND
+    // reveal first, then the Empire picks knowing the Rebel's card. So when the
+    // flag is set we prompt Rebel-first regardless of who's attacking, and hand
+    // the Empire's choice the Rebel's already-stored selection to display.
+    const selectOrder: Side[] = c.flags?.goodIntelActive ? ['Rebel', 'Empire'] : tacticOrder;
+    for (const side of selectOrder) {
       const key = keyOf(side);
       if (c.cinematicTacticDoneThisRound.includes(key)) continue; // fully resolved
       if (key in c.cinematicSelections) continue;                  // already chose
@@ -495,11 +500,21 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
         c.cinematicSelections[key] = null; // nothing available — auto-skip
         continue;
       }
+      // Good Intel: when prompting the Empire, surface the Rebel's revealed pick.
+      let revealedOpponentTactic: { cardId: string; name: string } | null | undefined;
+      if (c.flags?.goodIntelActive && side === 'Empire') {
+        const rebelSel = c.cinematicSelections[keyOf('Rebel')];
+        revealedOpponentTactic = rebelSel
+          ? { cardId: rebelSel.cardId, name: G.catalog.tactics[rebelSel.cardId]?.name ?? rebelSel.cardId }
+          : null;
+      }
       G.pendingChoice = {
         kind: 'CinematicTacticSelect', side, theater, round: c.round, options,
+        ...(revealedOpponentTactic !== undefined ? { revealedOpponentTactic } : {}),
       };
       log(G, { kind: 'choice-request', side, payload: {
         kind: 'CinematicTacticSelect', theater, round: c.round, options: options.length,
+        ...(revealedOpponentTactic ? { revealedRebelTactic: revealedOpponentTactic.cardId } : {}),
       }});
       return; // paused — resolveCinematicTacticSelect STORES the selection
     }
@@ -1871,9 +1886,20 @@ function applyStartOfCombatActionCardEffect(G: GameState, c: CombatState, side: 
       return;
     }
     case 'good-intel': {
-      // RAW: Rebel player must keep tactic cards faceup. Engine has perfect
-      // info anyway, so this is effectively a no-op in code — we log it.
-      log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'no-op (engine has perfect info)' } });
+      // RAW base clause ("Rebel player must keep tactic cards faceup") is a no-op
+      // here — the engine already has perfect info, so there's no hidden hand to
+      // reveal. The RoE clause ("you do not choose a tactic card until after the
+      // Rebel's card has been revealed each round") DOES have teeth in cinematic
+      // combat: set a whole-combat flag so the cinematic SELECT step forces the
+      // Rebel to choose first and shows the Empire the Rebel's card (#352).
+      c.flags = c.flags ?? {};
+      c.flags.goodIntelActive = true;
+      log(G, { kind: 'combat-action-card-effect', side, payload: {
+        card: cardId,
+        applied: c.cinematic
+          ? 'empire-chooses-tactic-after-rebel-reveals'
+          : 'no-op (engine has perfect info; no advanced tactics in play)',
+      } });
       return;
     }
     case 'its-a-trap': {
