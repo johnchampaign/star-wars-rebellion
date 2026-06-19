@@ -348,6 +348,40 @@ function mkSetupInstance(typeId: string, side: Side) {
   return { instanceId: `s${(++setupInstanceCounter).toString().padStart(6, '0')}`, typeId, side, damage: 0 };
 }
 
+const DSUC_REMOTE_PACKAGE: Record<string, number> = {
+  'death-star-under-construction': 1,
+  'tie-fighter': 4,
+  stormtrooper: 1,
+};
+
+function dsucRemoteUnitCount(G: GameState, typeId: string): number {
+  const target = G.empireDeployTarget;
+  if (!target) return 0;
+  const units = G.map.systems[target]?.units ?? [];
+  return units.filter((u) => u.side === 'Empire' && u.typeId === typeId).length;
+}
+
+function dsucRemoteStillNeeds(G: GameState, typeId: string): boolean {
+  if (!G.expansion?.enabled || !G.empireDeployTarget) return false;
+  const required = DSUC_REMOTE_PACKAGE[typeId];
+  return required != null && dsucRemoteUnitCount(G, typeId) < required;
+}
+
+function fillDsucRemotePackageFromPending(G: GameState, remaining: string[]): void {
+  const remote = G.empireDeployTarget;
+  if (!G.expansion?.enabled || !remote) return;
+  const dest = G.map.systems[remote];
+  if (!dest) return;
+  for (const [typeId, required] of Object.entries(DSUC_REMOTE_PACKAGE)) {
+    while (dsucRemoteUnitCount(G, typeId) < required) {
+      const i = remaining.indexOf(typeId);
+      if (i < 0) break;
+      dest.units.push(mkSetupInstance(typeId, 'Empire'));
+      remaining.splice(i, 1);
+    }
+  }
+}
+
 /** Reseed setupInstanceCounter to max existing s-prefixed ID + 1.
  *  Mirror of mechanics.reseedInstanceCounters but for the s-prefix.
  *  Required after decoding a saved game — module-level counter otherwise
@@ -400,6 +434,8 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
       return { ok: false, reason: 'dsuc-must-be-remote' };
     } else if (!isImperialSys) {
       return { ok: false, reason: 'must-be-imperial-or-subjugated' };
+    } else if (dsucRemoteStillNeeds(G, typeId)) {
+      return { ok: false, reason: 'dsuc-remote-package-incomplete' };
     }
   } else {
     // Rebel: the Rebel Base space OR ONE populous system of the player's choice
@@ -479,18 +515,17 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
     if (imperialSystems.length === 0) return { ok: false, reason: 'no-imperial-systems' };
 
     // RoE (rules p.8): the Death Star Under Construction (+ 4 TIE Fighters +
-    // 1 Stormtrooper) must go on one chosen remote system. Seed that first so
-    // auto-fill doesn't try to place the DSUC on an Imperial world (illegal).
-    if (G.expansion?.enabled && remaining.includes('death-star-under-construction')) {
+    // 1 Stormtrooper) must go on one chosen remote system. Seed or complete
+    // that package before distributing anything else, including the case where
+    // the player manually placed only the DSUC and then clicked auto-fill.
+    if (G.expansion?.enabled) {
       const remote = G.empireDeployTarget
-        ?? Object.entries(G.map.systems).find(([id]) => G.catalog.systems[id]?.isRemote)?.[0];
+        ?? (remaining.includes('death-star-under-construction')
+          ? Object.entries(G.map.systems).find(([id]) => G.catalog.systems[id]?.isRemote)?.[0]
+          : undefined);
       if (remote) {
         G.empireDeployTarget = remote;
-        for (const typeId of ['death-star-under-construction', 'tie-fighter', 'tie-fighter',
-          'tie-fighter', 'tie-fighter', 'stormtrooper']) {
-          const i = remaining.indexOf(typeId);
-          if (i >= 0) { G.map.systems[remote].units.push(mkSetupInstance(typeId, 'Empire')); remaining.splice(i, 1); }
-        }
+        fillDsucRemotePackageFromPending(G, remaining);
       }
     }
 
