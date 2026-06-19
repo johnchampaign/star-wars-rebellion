@@ -1180,18 +1180,39 @@ const demolition: EffectHandler = (G, ctx) => {
   if (!sysId) return true;
   const sysDef = G.catalog.systems[sysId];
   if (!sysDef) return true;
-  // For each resource icon, destroy 1 matching unit from Empire's build queue.
+  // RAW: "for each of this system's resource icons destroy 1 unit on the
+  // build queue that matches the icon." A queued unit matches an icon only
+  // if it shares BOTH the icon's theater (space/ground) AND its tier
+  // (triangle/circle/square) — i.e. a unit that icon could actually have
+  // built. (Build itself enforces this exact theater+tier pairing, see
+  // resolveBuildFromIconsPick / player #214, so e.g. a triangle/square
+  // system like Mon Calamari can never touch a circle-tier Assault Carrier.)
+  //
+  // When several queued units match one icon, destroy the one most costly to
+  // the Empire — a queued Death Star / DSUC first, else highest build cost,
+  // else most health — so the Rebel isn't shortchanged by an arbitrary pick.
+  // (A full per-icon manual choice is a planned UI enhancement.)
+  const rank = (typeId: string): number => {
+    const u = G.catalog.unitTypes[typeId];
+    if (!u) return -1;
+    const station = u.class === 'station' ? 100 : 0; // Death Star / DSUC are the prize
+    return station + (u.buildResource ?? 0) * 10 + (u.health?.value ?? 0);
+  };
   for (const icon of sysDef.resources) {
+    let best: { slot: 1 | 2 | 3; idx: number; typeId: string; score: number } | null = null;
     for (const slot of [1, 2, 3] as const) {
-      const idx = G.empire.buildQueue[slot].findIndex((typeId) => {
+      const q = G.empire.buildQueue[slot];
+      for (let idx = 0; idx < q.length; idx++) {
+        const typeId = q[idx];
         const u = G.catalog.unitTypes[typeId];
-        return u?.theater === icon.type;
-      });
-      if (idx >= 0) {
-        const removed = G.empire.buildQueue[slot].splice(idx, 1)[0];
-        log(G, { kind: 'build-queue-destroy', side: 'Rebel', payload: { slot, typeId: removed, via: 'demolition' } });
-        break;
+        if (!u || u.theater !== icon.type || u.tier !== icon.shape) continue;
+        const score = rank(typeId);
+        if (!best || score > best.score) best = { slot, idx, typeId, score };
       }
+    }
+    if (best) {
+      const removed = G.empire.buildQueue[best.slot].splice(best.idx, 1)[0];
+      log(G, { kind: 'build-queue-destroy', side: 'Rebel', payload: { slot: best.slot, typeId: removed, via: 'demolition' } });
     }
   }
   return true;
