@@ -261,6 +261,20 @@ function applyInvariants(G: GameState, affected?: SystemId[]): void {
   recomputeGameEnd(G);
 }
 
+/** Re-run invariants for `sysId` once a combat has fully resolved.
+ *  processTargetMarkerRemovals is intentionally skipped while G.pendingCombat
+ *  is set (transient mid-battle ground counts must not strip a marker early),
+ *  and finishCombatTail clears pendingCombat without otherwise re-touching the
+ *  system. Without this, a side that conquers a system on the ground wouldn't
+ *  strip the loser's target marker — and bank its reputation (Raid Outposts) /
+ *  end the opponent's immediate objective — until some later, unrelated
+ *  applyInvariants happened to include the system (issue #363, root cause of
+ *  the #358 "wait for Refresh" misdiagnosis). Must be called AFTER pendingCombat
+ *  is cleared. */
+export function postCombatInvariants(G: GameState, sysId: SystemId): void {
+  applyInvariants(G, [sysId]);
+}
+
 // ============================================================================
 // Reveal base
 // ============================================================================

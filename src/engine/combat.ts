@@ -3089,6 +3089,16 @@ function finishCombatTail(G: GameState, c: CombatState): void {
 
   G.pendingCombat = undefined;
 
+  // Target-marker removal is held off while a combat is mid-resolution (the
+  // pendingCombat guard in processTargetMarkerRemovals), so transient ground
+  // counts can't strip a marker before the battle is decided. Now that combat
+  // is fully over and pendingCombat is cleared, re-run invariants on the combat
+  // system so a side that conquered it on the ground immediately strips the
+  // loser's target marker and banks any reputation (Raid Outposts) or ends the
+  // opponent's immediate objective — RAW, and what #363 expected. (#358 was
+  // misdiagnosed as "processed at next Refresh"; there is no Refresh sweep.)
+  M.postCombatInvariants(G, c.systemId);
+
   // If this combat was triggered from inside a mission's effect handler
   // (ignite-rebellion, wookie-uprising, etc.), the caller's
   // continueRevealAfterSpecialOffer returned early when it saw the
