@@ -2758,31 +2758,21 @@ function processPendingRapidMobilizations(G: GameState): void {
   }
   const next = queue[0];
   const baseRevealed = !!G.rebelBaseRevealed;
-  // RR p.11: draw and LOOK at the probe cards (4, or 8 with two leaders) BEFORE
-  // deciding whether to establish a new base — the player gets this info either
-  // way. If they keep the base, the drawn probes are shuffled to the bottom of
-  // the deck (handled in resolveRapidMobilizationBranch).
-  const n = next.twoLeaders ? 8 : 4;
-  const drawnProbeIds = M.drawProbe(G, n);
-  const baseCandidates = drawnProbeIds
-    .map((pid) => G.catalog.probes[pid]?.systemId)
-    .filter((s): s is SystemId => !!s)
-    .filter((sid) => rebelBaseCandidateLegal(G, sid));
-  log(G, { kind: 'rapid-mobilization-probe-draw', side: 'Rebel', payload: {
-    count: n, twoLeaders: next.twoLeaders, drawnProbeIds,
-  }});
+  // RR p.11: the card offers "choose 1 of the following" — (1) move units to the
+  // base, or (2) establish a new base. Drawing/looking at the probe cards is
+  // PART of establishing a new base, so the Rebel commits to the branch FIRST and
+  // only sees the candidates if they chose 'establish-base' (player report #365).
+  // No probes are drawn here.
   G.pendingChoice = {
     kind: 'RapidMobilizationBranch',
     side: 'Rebel',
     twoLeaders: next.twoLeaders,
     baseRevealed,
     moveUnitsAvailable: !baseRevealed,
-    drawnProbeIds,
-    baseCandidates,
   };
   log(G, { kind: 'choice-request', side: 'Rebel', payload: {
     kind: 'RapidMobilizationBranch', twoLeaders: next.twoLeaders, baseRevealed,
-    endOfPhase: true, remaining: queue.length, drawnProbes: drawnProbeIds.length,
+    endOfPhase: true, remaining: queue.length,
   }});
 }
 
@@ -2809,46 +2799,47 @@ export function resolveRapidMobilizationBranch(
   if (branch === 'move-units' && !choice.moveUnitsAvailable) return { ok: false, reason: 'move-units-unavailable' };
   const twoLeaders = choice.twoLeaders;
   const baseRevealed = choice.baseRevealed;
-  const drawn = choice.drawnProbeIds ?? [];
-  // RR p.11: "When the Rebel player chooses not to establish a new base, all
-  // drawn probe cards are shuffled and placed on the bottom of the probe deck."
-  const returnProbesToBottom = () => {
-    if (drawn.length > 0) {
-      G.probeDeck.push(...shuffle(G.rng, [...drawn]));
-      log(G, { kind: 'rapid-mobilization-probes-to-bottom', side: 'Rebel', payload: {
-        count: drawn.length,
-      }});
-    }
-  };
   if (branch === 'move-units') {
-    // Keep the base; the looked-at probes go to the bottom of the deck.
-    returnProbesToBottom();
+    // Option 1: keep the base and move units. No probes were drawn (looking at
+    // base candidates belongs to option 2), so there's nothing to return.
     G.pendingChoice = { kind: 'RapidMobilizationMovePick', side: 'Rebel' };
     log(G, { kind: 'choice-request', side: 'Rebel', payload: {
       kind: 'RapidMobilizationMovePick',
     }});
     return { ok: true };
   }
-  // Establish a new Rebel Base from the already-drawn probes (the new base is
-  // placed facedown, so it becomes HIDDEN regardless of the old base's state; a
-  // system with Imperial loyalty/units or a destroyed marker cannot be chosen).
-  const probeSystemIds = choice.baseCandidates ?? [];
+  // Option 2: establish a new base. NOW we draw and look at the probe cards
+  // (4, or 8 with two leaders) — this commitment is why the candidates weren't
+  // shown at the branch step. The new base is placed facedown (HIDDEN); a system
+  // with Imperial loyalty/units or a destroyed marker cannot be chosen.
+  const n = twoLeaders ? 8 : 4;
+  const drawnProbeIds = M.drawProbe(G, n);
+  log(G, { kind: 'rapid-mobilization-probe-draw', side: 'Rebel', payload: {
+    count: n, twoLeaders, drawnProbeIds,
+  }});
+  const probeSystemIds = drawnProbeIds
+    .map((pid) => G.catalog.probes[pid]?.systemId)
+    .filter((s): s is SystemId => !!s)
+    .filter((sid) => rebelBaseCandidateLegal(G, sid));
   // RR: "If all cards drawn are systems that have Imperial loyalty, Imperial
   // units, or a destroyed system marker, the Rebel player cannot establish a
   // new base this round." Don't post a dead-end pick — the drawn probes go to
   // the bottom (no base established) and this RM ends.
   if (probeSystemIds.length === 0) {
     log(G, { kind: 'rapid-mobilization-base-no-legal-candidate', side: 'Rebel', payload: {
-      twoLeaders, drawnCount: drawn.length,
+      twoLeaders, drawnCount: drawnProbeIds.length,
     }});
-    returnProbesToBottom();
+    if (drawnProbeIds.length > 0) {
+      G.probeDeck.push(...shuffle(G.rng, [...drawnProbeIds]));
+      log(G, { kind: 'rapid-mobilization-probes-to-bottom', side: 'Rebel', payload: { count: drawnProbeIds.length } });
+    }
     G.pendingChoice = undefined;
     finishRapidMobilization(G);
     return { ok: true };
   }
   G.pendingChoice = {
     kind: 'RapidMobilizationBasePick', side: 'Rebel',
-    baseRevealed, probeSystemIds,
+    baseRevealed, probeSystemIds, drawnProbeIds,
   };
   log(G, { kind: 'choice-request', side: 'Rebel', payload: {
     kind: 'RapidMobilizationBasePick', baseRevealed, candidates: probeSystemIds.length,
@@ -2939,10 +2930,26 @@ function rebelBaseCandidateLegal(G: GameState, systemId: SystemId): boolean {
  *  and leaders (which sit in the actual old system) move back to the hidden
  *  "Rebel Base" space along with the relocation. */
 export function resolveRapidMobilizationBasePick(
-  G: GameState, systemId: SystemId
+  G: GameState, systemId: SystemId | null
 ): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;
   if (!choice || choice.kind !== 'RapidMobilizationBasePick') return { ok: false, reason: 'no-pending' };
+  // RR p.11: "The Rebel player can draw and look at the probe cards and decide
+  // not to establish a new base." systemId === null = decline: the base stays
+  // put (hidden bases stay hidden) and the drawn probes are shuffled to the
+  // bottom of the deck. The Rebel does NOT then get to move units — that was
+  // the other branch of "choose 1 of the following" (player report #365).
+  if (systemId === null) {
+    const drawn = choice.drawnProbeIds ?? [];
+    if (drawn.length > 0) {
+      G.probeDeck.push(...shuffle(G.rng, [...drawn]));
+      log(G, { kind: 'rapid-mobilization-probes-to-bottom', side: 'Rebel', payload: { count: drawn.length } });
+    }
+    log(G, { kind: 'rapid-mobilization-base-declined', side: 'Rebel', payload: {} });
+    G.pendingChoice = undefined;
+    finishRapidMobilization(G);
+    return { ok: true };
+  }
   if (!choice.probeSystemIds || !choice.probeSystemIds.includes(systemId)) {
     return { ok: false, reason: 'not-a-drawn-probe-candidate' };
   }

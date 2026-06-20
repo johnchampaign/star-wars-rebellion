@@ -1039,13 +1039,10 @@ export type ChoiceRequest =
       baseRevealed: boolean;
       // Whether the move-units option is available (only if base unrevealed).
       moveUnitsAvailable: boolean;
-      // RR p.11: the Rebel DRAWS and LOOKS at the probe cards (4, or 8 with two
-      // leaders) BEFORE deciding whether to establish a new base. Shown in the
-      // branch modal so the player can use the info. `baseCandidates` is the
-      // subset that's a legal new-base location. If the player keeps the base,
-      // all drawn probes are shuffled to the bottom of the deck.
-      drawnProbeIds: string[];
-      baseCandidates: SystemId[];
+      // RR p.11: drawing/looking at the probe cards is PART OF establishing a
+      // new base — the Rebel must commit to that option BEFORE seeing the
+      // candidates (player report #365). So no probes are drawn here; they're
+      // drawn only when the Rebel chooses 'establish-base'.
     }
   | {
       // Rapid Mobilization sub-choice: pick source system + up to 5 units
@@ -1064,6 +1061,10 @@ export type ChoiceRequest =
       baseRevealed: boolean;
       // Candidates if unrevealed (probe-card-derived system IDs).
       probeSystemIds?: SystemId[];
+      // The probe cards drawn for this base pick. RR p.11: the Rebel may look
+      // and DECLINE to establish a new base — on decline these are shuffled to
+      // the bottom of the deck. Carried so the decline path can return them.
+      drawnProbeIds?: string[];
     }
   | {
       // Player wants to play an action card during the Assignment phase.

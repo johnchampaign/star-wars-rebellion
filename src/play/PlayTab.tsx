@@ -14502,17 +14502,13 @@ function RapidMobilizationBranchModal({
 }: {
   G: GameState;
   choice: { kind: 'RapidMobilizationBranch'; side: Side; twoLeaders: boolean; baseRevealed: boolean;
-    moveUnitsAvailable: boolean; drawnProbeIds?: string[]; baseCandidates?: string[] };
+    moveUnitsAvailable: boolean };
   onPick: (branch: 'move-units' | 'establish-base') => void;
 }) {
   const n = choice.twoLeaders ? 8 : 4;
-  // The probes are drawn and LOOKED AT before you decide (RR p.11). Show the
-  // systems they name — these are eliminated as base locations, and if you keep
-  // your base they go to the bottom of the deck (so you know what's down there).
-  const probeNames = (choice.drawnProbeIds ?? [])
-    .map((pid) => G.catalog.probes[pid]?.systemId)
-    .map((sid) => (sid ? (G.catalog.systems[sid]?.name ?? sid) : '?'));
-  const candidateSet = new Set(choice.baseCandidates ?? []);
+  // RR p.11: looking at the probe cards is PART of establishing a new base, so
+  // we do NOT peek before this choice — the candidates are only drawn/shown
+  // after you commit to "establish a new base" (#365).
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
@@ -14528,27 +14524,11 @@ function RapidMobilizationBranchModal({
           Two leaders: {choice.twoLeaders ? 'yes (8 probes for new-base pick)' : 'no (4 probes for new-base pick)'}.
           Base currently {choice.baseRevealed ? 'REVEALED' : 'hidden'}. Only "Establish a new Rebel Base" relocates you.
         </div>
-        {probeNames.length > 0 && (
-          <div style={{ background: '#0c0d10', border: '1px solid #2a2d34', borderRadius: 4,
-            padding: '8px 10px', marginBottom: 10, fontSize: 12, color: '#cfd2d6' }}>
-            <div style={{ color: '#aae0ff', fontWeight: 600, marginBottom: 4 }}>
-              Probe cards drawn (you looked at these — {n} of them):
-            </div>
-            {(choice.drawnProbeIds ?? []).map((pid, i) => {
-              const sid = G.catalog.probes[pid]?.systemId;
-              const legal = sid ? candidateSet.has(sid) : false;
-              return (
-                <span key={pid} style={{ display: 'inline-block', marginRight: 8,
-                  color: legal ? '#7be08a' : '#888' }}>
-                  {probeNames[i]}{legal ? '' : ' (not a legal base)'}
-                </span>
-              );
-            })}
-            <div style={{ color: '#9a937f', fontSize: 11, marginTop: 4 }}>
-              If you keep your base, these are shuffled to the BOTTOM of the probe deck.
-            </div>
-          </div>
-        )}
+        <div style={{ color: '#9a937f', fontSize: 11, marginBottom: 10 }}>
+          Choose ONE. Looking at the {n} probe cards for a new base location only happens
+          if you choose to establish a new base — and committing to that means you don't
+          also get to move units.
+        </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <button className="tab-button"
             disabled={!choice.moveUnitsAvailable}
@@ -14667,7 +14647,7 @@ function RapidMobilizationBasePickModal({
 }: {
   G: GameState;
   choice: { kind: 'RapidMobilizationBasePick'; side: Side; baseRevealed: boolean; probeSystemIds?: string[] };
-  onPick: (systemId: string) => void;
+  onPick: (systemId: string | null) => void;
 }) {
   // RR: establishing a new base always picks from the drawn probe cards (4 or
   // 8), whether or not the old base was revealed. The new base is hidden.
@@ -14686,7 +14666,7 @@ function RapidMobilizationBasePickModal({
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
           {candidates.length === 0
             ? 'None of the drawn probe systems are legal (all have Imperial loyalty, Imperial units, or are destroyed). You cannot establish a new base this round.'
-            : `Pick one of the ${candidates.length} systems drawn from probes as the new hidden Rebel Base.`}
+            : `Pick one of the ${candidates.length} systems drawn from probes as the new hidden Rebel Base — or look and decline (your base stays put; the drawn probes go to the bottom of the deck).`}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {candidates.map((sid) => (
@@ -14694,6 +14674,10 @@ function RapidMobilizationBasePickModal({
               {G.catalog.systems[sid]?.name ?? sid}
             </button>
           ))}
+          <button className="tab-button" onClick={() => onPick(null)}
+            style={{ textAlign: 'left', marginTop: 6, opacity: 0.85 }}>
+            Don't establish a new base (keep your current base)
+          </button>
         </div>
       </div>
     </div>
