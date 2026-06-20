@@ -59,8 +59,10 @@ console.log('\n[ #369 Mon Calamari (triangle+square) cannot destroy a circle Ass
   const q = queue(G);
   check('Assault Carrier (circle) survives — no matching icon', q.includes('assault-carrier'), q.join(','));
   check('TIE Fighter destroyed by triangle icon', !q.includes('tie-fighter'), q.join(','));
-  check('Death Star destroyed by square icon (the prize over Star Destroyer)', !q.includes('death-star'), q.join(','));
-  check('Star Destroyer survives (Death Star was the better square target)', q.includes('star-destroyer'), q.join(','));
+  // #370: the Death Star is a station with no build tier — it is NEVER a
+  // Demolition target, so the square icon must take the Star Destroyer instead.
+  check('Death Star survives — station, not built by any resource icon (#370)', q.includes('death-star'), q.join(','));
+  check('Star Destroyer destroyed by square icon (Death Star untargetable)', !q.includes('star-destroyer'), q.join(','));
 }
 
 console.log('\n[ #369 a square icon with only a Star Destroyer destroys it (exact-tier match works) ]');

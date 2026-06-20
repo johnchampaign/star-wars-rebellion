@@ -499,11 +499,15 @@ const longRangeProbe: EffectHandler = (G, ctx) => {
 const rogueSquadronRaid: EffectHandler = (G, _ctx) => {
   // RAW: "destroy up to 4 health worth of units on the build queue."
   // Rebel picks which queue items to destroy.
+  // The Death Star / Death Star Under Construction (class 'station') are never
+  // valid targets (#370): the Death Star "does not have a health value and
+  // cannot be assigned or dealt damage" (RR p.6), so it can't be destroyed by
+  // a health-based effect.
   const candidates: { slot: 1 | 2 | 3; queueIndex: number; unitTypeId: string; health: number }[] = [];
   for (const slot of [1, 2, 3] as const) {
     G.empire.buildQueue[slot].forEach((typeId, i) => {
       const t = G.catalog.unitTypes[typeId];
-      if (!t) return;
+      if (!t || t.class === 'station') return;
       candidates.push({ slot, queueIndex: i, unitTypeId: typeId, health: t.health.value });
     });
   }
@@ -1188,15 +1192,20 @@ const demolition: EffectHandler = (G, ctx) => {
   // resolveBuildFromIconsPick / player #214, so e.g. a triangle/square
   // system like Mon Calamari can never touch a circle-tier Assault Carrier.)
   //
+  // The Death Star / Death Star Under Construction (class 'station') are
+  // NEVER valid targets (#370): they are unique units that are not built by
+  // any resource icon — they have no triangle/circle/square build tier and so
+  // cannot "match" an icon. (The only RAW way to remove a queued Death Star is
+  // to destroy its Death Star Under Construction on the board — RR p.6.)
+  //
   // When several queued units match one icon, destroy the one most costly to
-  // the Empire — a queued Death Star / DSUC first, else highest build cost,
-  // else most health — so the Rebel isn't shortchanged by an arbitrary pick.
-  // (A full per-icon manual choice is a planned UI enhancement.)
+  // the Empire — highest build cost, else most health — so the Rebel isn't
+  // shortchanged by an arbitrary pick. (A full per-icon manual choice is a
+  // planned UI enhancement.)
   const rank = (typeId: string): number => {
     const u = G.catalog.unitTypes[typeId];
     if (!u) return -1;
-    const station = u.class === 'station' ? 100 : 0; // Death Star / DSUC are the prize
-    return station + (u.buildResource ?? 0) * 10 + (u.health?.value ?? 0);
+    return (u.buildResource ?? 0) * 10 + (u.health?.value ?? 0);
   };
   for (const icon of sysDef.resources) {
     let best: { slot: 1 | 2 | 3; idx: number; typeId: string; score: number } | null = null;
@@ -1205,7 +1214,8 @@ const demolition: EffectHandler = (G, ctx) => {
       for (let idx = 0; idx < q.length; idx++) {
         const typeId = q[idx];
         const u = G.catalog.unitTypes[typeId];
-        if (!u || u.theater !== icon.type || u.tier !== icon.shape) continue;
+        if (!u || u.class === 'station') continue; // Death Star / DSUC untargetable (#370)
+        if (u.theater !== icon.type || u.tier !== icon.shape) continue;
         const score = rank(typeId);
         if (!best || score > best.score) best = { slot, idx, typeId, score };
       }
