@@ -1466,6 +1466,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         G={G}
         onProbeHover={humanSide === 'Empire' ? setProbeHover : undefined}
       />
+      <EmpireProbeAnalysisPanel G={G} humanSide={humanSide} />
 
       {/* Leader rosters sit right above the map so you can check them without
           scrolling to the bottom of the page (request: MightyFaben). */}
@@ -7543,6 +7544,85 @@ function empireSearchedSystems(G: GameState): Set<string> {
   const red = empireRuledOutSystems(G);
   for (const id of red) out.delete(id);
   return out;
+}
+
+/** Systems whose probe cards were removed from the deck during SETUP (the
+ *  Imperial-loyalty starting systems) — read from the setup log. These are
+ *  ruled out as base locations from turn 1, so the Empire wants them listed
+ *  apart from the systems it ruled out by drawing probes in play (#348). */
+function setupRemovedSystems(G: GameState): Set<string> {
+  const out = new Set<string>();
+  const setupEntry = (G.turnLog ?? []).find((e) => e.kind === 'setup');
+  const removed = (setupEntry?.payload as { probesRemovedForSetup?: string[] } | undefined)?.probesRemovedForSetup;
+  for (const pid of removed ?? []) {
+    const sid = G.catalog.probes[pid]?.systemId;
+    if (sid) out.add(sid);
+  }
+  return out;
+}
+
+/** Empire-only base-search aid (#348): the systems the Empire has ruled out as
+ *  possible base locations, grouped by region for easier analysis, with the
+ *  setup (Imperial starting) systems listed separately. Also shows, per region,
+ *  the systems still IN PLAY as possible base locations — the actual search
+ *  target. Collapsible; renders nothing for the Rebel. */
+function EmpireProbeAnalysisPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
+  if (humanSide !== 'Empire') return null;
+  if (G.phase === 'Setup') return null;
+  const ruledOut = empireRuledOutSystems(G);
+  const setupRuledOut = setupRemovedSystems(G);
+  const name = (sid: string) => G.catalog.systems[sid]?.name ?? sid;
+  // Group every non-Coruscant system by region into "possible" (probe still in
+  // deck) vs "ruled out in play" (ruled out but NOT a setup removal). Regions
+  // are numeric ids on the board.
+  const regions = new Map<number, { possible: string[]; ruledIn: string[] }>();
+  for (const s of Object.values(G.catalog.systems)) {
+    if (s.isCoruscant) continue;
+    const region = s.region ?? -1;
+    if (!regions.has(region)) regions.set(region, { possible: [], ruledIn: [] });
+    const bucket = regions.get(region)!;
+    if (setupRuledOut.has(s.id)) continue; // shown in the separate setup list
+    if (ruledOut.has(s.id)) bucket.ruledIn.push(s.id);
+    else bucket.possible.push(s.id);
+  }
+  const sortedRegions = [...regions.entries()]
+    .filter(([, v]) => v.possible.length > 0 || v.ruledIn.length > 0)
+    .sort((a, b) => a[0] - b[0]);
+  const startingList = [...setupRuledOut].map(name).sort();
+  return (
+    <details style={{
+      margin: '8px 0', background: '#13151a', border: '1px solid #2a2d34',
+      borderRadius: 6, padding: '6px 12px',
+    }}>
+      <summary style={{ cursor: 'pointer', fontSize: 12, color: '#aae0ff', fontWeight: 600 }}>
+        Base search — probe analysis by region
+      </summary>
+      <div style={{ fontSize: 12, marginTop: 8, color: '#cfd2d6' }}>
+        <div style={{ color: '#888', marginBottom: 8 }}>
+          <b style={{ color: '#7be08a' }}>Green</b> = still possible (probe in deck);{' '}
+          <span style={{ color: '#777' }}>grey = ruled out by a drawn probe</span>.
+        </div>
+        {startingList.length > 0 && (
+          <div style={{ marginBottom: 8, paddingBottom: 6, borderBottom: '1px solid #23262d' }}>
+            <span style={{ color: '#c9a36b', fontWeight: 600 }}>Starting systems (ruled out at setup):</span>{' '}
+            <span style={{ color: '#8a7f6b' }}>{startingList.join(', ')}</span>
+          </div>
+        )}
+        {sortedRegions.map(([region, v]) => (
+          <div key={region} style={{ marginBottom: 6 }}>
+            <span style={{ color: '#aae0ff', fontWeight: 600 }}>Region {region}:</span>{' '}
+            {v.possible.length > 0 && (
+              <span style={{ color: '#7be08a' }}>{v.possible.map(name).sort().join(', ')}</span>
+            )}
+            {v.possible.length > 0 && v.ruledIn.length > 0 && <span style={{ color: '#555' }}> · </span>}
+            {v.ruledIn.length > 0 && (
+              <span style={{ color: '#777' }}>{v.ruledIn.map(name).sort().join(', ')}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
 }
 
 function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSystemIds, onSystemClick, selectedSystemIds }: {
