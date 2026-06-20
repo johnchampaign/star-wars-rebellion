@@ -719,7 +719,7 @@
       "isAttempt": true,
       "leaderPortrait": null,
       "effectKey": "",
-      "rulesText": "Attempt in any system. If successful, place a sabotage marker in this system. This marker prevents players from building units and deploying units in this system.",
+      "rulesText": "Attempt in any system. If successful, destroy an Imperial Shield Bunker in this system, OR — if the system is populous — place a sabotage marker here (it prevents the Empire from building or deploying units in this system).",
       "image": "MissionRebelSabotage.png"
     },
     {

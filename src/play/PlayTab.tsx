@@ -275,6 +275,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'BreakTheirWillPick':       return pc.side === side;
     case 'HeistChoice':              return pc.side === side;
     case 'EstablishTradeChoice':     return pc.side === side;
+    case 'SabotageChoice':           return pc.side === side;
     case 'UnderTheRadarKeep':        return pc.side === side;
     case 'UnderTheRadarReturn':      return pc.side === side;
     case 'StartingCardBranch':       return pc.side === side;
@@ -2442,6 +2443,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <EstablishTradeChoiceModal G={G} choice={G.pendingChoice}
           onAction={(action) => {
             const r = phases.resolveEstablishTradeChoice(G, action);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'SabotageChoice'
+        && G.pendingChoice.side === humanSide && (
+        <SabotageChoiceModal G={G} choice={G.pendingChoice}
+          onAction={(action) => {
+            const r = phases.resolveSabotageChoice(G, action);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -13156,6 +13169,49 @@ function HeistChoiceModal({
 }
 
 /** Establish Trade Relations: gain 2 loyalty here, or queue a Mon Cala Cruiser. */
+function SabotageChoiceModal({
+  G, choice, onAction,
+}: {
+  G: GameState;
+  choice: { kind: 'SabotageChoice'; side: Side; systemId: string; bunkerInstanceId: string };
+  onAction: (action: 'destroy-bunker' | 'place-marker') => void;
+}) {
+  const color = sideColor('Rebel');
+  const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2600,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 8,
+        padding: 24, maxWidth: 460, width: '92%',
+      }}>
+        <h3 style={{ color, marginTop: 0 }}>Sabotage — {sysName}</h3>
+        <div style={{ color: '#cbc4b0', fontSize: 13, marginBottom: 16, lineHeight: 1.5 }}>
+          This system has an Imperial Shield Bunker and is populous. Choose one:
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <button className="tab-button" style={{ textAlign: 'left', padding: '10px 14px', borderColor: color }}
+            onClick={() => onAction('destroy-bunker')}>
+            <div style={{ fontWeight: 700, color: '#fff' }}>Destroy the Shield Bunker</div>
+            <div style={{ color: '#9a937f', fontSize: 12, marginTop: 2 }}>
+              Blow up the Shield Bunker (it shields a Death Star/DSUC and boosts Imperial defense).
+            </div>
+          </button>
+          <button className="tab-button" style={{ textAlign: 'left', padding: '10px 14px', borderColor: color }}
+            onClick={() => onAction('place-marker')}>
+            <div style={{ fontWeight: 700, color: '#fff' }}>Place a sabotage marker</div>
+            <div style={{ color: '#9a937f', fontSize: 12, marginTop: 2 }}>
+              The Empire can't build or deploy units here while the marker stays.
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EstablishTradeChoiceModal({
   G, choice, onAction,
 }: {

@@ -749,6 +749,15 @@ export type ChoiceRequest =
       viaRecruit?: boolean;
     }
   | {
+      // Sabotage (Rebel, RoE): the target system has BOTH an Imperial Shield
+      // Bunker and is populous, so the Rebel chooses between destroying the
+      // Shield Bunker or placing a sabotage marker (player report #362).
+      kind: 'SabotageChoice';
+      side: Side; // 'Rebel'
+      systemId: SystemId;
+      bunkerInstanceId: string;
+    }
+  | {
       // Under the Radar — second step (RoE): "replace the others at the top or
       // bottom of the deck in any order." After holding 1 probe, the Rebel
       // places each remaining peeked probe on the top or bottom of the probe

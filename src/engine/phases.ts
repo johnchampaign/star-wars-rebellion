@@ -2279,6 +2279,27 @@ export function resolveHeistChoice(G: GameState, action: string): { ok: boolean;
   return { ok: true };
 }
 
+/** Sabotage (RoE) choice: 'destroy-bunker' blows up the Imperial Shield Bunker
+ *  in the target system; 'place-marker' drops a sabotage marker instead. Only
+ *  posted when both are legal (the system is populous AND holds a Shield Bunker). */
+export function resolveSabotageChoice(
+  G: GameState, action: 'destroy-bunker' | 'place-marker'
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'SabotageChoice') return { ok: false, reason: 'no-pending' };
+  const ss = G.map.systems[pc.systemId];
+  if (action === 'destroy-bunker') {
+    M.destroyUnit(G, pc.bunkerInstanceId, 'sabotage');
+    log(G, { kind: 'sabotage-destroy-bunker', side: 'Rebel', payload: { systemId: pc.systemId } });
+  } else {
+    if (ss && !ss.sabotage) ss.sabotage = true;
+    log(G, { kind: 'sabotage-place-marker', side: 'Rebel', payload: { systemId: pc.systemId } });
+  }
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Establish Trade Relations choice: 'loyalty' = gain 2 loyalty in the system;
  *  'cruiser' = place 1 Mon Calamari Cruiser on space 3 of the build queue. */
 export function resolveEstablishTradeChoice(G: GameState, action: 'loyalty' | 'cruiser'): { ok: boolean; reason?: string } {

@@ -134,9 +134,40 @@ const sabotage: EffectHandler = (G, ctx) => {
   if (!sysId) return true;
   const ss = G.map.systems[sysId];
   if (!ss) return true;
-  if (!ss.sabotage) {
-    ss.sabotage = true;
+  const placeMarker = () => { if (!ss.sabotage) ss.sabotage = true; };
+  // Base game: "place a sabotage marker in this system" (any system).
+  if (!G.expansion?.enabled) {
+    placeMarker();
+    return true;
   }
+  // RoE (Mission Reference): "Destroy Shield Bunker OR if populous, place a
+  // Sabotage marker." The marker is restricted to populous (non-remote) systems
+  // in the expansion, and the new alternative is to blow up an Imperial Shield
+  // Bunker in the target system (player report #362).
+  const bunker = ss.units.find((u) => u.typeId === 'shield-bunker' && u.side === 'Empire');
+  const populous = !G.catalog.systems[sysId]?.isRemote;
+  if (bunker && populous) {
+    // Both options legal — let the Rebel choose.
+    G.pendingChoice = {
+      kind: 'SabotageChoice', side: 'Rebel', systemId: sysId,
+      bunkerInstanceId: bunker.instanceId,
+    };
+    log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+      kind: 'SabotageChoice', systemId: sysId,
+    }});
+    return true; // pause — resolveSabotageChoice applies the chosen effect
+  }
+  if (bunker) {
+    M.destroyUnit(G, bunker.instanceId, 'sabotage');
+    log(G, { kind: 'sabotage-destroy-bunker', side: 'Rebel', payload: { systemId: sysId } });
+    return true;
+  }
+  if (populous) {
+    placeMarker();
+    return true;
+  }
+  // Non-populous system with no Shield Bunker: nothing to sabotage.
+  log(G, { kind: 'sabotage-no-effect', side: 'Rebel', payload: { systemId: sysId } });
   return true;
 };
 

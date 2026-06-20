@@ -1949,6 +1949,11 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     // AI Rebel: take the Mon Calamari Cruiser (a strong ship beats 2 loyalty).
     return phases.resolveEstablishTradeChoice(G, 'cruiser').ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'SabotageChoice' && G.pendingChoice.side === side) {
+    // AI Rebel: destroy the Shield Bunker — it shields the Death Star/DSUC and
+    // grants combat advantages, so removing it beats a build/deploy marker.
+    return phases.resolveSabotageChoice(G, 'destroy-bunker').ok;
+  }
   // Discredit Rebellion (RoE): heuristic — always prefer the ROLL branch.
   // Sabotage markers are a strategic asset (they cripple Imperial systems
   // every refresh); a single rep loss on a 1/3 or so chance is the better
