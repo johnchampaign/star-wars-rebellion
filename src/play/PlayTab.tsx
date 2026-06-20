@@ -276,6 +276,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'HeistChoice':              return pc.side === side;
     case 'EstablishTradeChoice':     return pc.side === side;
     case 'SabotageChoice':           return pc.side === side;
+    case 'RescuerReturn':            return pc.side === side;
     case 'UnderTheRadarKeep':        return pc.side === side;
     case 'UnderTheRadarReturn':      return pc.side === side;
     case 'StartingCardBranch':       return pc.side === side;
@@ -2455,6 +2456,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <SabotageChoiceModal G={G} choice={G.pendingChoice}
           onAction={(action) => {
             const r = phases.resolveSabotageChoice(G, action);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
+
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'RescuerReturn'
+        && G.pendingChoice.side === humanSide && (
+        <RescuerReturnModal G={G} choice={G.pendingChoice}
+          onConfirm={(leaderIds) => {
+            const r = phases.resolveRescuerReturn(G, leaderIds);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -13169,6 +13182,53 @@ function HeistChoiceModal({
 }
 
 /** Establish Trade Relations: gain 2 loyalty here, or queue a Mon Cala Cruiser. */
+function RescuerReturnModal({
+  G, choice, onConfirm,
+}: {
+  G: GameState;
+  choice: { kind: 'RescuerReturn'; side: Side; systemId: string; leaderIds: string[] };
+  onConfirm: (leaderIds: string[]) => void;
+}) {
+  const color = sideColor('Rebel');
+  const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
+  // Default: keep everyone in the system (RAW "may move" — staying is the default).
+  const [ret, setRet] = useState<Record<string, boolean>>({});
+  const leaderName = (lid: string) => G.catalog.leaders[lid]?.name ?? lid;
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2600,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 8,
+        padding: 24, maxWidth: 460, width: '92%',
+      }}>
+        <h3 style={{ color, marginTop: 0 }}>Rescue at {sysName} — bring leaders home?</h3>
+        <div style={{ color: '#cbc4b0', fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>
+          The rescued leader returned to the Rebel Base. Your rescuing leader{choice.leaderIds.length === 1 ? '' : 's'} may
+          come along or stay here. Toggle each, then confirm.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+          {choice.leaderIds.map((lid) => (
+            <button key={lid} className="tab-button"
+              onClick={() => setRet((r) => ({ ...r, [lid]: !r[lid] }))}
+              style={{ textAlign: 'left', padding: '8px 12px', borderColor: ret[lid] ? color : '#3a3d44' }}>
+              <span style={{ fontWeight: 700, color: '#fff' }}>{leaderName(lid)}</span>
+              <span style={{ color: '#9a937f', fontSize: 12, marginLeft: 8 }}>
+                {ret[lid] ? '→ return to base' : 'stay here'}
+              </span>
+            </button>
+          ))}
+        </div>
+        <button className="tab-button" style={{ borderColor: color, fontWeight: 700 }}
+          onClick={() => onConfirm(choice.leaderIds.filter((lid) => ret[lid]))}>
+          Confirm
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function SabotageChoiceModal({
   G, choice, onAction,
 }: {

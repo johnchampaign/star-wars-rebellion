@@ -2279,6 +2279,33 @@ export function resolveHeistChoice(G: GameState, action: string): { ok: boolean;
   return { ok: true };
 }
 
+/** Rescuer-return (RR p.12): after a rescue mission, the assigned leaders MAY
+ *  move to the Rebel Base too. `leaderIdsToReturn` is the subset the Rebel sends
+ *  home (the rest stay in the mission system). They go to the "Rebel Base" space
+ *  if the base is hidden, or the base's system if revealed — mirroring where a
+ *  rescued leader lands. Pass an empty array to keep all of them in place. */
+export function resolveRescuerReturn(
+  G: GameState, leaderIdsToReturn: LeaderId[]
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'RescuerReturn') return { ok: false, reason: 'no-pending' };
+  const sysId = pc.systemId;
+  const destKey = G.rebelBaseRevealed ? G.rebelBaseSystemId : 'rebel-base-space';
+  const moved: LeaderId[] = [];
+  for (const lid of leaderIdsToReturn) {
+    if (!pc.leaderIds.includes(lid)) return { ok: false, reason: `not-an-assigned-rescuer:${lid}` };
+    if (destKey === sysId) continue; // already home (base revealed AT this system)
+    M.relocateLeader(G, 'Rebel', lid, sysId, destKey);
+    moved.push(lid);
+  }
+  log(G, { kind: 'rescuer-return', side: 'Rebel', payload: {
+    systemId: sysId, returned: moved, stayed: pc.leaderIds.filter((l) => !moved.includes(l)),
+  }});
+  G.pendingChoice = undefined;
+  resumeMissionAfterChoice(G);
+  return { ok: true };
+}
+
 /** Sabotage (RoE) choice: 'destroy-bunker' blows up the Imperial Shield Bunker
  *  in the target system; 'place-marker' drops a sabotage marker instead. Only
  *  posted when both are legal (the system is populous AND holds a Shield Bunker). */

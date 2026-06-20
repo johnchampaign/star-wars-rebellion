@@ -1954,6 +1954,11 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     // grants combat advantages, so removing it beats a build/deploy marker.
     return phases.resolveSabotageChoice(G, 'destroy-bunker').ok;
   }
+  if (G.pendingChoice && G.pendingChoice.kind === 'RescuerReturn' && G.pendingChoice.side === side) {
+    // AI Rebel: pull the rescuing leaders back to the safety of the base rather
+    // than leaving them exposed at the (Imperial-held) rescue system.
+    return phases.resolveRescuerReturn(G, [...G.pendingChoice.leaderIds]).ok;
+  }
   // Discredit Rebellion (RoE): heuristic — always prefer the ROLL branch.
   // Sabotage markers are a strategic asset (they cripple Imperial systems
   // every refresh); a single rep loss on a 1/3 or so chance is the better

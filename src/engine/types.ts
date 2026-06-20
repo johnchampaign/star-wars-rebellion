@@ -758,6 +758,17 @@ export type ChoiceRequest =
       bunkerInstanceId: string;
     }
   | {
+      // After a rescue mission (RR p.12): "any leaders assigned to the mission
+      // may also move to the 'Rebel Base' space." The rescued prisoner already
+      // went to the base; this offers the RESCUING leaders the choice to follow
+      // or stay in the mission system. (For the Greater Good forces them to stay,
+      // so it doesn't post this.) Player report #346.
+      kind: 'RescuerReturn';
+      side: Side; // 'Rebel'
+      systemId: SystemId;
+      leaderIds: LeaderId[]; // the assigned leaders currently in the system
+    }
+  | {
       // Under the Radar — second step (RoE): "replace the others at the top or
       // bottom of the deck in any order." After holding 1 probe, the Rebel
       // places each remaining peeked probe on the top or bottom of the probe

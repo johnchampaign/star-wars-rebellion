@@ -4,7 +4,7 @@
 
 import type { GameState, Side, LeaderId } from '../types';
 import * as M from '../mechanics';
-import { register, type EffectHandler } from './registry';
+import { register, type EffectHandler, type EffectContext } from './registry';
 import { beginCombat, runCombat } from '../combat';
 import { notImplemented, log, pushNotice } from '../log';
 import { shuffle, nextInt, rollDie } from '../rng';
@@ -1307,12 +1307,34 @@ const publicUprising: EffectHandler = (G, ctx) => {
   return true;
 };
 
+/** RR p.12: "After rescuing a leader with a mission, any leaders assigned to the
+ *  mission may also move to the 'Rebel Base' space." The rescued prisoner already
+ *  went to the base (rescueLeader); this offers the RESCUING leaders the same
+ *  move. Posts a RescuerReturn choice (paused) when there are assigned leaders
+ *  still in the mission system. Skips if a rescue sub-choice (e.g. Vader's "It Is
+ *  Your Destiny") is already open — accepting the RAW-legal "stay" in that rare
+ *  edge rather than chaining two pauses. (For the Greater Good forces a stay and
+ *  does NOT call this.) Player report #346. */
+function offerRescuerReturn(G: GameState, ctx: EffectContext): void {
+  const sysId = ctx.targetSystemId;
+  if (!sysId) return;
+  if (G.pendingChoice) return; // a rescue sub-choice is already pending
+  const here = G.rebel.leadersOnBoard[sysId] ?? [];
+  const assigned = (ctx.leaderIds ?? []).filter((lid) => here.includes(lid));
+  if (assigned.length === 0) return;
+  G.pendingChoice = { kind: 'RescuerReturn', side: 'Rebel', systemId: sysId, leaderIds: assigned };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'RescuerReturn', systemId: sysId, leaders: assigned.length,
+  }});
+}
+
 const dailyRescueGroup: EffectHandler = (G, ctx) => {
   // Daring Rescue: rescue the captured leader at the target system.
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
   const cap = (G.empire.capturedLeaders ?? []).find((c) => c.systemId === sysId);
   if (cap) M.rescueLeader(G, cap.leaderId, 'daring-rescue');
+  offerRescuerReturn(G, ctx);
   return true;
 };
 
@@ -1618,6 +1640,7 @@ const criticalRescue: EffectHandler = (G, ctx) => {
   if (!sysId) return true;
   const cap = (G.empire.capturedLeaders ?? []).find((c) => c.systemId === sysId);
   if (cap) M.rescueLeader(G, cap.leaderId, 'critical-rescue');
+  offerRescuerReturn(G, ctx);
   return true;
 };
 
@@ -2009,6 +2032,7 @@ const aggressiveNegotiations: EffectHandler = (G, ctx) => {
   if (!sysId) return true;
   const cap = (G.empire.capturedLeaders ?? []).find((c) => c.systemId === sysId);
   if (cap) M.rescueLeader(G, cap.leaderId, 'aggressive-negotiations');
+  offerRescuerReturn(G, ctx);
   return true;
 };
 
