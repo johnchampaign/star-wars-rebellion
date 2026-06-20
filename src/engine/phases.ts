@@ -348,6 +348,49 @@ function mkSetupInstance(typeId: string, side: Side) {
   return { instanceId: `s${(++setupInstanceCounter).toString().padStart(6, '0')}`, typeId, side, damage: 0 };
 }
 
+/** RoE setup (rulebook p.8): the chosen remote system holds the Death Star
+ *  Under Construction TOGETHER WITH 4 TIE Fighters + 1 Stormtrooper. The
+ *  interactive flow let the Imperial player drop the DSUC alone and finish
+ *  setup with the rest of the escort scattered onto Imperial worlds, leaving
+ *  the remote under-garrisoned (#360). The composition of this escort is fixed
+ *  by the rules — it is not a free choice — so we auto-deploy it the moment the
+ *  DSUC anchors the remote. Shortfall-aware: counts whatever the player already
+ *  placed there (the UI permits reinforcing the DS site) and only tops it up.
+ *  Pulls from the pending pool first; if that's been drained onto Imperial
+ *  systems, relocates the shortfall back from there so the remote always ends
+ *  with its full RAW complement. */
+function ensureDsucEscort(G: GameState, remoteId: SystemId): void {
+  const dest = G.map.systems[remoteId];
+  if (!dest) return;
+  const pending = G.pendingDeployment?.Empire ?? [];
+  for (const [typeId, required] of [['tie-fighter', 4], ['stormtrooper', 1]] as const) {
+    const have = dest.units.filter((u) => u.side === 'Empire' && u.typeId === typeId).length;
+    for (let k = have; k < required; k++) {
+      const pi = pending.indexOf(typeId);
+      if (pi >= 0) {
+        pending.splice(pi, 1);
+        dest.units.push(mkSetupInstance(typeId, 'Empire'));
+        log(G, { kind: 'setup-deploy', side: 'Empire', payload: { typeId, systemId: remoteId, escort: true } });
+        continue;
+      }
+      // Pending exhausted — reclaim one of this type already placed elsewhere.
+      let reclaimed = false;
+      for (const [sid, ss] of Object.entries(G.map.systems)) {
+        if (sid === remoteId) continue;
+        const ui = ss.units.findIndex((u) => u.side === 'Empire' && u.typeId === typeId);
+        if (ui >= 0) {
+          ss.units.splice(ui, 1);
+          dest.units.push(mkSetupInstance(typeId, 'Empire'));
+          log(G, { kind: 'setup-deploy', side: 'Empire', payload: { typeId, systemId: remoteId, escort: true, reclaimedFrom: sid } });
+          reclaimed = true;
+          break;
+        }
+      }
+      if (!reclaimed) break; // none left anywhere (shouldn't happen given setup counts)
+    }
+  }
+}
+
 /** Reseed setupInstanceCounter to max existing s-prefixed ID + 1.
  *  Mirror of mechanics.reseedInstanceCounters but for the s-prefix.
  *  Required after decoding a saved game — module-level counter otherwise
@@ -429,6 +472,12 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
   list.splice(idx, 1);
 
   log(G, { kind: 'setup-deploy', side, payload: { typeId, systemId } });
+
+  // RoE (#360): placing the DSUC on its remote also brings its fixed 4 TIE +
+  // 1 Stormtrooper escort, so the player can't finish setup with a lone DSUC.
+  if (side === 'Empire' && typeId === 'death-star-under-construction') {
+    ensureDsucEscort(G, systemId);
+  }
 
   maybeAdvanceFromSetup(G);
   return { ok: true };
