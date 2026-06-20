@@ -445,11 +445,11 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
       return { ok: false, reason: 'must-be-imperial-or-subjugated' };
     }
   } else {
-    // Rebel: the Rebel Base space OR ONE populous system of the player's choice
-    // — a neutral world or one with Rebel loyalty (RAW; confirmed by the
-    // reporter who originally flagged #86: starting on a neutral world far from
-    // the hidden base is a legitimate cat-and-mouse opening). Just not an
-    // Imperial/subjugated system, Coruscant, or a remote (non-populous) world.
+    // Rebel: the Rebel Base space OR ONE system of the player's choice — "any
+    // one Rebel or neutral system" (RoE rulebook p.4 / base Learn to Play).
+    // Remote systems "are always neutral" (RR), so they ARE valid targets —
+    // they were wrongly excluded before (player report #371). Only an
+    // Imperial-loyal, subjugated, or Coruscant system is off-limits.
     if (systemId === 'rebel-base-space') {
       // always allowed
     } else {
@@ -459,8 +459,8 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
         return { ok: false, reason: `rebel-already-chose-${G.rebelDeployTarget}` };
       }
       const def = G.catalog.systems[systemId];
-      if (ss.subjugated || ss.loyalty === 'imperial' || def?.isCoruscant || def?.isRemote) {
-        return { ok: false, reason: 'must-be-populous-rebel-or-neutral' };
+      if (ss.subjugated || ss.loyalty === 'imperial' || def?.isCoruscant) {
+        return { ok: false, reason: 'must-be-rebel-or-neutral' };
       }
       G.rebelDeployTarget = systemId;
     }

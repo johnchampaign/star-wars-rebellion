@@ -9051,18 +9051,19 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onUndoUnit, onReset
     }
   } else {
     legalTargets.push({ id: 'rebel-base-space', name: 'Rebel Base space', note: 'staging area (hidden)' });
-    // Rebel starting units: the base, plus ONE populous system of your choice —
-    // neutral or Rebel-loyal (RAW). Once you've placed in one such system, that
-    // becomes your only off-base target for the rest of setup.
+    // Rebel starting units: the base, plus ONE system of your choice — "any one
+    // Rebel or neutral system" (RAW). Remote systems are always neutral, so they
+    // qualify too (#371). Once you've placed in one such system, that becomes
+    // your only off-base target for the rest of setup.
     if (G.rebelDeployTarget) {
       const sysDef = G.catalog.systems[G.rebelDeployTarget];
       legalTargets.push({ id: G.rebelDeployTarget, name: sysDef?.name ?? G.rebelDeployTarget, note: 'your chosen system' });
     } else {
       for (const [sysId, ss] of Object.entries(G.map.systems)) {
         const sysDef = G.catalog.systems[sysId];
-        if (sysDef?.isCoruscant || sysDef?.isRemote) continue;
+        if (sysDef?.isCoruscant) continue;
         if (ss.subjugated || ss.loyalty === 'imperial') continue;
-        legalTargets.push({ id: sysId, name: sysDef?.name ?? sysId });
+        legalTargets.push({ id: sysId, name: sysDef?.name ?? sysId, note: sysDef?.isRemote ? 'remote (neutral)' : undefined });
       }
     }
   }
