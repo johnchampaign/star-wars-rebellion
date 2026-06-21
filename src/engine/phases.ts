@@ -5063,15 +5063,15 @@ function refreshDrawMissions(G: GameState, logStart: number): boolean {
   for (const side of ['Rebel', 'Empire'] as const) {
     M.drawMission(G, side, 2);
     const f = faction(G, side);
-    // Per RR p.12: only non-project mission cards count toward the 10-card
-    // limit. Starting missions also cannot be discarded.
-    const counting = f.missionHand.filter((id) => !G.catalog.missions[id]?.isProject);
-    const over = counting.length - STARTING_HAND_LIMIT;
+    // RR p.13 "Draw Missions": discard down to 10 MISSION cards. "Project cards
+    // are missions and count toward this limit" — only OBJECTIVE cards are
+    // exempt (and those live in a separate hand). So every card in missionHand
+    // counts (player report #377: project draws weren't triggering the trim).
+    const over = f.missionHand.length - STARTING_HAND_LIMIT;
     if (over <= 0) continue;
-    const discardable = f.missionHand.filter((id) => {
-      const c = G.catalog.missions[id];
-      return c && !c.isStarting && !c.isProject;
-    });
+    // "Starting missions cannot be discarded" — but project cards CAN be (they're
+    // ordinary missions for this purpose).
+    const discardable = f.missionHand.filter((id) => !G.catalog.missions[id]?.isStarting);
     // Can't discard more than exist as discardable (starting cards are exempt).
     const count = Math.min(over, discardable.length);
     if (count > 0) queue.push({ side, count, discardable });
