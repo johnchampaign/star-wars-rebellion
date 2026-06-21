@@ -1124,6 +1124,27 @@ export function eliminateLeader(G: GameState, side: Side, leaderId: LeaderId): v
   log(G, { kind: 'eliminate-leader', side, payload: { leaderId } });
 }
 
+/** Remove a system's probe card from play (the deck AND the Empire's hand if it
+ *  was already drawn) and mark the system ruled out. RoE setup: the system that
+ *  holds the Death Star Under Construction has its probe card removed like the
+ *  Imperial-loyalty systems' — it can't be the Rebel base and the Empire knows
+ *  it, so it must not reappear via Intercepted Transmissions etc. (player report
+ *  #372). No-op if the system has no probe card or it's already gone. */
+export function removeProbeForSystem(G: GameState, sysId: SystemId): void {
+  if (!sysId) return;
+  const probe = Object.values(G.catalog.probes).find((p) => p.systemId === sysId);
+  if (!probe) return;
+  let removed = false;
+  const di = G.probeDeck?.indexOf(probe.id) ?? -1;
+  if (di >= 0) { G.probeDeck.splice(di, 1); removed = true; }
+  const hi = G.empire.probeHand?.indexOf(probe.id) ?? -1;
+  if (hi >= 0) { G.empire.probeHand!.splice(hi, 1); removed = true; }
+  // Keep the precomputed (online) rule-out set in sync.
+  (G.empireProbeRuledOut ??= []);
+  if (!G.empireProbeRuledOut.includes(sysId)) G.empireProbeRuledOut.push(sysId);
+  if (removed) log(G, { kind: 'probe-removed-for-system', payload: { systemId: sysId, probeId: probe.id } });
+}
+
 // ============================================================================
 // Decks (basic draw/discard)
 // ============================================================================

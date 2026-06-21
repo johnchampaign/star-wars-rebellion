@@ -437,6 +437,7 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
         return { ok: false, reason: `empire-already-chose-${G.empireDeployTarget}` };
       }
       G.empireDeployTarget = systemId;
+      M.removeProbeForSystem(G, systemId); // DSUC system's probe leaves play (#372); idempotent
     } else if (isDsuc) {
       // The DSUC may only be placed on the chosen remote system, never on an
       // Imperial-loyalty / subjugated world.
@@ -535,6 +536,7 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
         ?? Object.entries(G.map.systems).find(([id]) => G.catalog.systems[id]?.isRemote)?.[0];
       if (remote) {
         G.empireDeployTarget = remote;
+        M.removeProbeForSystem(G, remote); // DSUC system's probe leaves play (#372)
         for (const typeId of ['death-star-under-construction', 'tie-fighter', 'tie-fighter',
           'tie-fighter', 'tie-fighter', 'stormtrooper']) {
           const i = remaining.indexOf(typeId);

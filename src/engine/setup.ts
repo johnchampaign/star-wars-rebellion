@@ -456,6 +456,20 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
     pendingRebelBasePick = candidates;
   }
 
+  // RoE: the system holding the Death Star Under Construction has its probe card
+  // removed from the deck too — it can't be the Rebel base and the Empire knows
+  // it (player report #372). Auto-setup knows empireDeployTarget here; the
+  // interactive path removes it when the Empire deploys the DSUC. Done BEFORE the
+  // Empire draws its 2 probes (below) so it can't draw its own DSUC system.
+  if (empireDeployTarget) {
+    const dsucProbe = Object.values(catalog.probes).find((p) => p.systemId === empireDeployTarget);
+    if (dsucProbe) {
+      const i = probeDeck.indexOf(dsucProbe.id);
+      if (i >= 0) probeDeck.splice(i, 1);
+      if (!probesRemovedForSetup.includes(dsucProbe.id)) probesRemovedForSetup.push(dsucProbe.id);
+    }
+  }
+
   // Remove the chosen/placeholder base's probe card from the probe deck (rr p.15 step 9).
   // For the interactive path, we re-do this when the Rebel actually picks.
   const baseProbe = Object.values(catalog.probes).find((p) => p.systemId === rebelBaseSystemId);
