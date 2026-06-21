@@ -39,8 +39,11 @@ type PreventEffect = { kind: 'prevent'; red: number; black: number; special: num
 type CondDealEffect = { kind: 'condDeal'; amount: number; color?: 'red' | 'black'; cond: 'more-fighters' | 'no-shield-generator' };
 // Targeted deal — assigns damage to a specific class of enemy unit.
 type TargetDealEffect = { kind: 'targetDeal'; amount: number; targetClass: 'capital' | 'at-walker' };
-// Destroy 1 enemy unit of a type/tier without rolling dice.
-type DestroyEffect = { kind: 'destroy'; tier?: 'triangle'; unitClass?: 'structure' };
+// Destroy 1 enemy unit of a type/tier without rolling dice. `theater` overrides
+// which theatre the targets come from — needed for SPACE tactics that destroy a
+// GROUND unit (e.g. Intercept: "destroy 1 triangle ground unit"), where the
+// targets must NOT be taken from the tactic's own (space) theatre (#373).
+type DestroyEffect = { kind: 'destroy'; tier?: 'triangle'; unitClass?: 'structure'; theater?: Theater };
 // Gain a unit for the playing side (deployed into the system), optionally
 // also preventing the opponent's dice.
 type GainEffect = { kind: 'gain'; typeId: string; prevent?: { red: number; black: number; special: number } };
@@ -90,7 +93,7 @@ const D = (amount: number, color?: 'red' | 'black'): DealEffect => ({ kind: 'dea
 const P = (red: number, black: number, special = 0, extra = false): PreventEffect => ({ kind: 'prevent', red, black, special, extra });
 const CD = (amount: number, cond: CondDealEffect['cond'], color?: 'red' | 'black'): CondDealEffect => ({ kind: 'condDeal', amount, color, cond });
 const TD = (amount: number, targetClass: TargetDealEffect['targetClass']): TargetDealEffect => ({ kind: 'targetDeal', amount, targetClass });
-const DESTROY = (opts: { tier?: 'triangle'; unitClass?: 'structure' }): DestroyEffect => ({ kind: 'destroy', ...opts });
+const DESTROY = (opts: { tier?: 'triangle'; unitClass?: 'structure'; theater?: Theater }): DestroyEffect => ({ kind: 'destroy', ...opts });
 const GAIN = (typeId: string, prevent?: GainEffect['prevent']): GainEffect => ({ kind: 'gain', typeId, prevent });
 const FIRST: ResolveFirstEffect = { kind: 'resolveFirst' };
 const LOCK: LockDeckEffect = { kind: 'lockDeck' };
@@ -116,7 +119,7 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   'cin-empire-space-superlaser-blast':       [TD(5, 'capital'), D(1)],
   'cin-empire-space-entrapment':             [CANCEL, LOCK],
   'cin-empire-space-energy-shield':          [REMOVE(2), FIRST],
-  'cin-empire-space-intercept':              [DESTROY({ tier: 'triangle' }), LOCKSPECIAL],
+  'cin-empire-space-intercept':              [DESTROY({ tier: 'triangle', theater: 'ground' }), LOCKSPECIAL],
   // ---- Imperial Ground ----
   'cin-empire-ground-support-of-the-501st':  [DESTROY({ tier: 'triangle' }), D(1, 'black')],
   'cin-empire-ground-armored-patrol':        [P(2, 2), P(1, 1)],
@@ -174,7 +177,9 @@ function targetClassUnits(G: GameState, c: CombatState, side: Side, theater: The
 
 /** Enemy units a destroy effect can remove. */
 function destroyTargets(G: GameState, c: CombatState, side: Side, theater: Theater, eff: DestroyEffect) {
-  return unitsOf(G, other(side), c.systemId, theater).filter((u) => {
+  // A destroy may name its own target theatre (Intercept hits GROUND from a
+  // SPACE tactic) — otherwise the targets come from the tactic's theatre (#373).
+  return unitsOf(G, other(side), c.systemId, eff.theater ?? theater).filter((u) => {
     const t = G.catalog.unitTypes[u.typeId];
     if (!t || t.health.color === null) return false;
     if (eff.tier && t.tier !== eff.tier) return false;
