@@ -412,7 +412,15 @@ function empireProximityToBase(G: GameState): number {
   let count = 0;
   for (const [sysId, d] of dist) {
     if (d > 2) continue;
-    count += (G.map.systems[sysId]?.units ?? []).filter((u) => u.side === 'Empire').length;
+    // Count only the Empire's mobile GROUND force — that's what captures a base.
+    // Counting every nearby ship/fighter made the Rebel flag a "threat" almost
+    // every turn (the Empire is everywhere), so it relocated its base constantly
+    // and never developed. Ground units approaching IS the real signal to flee.
+    count += (G.map.systems[sysId]?.units ?? []).filter((u) => {
+      const t = G.catalog.unitTypes[u.typeId];
+      return u.side === 'Empire' && t?.theater === 'ground'
+        && t.class !== 'structure' && !t.transport.immobile;
+    }).length;
   }
   return count;
 }
@@ -506,6 +514,14 @@ function rebelMissionTargetScore(
   baseDist: Map<string, number> | null,
 ): number {
   let s = 0;
+  // Rapid Mobilization auto-targets the "Rebel Base" space, which is NOT a
+  // catalog system. The old `if (!sysDef) return -Infinity` below scored it
+  // unplayable, so the reveal action was never generated and the AI Rebel could
+  // NEVER relocate its base (uploaded-log analysis: Rapid Mobilization assigned
+  // 99% of games but resolved 0% — base captured by turn ~4-5, 0 relocations).
+  // Score it neutrally; its real value (relocate when threatened) lives in
+  // missionSituationalAdjust's +20.
+  if (targetSysId === 'rebel-base-space') return 0;
   const sysDef = G.catalog.systems[targetSysId];
   const sysState = G.map.systems[targetSysId];
   if (!sysDef) return -Infinity;
@@ -2363,32 +2379,35 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     return phases.resolveRapidMobilizationBranch(G, branch).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'RapidMobilizationMovePick' && G.pendingChoice.side === side) {
-    // Find any Rebel-occupied system and move up to 5 units to base.
+    // Move up to 5 SELF-MOBILE ships to the base. RM moves ignore adjacency but
+    // NOT transport: ground units need carrier capacity and structures are
+    // immobile, so picking them is rejected and stalled the AI (self-play). Ships
+    // carry themselves, so they're always a legal move; if none, move nothing.
     let srcSys: string | null = null;
     let picks: string[] = [];
     for (const sysId of Object.keys(G.map.systems)) {
-      // Skip systems with a friendly leader — RM can't move units out of them
-      // (rr p.2), and the engine now rejects such a move.
+      // Skip systems with a friendly leader — RM can't move units out of them.
       if ((G.rebel.leadersOnBoard[sysId] ?? []).length > 0) continue;
-      const rebels = G.map.systems[sysId].units.filter((u) => u.side === 'Rebel');
-      if (rebels.length > 0) { srcSys = sysId; picks = rebels.slice(0, 5).map((u) => u.instanceId); break; }
+      const ships = G.map.systems[sysId].units.filter((u) => {
+        const t = G.catalog.unitTypes[u.typeId];
+        return u.side === 'Rebel' && t?.theater === 'space' && !t.transport.immobile;
+      });
+      if (ships.length > 0) { srcSys = sysId; picks = ships.slice(0, 5).map((u) => u.instanceId); break; }
     }
-    if (!srcSys) {
-      // Nothing to move — bail without picks.
-      return phases.resolveRapidMobilizationMove(G, Object.keys(G.map.systems)[0], []).ok;
-    }
+    // No movable ships → keep the base, move nothing (always a legal resolve).
+    if (!srcSys) return phases.resolveRapidMobilizationMove(G, Object.keys(G.map.systems)[0], []).ok;
     return phases.resolveRapidMobilizationMove(G, srcSys, picks).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'RapidMobilizationBasePick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
-    const candidates = c.baseRevealed
-      ? Object.keys(G.map.systems)
-      : (c.probeSystemIds ?? []);
+    // The new base MUST be one of the DRAWN probe systems, even when the old
+    // base was revealed (#365 made the engine enforce this). Picking any other
+    // system is rejected by the resolver — which previously stalled the AI when
+    // it used the whole map in the revealed case. Pick from the drawn probes.
+    const candidates = c.probeSystemIds ?? [];
     if (candidates.length === 0) {
-      // No legal target — just clear the choice via no-op (pick current base
-      // — engine will accept any valid system in revealed case).
-      const fallback = Object.keys(G.map.systems)[0];
-      return phases.resolveRapidMobilizationBasePick(G, fallback).ok;
+      // No legal relocation target this draw — decline (keep current base).
+      return phases.resolveRapidMobilizationBasePick(G, null).ok;
     }
     // Relocate to the SAFEST candidate: farthest from Empire units, not the
     // current base, Rebel/neutral preferred. Picking candidates[0] could
