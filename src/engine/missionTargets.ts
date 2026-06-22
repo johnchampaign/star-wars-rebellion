@@ -423,6 +423,13 @@ export function missionRevealIsPointless(
       const markers = (ss?.targetMarkers?.length ?? 0) > 0;
       return !rebelGround && !markers;
     }
+    case 'hidden-fleet':
+      // "Move units from the 'Rebel Base' space to this system." A no-op once
+      // the Rebel Base space holds no units — which is the normal state after
+      // the base is revealed (its units move onto the map). The AI shouldn't
+      // burn the card moving nothing, and the human gets a "won't do anything"
+      // warning (player report: AI Rebel ran Hidden Fleet but moved no units).
+      return (G.map.rebelBaseSpace?.units?.length ?? 0) === 0;
     case 'hunt-them-down':
     case 'hit-and-run':
     case 'rogue-squadron-raid': {

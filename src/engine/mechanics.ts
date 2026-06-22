@@ -530,6 +530,26 @@ export function deployUnit(G: GameState, side: Side, typeId: UnitTypeId, systemI
   applyInvariants(G, [systemId]);
 }
 
+/** RAW (RR p.6 "Building a Death Star"): "If a Death Star Under Construction is
+ *  destroyed, the Death Star on the build queue is also destroyed." The DSUC
+ *  model on the map and the completed Death Star advancing through the build
+ *  queue are the same Death Star — so killing the under-construction model must
+ *  cancel the queued build, otherwise the Death Star the Rebels just destroyed
+ *  re-deploys a few turns later (player report: DSUC destroyed but Death Star
+ *  stayed in the build queue). Removes the first queued 'death-star' (slots
+ *  1→3); no-op if none is queued. */
+function removeDeathStarFromQueue(G: GameState): void {
+  for (const slot of [1, 2, 3] as const) {
+    const q = G.empire.buildQueue[slot];
+    const i = q.indexOf('death-star' as UnitTypeId);
+    if (i >= 0) {
+      q.splice(i, 1);
+      log(G, { kind: 'dsuc-destroyed-cancels-build', side: 'Empire', payload: { slot } });
+      return;
+    }
+  }
+}
+
 /** Remove the Death Star Under Construction from wherever it sits (it's the
  *  same Death Star that just deployed in completed form). No-op if none. */
 function removeDeathStarUnderConstruction(G: GameState): void {
@@ -591,6 +611,10 @@ export function destroyUnit(G: GameState, unitInstanceId: UnitInstanceId, cause:
     }
     units.splice(i, 1);
     log(G, { kind: 'destroy-unit', side: u.side, payload: { unit: u.instanceId, typeId: u.typeId, systemId: sysId, cause } });
+    // Destroying the under-construction Death Star also destroys the completed
+    // Death Star advancing through the build queue — they're one Death Star
+    // (RR p.6). Without this the queued copy re-deploys later (player report).
+    if (u.typeId === 'death-star-under-construction') removeDeathStarFromQueue(G);
     // While a battle is in progress, record the loss for the combat screen's
     // "units removed" panel (Foggy Leggy request). Combat is atomic, so any
     // destroy during a pending combat is a combat loss.
