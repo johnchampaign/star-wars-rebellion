@@ -1163,9 +1163,17 @@ export function removeProbeForSystem(G: GameState, sysId: SystemId): void {
   if (di >= 0) { G.probeDeck.splice(di, 1); removed = true; }
   const hi = G.empire.probeHand?.indexOf(probe.id) ?? -1;
   if (hi >= 0) { G.empire.probeHand!.splice(hi, 1); removed = true; }
-  // Keep the precomputed (online) rule-out set in sync.
-  (G.empireProbeRuledOut ??= []);
-  if (!G.empireProbeRuledOut.includes(sysId)) G.empireProbeRuledOut.push(sysId);
+  // NOTE: deliberately do NOT touch G.empireProbeRuledOut here. That field is a
+  // precomputed mirror used ONLY by the online view, where the probe deck is
+  // hidden and redactStateForViewer recomputes it from scratch (from the real
+  // deck) for the Empire viewer every redaction. Writing to it on the live
+  // (non-redacted) state created a truthy-but-partial array in hotseat /
+  // single-player: the "Base search" panel's `if (G.empireProbeRuledOut)`
+  // short-circuit then trusted this partial list (only setup removals) and
+  // never marked probes the Empire DREW during play as ruled out (player report
+  // #381 — drawn probes stayed "still possible" green). Leaving the field
+  // undefined in hotseat lets the panel derive rule-outs from the visible deck,
+  // which is correct.
   if (removed) log(G, { kind: 'probe-removed-for-system', payload: { systemId: sysId, probeId: probe.id } });
 }
 
