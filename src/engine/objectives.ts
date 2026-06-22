@@ -246,6 +246,18 @@ export function combatObjectivesTriggered(
 
   const has = (oid: string) => hand.includes(oid);
 
+  // "A battle was fought in theater T" — RAW means combat resolved there. Detect
+  // via a damage-dealing DICE attack in T, OR any unit (either side) destroyed in
+  // T by ANY means — dice, cinematic tactic cards, structures, or retreat losses
+  // (sumDestroyedHp folds all of those in). The old dice-only check missed
+  // cinematic-combat kills, so a theater won purely via advanced tactic cards
+  // didn't register — Decisive Victory never fired after winning both battles in
+  // a cinematic combat (player report #383).
+  const foughtIn = (theater: import('./types').Theater) =>
+    report.rounds.some((r) => r.attacks.some((a) => a.theater === theater && a.damageApplied > 0))
+    || sumDestroyedHp(G, report, 'Empire', theater) > 0
+    || sumDestroyedHp(G, report, 'Rebel', theater) > 0;
+
   // crippling-blow-1 — 3+ health of Imperial GROUND units destroyed in
   // a combat YOU initiated.
   if (has('crippling-blow-1') && rebelInitiated && empGroundHpLost >= 3) {
@@ -262,10 +274,7 @@ export function combatObjectivesTriggered(
     // before this check runs, so the live flag is always false here. (#53)
     const wasSubjugated = report.systemSubjugatedAtStart
       ?? G.map.systems[report.systemId]?.subjugated; // fallback for old reports
-    const groundFought = report.rounds.some((r) =>
-      r.attacks.some((a) => a.theater === 'ground' && a.damageApplied > 0)
-    );
-    if (wasSubjugated && groundFought) fired.push('liberation-2');
+    if (wasSubjugated && foughtIn('ground')) fired.push('liberation-2');
   }
   // major-victory-3 — 3+ health of Imperial SHIPS destroyed in a combat
   // you initiated.
@@ -289,13 +298,6 @@ export function combatObjectivesTriggered(
   // — leave to a follow-up so we don't surprise players. NOT fired here.
 
   // ----- Rise of the Empire combat objectives -----
-
-  // Per-theater "a battle was fought" = at least one damage-dealing attack in
-  // that theater this combat (mirrors the liberation-2 groundFought test).
-  const foughtIn = (theater: import('./types').Theater) =>
-    report.rounds.some((r) =>
-      r.attacks.some((a) => a.theater === theater && a.damageApplied > 0),
-    );
 
   // decisive-victory-1 — win a space battle AND a ground battle in the same
   // combat. Approximated as: Rebel won overall and both theaters saw a

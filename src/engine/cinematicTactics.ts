@@ -798,6 +798,8 @@ function resolveShieldAbsorb(
   if (moved > 0) {
     structure.damage += moved;
     const maxHp = G.catalog.unitTypes[eff.structureTypeId]?.health.value ?? Infinity;
+    // (Self-inflicted: the side's own shield structure soaks lethal damage. Not
+    // an enemy kill, so it isn't recorded toward enemy-destruction objectives.)
     if (structure.damage >= maxHp) M.destroyUnit(G, structure.instanceId, 'cinematic-shield-absorb');
   }
   return moved;
@@ -982,9 +984,22 @@ export function cinematicDestroyCandidates(
   return destroyTargets(G, c, side, theater, eff).map((u) => u.instanceId);
 }
 
+/** Record a combat kill made by a cinematic tactic (not dice) into the report's
+ *  cardDestructions, so it counts toward destruction-based objectives — Decisive
+ *  Victory, Crippling Blow, Liberation, Rebel Assault (player report #383: a
+ *  ground battle won purely by a cinematic destroy/deal tactic wasn't registering
+ *  as fought). Mirrors combat.ts's destroyViaCombatCard; call BEFORE M.destroyUnit
+ *  while the unit is still on the board. */
+function recordCinematicKill(G: GameState, c: CombatState, instanceId: string): void {
+  const ss = G.map.systems[c.systemId] ?? G.map.rebelBaseSpace;
+  const u = ss?.units.find((x) => x.instanceId === instanceId);
+  if (u) (c.report.cardDestructions ??= []).push({ side: u.side, typeId: u.typeId });
+}
+
 /** Destroy a player-chosen unit for a cinematic destroy ability. The card has
  *  already been discarded by the caller. */
-export function applyChosenDestroy(G: GameState, _c: CombatState, instanceId: string): void {
+export function applyChosenDestroy(G: GameState, c: CombatState, instanceId: string): void {
+  recordCinematicKill(G, c, instanceId);
   M.destroyUnit(G, instanceId, 'cinematic-destroy');
 }
 
@@ -1015,6 +1030,7 @@ function resolveDestroy(G: GameState, c: CombatState, side: Side, theater: Theat
   candidates.sort((a, b) =>
     (G.catalog.unitTypes[a.typeId]?.health.value ?? 0) - (G.catalog.unitTypes[b.typeId]?.health.value ?? 0));
   const target = candidates[0];
+  recordCinematicKill(G, c, target.instanceId);
   M.destroyUnit(G, target.instanceId, 'cinematic-destroy');
   return target.typeId;
 }

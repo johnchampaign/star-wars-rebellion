@@ -1708,13 +1708,16 @@ export function finalizeTheaterDestructions(G: GameState, c: CombatState, theate
     const maxHp = G.catalog.unitTypes[u.typeId]?.health.value;
     if (maxHp !== undefined && u.damage < maxHp) continue; // healed below lethal — survives
     const typeId = u.typeId;
+    const side = u.side;
     M.destroyUnit(G, unitId, 'combat');
-    if (bucketIdx !== undefined && c.report.rounds[bucketIdx]) {
-      const lastAttack = c.report.rounds[bucketIdx].attacks
-        .filter((a) => a.theater === theater)
-        .slice(-1)[0];
-      if (lastAttack) lastAttack.destroyed.push({ typeId, instanceId: unitId });
-    }
+    const lastAttack = bucketIdx !== undefined && c.report.rounds[bucketIdx]
+      ? c.report.rounds[bucketIdx].attacks.filter((a) => a.theater === theater).slice(-1)[0]
+      : undefined;
+    if (lastAttack) lastAttack.destroyed.push({ typeId, instanceId: unitId });
+    // No dice attack in this theatre to attribute the kill to (the unit died
+    // purely from cinematic tactic damage) — record it as a card destruction so
+    // it still counts toward combat objectives (#383).
+    else (c.report.cardDestructions ??= []).push({ side, typeId });
   }
 }
 
