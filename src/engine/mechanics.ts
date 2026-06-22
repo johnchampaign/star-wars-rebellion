@@ -935,12 +935,15 @@ export function captureLeader(G: GameState, leaderId: LeaderId, ring: 'captured'
   }
 
   // Empire only has 1 'captured' ring. Capturing another with 'captured'
-  // releases the first (rr Capturing leaders).
+  // releases the first (rr p.3: "if a second leader is captured, the first is
+  // rescued"). Let rescueLeader do the removal+placement — do NOT pre-splice the
+  // entry, or rescueLeader can't find it and bails early, leaving the freed
+  // leader placed nowhere (player report #384: the first captured leader
+  // vanished instead of returning to the Rebel supply).
   if (ring === 'captured') {
-    const existing = e.capturedLeaders.findIndex((c) => c.ring === 'captured');
-    if (existing >= 0) {
-      const old = e.capturedLeaders.splice(existing, 1)[0];
-      rescueLeader(G, old.leaderId, 'replaced-by-new-capture');
+    const existing = e.capturedLeaders.find((c) => c.ring === 'captured');
+    if (existing) {
+      rescueLeader(G, existing.leaderId, 'replaced-by-new-capture');
     }
   }
   e.capturedLeaders.push({ leaderId, ring, systemId: capturedSystemId });
