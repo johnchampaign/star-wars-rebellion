@@ -2042,17 +2042,29 @@ function listStartOfCombatPlayable(G: GameState, c: CombatState, side: Side): st
     // (player report: "Target the Generator offered where there are no
     // structures"). Gate those on target availability — RAW: their effect text
     // names a specific target that must be present.
-    if (!hasStartOfCombatLegalTarget(G, c, cid)) return false;
+    if (!hasStartOfCombatLegalTarget(G, c, cid, side)) return false;
     return true;
   });
 }
 
 /** Whether `cardId`'s Start-of-Combat effect has at least one legal target in
- *  the combat system. Cards without a hard target requirement return true. */
-function hasStartOfCombatLegalTarget(G: GameState, c: CombatState, cardId: string): boolean {
+ *  the combat system. Cards without a hard target requirement return true.
+ *  `side` is the side that would play the card (used for enemy-relative checks). */
+function hasStartOfCombatLegalTarget(G: GameState, c: CombatState, cardId: string, side: Side): boolean {
   const ss = G.map.systems[c.systemId];
   const units = ss?.units ?? [];
   switch (cardId) {
+    case 'point-blank-assault': {
+      // "All units in the system have -1 health, to a minimum of 1." Only worth
+      // playing if an ENEMY unit has health > 1 — a 1-health unit (e.g. a lone
+      // TIE Fighter) can't be reduced, so the card weakens nothing the opponent
+      // fields and just risks your own units (player report #386).
+      const enemy = side === 'Rebel' ? 'Empire' : 'Rebel';
+      return units.some((u) => {
+        const t = G.catalog.unitTypes[u.typeId];
+        return u.side === enemy && t?.health.color !== null && (t?.health.value ?? 0) > 1;
+      });
+    }
     case 'target-the-generator':
       // "Destroy 1 structure in the system." — needs a structure present.
       return units.some((u) => G.catalog.unitTypes[u.typeId]?.class === 'structure');
