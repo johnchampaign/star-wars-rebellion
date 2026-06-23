@@ -1195,13 +1195,13 @@ function bestCommandAction(G: GameState, side: Side): CommandAction[] {
               const impGroundHp = hpIn('ground'), impShipHp = hpIn('space');
               const hasSD = impUnits.some((u) => u.typeId === 'star-destroyer' || u.typeId === 'super-star-destroyer');
               const hasImpShips = impShipHp > 0, hasImpGround = impGroundHp > 0;
-              const resCount = def?.resources?.length ?? 0;
+              const hasSquareResource = !!def?.resources?.some((r) => r.shape === 'square');
               const has = (id: string) => rebelObjHand.includes(id);
               if (has('crippling-blow-1') && impGroundHp >= 3) ts += 10;
               if (has('rebel-assault-1') && hasSD) ts += 10;
               if (has('major-victory-3') && impShipHp >= 3) ts += 10;
               if (has('liberation-2') && sys.subjugated && hasImpGround) ts += 10;
-              if (has('raid-imperial-factory-3') && resCount > 0) ts += 8;
+              if (has('raid-imperial-factory-3') && hasSquareResource) ts += 8;
               if (has('seize-control-2') && sys.sabotage) ts += 8;
               if (has('decisive-victory-1') && hasImpShips && hasImpGround) ts += 8;
             }

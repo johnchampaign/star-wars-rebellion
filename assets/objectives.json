@@ -269,7 +269,7 @@
       "reputation": 1,
       "timing": "Combat",
       "effectKey": "",
-      "rulesText": "Win a battle in a combat the Rebels initiated, in a system with a resource icon.",
+      "rulesText": "Play after you win a battle during a combat that you initiated in a system that has a ■ (square) resource icon.",
       "image": "Raid Imperial Factory_Clear.png",
       "set": "rote"
     },

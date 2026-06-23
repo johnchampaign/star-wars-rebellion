@@ -314,10 +314,12 @@ export function combatObjectivesTriggered(
   }
 
   // raid-imperial-factory-3 — win a battle in a combat the Rebels INITIATED,
-  // in a system that has a resource icon.
+  // in a system that has a SQUARE (■) resource icon. The card art specifies a
+  // square icon, not any resource icon — squares mark the highest-value
+  // "factory" systems. A triangle/circle resource system does NOT qualify.
   if (
     has('raid-imperial-factory-3') && rebelInitiated && rebelWonOverall &&
-    (G.catalog.systems[report.systemId]?.resources?.length ?? 0) > 0
+    !!G.catalog.systems[report.systemId]?.resources?.some((r) => r.shape === 'square')
   ) {
     fired.push('raid-imperial-factory-3');
   }
