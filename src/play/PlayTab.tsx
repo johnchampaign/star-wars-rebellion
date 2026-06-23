@@ -613,13 +613,23 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         if (stepsThisBatch >= 200) break;  // per-batch safety
         const Gn = gameRef.current;
         if (!Gn || Gn.isGameOver) break;
-        // Pause the AI while a mission/combat report is waiting to be shown,
-        // so the human sees the result before the AI takes its next action
-        // (and before the combat board can preempt it). Reporter saw Plant
-        // False Lead resolve and the Empire immediately start a combat
-        // elsewhere without the mission result ever appearing. (#63)
+        // Pause the AI while ANY report is waiting to be shown, so the human
+        // sees the result before the AI takes its next action (and before the
+        // combat board can preempt it). Reporter saw Plant False Lead resolve
+        // and the Empire immediately start a combat elsewhere without the result
+        // appearing (#63). It must cover ALL report queues — including activation
+        // and refresh reports: an activation report (which recaps the move + its
+        // battle) is only ELIGIBLE to display once nothing is pending, so if the
+        // AI ran ahead and posted the next mission's OpposeMission, the battle
+        // recap was held behind that prompt and surfaced AFTER it — exactly the
+        // recurring "results out of order" the reporter kept hitting (#385).
+        // Activation reports only DISPLAY once nothing is mid-resolution, so only
+        // pause on them when they could actually show — otherwise the AI would
+        // stall on a report that can't appear (e.g. an AI-owed pending choice).
+        const midResolution = !!(Gn.pendingChoice || Gn.pendingMission || Gn.pendingCombat);
         if ((Gn.missionReports?.length ?? 0) > 0 || (Gn.combatReports?.length ?? 0) > 0
-          || (Gn.objectiveReports?.length ?? 0) > 0) break;
+          || (Gn.objectiveReports?.length ?? 0) > 0 || (Gn.refreshReports?.length ?? 0) > 0
+          || (!midResolution && (Gn.activationReports?.length ?? 0) > 0)) break;
         const owes = aiOwesChoice(Gn, ai);
         if (Gn.currentPlayer !== ai && !owes) break;
         let did = false;
