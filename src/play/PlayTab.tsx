@@ -8,6 +8,7 @@ import { UNIT_IMAGE, groupByType, groupTypeIds, getUnitStyle, setUnitStyle, next
 import { capturePageScreenshot } from './screenshot';
 import { missionTargets, missionLeaderTargets, missionRevealIsPointless } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce } from './randomAI';
+import { recordPlay } from 'digital-boardgame-framework';
 import { TERRITORIES, territoryFill } from '../data/territories';
 import {
   loadVmodFromFile, getVmodMeta, clearVmodCache, preloadAllBlobUrls,
@@ -553,6 +554,17 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     setSidePref(p);
     localStorage.setItem(LS_SIDE_PREF, p);
   };
+  // Best-effort games-played counter from the shared hub. Display-only; a
+  // failed/slow fetch just leaves it hidden and never affects play.
+  const [playCount, setPlayCount] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch('https://games-hub-5vo.pages.dev/stats?game=rebellion')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d && typeof d.count === 'number') setPlayCount(d.count); })
+      .catch(() => { /* counter is cosmetic — ignore */ });
+    return () => { cancelled = true; };
+  }, []);
   // Rise of the Empire opt-in for the NEXT new game. Persisted as a partial
   // config; resolveExpansion fills defaults at start. Default: base game.
   const [expansionPref, setExpansionPref] = useState<ExpansionConfig>(() => {
@@ -812,6 +824,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     const s = trimmed === '' ? Math.floor(Math.random() * 1e9) : Number(trimmed);
     if (Number.isNaN(s)) return;
     gameRef.current = createGame(dataRef.current, { seed: s, autoSetupUnits: false, expansion: expansionPref });
+    // Best-effort play counter: this local build is always human-vs-AI (the
+    // human takes one side, the engine AI plays the other). Fire one beacon per
+    // game START — never per move or page load. recordPlay never throws/blocks.
+    recordPlay('rebellion', 'ai');
     // New game: nothing scored yet, but reset the seen-cursor to be safe.
     seenObjectiveLogIdxRef.current = 0;
     aiActivitySeenIdxRef.current = 0;
@@ -1068,6 +1084,11 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
                 </>
               )}
             </div>
+            {playCount !== null && (
+              <div style={{ color: '#888', fontSize: 12, textAlign: 'center', marginTop: 8 }}>
+                {playCount.toLocaleString()} games played
+              </div>
+            )}
           </div>
         </div>
       </div>

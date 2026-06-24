@@ -177,6 +177,11 @@ export async function makeServer(request: Request, env: Env): Promise<{
     notifier: new NoopNotifier(),
     broadcaster,
     gameUrl,
+    // Best-effort play counter: createGame fires an 'online' beacon to the
+    // games hub so it can tally games-played per game. Never affects
+    // createGame's result (failures/timeouts are swallowed). Hotseat/AI
+    // starts call recordPlay() client-side instead.
+    playBeacon: { appId: 'rebellion' },
   });
   return { server, store, codec, dataBundle, supabase, notifier, gameUrl };
 }
