@@ -65,6 +65,44 @@ console.log('\n[ #266 Early Promotion places both Motti and Grand Moff Tarkin ]'
   check('Tarkin no longer in the leader pool', !G.empire.leaderPool.includes('grand-moff-tarkin'));
 }
 
+console.log('\n[ #389 Early Promotion relocates Tarkin even when already on the board ]');
+{
+  const G = createGame(data, opts(960));
+  G.empire.startingActionDeck = [];
+  G.currentPlayer = 'Empire';
+  // Simulate an earlier Gather Intel this turn that already deployed Tarkin to a
+  // NON-Imperial system (naboo is Rebel-loyal per forcedRebelLoyalty). He is on
+  // the board, NOT in the pool — the case #266's pool-only fix silently skipped.
+  const ti = G.empire.leaderPool.indexOf('grand-moff-tarkin');
+  if (ti >= 0) G.empire.leaderPool.splice(ti, 1);
+  G.empire.leadersOnBoard['naboo'] = [...(G.empire.leadersOnBoard['naboo'] ?? []), 'grand-moff-tarkin'];
+  // Play Early Promotion (Immediate) → recruit Motti + place both in an Imperial system.
+  G.empire.actionHand = ['early-promotion'];
+  G.pendingChoice = { kind: 'PlayImmediateActionCard', side: 'Empire', candidates: ['early-promotion'] };
+  phases.playImmediateActionCard(G, 'early-promotion');
+  if (G.pendingChoice?.kind === 'StartingCardBranch') {
+    phases.resolveStartingCardBranch(G, 'recruit');
+  }
+  const sysOf = (lid) =>
+    Object.entries(G.empire.leadersOnBoard).find(([, list]) => list.includes(lid))?.[0];
+  const isImperial = (sid) => {
+    const ss = G.map.systems[sid];
+    return !!ss && (ss.loyalty === 'imperial' || ss.subjugated);
+  };
+  const tarkinSys = sysOf('grand-moff-tarkin');
+  const mottiSys = sysOf('motti');
+  check('Tarkin relocated off the Rebel system (no longer at naboo)', tarkinSys !== 'naboo',
+    `tarkinSys=${tarkinSys}`);
+  check('Tarkin now in an Imperial system', !!tarkinSys && isImperial(tarkinSys),
+    `tarkinSys=${tarkinSys}`);
+  check('Motti placed in an Imperial system', !!mottiSys && isImperial(mottiSys),
+    `mottiSys=${mottiSys}`);
+  check('Motti and Tarkin co-located (card places both in the same system)',
+    !!tarkinSys && tarkinSys === mottiSys, `motti=${mottiSys} tarkin=${tarkinSys}`);
+  // No stale duplicate left behind at naboo.
+  check('No leftover Tarkin at naboo', !(G.empire.leadersOnBoard['naboo'] ?? []).includes('grand-moff-tarkin'));
+}
+
 console.log('\n[ #296 expansion deck swaps Daring Rescue → Critical Rescue ]');
 {
   const G = createGame(data, opts(961, true)); // roeMissions

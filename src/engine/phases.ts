@@ -6365,13 +6365,17 @@ function applyStartingCardRecruitBranch(G: GameState, cardId: string): void {
     const targetSys = Object.entries(G.map.systems)
       .find(([_sid, ss]) => ss.loyalty === 'imperial' || ss.subjugated)?.[0];
     if (targetSys) {
-      // Tarkin's leader id is 'grand-moff-tarkin', not 'tarkin' — the wrong id
-      // meant indexOf never found him, so Early Promotion placed Motti but left
-      // Tarkin stranded in the pool (#266).
+      // Place Motti AND Tarkin in the Imperial system. placeLeader already
+      // strips a leader from wherever he currently sits (pool OR board), so
+      // calling it directly relocates Tarkin even when an earlier mission this
+      // same turn already deployed him to the board (#389) — e.g. a Gather
+      // Intel that left him in a Rebel system. The #266 fix only handled the
+      // case where Tarkin was still in the leader pool (indexOf), which
+      // silently skipped him once he was on the board.
+      const onBoard = (lid: LeaderId) =>
+        Object.values(G.empire.leadersOnBoard).some((list) => list.includes(lid));
       for (const lid of ['motti', 'grand-moff-tarkin'] as LeaderId[]) {
-        const i = G.empire.leaderPool.indexOf(lid);
-        if (i >= 0) {
-          G.empire.leaderPool.splice(i, 1);
+        if (G.empire.leaderPool.includes(lid) || onBoard(lid)) {
           M.placeLeader(G, 'Empire', lid, targetSys);
         }
       }
