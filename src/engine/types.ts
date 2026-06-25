@@ -982,6 +982,12 @@ export type ChoiceRequest =
       kind: 'AssignSecondLeaderPick';
       side: Side;
       missionId: string;
+      // The leader the card just placed on this mission (Leia for OMDH, the
+      // resolver leader for Proceeding As Planned). Used to pin the exact
+      // leadersOnMissions entry — missionId alone is ambiguous when a duplicate
+      // copy of the same mission is already assigned (that bug soft-locked the
+      // second-leader prompt — #390-adjacent).
+      placedLeaderId: LeaderId;
       candidates: LeaderId[]; // the side's pool leaders
       cardName: string;
     }

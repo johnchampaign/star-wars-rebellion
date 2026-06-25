@@ -11722,7 +11722,7 @@ function PlayAssignmentActionCardModal({
 
 function AssignSecondLeaderModal({ G, choice, onPick }: {
   G: GameState;
-  choice: { kind: 'AssignSecondLeaderPick'; side: Side; missionId: string; candidates: string[]; cardName: string };
+  choice: { kind: 'AssignSecondLeaderPick'; side: Side; missionId: string; placedLeaderId: string; candidates: string[]; cardName: string };
   onPick: (leaderId: string | null) => void;
 }) {
   const color = sideColor(choice.side);

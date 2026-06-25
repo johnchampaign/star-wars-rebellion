@@ -85,5 +85,38 @@ console.log('\n[ #309 no pool leaders → no second-leader prompt ]');
     G.pendingChoice === undefined, G.pendingChoice?.kind);
 }
 
+console.log('\n[ #309 duplicate-mission soft-lock: second copy fetched while the first is assigned ]');
+{
+  // The mission deck has duplicate copies. If one copy is already assigned (with
+  // two leaders), OMDH fetching the OTHER copy used to make the second-leader
+  // resolver find the wrong (full) entry by missionId, reject the pick, and
+  // leave the prompt open forever — soft-locking the player (forum report: bobbi).
+  const G = createGame(data, opts(7));
+  const f = G.rebel;
+  for (const list of Object.values(f.leadersOnBoard)) list.length = 0;
+  f.leadersOnMissions = [];
+  f.leaderPool = ['general-rieekan', 'jan-dodonna', 'mon-mothma', 'princess-leia'];
+  // Find a mission that appears at least twice in the deck.
+  const counts = {};
+  for (const m of f.missionDeck) counts[m] = (counts[m] || 0) + 1;
+  const dup = Object.keys(counts).find((m) => counts[m] >= 2);
+  check('a duplicate mission exists in the deck', !!dup, JSON.stringify(counts));
+  // Pre-assign one copy with TWO leaders (full).
+  f.leadersOnMissions.push({ missionId: dup, leaderIds: ['mon-mothma', 'jan-dodonna'] });
+  // OMDH fetches the other copy and places Leia.
+  G.pendingChoice = { kind: 'OurMostDesperateHourPick', side: 'Rebel', candidates: [dup] };
+  phases.resolveOurMostDesperateHourPick(G, dup);
+  check('second-leader prompt posted', G.pendingChoice?.kind === 'AssignSecondLeaderPick');
+  const r = phases.resolveAssignSecondLeader(G, 'general-rieekan');
+  check('assigning the second leader succeeds (no soft-lock)', r.ok, r.reason);
+  check('the prompt is cleared (player not stranded)', G.pendingChoice === undefined, G.pendingChoice?.kind);
+  // The leader must land on the OMDH (Leia) entry, not the already-full copy.
+  const leiaEntry = f.leadersOnMissions.find((m) => m.missionId === dup && m.leaderIds.includes('princess-leia'));
+  check('second leader joined the LEIA copy', !!leiaEntry && leiaEntry.leaderIds.includes('general-rieekan'),
+    JSON.stringify(f.leadersOnMissions));
+  const fullEntry = f.leadersOnMissions.find((m) => m.missionId === dup && !m.leaderIds.includes('princess-leia'));
+  check('the already-full copy is untouched (still 2 leaders)', fullEntry?.leaderIds.length === 2);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

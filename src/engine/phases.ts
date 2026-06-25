@@ -3951,7 +3951,7 @@ export function resolveOurMostDesperateHourPick(
   }});
   // FFG FAQ (May 2019): used during Assignment, so the Rebel MAY add a second
   // leader to this mission (#309). Offer it; the resolver clears the choice.
-  maybeOfferSecondLeader(G, 'Rebel', missionId, 'Our Most Desperate Hour');
+  maybeOfferSecondLeader(G, 'Rebel', missionId, 'Our Most Desperate Hour', 'princess-leia');
   return { ok: true };
 }
 
@@ -3959,11 +3959,13 @@ export function resolveOurMostDesperateHourPick(
  *  mission (OMDH, Proceeding As Planned) lets the player assign a SECOND leader
  *  to it. Posts an AssignSecondLeaderPick when the side has a pool leader to add;
  *  otherwise clears the pending choice. (#309) */
-function maybeOfferSecondLeader(G: GameState, side: Side, missionId: string, cardName: string): void {
+function maybeOfferSecondLeader(
+  G: GameState, side: Side, missionId: string, cardName: string, placedLeaderId: LeaderId,
+): void {
   const f = faction(G, side);
   const candidates = [...f.leaderPool];
   if (candidates.length === 0) { G.pendingChoice = undefined; return; }
-  G.pendingChoice = { kind: 'AssignSecondLeaderPick', side, missionId, candidates, cardName };
+  G.pendingChoice = { kind: 'AssignSecondLeaderPick', side, missionId, placedLeaderId, candidates, cardName };
   log(G, { kind: 'choice-request', side, payload: {
     kind: 'AssignSecondLeaderPick', missionId, candidates: candidates.length, cardName,
   }});
@@ -3977,18 +3979,30 @@ export function resolveAssignSecondLeader(
   const pc = G.pendingChoice;
   if (!pc || pc.kind !== 'AssignSecondLeaderPick') return { ok: false, reason: 'no-pending' };
   if (leaderId !== null) {
-    if (!pc.candidates.includes(leaderId)) return { ok: false, reason: 'not-a-candidate' };
     const f = faction(G, pc.side);
+    // Pin the EXACT mission entry the card just placed its leader on. Matching
+    // by missionId alone is ambiguous: the mission deck has duplicate copies, so
+    // a second copy of the same mission can already be assigned. Matching by the
+    // placed leader (Leia for OMDH, the resolver leader for PaP — pulled off any
+    // other mission first, so unique here) hits the right entry. Without this the
+    // wrong (already-full) entry was found, the assign was rejected, and the
+    // prompt was left open — soft-locking the player (forum report: bobbi).
+    const am = pc.placedLeaderId
+      ? f.leadersOnMissions.find((m) => m.missionId === pc.missionId && m.leaderIds.includes(pc.placedLeaderId))
+      : f.leadersOnMissions.find((m) => m.missionId === pc.missionId);
     const i = f.leaderPool.indexOf(leaderId);
-    if (i < 0) return { ok: false, reason: 'leader-not-in-pool' };
-    const am = f.leadersOnMissions.find((m) => m.missionId === pc.missionId);
-    if (!am) return { ok: false, reason: 'mission-not-assigned' };
-    if (am.leaderIds.length >= 2) return { ok: false, reason: 'already-two-leaders' };
-    f.leaderPool.splice(i, 1);
-    am.leaderIds.push(leaderId);
-    log(G, { kind: 'assign-leader', side: pc.side, payload: {
-      missionId: pc.missionId, leaderIds: [leaderId], via: pc.cardName,
-    }});
+    // On any problem, fall through to clearing the choice (decline) rather than
+    // returning with the prompt still open — a second-leader assignment is
+    // optional, so a failure must never strand the player.
+    if (pc.candidates.includes(leaderId) && i >= 0 && am && am.leaderIds.length < 2) {
+      f.leaderPool.splice(i, 1);
+      am.leaderIds.push(leaderId);
+      log(G, { kind: 'assign-leader', side: pc.side, payload: {
+        missionId: pc.missionId, leaderIds: [leaderId], via: pc.cardName,
+      }});
+    } else {
+      log(G, { kind: 'choice-cancel', side: pc.side, payload: { kind: 'AssignSecondLeaderPick' } });
+    }
   } else {
     log(G, { kind: 'choice-cancel', side: pc.side, payload: { kind: 'AssignSecondLeaderPick' } });
   }
@@ -4026,7 +4040,7 @@ export function resolveProceedingAsPlannedPick(
   }});
   // FFG FAQ (May 2019): Assignment-phase ability → the Empire MAY add a second
   // leader to this project (#309).
-  maybeOfferSecondLeader(G, 'Empire', missionId, 'Proceeding As Planned');
+  maybeOfferSecondLeader(G, 'Empire', missionId, 'Proceeding As Planned', leaderId);
   return { ok: true };
 }
 
