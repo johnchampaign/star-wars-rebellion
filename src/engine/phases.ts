@@ -6494,7 +6494,53 @@ export function autoRevealArmedActionCards(G: GameState, side: Side, phaseEvent:
   }
   if (toFire.length === 0) return;
   f.armedActionCards = keep;
-  for (const a of toFire) revealArmedActionCard(G, a);
+  for (let i = 0; i < toFire.length; i++) {
+    revealArmedActionCard(G, toFire[i]);
+    // A reveal can pause for a sub-choice (Secret Facility's triangle-unit pick)
+    // or for combat. Stop and re-arm the un-fired remainder so they're processed
+    // when that choice/combat resolves (resolveSecretFacilityUnitPick re-runs us).
+    if (G.pendingChoice || G.pendingCombat) {
+      f.armedActionCards = [...toFire.slice(i + 1), ...f.armedActionCards];
+      return;
+    }
+  }
+}
+
+/** Empire "1 triangle ground unit" options with supply (Stormtrooper always;
+ *  Assault Tank when RoE units are in play). Used by Secret Facility (#396). */
+function empireTriangleGroundUnits(G: GameState): string[] {
+  // RoE unit types stay in every game's catalog, so gate Assault Tank by the
+  // expansion flag here rather than trusting catalog presence (see project note
+  // "RoE units stay in base catalog"). Base game → Stormtrooper only.
+  const roeUnits = !!G.expansion?.roeUnits;
+  return Object.values(G.catalog.unitTypes)
+    .filter((t) => t.side === 'Empire' && t.theater === 'ground' && t.tier === 'triangle'
+      && t.class !== 'structure'
+      && (t.set !== 'rote' || roeUnits)
+      && M.unitsAvailableInSupply(G, t.id) > 0)
+    .map((t) => t.id);
+}
+
+/** Resolve Secret Facility's triangle-unit pick (#396): deploy the chosen unit
+ *  (the Shield Bunker was already placed at reveal), resolve combat, then process
+ *  any remaining armed start-of-command reveals. */
+export function resolveSecretFacilityUnitPick(
+  G: GameState, typeId: string,
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'SecretFacilityUnitPick') return { ok: false, reason: 'no-pending' };
+  if (!pc.candidates.includes(typeId as UnitTypeId)) return { ok: false, reason: 'not-a-candidate' };
+  const sys = pc.systemId;
+  G.pendingChoice = undefined;
+  M.deployUnit(G, 'Empire', typeId, sys);
+  log(G, { kind: 'secret-facility-unit', side: 'Empire', payload: { systemId: sys, typeId } });
+  if (!G.pendingCombat) {
+    beginCombat(G, 'Empire', sys, sys);
+    runCombat(G);
+  }
+  // Continue any further armed reveals that were waiting behind this one.
+  if (!G.pendingChoice && !G.pendingCombat) autoRevealArmedActionCards(G, 'Empire', 'empire-command-start');
+  return { ok: true };
 }
 
 function revealArmedActionCard(G: GameState, armed: ArmedActionCard): void {
@@ -6506,11 +6552,21 @@ function revealArmedActionCard(G: GameState, armed: ArmedActionCard): void {
   }});
   switch (armed.cardId) {
     case 'secret-facility': {
-      // RAW: "reveal to place 1 Shield Bunker and 1 triangle ground unit
-      // in that system. Resolve combat." The triangle ground unit is the
-      // Stormtrooper.
+      // RAW: "reveal to place 1 Shield Bunker and 1 triangle ground unit in that
+      // system. Resolve combat." Place the Shield Bunker now; for the triangle
+      // ground unit, let the player choose when more than one type is available
+      // (Stormtrooper OR Assault Tank with RoE units — #396). With a single type
+      // (base game) there's no choice: deploy it and resolve combat inline.
       M.deployUnit(G, 'Empire', 'shield-bunker', sys);
-      M.deployUnit(G, 'Empire', 'stormtrooper', sys);
+      const triangleOptions = empireTriangleGroundUnits(G);
+      if (triangleOptions.length >= 2) {
+        G.pendingChoice = { kind: 'SecretFacilityUnitPick', side: 'Empire', systemId: sys, candidates: triangleOptions };
+        log(G, { kind: 'choice-request', side: 'Empire', payload: {
+          kind: 'SecretFacilityUnitPick', systemId: sys, candidates: triangleOptions,
+        }});
+        return; // paused — resolveSecretFacilityUnitPick deploys + resolves combat
+      }
+      M.deployUnit(G, 'Empire', triangleOptions[0] ?? 'stormtrooper', sys);
       if (!G.pendingCombat) {
         beginCombat(G, 'Empire', sys, sys);
         runCombat(G);

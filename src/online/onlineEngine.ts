@@ -122,6 +122,7 @@ export function makeOnlinePhases(submit: Submit, canSubmit: () => boolean): type
     recruitDrawAnother: (_g: any) => act({ kind: 'recruitDrawAnother' }),
     resolveBuildPicks: (_g: any, choices: any) => act({ kind: 'resolveBuildPicks', choices }),
     resolveDeployUnitPick: (_g: any, systemId: any) => act({ kind: 'resolveDeployUnitPick', systemId }),
+    resolveSecretFacilityUnitPick: (_g: any, typeId: any) => act({ kind: 'resolveSecretFacilityUnitPick', typeId }),
     resolveAttachRing: (_g: any, leaderId: any) => act({ kind: 'resolveAttachRing', leaderId }),
     resolveActionCardSystemPick: (_g: any, systemId: any) => act({ kind: 'resolveActionCardSystemPick', systemId }),
     // Rapid Mobilization

@@ -401,6 +401,16 @@ export type ChoiceRequest =
       candidates: SystemId[];
     }
   | {
+      // Secret Facility (RoE Empire): on reveal it places 1 Shield Bunker + "1
+      // triangle ground unit". With RoE units in play that's Stormtrooper OR
+      // Assault Tank, so the player chooses (#396). The Shield Bunker is already
+      // placed; this pick deploys the chosen triangle unit, then resolves combat.
+      kind: 'SecretFacilityUnitPick';
+      side: Side; // 'Empire'
+      systemId: SystemId;
+      candidates: UnitTypeId[]; // triangle ground unit types with supply
+    }
+  | {
       // Death Star Plans 2/3 (Rebel objective, Combat-timed). RAW:
       // "If there is at least 1 fighter after the space battle step, reveal
       // this card to roll 3 dice. If you roll a direct hit, play this card

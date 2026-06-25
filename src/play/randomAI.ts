@@ -2170,6 +2170,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const c = G.pendingChoice;
     return phases.resolveArmCardProbePick(G, c.candidates[0]).ok;
   }
+  // Secret Facility triangle-unit pick (#396): prefer the AT (Assault Tank) when
+  // available — sturdier ground — else the Stormtrooper.
+  if (G.pendingChoice && G.pendingChoice.kind === 'SecretFacilityUnitPick' && G.pendingChoice.side === side) {
+    const c = G.pendingChoice;
+    const pick = c.candidates.includes('assault-tank') ? 'assault-tank' : c.candidates[0];
+    return phases.resolveSecretFacilityUnitPick(G, pick).ok;
+  }
   // Blindside: always accept (denies pool opposition; clear upside).
   if (G.pendingChoice && G.pendingChoice.kind === 'BlindsideOffer' && G.pendingChoice.side === side) {
     return phases.resolveBlindsideOffer(G, true).ok;

@@ -240,6 +240,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'ActionCardSystemPick':     return pc.side === side;
     case 'AttachRingPick':           return pc.side === side;
     case 'DeployUnitPick':           return pc.side === side;
+    case 'SecretFacilityUnitPick':   return pc.side === side;
     case 'DetainedTargetPick':       return pc.side === side;
     case 'RetrieveThePlansPick':     return pc.side === side;
     case 'InterrogationDroidDecoyPick': return pc.side === side;
@@ -2784,6 +2785,36 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             persist(); refresh();
           }} />
       )}
+
+      {G.pendingChoice?.kind === 'SecretFacilityUnitPick'
+        && G.pendingChoice.side === humanSide && (() => {
+          const pc = G.pendingChoice;
+          const sysName = G.catalog.systems[pc.systemId]?.name ?? pc.systemId;
+          return (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
+              <div style={{ background: '#15171c', border: '2px solid #ff8866', borderRadius: 6,
+                padding: 20, maxWidth: 460, width: '92%' }}>
+                <h3 style={{ color: '#ff8866', marginTop: 0 }}>Secret Facility — choose a ground unit</h3>
+                <div style={{ color: '#aaa', fontSize: 13, marginBottom: 10 }}>
+                  A Shield Bunker is placed at <b>{sysName}</b>. Choose the triangle ground unit to deploy alongside it.
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {pc.candidates.map((tid) => (
+                    <button key={tid} className="tab-button" style={{ padding: '8px 12px' }}
+                      onClick={() => {
+                        const r = phases.resolveSecretFacilityUnitPick(G, tid);
+                        if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+                        persist(); refresh();
+                      }}>
+                      {G.catalog.unitTypes[tid]?.name ?? tid}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
