@@ -2158,10 +2158,14 @@ export type GameState = {
     queue: { side: Side; count: number; discardable: string[] }[];
   };
 
-  // Secret Facility's "you may reveal" offer queue at the start of an Empire
-  // Command turn (#396). One ArmedCardRevealOffer is posted per card; declining
-  // keeps the card armed for a future turn. Transient (only set mid-resolution).
+  // "You may reveal" offer queue for armed Empire cards (#396): Secret Facility
+  // at the start of an Empire Command turn ('command-start'), Sweep the Area at
+  // the end of the Command phase ('command-end'). One ArmedCardRevealOffer is
+  // posted per card; declining keeps the card armed for a future turn. `phase`
+  // selects the continuation once the queue drains (command-end resumes the
+  // end-of-phase Rapid Mobilization / Refresh transition). Transient.
   pendingArmedReveals?: {
+    phase: 'command-start' | 'command-end';
     remaining: ArmedActionCard[];
   };
 

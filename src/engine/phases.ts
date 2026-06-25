@@ -836,9 +836,10 @@ function advanceCommandTurn(G: GameState): void {
   // not on demand. The resolvers re-enter advanceCommandTurn to chain/continue.
   if (flushImmediateActionCards(G)) return;
   if (G.passedThisCommand.length >= 2) {
-    // RoE Sweep the Area auto-reveal fires at end-of-Command-phase (right
-    // before Refresh kicks off).
-    autoRevealArmedActionCards(G, 'Empire', 'empire-command-end');
+    // RoE Sweep the Area: "you MAY reveal" at end-of-Command-phase (right before
+    // Refresh). Offer it; if an offer is posted we pause, and the offer resolver
+    // resumes the Rapid Mobilization / Refresh transition once it's answered.
+    if (offerArmedRevealsAtCommandEnd(G)) return;
     processPendingRapidMobilizations(G);
     return;
   }
@@ -6475,49 +6476,30 @@ export function resolveArmCardProbePick(G: GameState, probeId: string): { ok: bo
   return { ok: true };
 }
 
-/** Auto-reveal `side`'s armed cards whose trigger matches `phaseEvent`. Used for
- *  Sweep the Area at the END of the Empire Command phase. (Secret Facility's
- *  start-of-command reveal is OPTIONAL — see offerArmedRevealsAtCommandStart.)
- *  Each card-id's reveal effect lives in revealArmedActionCard. */
-export function autoRevealArmedActionCards(G: GameState, side: Side, phaseEvent: 'empire-command-start' | 'empire-command-end'): void {
-  if (side !== 'Empire') return;
-  const f = G.empire;
-  if (!f.armedActionCards || f.armedActionCards.length === 0) return;
-  // Cards fire in order they were armed; each fires once and is removed.
-  const toFire: ArmedActionCard[] = [];
-  const keep: ArmedActionCard[] = [];
-  for (const a of f.armedActionCards) {
-    const trigger = a.cardId === 'secret-facility' ? 'empire-command-start'
-                  : a.cardId === 'sweep-the-area'  ? 'empire-command-end'
-                  : null;
-    if (trigger === phaseEvent) toFire.push(a);
-    else keep.push(a);
-  }
-  if (toFire.length === 0) return;
-  f.armedActionCards = keep;
-  for (let i = 0; i < toFire.length; i++) {
-    revealArmedActionCard(G, toFire[i]);
-    // A reveal can pause for a sub-choice or for combat. Stop and re-arm the
-    // un-fired remainder so they're processed when that choice/combat resolves.
-    if (G.pendingChoice || G.pendingCombat) {
-      f.armedActionCards = [...toFire.slice(i + 1), ...f.armedActionCards];
-      return;
-    }
-  }
-}
-
 /** Begin the optional Secret Facility reveal offers at the start of an Empire
  *  Command turn (#396: "you MAY reveal"). Builds the offer queue and posts the
  *  first; the player reveals or declines each. */
 export function offerArmedRevealsAtCommandStart(G: GameState): void {
-  const f = G.empire;
-  const remaining = (f.armedActionCards ?? []).filter((a) => a.cardId === 'secret-facility');
+  const remaining = (G.empire.armedActionCards ?? []).filter((a) => a.cardId === 'secret-facility');
   if (remaining.length === 0) { G.pendingArmedReveals = undefined; return; }
-  G.pendingArmedReveals = { remaining: [...remaining] }; // fresh each turn (clears any stale)
+  G.pendingArmedReveals = { phase: 'command-start', remaining: [...remaining] }; // fresh each turn
   postNextArmedRevealOffer(G);
 }
 
-/** Post the next pending reveal offer (or clear the queue when done). */
+/** Offer Sweep the Area's optional reveal at the END of the Command phase (#396).
+ *  Returns true if an offer was posted (caller must pause); false if there's
+ *  nothing to offer (caller proceeds straight to the end-of-phase transition). */
+function offerArmedRevealsAtCommandEnd(G: GameState): boolean {
+  const remaining = (G.empire.armedActionCards ?? []).filter((a) => a.cardId === 'sweep-the-area');
+  if (remaining.length === 0) { G.pendingArmedReveals = undefined; return false; }
+  G.pendingArmedReveals = { phase: 'command-end', remaining: [...remaining] };
+  postNextArmedRevealOffer(G);
+  return !!G.pendingChoice; // posted an offer → paused
+}
+
+/** Post the next pending reveal offer. When the queue drains, run the phase's
+ *  continuation: command-end resumes the Rapid Mobilization / Refresh transition;
+ *  command-start just lets the Empire's turn proceed. */
 function postNextArmedRevealOffer(G: GameState): void {
   const p = G.pendingArmedReveals;
   if (!p) return;
@@ -6532,7 +6514,9 @@ function postNextArmedRevealOffer(G: GameState): void {
     }});
     return;
   }
+  const phase = p.phase;
   G.pendingArmedReveals = undefined;
+  if (phase === 'command-end') processPendingRapidMobilizations(G);
 }
 
 /** Resolve a Secret Facility reveal offer (#396). `reveal=false` declines and

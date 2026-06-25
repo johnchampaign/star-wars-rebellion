@@ -2177,10 +2177,15 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const pick = c.candidates.includes('assault-tank') ? 'assault-tank' : c.candidates[0];
     return phases.resolveSecretFacilityUnitPick(G, pick).ok;
   }
-  // Secret Facility "you may reveal" offer (#396): the AI always reveals — free
-  // Shield Bunker + ground unit at a system it already probed is pure upside.
+  // Armed-card "you may reveal" offer (#396). Secret Facility is pure upside →
+  // always reveal. Sweep the Area only pays off if a Rebel leader is in the
+  // system to capture; otherwise decline and keep it armed for a better moment.
   if (G.pendingChoice && G.pendingChoice.kind === 'ArmedCardRevealOffer' && G.pendingChoice.side === side) {
-    return phases.resolveArmedCardRevealOffer(G, true).ok;
+    const c = G.pendingChoice;
+    const reveal = c.cardId === 'sweep-the-area'
+      ? (G.rebel.leadersOnBoard[c.systemId] ?? []).length > 0
+      : true;
+    return phases.resolveArmedCardRevealOffer(G, reveal).ok;
   }
   // Blindside: always accept (denies pool opposition; clear upside).
   if (G.pendingChoice && G.pendingChoice.kind === 'BlindsideOffer' && G.pendingChoice.side === side) {

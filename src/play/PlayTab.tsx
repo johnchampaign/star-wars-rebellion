@@ -2792,6 +2792,11 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           const pc = G.pendingChoice;
           const sysName = G.catalog.systems[pc.systemId]?.name ?? pc.systemId;
           const cardName = G.catalog.actions[pc.cardId]?.name ?? 'Secret Facility';
+          const desc = pc.cardId === 'sweep-the-area'
+            ? <>You may reveal it to capture a Rebel leader at <b>{sysName}</b> and move them to your
+              nearest system — or keep it hidden for a later turn.</>
+            : <>You may reveal your facility at <b>{sysName}</b> to deploy a Shield Bunker and a
+              ground unit there (then resolve combat) — or keep it hidden for a later turn.</>;
           return (
             <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
               display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
@@ -2799,10 +2804,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
               <div style={{ background: '#15171c', border: '2px solid #ff8866', borderRadius: 6,
                 padding: 20, maxWidth: 460, width: '92%', maxHeight: '85dvh', overflowY: 'auto' }}>
                 <h3 style={{ color: '#ff8866', marginTop: 0 }}>{cardName} — reveal now?</h3>
-                <div style={{ color: '#aaa', fontSize: 13, marginBottom: 14 }}>
-                  You may reveal your facility at <b>{sysName}</b> to deploy a Shield Bunker and a
-                  ground unit there (then resolve combat) — or keep it hidden for a later turn.
-                </div>
+                <div style={{ color: '#aaa', fontSize: 13, marginBottom: 14 }}>{desc}</div>
                 <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                   <button className="tab-button" style={{ padding: '8px 14px' }}
                     onClick={() => { const r = phases.resolveArmedCardRevealOffer(G, false); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }}>

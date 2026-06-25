@@ -70,5 +70,35 @@ console.log('\n[ base game: reveal → no unit choice, Shield Bunker + Stormtroo
   check('Shield Bunker + Stormtrooper deployed', has(G, 'shield-bunker') && has(G, 'stormtrooper'));
 }
 
+console.log('\n[ #396 Sweep the Area is ALSO "you may reveal" — declining keeps it armed ]');
+{
+  const M = await import('../src/engine/mechanics.ts');
+  const G = createGame(data, { seed: 2, expansion: ROE });
+  G.empire.armedActionCards = [{ cardId: 'sweep-the-area', probeSystemId: SYS, armedAt: 1 }];
+  M.deployUnit(G, 'Empire', 'stormtrooper', SYS);
+  (G.rebel.leadersOnBoard[SYS] ??= []).push('mon-mothma');
+  G.pendingArmedReveals = { phase: 'command-end', remaining: [...G.empire.armedActionCards] };
+  G.pendingChoice = { kind: 'ArmedCardRevealOffer', side: 'Empire', cardId: 'sweep-the-area', systemId: SYS };
+  const dec = phases.resolveArmedCardRevealOffer(G, false);
+  check('decline ok', dec.ok, dec.reason);
+  check('Sweep stays armed after declining', (G.empire.armedActionCards ?? []).some((a) => a.cardId === 'sweep-the-area'));
+  check('Mon Mothma NOT captured on decline', !(G.empire.capturedLeaders ?? []).some((c) => c.leaderId === 'mon-mothma'));
+}
+
+console.log('\n[ #396 Sweep the Area — revealing captures the leader ]');
+{
+  const M = await import('../src/engine/mechanics.ts');
+  const G = createGame(data, { seed: 2, expansion: ROE });
+  G.empire.armedActionCards = [{ cardId: 'sweep-the-area', probeSystemId: SYS, armedAt: 1 }];
+  M.deployUnit(G, 'Empire', 'stormtrooper', SYS);
+  (G.rebel.leadersOnBoard[SYS] ??= []).push('mon-mothma');
+  G.pendingArmedReveals = { phase: 'command-end', remaining: [...G.empire.armedActionCards] };
+  G.pendingChoice = { kind: 'ArmedCardRevealOffer', side: 'Empire', cardId: 'sweep-the-area', systemId: SYS };
+  const rev = phases.resolveArmedCardRevealOffer(G, true);
+  check('reveal ok', rev.ok, rev.reason);
+  check('Mon Mothma captured on reveal', (G.empire.capturedLeaders ?? []).some((c) => c.leaderId === 'mon-mothma'));
+  check('Sweep consumed (no longer armed)', !(G.empire.armedActionCards ?? []).some((a) => a.cardId === 'sweep-the-area'));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
