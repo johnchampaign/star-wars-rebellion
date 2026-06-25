@@ -1162,9 +1162,9 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     return true;
   };
 
-  const onRevealMission = (missionId: string, targetSystemId: string, targetLeaderId?: string) => {
+  const onRevealMission = (missionId: string, targetSystemId: string, targetLeaderId?: string, assignedLeaderIds?: string[]) => {
     if (!G) return false;
-    const r = phases.revealMission(G, G.currentPlayer, missionId, targetSystemId, targetLeaderId);
+    const r = phases.revealMission(G, G.currentPlayer, missionId, targetSystemId, targetLeaderId, assignedLeaderIds);
     if (!r.ok) {
       alert(`Cannot reveal: ${r.reason}`);
       return false;
@@ -9295,7 +9295,7 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
   G: GameState;
   side: Side;
   onActivate: (leaderId: string, targetSystemId: string, moveOrders: MoveOrder[]) => boolean | void;
-  onReveal: (missionId: string, targetSystemId: string, targetLeaderId?: string) => boolean | void;
+  onReveal: (missionId: string, targetSystemId: string, targetLeaderId?: string, assignedLeaderIds?: string[]) => boolean | void;
   onPass: () => void;
 }) {
   const f = side === 'Rebel' ? G.rebel : G.empire;
@@ -9369,11 +9369,16 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
 
   // Mode toggle: 'activate' (default) or 'reveal' a mission.
   const [mode, setMode] = useState<'activate' | 'reveal'>('activate');
-  const [revealMissionId, setRevealMissionId] = useState<string | null>(null);
+  // Selection is by INDEX into the assigned list, not missionId — the mission
+  // deck has duplicate cards, so the same mission can be assigned twice with
+  // different leaders/targets and the player must be able to pick which copy (#390).
+  const [revealIdx, setRevealIdx] = useState<number | null>(null);
   const [revealTargetSysId, setRevealTargetSysId] = useState<string | null>(null);
   const [revealTargetLeaderId, setRevealTargetLeaderId] = useState<string | null>(null);
 
   const assignedMissions = f.leadersOnMissions;
+  const revealEntry = revealIdx != null ? assignedMissions[revealIdx] ?? null : null;
+  const revealMissionId = revealEntry?.missionId ?? null;
   // Missions that resolve WITHOUT targeting a system (Contingency Plan just
   // re-assigns a leader). The reveal UI shouldn't force a planet pick for these
   // (player report #133: had to type a random planet to activate it). The engine
@@ -9398,9 +9403,9 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
         + `Reveal it anyway?`);
       if (!ok) return;
     }
-    const ok = onReveal(revealMissionId, target, revealTargetLeaderId ?? undefined);
+    const ok = onReveal(revealMissionId, target, revealTargetLeaderId ?? undefined, revealEntry?.leaderIds);
     if (ok !== false) {
-      setRevealMissionId(null);
+      setRevealIdx(null);
       setRevealTargetSysId(null);
       setRevealTargetLeaderId(null);
     }
@@ -9479,10 +9484,10 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
             <div style={{ color: '#888', fontSize: 12 }}>(none assigned this round)</div>
           )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 10 }}>
-            {assignedMissions.map((am) => {
+            {assignedMissions.map((am, amIdx) => {
               const card = G.catalog.missions[am.missionId];
               if (!card) return null;
-              const isSel = revealMissionId === am.missionId;
+              const isSel = revealIdx === amIdx;
               const leaderNames = am.leaderIds.map((lid) => G.catalog.leaders[lid]?.name ?? lid).join(' + ');
               // Skill total — mirror the engine's reveal check: major + minor
               // icons, where minor includes printed minors AND ring-granted
@@ -9503,8 +9508,8 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
               const portraitActive = !!(portraitId && (am.leaderIds as string[]).includes(portraitId));
               return (
                 <button
-                  key={am.missionId}
-                  onClick={() => setRevealMissionId(am.missionId)}
+                  key={amIdx}
+                  onClick={() => setRevealIdx(amIdx)}
                   style={{
                     padding: '6px 10px',
                     background: isSel ? color : '#0c0d10',

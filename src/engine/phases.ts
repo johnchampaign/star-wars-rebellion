@@ -1083,6 +1083,13 @@ export function activateSystem(
 export function revealMission(
   G: GameState, side: Side, missionId: string, targetSystemId: SystemId,
   targetLeaderId?: LeaderId,
+  // Which assigned copy to reveal, identified by its leader set. The mission
+  // deck has duplicate cards, so the same missionId can be assigned twice with
+  // DIFFERENT leaders heading to DIFFERENT systems; matching by missionId alone
+  // always revealed the first copy, so the player couldn't choose which (#390).
+  // Leaders are disjoint across missions, so the leader set pins the exact entry.
+  // Omitted (e.g. AI play, single-copy case) → first copy by missionId.
+  assignedLeaderIds?: LeaderId[],
 ): { ok: boolean; reason?: string } {
   if (G.phase !== 'Command') return { ok: false, reason: 'wrong-phase' };
   if (G.currentPlayer !== side) return { ok: false, reason: 'not-your-turn' };
@@ -1109,7 +1116,18 @@ export function revealMission(
   }
 
   const f = faction(G, side);
-  const assigned = f.leadersOnMissions.find((m) => m.missionId === missionId);
+  // When a specific copy is requested, match the entry whose leader set matches
+  // (order-independent). Falls back to first-by-missionId when unspecified.
+  const wantLeaders = assignedLeaderIds ? [...assignedLeaderIds].sort() : null;
+  const sameLeaderSet = (ids: readonly string[]): boolean => {
+    if (!wantLeaders || ids.length !== wantLeaders.length) return false;
+    const sorted = [...ids].sort();
+    return sorted.every((l, k) => l === wantLeaders[k]);
+  };
+  const assigned = wantLeaders
+    ? (f.leadersOnMissions.find((m) => m.missionId === missionId && sameLeaderSet(m.leaderIds))
+       ?? f.leadersOnMissions.find((m) => m.missionId === missionId)) // tolerate a stale set
+    : f.leadersOnMissions.find((m) => m.missionId === missionId);
   if (!assigned) return { ok: false, reason: 'mission-not-assigned' };
 
   const card = G.catalog.missions[missionId];

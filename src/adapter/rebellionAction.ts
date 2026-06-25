@@ -46,7 +46,7 @@ export type RebellionAction =
   // ---------- Command (top-level) ----------
   | { kind: 'pass' }
   | { kind: 'activateSystem'; leaderId: LeaderId; targetSystemId: SystemId; moveOrders: MoveOrder[] }
-  | { kind: 'revealMission'; missionId: string; targetSystemId: SystemId; targetLeaderId?: LeaderId }
+  | { kind: 'revealMission'; missionId: string; targetSystemId: SystemId; targetLeaderId?: LeaderId; assignedLeaderIds?: LeaderId[] }
 
   // ---------- Mission resolution (top of the mission flow) ----------
   | { kind: 'resolveOpposition'; opposerLeaderId: LeaderId | null }

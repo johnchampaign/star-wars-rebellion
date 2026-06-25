@@ -66,7 +66,7 @@ export function makeOnlinePhases(submit: Submit, canSubmit: () => boolean): type
     // Command
     pass: (_g: any, _s: any) => act({ kind: 'pass' }),
     activateSystem: (_g: any, _s: any, leaderId: any, targetSystemId: any, moveOrders: any = []) => act({ kind: 'activateSystem', leaderId, targetSystemId, moveOrders }),
-    revealMission: (_g: any, _s: any, missionId: any, targetSystemId: any, targetLeaderId?: any) => act({ kind: 'revealMission', missionId, targetSystemId, targetLeaderId }),
+    revealMission: (_g: any, _s: any, missionId: any, targetSystemId: any, targetLeaderId?: any, assignedLeaderIds?: any) => act({ kind: 'revealMission', missionId, targetSystemId, targetLeaderId, assignedLeaderIds }),
     // Mission resolution
     resolveOpposition: (_g: any, opposerLeaderId: any) => act({ kind: 'resolveOpposition', opposerLeaderId }),
     resolveYodaMissionReroll: (_g: any, rerollIndex: any) => act({ kind: 'resolveYodaMissionReroll', rerollIndex }),
