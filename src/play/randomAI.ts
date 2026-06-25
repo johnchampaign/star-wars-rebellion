@@ -649,7 +649,22 @@ function planAssignment(G: GameState, side: Side): Array<{ missionId: string; le
     // check; mirror it at assignment time so we don't commit a leader to a
     // dead mission in the first place.
     const tgt = missionTargets(G, side, missionId);
-    if (!tgt.permissive && tgt.systemIds.length === 0) return null;
+    if (!tgt.permissive && tgt.systemIds.length === 0) {
+      // EXCEPTION: fresh-capture missions (Detained / Collect Bounty) target an
+      // enemy leader "in any system". At ASSIGNMENT time those leaders are still
+      // in the pool — they only land in systems as the opponent reveals missions
+      // during the Command phase. So "no target right now" wrongly skipped them
+      // every game (the Empire captured/detained 0 leaders despite ~2 surfacing
+      // per game). Assign them anyway when the opponent has leaders that will
+      // surface; the Command-phase reveal still gates on a live target.
+      const FRESH_CAPTURE = side === 'Empire'
+        && (missionId === 'detained' || missionId === 'collect-bounty');
+      const oppHasLeaders = FRESH_CAPTURE && (
+        G.rebel.leaderPool.length > 0
+        || (G.rebel.leadersOnMissions ?? []).length > 0
+        || Object.values(G.rebel.leadersOnBoard).some((l) => l.length > 0));
+      if (!oppHasLeaders) return null;
+    }
     // Base mission value + situational + leader bonuses minus the
     // opportunity cost of using N leaders (we'd rather a 1-leader plan
     // than a 2-leader one all else equal).
