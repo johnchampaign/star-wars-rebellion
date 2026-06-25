@@ -4286,17 +4286,25 @@ function HandLimitDiscardModal({ G, choice, onSubmit }: {
   const accent = '#ffb84d';
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100 }}>
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100,
+      padding: 12, boxSizing: 'border-box' }}>
+      {/* Flex column with a scrolling body + always-visible footer so the Discard
+          button is never pushed off-screen on mobile (iOS toolbars clip a tall
+          centered modal — player report #398, iPhone soft-lock). dvh tracks the
+          visible viewport better than vh on iOS. */}
       <div style={{ background: '#15171c', border: `2px solid ${accent}`, borderRadius: 6,
-        padding: 20, maxWidth: 620, width: '92%', maxHeight: '88vh', overflowY: 'auto' }}>
-        <h3 style={{ color: accent, marginTop: 0 }}>
-          Over the mission hand limit — discard {choice.count}
-        </h3>
-        <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
-          You're over the 10-card limit. Choose {choice.count} mission{choice.count === 1 ? '' : 's'} to
-          discard ({picked.size}/{choice.count} selected). Starting and project cards don't count and can't be discarded.
+        maxWidth: 620, width: '92%', maxHeight: '85dvh', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ padding: '20px 20px 0' }}>
+          <h3 style={{ color: accent, marginTop: 0 }}>
+            Over the mission hand limit — discard {choice.count}
+          </h3>
+          <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+            You're over the 10-card limit. Choose {choice.count} mission{choice.count === 1 ? '' : 's'} to
+            discard ({picked.size}/{choice.count} selected). Starting and project cards don't count and can't be discarded.
+          </div>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 14 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4,
+          overflowY: 'auto', padding: '0 20px', flex: 1, minHeight: 0 }}>
           {choice.discardable.map((id, idx) => {
             const m = G.catalog.missions[id];
             const on = picked.has(idx);
@@ -4313,11 +4321,12 @@ function HandLimitDiscardModal({ G, choice, onSubmit }: {
             );
           })}
         </div>
-        <div style={{ textAlign: 'right' }}>
+        {/* Always-visible footer (outside the scroll area) so Discard is reachable. */}
+        <div style={{ textAlign: 'right', padding: '12px 20px', borderTop: '1px solid #2a2d34' }}>
           <button className="tab-button active"
             disabled={picked.size !== choice.count}
             onClick={() => onSubmit([...picked].map((i) => choice.discardable[i]))}
-            style={{ padding: '6px 16px', opacity: picked.size === choice.count ? 1 : 0.5 }}>
+            style={{ padding: '8px 18px', opacity: picked.size === choice.count ? 1 : 0.5 }}>
             Discard {picked.size}
           </button>
         </div>
@@ -14245,10 +14254,11 @@ function MissionListPickModal({
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+      padding: 12, boxSizing: 'border-box',
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-        padding: 20, maxWidth: 640, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 640, width: '92%', maxHeight: '85dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color, marginTop: 0 }}>{title}</h3>
