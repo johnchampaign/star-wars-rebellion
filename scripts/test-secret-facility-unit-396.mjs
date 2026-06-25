@@ -1,6 +1,6 @@
-// #396 — Secret Facility places "1 Shield Bunker and 1 triangle ground unit". With
-// RoE units in play the triangle ground unit is Stormtrooper OR Assault Tank, so
-// the player must choose. The reveal used to hardcode the Stormtrooper.
+// #396 — Secret Facility: "you MAY reveal" (optional) at the start of your Command
+// turn, and on reveal you place "1 Shield Bunker and 1 triangle ground unit" — the
+// triangle unit is a player choice (Stormtrooper OR Assault Tank with RoE).
 // Run: node scripts/test-secret-facility-unit-396.mjs
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -17,32 +17,56 @@ const check = (n, ok, e = '') => { if (ok) { console.log(`  ✓ ${n}`); pass++; 
 
 const SYS = 'utapau'; // Imperial-leaning, no Rebel units → reveal won't start combat
 const has = (G, typeId) => G.map.systems[SYS].units.some((u) => u.side === 'Empire' && u.typeId === typeId);
-
-console.log('\n[ #396 RoE: revealing Secret Facility offers a triangle-unit choice ]');
-{
-  const G = createGame(data, { seed: 2, expansion: { enabled: true, roeUnits: true, roeMissions: true } });
+const armed = (G) => (G.empire.armedActionCards ?? []).some((a) => a.cardId === 'secret-facility');
+const setup = (exp) => {
+  const G = createGame(data, exp ? { seed: 2, expansion: exp } : { seed: 2 });
   G.empire.armedActionCards = [{ cardId: 'secret-facility', probeSystemId: SYS, armedAt: 1 }];
-  phases.autoRevealArmedActionCards(G, 'Empire', 'empire-command-start');
-  check('a Shield Bunker was placed immediately', has(G, 'shield-bunker'));
-  check('a triangle-unit choice is posted', G.pendingChoice?.kind === 'SecretFacilityUnitPick', G.pendingChoice?.kind);
-  check('both Stormtrooper and Assault Tank are offered',
-    (G.pendingChoice?.candidates ?? []).includes('stormtrooper') && (G.pendingChoice?.candidates ?? []).includes('assault-tank'),
-    JSON.stringify(G.pendingChoice?.candidates));
-  check('no ground unit deployed yet (waiting on the player)', !has(G, 'stormtrooper') && !has(G, 'assault-tank'));
-  // Choose the Assault Tank.
-  const r = phases.resolveSecretFacilityUnitPick(G, 'assault-tank');
-  check('resolve ok', r.ok, r.reason);
-  check('the chosen Assault Tank was deployed', has(G, 'assault-tank'));
-  check('the Stormtrooper was NOT force-deployed', !has(G, 'stormtrooper'));
-  check('the card is fully resolved (no lingering choice)', G.pendingChoice === undefined, G.pendingChoice?.kind);
+  return G;
+};
+const ROE = { enabled: true, roeUnits: true, roeMissions: true };
+
+console.log('\n[ #396 the reveal is OPTIONAL — an offer is posted, not auto-fired ]');
+{
+  const G = setup(ROE);
+  phases.offerArmedRevealsAtCommandStart(G);
+  check('a reveal OFFER is posted (not auto-fired)', G.pendingChoice?.kind === 'ArmedCardRevealOffer', G.pendingChoice?.kind);
+  check('nothing deployed yet', !has(G, 'shield-bunker'));
 }
 
-console.log('\n[ base game (no RoE units): no choice — Stormtrooper + Shield Bunker deploy directly ]');
+console.log('\n[ #396 declining keeps the facility armed for later, deploys nothing ]');
 {
-  const G = createGame(data, { seed: 2 });
-  G.empire.armedActionCards = [{ cardId: 'secret-facility', probeSystemId: SYS, armedAt: 1 }];
-  phases.autoRevealArmedActionCards(G, 'Empire', 'empire-command-start');
-  check('no choice posted', G.pendingChoice === undefined, G.pendingChoice?.kind);
+  const G = setup(ROE);
+  phases.offerArmedRevealsAtCommandStart(G);
+  const r = phases.resolveArmedCardRevealOffer(G, false);
+  check('decline ok', r.ok, r.reason);
+  check('the facility is STILL armed', armed(G));
+  check('no Shield Bunker / units placed', !has(G, 'shield-bunker') && !has(G, 'stormtrooper') && !has(G, 'assault-tank'));
+  check('no lingering choice', G.pendingChoice === undefined, G.pendingChoice?.kind);
+}
+
+console.log('\n[ #396 revealing (RoE) → Shield Bunker placed + triangle-unit choice → deploy ]');
+{
+  const G = setup(ROE);
+  phases.offerArmedRevealsAtCommandStart(G);
+  const r = phases.resolveArmedCardRevealOffer(G, true);
+  check('reveal ok', r.ok, r.reason);
+  check('Shield Bunker placed', has(G, 'shield-bunker'));
+  check('triangle-unit choice posted (Stormtrooper vs Assault Tank)', G.pendingChoice?.kind === 'SecretFacilityUnitPick');
+  check('both unit types offered', (G.pendingChoice?.candidates ?? []).includes('stormtrooper') && (G.pendingChoice?.candidates ?? []).includes('assault-tank'));
+  const r2 = phases.resolveSecretFacilityUnitPick(G, 'assault-tank');
+  check('unit pick ok', r2.ok, r2.reason);
+  check('chosen Assault Tank deployed, Stormtrooper not forced', has(G, 'assault-tank') && !has(G, 'stormtrooper'));
+  check('facility no longer armed (consumed)', !armed(G));
+  check('fully resolved', G.pendingChoice === undefined && !G.pendingArmedReveals);
+}
+
+console.log('\n[ base game: reveal → no unit choice, Shield Bunker + Stormtrooper deploy ]');
+{
+  const G = setup(null);
+  phases.offerArmedRevealsAtCommandStart(G);
+  check('offer posted', G.pendingChoice?.kind === 'ArmedCardRevealOffer');
+  phases.resolveArmedCardRevealOffer(G, true);
+  check('no unit choice in base game', G.pendingChoice === undefined, G.pendingChoice?.kind);
   check('Shield Bunker + Stormtrooper deployed', has(G, 'shield-bunker') && has(G, 'stormtrooper'));
 }
 

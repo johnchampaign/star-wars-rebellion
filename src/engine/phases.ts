@@ -851,10 +851,10 @@ function advanceCommandTurn(G: GameState): void {
     return;
   }
   G.currentPlayer = next;
-  // RoE Secret Facility auto-reveal fires at the start of an Empire
-  // Command turn (the first one after arming).
+  // RoE Secret Facility: "you MAY reveal" at the start of an Empire Command turn
+  // — offer the reveal rather than firing it automatically (#396).
   if (next === 'Empire') {
-    autoRevealArmedActionCards(G, 'Empire', 'empire-command-start');
+    offerArmedRevealsAtCommandStart(G);
   }
   // RoE Under the Radar: offer to return a held probe at the start of a
   // Rebel Command turn.
@@ -6475,9 +6475,10 @@ export function resolveArmCardProbePick(G: GameState, probeId: string): { ok: bo
   return { ok: true };
 }
 
-/** Auto-reveal all of `side`'s armed cards whose trigger matches `phaseEvent`.
- *  Called from the appropriate turn-transition hooks. Each card-id's reveal
- *  effect lives in revealArmedActionCard. */
+/** Auto-reveal `side`'s armed cards whose trigger matches `phaseEvent`. Used for
+ *  Sweep the Area at the END of the Empire Command phase. (Secret Facility's
+ *  start-of-command reveal is OPTIONAL — see offerArmedRevealsAtCommandStart.)
+ *  Each card-id's reveal effect lives in revealArmedActionCard. */
 export function autoRevealArmedActionCards(G: GameState, side: Side, phaseEvent: 'empire-command-start' | 'empire-command-end'): void {
   if (side !== 'Empire') return;
   const f = G.empire;
@@ -6496,14 +6497,67 @@ export function autoRevealArmedActionCards(G: GameState, side: Side, phaseEvent:
   f.armedActionCards = keep;
   for (let i = 0; i < toFire.length; i++) {
     revealArmedActionCard(G, toFire[i]);
-    // A reveal can pause for a sub-choice (Secret Facility's triangle-unit pick)
-    // or for combat. Stop and re-arm the un-fired remainder so they're processed
-    // when that choice/combat resolves (resolveSecretFacilityUnitPick re-runs us).
+    // A reveal can pause for a sub-choice or for combat. Stop and re-arm the
+    // un-fired remainder so they're processed when that choice/combat resolves.
     if (G.pendingChoice || G.pendingCombat) {
       f.armedActionCards = [...toFire.slice(i + 1), ...f.armedActionCards];
       return;
     }
   }
+}
+
+/** Begin the optional Secret Facility reveal offers at the start of an Empire
+ *  Command turn (#396: "you MAY reveal"). Builds the offer queue and posts the
+ *  first; the player reveals or declines each. */
+export function offerArmedRevealsAtCommandStart(G: GameState): void {
+  const f = G.empire;
+  const remaining = (f.armedActionCards ?? []).filter((a) => a.cardId === 'secret-facility');
+  if (remaining.length === 0) { G.pendingArmedReveals = undefined; return; }
+  G.pendingArmedReveals = { remaining: [...remaining] }; // fresh each turn (clears any stale)
+  postNextArmedRevealOffer(G);
+}
+
+/** Post the next pending reveal offer (or clear the queue when done). */
+function postNextArmedRevealOffer(G: GameState): void {
+  const p = G.pendingArmedReveals;
+  if (!p) return;
+  const armed = G.empire.armedActionCards ?? [];
+  while (p.remaining.length > 0) {
+    const next = p.remaining[0];
+    // Skip any card that's no longer armed (already revealed).
+    if (!armed.includes(next)) { p.remaining.shift(); continue; }
+    G.pendingChoice = { kind: 'ArmedCardRevealOffer', side: 'Empire', cardId: next.cardId, systemId: next.probeSystemId };
+    log(G, { kind: 'choice-request', side: 'Empire', payload: {
+      kind: 'ArmedCardRevealOffer', cardId: next.cardId, systemId: next.probeSystemId,
+    }});
+    return;
+  }
+  G.pendingArmedReveals = undefined;
+}
+
+/** Resolve a Secret Facility reveal offer (#396). `reveal=false` declines and
+ *  keeps the facility armed for a later turn; `reveal=true` reveals it (places
+ *  the units / posts the triangle-unit pick / resolves combat). Either way,
+ *  the next queued offer (if any) follows. */
+export function resolveArmedCardRevealOffer(G: GameState, reveal: boolean): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'ArmedCardRevealOffer') return { ok: false, reason: 'no-pending' };
+  const p = G.pendingArmedReveals;
+  if (!p || p.remaining.length === 0) return { ok: false, reason: 'no-queue' };
+  const cur = p.remaining.shift()!;
+  G.pendingChoice = undefined;
+  if (reveal) {
+    const f = G.empire;
+    const idx = (f.armedActionCards ?? []).indexOf(cur);
+    if (idx >= 0) f.armedActionCards!.splice(idx, 1);
+    revealArmedActionCard(G, cur); // may post SecretFacilityUnitPick or start combat
+  } else {
+    log(G, { kind: 'armed-reveal-declined', side: 'Empire', payload: { cardId: cur.cardId, systemId: cur.probeSystemId } });
+  }
+  // If the reveal paused (unit pick / combat), the continuation runs once that
+  // resolves (resolveSecretFacilityUnitPick → postNextArmedRevealOffer).
+  if (!G.pendingChoice && !G.pendingCombat) postNextArmedRevealOffer(G);
+  return { ok: true };
 }
 
 /** Empire "1 triangle ground unit" options with supply (Stormtrooper always;
@@ -6538,8 +6592,8 @@ export function resolveSecretFacilityUnitPick(
     beginCombat(G, 'Empire', sys, sys);
     runCombat(G);
   }
-  // Continue any further armed reveals that were waiting behind this one.
-  if (!G.pendingChoice && !G.pendingCombat) autoRevealArmedActionCards(G, 'Empire', 'empire-command-start');
+  // Continue any further reveal offers that were waiting behind this one.
+  if (!G.pendingChoice && !G.pendingCombat) postNextArmedRevealOffer(G);
   return { ok: true };
 }
 

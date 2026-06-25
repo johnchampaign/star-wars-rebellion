@@ -2177,6 +2177,11 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const pick = c.candidates.includes('assault-tank') ? 'assault-tank' : c.candidates[0];
     return phases.resolveSecretFacilityUnitPick(G, pick).ok;
   }
+  // Secret Facility "you may reveal" offer (#396): the AI always reveals — free
+  // Shield Bunker + ground unit at a system it already probed is pure upside.
+  if (G.pendingChoice && G.pendingChoice.kind === 'ArmedCardRevealOffer' && G.pendingChoice.side === side) {
+    return phases.resolveArmedCardRevealOffer(G, true).ok;
+  }
   // Blindside: always accept (denies pool opposition; clear upside).
   if (G.pendingChoice && G.pendingChoice.kind === 'BlindsideOffer' && G.pendingChoice.side === side) {
     return phases.resolveBlindsideOffer(G, true).ok;

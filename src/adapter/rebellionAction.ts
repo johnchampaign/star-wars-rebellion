@@ -111,6 +111,7 @@ export type RebellionAction =
   | { kind: 'resolveBuildPicks'; choices: string[] }
   | { kind: 'resolveDeployUnitPick'; systemId: SystemId }
   | { kind: 'resolveSecretFacilityUnitPick'; typeId: string }
+  | { kind: 'resolveArmedCardRevealOffer'; reveal: boolean }
   | { kind: 'resolveAttachRing'; leaderId: LeaderId }
   | { kind: 'resolveActionCardSystemPick'; systemId: SystemId }
 

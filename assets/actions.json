@@ -518,7 +518,7 @@
         "krennics-finest"
       ],
       "effectKey": "secret-facility",
-      "rulesText": "Place 1 of your probe cards facedown under this card. On your turn in the Command phase, reveal it to place 1 Shield Bunker and 1 triangle ground unit in that system. Resolve any combat. Doesn't require Krennic or Krennic's Finest.",
+      "rulesText": "Place 1 of your probe cards facedown under this card. At the start of your turn in the Command phase, you may reveal that probe card to gain 1 triangle ground unit and 1 Shield Bunker in the card's system. Then resolve a combat in that system and discard this action card.",
       "image": "Secret Facility.png",
       "set": "rote"
     },
@@ -560,7 +560,7 @@
         "krennics-finest"
       ],
       "effectKey": "sweep-the-area",
-      "rulesText": "Place 1 of your probe cards facedown under this card. At the end of any Command phase, reveal it to capture 1 leader in that system (doesn't require Krennic's Finest). Move the captured leader to the closest system containing Imperial units.",
+      "rulesText": "Place 1 of your probe cards facedown under this card. At the end of the Command phase, you may reveal that probe card to capture 1 leader in that system (doesn't require Krennic's Finest). Then move that leader to the closest system containing an Imperial unit and discard this action card.",
       "image": "Sweep the Area.png",
       "set": "rote"
     },

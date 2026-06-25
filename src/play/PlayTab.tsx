@@ -241,6 +241,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
     case 'AttachRingPick':           return pc.side === side;
     case 'DeployUnitPick':           return pc.side === side;
     case 'SecretFacilityUnitPick':   return pc.side === side;
+    case 'ArmedCardRevealOffer':     return pc.side === side;
     case 'DetainedTargetPick':       return pc.side === side;
     case 'RetrieveThePlansPick':     return pc.side === side;
     case 'InterrogationDroidDecoyPick': return pc.side === side;
@@ -2785,6 +2786,37 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             persist(); refresh();
           }} />
       )}
+
+      {G.pendingChoice?.kind === 'ArmedCardRevealOffer'
+        && G.pendingChoice.side === humanSide && (() => {
+          const pc = G.pendingChoice;
+          const sysName = G.catalog.systems[pc.systemId]?.name ?? pc.systemId;
+          const cardName = G.catalog.actions[pc.cardId]?.name ?? 'Secret Facility';
+          return (
+            <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000,
+              padding: 12, boxSizing: 'border-box' }}>
+              <div style={{ background: '#15171c', border: '2px solid #ff8866', borderRadius: 6,
+                padding: 20, maxWidth: 460, width: '92%', maxHeight: '85dvh', overflowY: 'auto' }}>
+                <h3 style={{ color: '#ff8866', marginTop: 0 }}>{cardName} — reveal now?</h3>
+                <div style={{ color: '#aaa', fontSize: 13, marginBottom: 14 }}>
+                  You may reveal your facility at <b>{sysName}</b> to deploy a Shield Bunker and a
+                  ground unit there (then resolve combat) — or keep it hidden for a later turn.
+                </div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button className="tab-button" style={{ padding: '8px 14px' }}
+                    onClick={() => { const r = phases.resolveArmedCardRevealOffer(G, false); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }}>
+                    Not yet
+                  </button>
+                  <button className="tab-button active" style={{ padding: '8px 14px' }}
+                    onClick={() => { const r = phases.resolveArmedCardRevealOffer(G, true); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }}>
+                    Reveal
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
       {G.pendingChoice?.kind === 'SecretFacilityUnitPick'
         && G.pendingChoice.side === humanSide && (() => {

@@ -411,6 +411,15 @@ export type ChoiceRequest =
       candidates: UnitTypeId[]; // triangle ground unit types with supply
     }
   | {
+      // Secret Facility (RoE Empire): "you MAY reveal" at the start of your
+      // Command turn — the reveal is optional (#396). Decline keeps the facility
+      // armed for a later turn; reveal places the units and resolves combat.
+      kind: 'ArmedCardRevealOffer';
+      side: Side; // 'Empire'
+      cardId: string; // 'secret-facility'
+      systemId: SystemId;
+    }
+  | {
       // Death Star Plans 2/3 (Rebel objective, Combat-timed). RAW:
       // "If there is at least 1 fighter after the space battle step, reveal
       // this card to roll 3 dice. If you roll a direct hit, play this card
@@ -2147,6 +2156,13 @@ export type GameState = {
   pendingHandLimitDiscards?: {
     logStart: number;
     queue: { side: Side; count: number; discardable: string[] }[];
+  };
+
+  // Secret Facility's "you may reveal" offer queue at the start of an Empire
+  // Command turn (#396). One ArmedCardRevealOffer is posted per card; declining
+  // keeps the card armed for a future turn. Transient (only set mid-resolution).
+  pendingArmedReveals?: {
+    remaining: ArmedActionCard[];
   };
 
   // Flags set by Assignment-timed action cards. Cleared at appropriate
