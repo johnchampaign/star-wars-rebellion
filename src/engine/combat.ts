@@ -2420,11 +2420,54 @@ export function resolveCinematicTargetPick(
   if (!c) return { ok: false, reason: 'no-pending-combat' };
   if (!pc.candidates.includes(instanceId as UnitInstanceId)) return { ok: false, reason: 'not-a-candidate' };
   const ctx = c.flags?.cinematicTargetPick;
-  applyChosenTargetDeal(G, c, instanceId, pc.amount);
-  log(G, { kind: 'cinematic-tactic-play', side: pc.side, payload: {
-    cardId: ctx?.cardId, ability: ctx?.useTop ? 'primary' : 'secondary',
-    theater: pc.theater, targetDealt: pc.amount, target: instanceId,
-  }});
+  // A TARGETED deal ("deal 4 to 1 AT-AT") dumps the whole amount on one unit.
+  // A PLAIN deal ("deal 2 damage") is SPLITTABLE — the player assigns it one
+  // point at a time and may spread it across different units (player report
+  // #391: Overrun's 2 damage was being forced entirely onto a single target).
+  const plainDeal = ctx && !targetDealAbilityFor(ctx.cardId, ctx.useTop)
+    ? dealAbilityFor(ctx.cardId, ctx.useTop) : null;
+  if (plainDeal) {
+    // Apply ONE point to the chosen unit; stage it if that's lethal.
+    const dead = M.damageUnit(G, instanceId, 1);
+    if (dead) (c.theaterStaged ??= []).push(instanceId);
+    const remaining = pc.amount - 1;
+    log(G, { kind: 'cinematic-tactic-play', side: pc.side, payload: {
+      cardId: ctx?.cardId, ability: ctx?.useTop ? 'primary' : 'secondary',
+      theater: pc.theater, targetDealt: 1, target: instanceId,
+    }});
+    if (remaining > 0) {
+      // Recompute targets, excluding now-doomed units (more damage on a staged
+      // unit is wasted), and re-prompt while there's still a real choice.
+      const staged = new Set(c.theaterStaged ?? []);
+      const next = cinematicDealCandidates(G, c, pc.side, pc.theater, plainDeal)
+        .filter((id) => !staged.has(id as UnitInstanceId));
+      if (next.length >= 2) {
+        if (c.flags?.cinematicTargetPick) c.flags.cinematicTargetPick.amount = remaining;
+        G.pendingChoice = {
+          kind: 'CinematicTargetPick', side: pc.side, theater: pc.theater,
+          systemId: pc.systemId, amount: remaining, candidates: next,
+        };
+        log(G, { kind: 'choice-request', side: pc.side, payload: {
+          kind: 'CinematicTargetPick', theater: pc.theater, amount: remaining, candidates: next.length,
+        }});
+        return { ok: true }; // paused — player assigns the next point
+      }
+      // 0–1 targets left → no further choice; auto-assign the remainder.
+      for (let k = 0; k < remaining; k++) {
+        const live = cinematicDealCandidates(G, c, pc.side, pc.theater, plainDeal)
+          .filter((id) => !(c.theaterStaged ?? []).includes(id as UnitInstanceId));
+        if (live.length === 0) break;
+        const d = M.damageUnit(G, live[0], 1);
+        if (d) (c.theaterStaged ??= []).push(live[0]);
+      }
+    }
+  } else {
+    applyChosenTargetDeal(G, c, instanceId, pc.amount);
+    log(G, { kind: 'cinematic-tactic-play', side: pc.side, payload: {
+      cardId: ctx?.cardId, ability: ctx?.useTop ? 'primary' : 'secondary',
+      theater: pc.theater, targetDealt: pc.amount, target: instanceId,
+    }});
+  }
   if (c.flags) c.flags.cinematicTargetPick = undefined;
   G.pendingChoice = undefined;
   runCombat(G);
