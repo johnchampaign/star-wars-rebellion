@@ -738,7 +738,7 @@ function captureTargetLeaderId(G: GameState, side: Side, missionId: string, sysI
   return [...here].sort((a, b) => leaderValue(G, b) - leaderValue(G, a))[0] as LeaderId;
 }
 
-function bestCommandAction(G: GameState, side: Side): CommandAction[] {
+export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   const f = side === 'Rebel' ? G.rebel : G.empire;
   const actions: CommandAction[] = [];
   const allSystemIds = Object.keys(G.map.systems);
@@ -2743,9 +2743,21 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       // pass while feasible lower-score actions go untried (player report #190).
       const commandActions = bestCommandAction(G, side);
       for (const action of commandActions) {
-      if (action.kind === 'pass') {
-        return phases.pass(G, side).ok;
+        if (action.kind === 'pass') return phases.pass(G, side).ok;
+        if (tryCommandAction(G, side, action)) return true;
       }
+      return phases.pass(G, side).ok;
+    }
+    default:
+      return false;
+  }
+}
+
+/** Apply ONE non-pass Command action (reveal/activate) to G. Returns true if an
+ *  action was taken (the turn is used), false if it couldn't be applied and the
+ *  caller should try the next candidate. Extracted from stepOnce so rollout /
+ *  search can apply a specific candidate move to a forked state. */
+export function tryCommandAction(G: GameState, side: Side, action: CommandAction): boolean {
       if (action.kind === 'reveal') {
         const r = phases.revealMission(G, side, action.missionId, action.targetSystemId, action.targetLeaderId);
         if (r.ok) return true;
@@ -2761,7 +2773,7 @@ function stepOnceInner(G: GameState, side: Side): boolean {
           if (r2.ok) { revealed = true; break; }
         }
         if (revealed) return true;
-        continue; // can't reveal this mission anywhere — try the next action
+        return false; // can't reveal this mission anywhere — try the next action
       }
       if (action.kind === 'activate') {
         // Pull units from EVERY adjacent friendly system with no own
@@ -2872,18 +2884,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
         if (orders.length === 0) {
           const tss = G.map.systems[action.targetSystemId];
           const enemyAtTarget = tss?.units.some((u) => u.side !== side) ?? false;
-          if (!enemyAtTarget) continue; // useless activation — try the next action
+          if (!enemyAtTarget) return false; // useless activation — try the next action
         }
         const r = phases.activateSystem(G, side, action.leaderId, action.targetSystemId, orders);
         if (r.ok) return true;
-        continue; // activation rejected — try the next action
+        return false; // activation rejected — try the next action
       }
-      } // end for over commandActions
-      return phases.pass(G, side).ok;
-    }
-    default:
-      return false;
-  }
+      return false; // no applicable action kind
 }
 
 function handleOpposeMission(G: GameState, side: Side): boolean {
