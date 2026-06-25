@@ -5,6 +5,25 @@
 // We capture the document body BEFORE the report modal mounts so the
 // screenshot shows what the player was looking at, not the modal itself.
 // Returns base64 PNG without the data-URL prefix.
+/** Whether it's safe to auto-capture a page screenshot for the bug report.
+ *  html2canvas does heavy SYNCHRONOUS main-thread work (it clones the DOM and
+ *  rasterizes every image on the board). On phones/tablets that routinely
+ *  freezes the page for many seconds or OOM-crashes the tab — a player on
+ *  mobile Chrome reported the whole site locking up the moment they pressed
+ *  "Report a problem". The screenshot is only a nice-to-have (the report's text
+ *  + game-state snapshot are what matter), so we skip it on touch / small-
+ *  viewport devices and keep it on desktop, where it's reliable. */
+export function screenshotAutoCaptureSafe(): boolean {
+  try {
+    if (typeof window === 'undefined') return false;
+    const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+    const narrow = (window.innerWidth || 0) < 820;
+    return !coarse && !narrow;
+  } catch {
+    return false;
+  }
+}
+
 export async function capturePageScreenshot(): Promise<string | null> {
   try {
     const { default: html2canvas } = await import('html2canvas');

@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo, createContext, useContext } from 'react';
 import { loadAllForEngine, loadBoardMask, MAP_IMAGE_URL, MARKER_IMAGE_BASE, UNIT_IMAGE_BASE, LEADER_IMAGE_BASE, CARD_IMAGE_BASE, IMG_BUST, diceImageUrl, vmodAssetUrl, mapImageUrl } from '../data/loadAssets';
 import { UNIT_IMAGE, groupByType, groupTypeIds, getUnitStyle, setUnitStyle, nextStyle, unitImageUrl, type UnitImageStyle } from './unitImages';
-import { capturePageScreenshot } from './screenshot';
+import { capturePageScreenshot, screenshotAutoCaptureSafe } from './screenshot';
 import { missionTargets, missionLeaderTargets, missionRevealIsPointless } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce } from './randomAI';
 import { recordPlay } from 'digital-boardgame-framework';
@@ -1321,17 +1321,23 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
               // the modal still works — user can submit without screenshot.
               setReportScreenshot(null);
               setShowReport(true);
-              (async () => {
-                try {
-                  const png = await Promise.race([
-                    capturePageScreenshot(),
-                    new Promise<null>((r) => setTimeout(() => r(null), 5000)),
-                  ]);
-                  setReportScreenshot(png);
-                } catch (e) {
-                  console.warn('[report] background screenshot failed:', e);
-                }
-              })();
+              // Only auto-capture on desktop. On phones/tablets html2canvas
+              // blocks the main thread long enough to freeze the whole page
+              // (mobile player report: bobbi) — the report works fine without
+              // a screenshot, so skip it there.
+              if (screenshotAutoCaptureSafe()) {
+                (async () => {
+                  try {
+                    const png = await Promise.race([
+                      capturePageScreenshot(),
+                      new Promise<null>((r) => setTimeout(() => r(null), 5000)),
+                    ]);
+                    setReportScreenshot(png);
+                  } catch (e) {
+                    console.warn('[report] background screenshot failed:', e);
+                  }
+                })();
+              }
             }}
             title="Report a bug or share feedback"
           >
