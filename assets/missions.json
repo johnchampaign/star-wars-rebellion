@@ -785,7 +785,7 @@
       "isStarting": false,
       "isProject": true,
       "skill": "logistics",
-      "skillCost": 2,
+      "skillCost": 1,
       "isAttempt": false,
       "leaderPortrait": null,
       "effectKey": "interdictor-development",
