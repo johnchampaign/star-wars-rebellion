@@ -348,6 +348,11 @@ export type PlayTabOnlineMode = {
 
 export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {}) {
   const gameRef = useRef<GameState | null>(null);
+  // Timestamp of the AI driver's last actual step. A watchdog uses it to detect
+  // a stalled driver — see the self-heal effect below (#409: iOS Safari throttles
+  // the setTimeout batch chain in a backgrounded/inactive tab, freezing the game
+  // on the AI's turn with no way to resume).
+  const lastAiProgressRef = useRef(0);
   // Point the module-level engine handles at the online shim (mutators submit
   // RebellionActions to the server) or the real modules (single-player). See
   // the `let phases/combat` declaration above and onlineEngine.ts.
@@ -659,6 +664,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         totalSteps++;
       }
       if (didAny) {
+        lastAiProgressRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
         try {
           const Gf = gameRef.current;
           if (Gf && canEncode(Gf)) localStorage.setItem(LS_CURRENT, encode(Gf));
@@ -930,6 +936,35 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // driver was racing with Strict Mode's effect-cleanup cycle.)
   // Re-arm the AI loop on initial render after data loads.
   useEffect(() => { runAILoop(); }, [runAILoop]);
+
+  // Self-heal a stalled AI driver (#409). The driver advances in setTimeout-
+  // chained batches and is otherwise only re-kicked by refresh()/onAckReport().
+  // iOS Safari throttles/suspends setTimeout in a backgrounded or momentarily-
+  // inactive tab, so a long AI turn (e.g. the Empire's command turn after a Rebel
+  // rescue, with several missions + combats to work through) can freeze mid-turn
+  // with no way to resume — the human is stranded staring at the AI's "end command
+  // phase" with no action panel. Two safety nets, both no-ops unless it's genuinely
+  // the AI's turn (runAILoop self-gates on currentPlayer / owed choice / pending
+  // reports, so a redundant call costs nothing):
+  //   1. A poll that re-kicks only when the driver hasn't stepped in >2.5s.
+  //   2. A visibilitychange re-kick for when the throttled tab refocuses.
+  useEffect(() => {
+    if (online) return;
+    const kickIfAiTurn = () => {
+      const G = gameRef.current;
+      if (!G || G.isGameOver) return;
+      const human = (localStorage.getItem(LS_HUMAN_SIDE) === 'Empire') ? 'Empire' : 'Rebel';
+      const ai: Side = human === 'Rebel' ? 'Empire' : 'Rebel';
+      if (G.currentPlayer === ai || aiOwesChoice(G, ai)) runAILoop();
+    };
+    const poll = setInterval(() => {
+      const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      if (now - lastAiProgressRef.current > 2500) kickIfAiTurn();
+    }, 1000);
+    const onVisible = () => { if (document.visibilityState === 'visible') kickIfAiTurn(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { clearInterval(poll); document.removeEventListener('visibilitychange', onVisible); };
+  }, [online, runAILoop]);
 
   // Re-arm the game-over modal whenever a game is in progress, so the NEXT
   // game's end shows the dialogue again (#195). Unconditional hook — must run

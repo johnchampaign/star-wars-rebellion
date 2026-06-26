@@ -104,9 +104,24 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     sections.push(`**Last ${Math.min(30, body.turnLog.length)} log entries**\n\n\`\`\`\n${tail}\n\`\`\``);
   }
   if (body.state) {
-    const stateJson = JSON.stringify(body.state, null, 2);
-    const truncated = stateJson.length > 50_000
-      ? stateJson.slice(0, 50_000) + '\n...(truncated — game state was over 50KB)'
+    // Embed the DECODABLE snapshot (systems/factions/decks) but drop the verbose
+    // turnLog nested inside it: the "Last 30 log entries" section already carries
+    // the tail, and decode() reconstructs game state from the snapshot, not the
+    // history. Dropping it keeps a late-game snapshot under GitHub's ~65KB issue
+    // body limit so it stays decodable for live reproduction (#409: a late game
+    // truncated mid-snapshot, making the stuck state impossible to replay).
+    let stateForEmbed: unknown = body.state;
+    try {
+      const clone = JSON.parse(JSON.stringify(body.state));
+      if (clone?.state?.turnLog) {
+        clone.__turnLogEntriesDropped = clone.state.turnLog.length;
+        clone.state.turnLog = [];
+      }
+      stateForEmbed = clone;
+    } catch { /* fall back to the raw object */ }
+    const stateJson = JSON.stringify(stateForEmbed, null, 2);
+    const truncated = stateJson.length > 60_000
+      ? stateJson.slice(0, 60_000) + '\n...(truncated — snapshot still over 60KB even without the turnLog)'
       : stateJson;
     sections.push(`**Game state**\n\n\`\`\`json\n${truncated}\n\`\`\``);
   }
