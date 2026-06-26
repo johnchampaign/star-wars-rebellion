@@ -5859,7 +5859,7 @@ function trackDeploy(G: GameState, side: Side, systemId: SystemId): void {
  *  otherwise post a DeployUnitPick choice. Returns true if we paused.
  *  RAW (RR p.7): max 2 deploys per side per system per Refresh — applied
  *  via applyDeployCap on every candidate set. */
-function promoteNextDeployPick(G: GameState): boolean {
+export function promoteNextDeployPick(G: GameState): boolean {
   const r = G.refreshPaused;
   if (!r?.pendingDeployPicks) return false;
   while (r.pendingDeployPicks.length > 0) {
@@ -5910,12 +5910,17 @@ function promoteNextDeployPick(G: GameState): boolean {
       r.pendingDeployPicks.shift();
       continue;
     }
-    // Multiple legal targets — player picks.
+    // Multiple legal targets — player picks. Also surface every type still
+    // queued for this side so the player can switch which one to place next.
+    const counts = new Map<UnitTypeId, number>();
+    for (const e of r.pendingDeployPicks) if (e.side === next.side) counts.set(e.typeId, (counts.get(e.typeId) ?? 0) + 1);
+    const remaining = [...counts.entries()].map(([typeId, count]) => ({ typeId, count }));
     G.pendingChoice = {
       kind: 'DeployUnitPick',
       side: next.side,
       typeId: next.typeId,
       candidates,
+      remaining,
     };
     log(G, { kind: 'choice-request', side: next.side, payload: {
       kind: 'DeployUnitPick', typeId: next.typeId, candidates,
@@ -5972,6 +5977,25 @@ export function declineDeployUnit(G: GameState): { ok: boolean; reason?: string 
   const logStart = r?.logStart ?? 0;
   G.refreshPaused = undefined;
   finishRefreshAfterDeploy(G, logStart);
+  return { ok: true };
+}
+
+/** Switch which queued unit type the deploy picker is offering (player report:
+ *  the fixed grouped order forced you to "save" every Stormtrooper before you
+ *  could place a Star Destroyer). Moves the first queued entry of `typeId` for
+ *  the current side to the front and re-posts the pick for it (which recomputes
+ *  candidates — needed for the RoE Shield Bunker's wider targets). */
+export function switchDeployType(G: GameState, typeId: UnitTypeId): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'DeployUnitPick') return { ok: false, reason: 'no-pending' };
+  const r = G.refreshPaused;
+  if (!r?.pendingDeployPicks) return { ok: false, reason: 'no-deploy-queue' };
+  const idx = r.pendingDeployPicks.findIndex((e) => e.side === pc.side && e.typeId === typeId);
+  if (idx < 0) return { ok: false, reason: `not-queued:${typeId}` };
+  const [entry] = r.pendingDeployPicks.splice(idx, 1);
+  r.pendingDeployPicks.unshift(entry);
+  G.pendingChoice = undefined;
+  promoteNextDeployPick(G); // re-posts a DeployUnitPick for typeId with fresh candidates
   return { ok: true };
 }
 

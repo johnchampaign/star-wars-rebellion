@@ -399,6 +399,12 @@ export type ChoiceRequest =
       side: Side;
       typeId: UnitTypeId;
       candidates: SystemId[];
+      // All unit types still waiting to be deployed for this side this Refresh,
+      // with counts — so the player can choose WHICH type to place next instead
+      // of being walked through them in a fixed grouped order (player report: had
+      // to "save" every Stormtrooper to reach the Star Destroyer). Switching the
+      // active type re-posts the pick for it via switchDeployType.
+      remaining: { typeId: UnitTypeId; count: number }[];
     }
   | {
       // Secret Facility (RoE Empire): on reveal it places 1 Shield Bunker + "1

@@ -2168,6 +2168,30 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           color={sideColor(G.pendingChoice.side)}
           title={`Deploy ${G.catalog.unitTypes[G.pendingChoice.typeId]?.name ?? G.pendingChoice.typeId}`}
           instructions={`Pick where this unit deploys — or use "Leave on build queue (slot 1)" below to NOT deploy it and keep it on space 1 of your build queue.`}
+          headerExtra={(() => {
+            const pc = G.pendingChoice as { side: Side; typeId: string; remaining?: { typeId: string; count: number }[] };
+            const rem = pc.remaining ?? [];
+            if (rem.length <= 1) return undefined; // only one type left → no chooser
+            return (
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ color: '#9a937f', fontSize: 11, marginBottom: 4 }}>Place which unit?</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {rem.map((e) => {
+                    const active = e.typeId === pc.typeId;
+                    return (
+                      <button key={e.typeId} className="tab-button"
+                        onClick={() => { if (active) return; const r = phases.switchDeployType(G, e.typeId); if (!r.ok) alert(`Cannot switch: ${r.reason}`); persist(); refresh(); }}
+                        style={{ padding: '4px 8px', fontSize: 12, cursor: active ? 'default' : 'pointer',
+                          border: `1px solid ${active ? sideColor(pc.side) : '#3a3d44'}`,
+                          background: active ? 'rgba(255,255,255,0.06)' : 'transparent', fontWeight: active ? 700 : 400 }}>
+                        {(G.catalog.unitTypes[e.typeId]?.name ?? e.typeId)}{e.count > 1 ? ` ×${e.count}` : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
           candidates={G.pendingChoice.candidates}
           unitTokens={(() => {
             // pendingDeployPicks already INCLUDES the unit being placed now as
