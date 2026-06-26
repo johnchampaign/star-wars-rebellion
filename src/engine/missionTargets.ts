@@ -475,6 +475,48 @@ export function missionRevealIsPointless(
       }
       return ships + Math.min(ground, capacity) === 0;
     }
+    case 'plant-explosives':
+      // Destroys Empire GROUND units (health.color !== null) up to the success
+      // margin — a no-op when the target holds no such ground (mirrors Assault).
+      return !(ss?.units ?? []).some((u) => u.side === 'Empire'
+        && G.catalog.unitTypes[u.typeId]?.theater === 'ground'
+        && G.catalog.unitTypes[u.typeId]?.health.color !== null);
+    case 'plan-the-assault': {
+      // Moves Rebel SHIPS from the base to a system with an Imperial ship, then
+      // combat. The handler resolves WITHOUT combat when no Rebel ships are at the
+      // base — wasted. (Source follows the base: base space pre-reveal, the base's
+      // system after.)
+      const baseLoc = G.rebelBaseRevealed ? G.rebelBaseSystemId : null;
+      const baseUnits = baseLoc ? (G.map.systems[baseLoc]?.units ?? []) : (G.map.rebelBaseSpace?.units ?? []);
+      return !baseUnits.some((u) => u.side === 'Rebel'
+        && G.catalog.unitTypes[u.typeId]?.theater === 'space');
+    }
+    case 'lead-the-strike-team': {
+      // Moves up to 4 Rebel ground units from the base (transport ignored). With
+      // no movable ground there it only "resolves combat" at the target, which
+      // does nothing unless the Rebel already has units there to fight — pointless
+      // only when BOTH hold.
+      const baseLoc = G.rebelBaseRevealed ? G.rebelBaseSystemId : null;
+      const baseUnits = baseLoc ? (G.map.systems[baseLoc]?.units ?? []) : (G.map.rebelBaseSpace?.units ?? []);
+      const hasGround = baseUnits.some((u) => {
+        const t = G.catalog.unitTypes[u.typeId];
+        return u.side === 'Rebel' && t?.theater === 'ground' && !t.transport.immobile;
+      });
+      if (hasGround) return false;
+      return !(ss?.units ?? []).some((u) => u.side === 'Rebel');
+    }
+    case 'demolition': {
+      // Destroys queued Empire units that match this system's resource icons
+      // (theater + tier; stations never match a build icon). A no-op when nothing
+      // currently queued matches any of the system's icons.
+      const def = G.catalog.systems[sysId];
+      if (!def) return false;
+      const queued = ([1, 2, 3] as const).flatMap((s) => G.empire.buildQueue[s] ?? []);
+      return !def.resources.some((icon) => queued.some((typeId) => {
+        const u = G.catalog.unitTypes[typeId];
+        return u != null && u.class !== 'station' && u.theater === icon.type && u.tier === icon.shape;
+      }));
+    }
     default:
       return false;
   }
