@@ -848,7 +848,7 @@
       "skill": "specOps",
       "skillCost": 1,
       "isAttempt": true,
-      "leaderPortrait": "krennic",
+      "leaderPortrait": "krennics-finest",
       "effectKey": "draw-them-out",
       "rulesText": "Attempt on a system with no Rebel units. Choose a Rebel leader in the leader pool; place that leader in this system.",
       "image": "Draw them Out.png",
