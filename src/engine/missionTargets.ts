@@ -452,6 +452,29 @@ export function missionRevealIsPointless(
       const rebelLoyal = ss?.loyalty === 'rebel';
       return !hasRebelUnits && !rebelLoyal;
     }
+    case 'assault':
+      // Destroys up to 3 Empire STORMTROOPERS at a subjugated system (the handler
+      // targets typeId === 'stormtrooper' only, not AT-STs/AT-ATs). A no-op when
+      // the target holds no Stormtroopers to destroy (#406: AI ran Assault on a
+      // subjugated system with none, wasting the card).
+      return !(ss?.units ?? []).some((u) => u.side === 'Empire' && u.typeId === 'stormtrooper');
+    case 'behind-enemy-lines': {
+      // "Move 5 units from the Rebel Base" — a no-op when the base location holds
+      // no DELIVERABLE units: ships move themselves; ground needs co-located
+      // carrier capacity (transport is NOT waived). With nothing movable the card
+      // is wasted (#405: AI ran it but moved no units).
+      const baseLoc = G.rebelBaseRevealed ? G.rebelBaseSystemId : null;
+      const baseUnits = baseLoc ? (G.map.systems[baseLoc]?.units ?? []) : (G.map.rebelBaseSpace?.units ?? []);
+      let ships = 0, ground = 0, capacity = 0;
+      for (const u of baseUnits) {
+        if (u.side !== 'Rebel') continue;
+        const t = G.catalog.unitTypes[u.typeId];
+        if (!t || t.transport.immobile || t.class === 'structure') continue;
+        if (t.theater === 'ground') ground++;
+        else { ships++; if (t.transport.capacity > 0) capacity += t.transport.capacity; }
+      }
+      return ships + Math.min(ground, capacity) === 0;
+    }
     default:
       return false;
   }
