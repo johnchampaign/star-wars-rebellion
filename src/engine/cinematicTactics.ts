@@ -1035,9 +1035,10 @@ function resolveDestroy(G: GameState, c: CombatState, side: Side, theater: Theat
   return target.typeId;
 }
 
-/** Consume the cinematic dice-prevention for `side` in this theatre, returning
- *  the reduction to apply to their roll. Zeroes the accumulator so it only
- *  applies once. */
+/** Consume the cinematic hit-prevention for `side` in this theatre, returning
+ *  the {red,black,special} counts of opponent results to remove at the Assign
+ *  Damage step (applied to the rolled dice, NOT a reduction of the roll —
+ *  RAW RotE "PREVENTING HITS"). Zeroes the accumulator so it only applies once. */
 export function takeCinematicPrevent(c: CombatState, side: Side): { red: number; black: number; special: number } {
   const v = c.cinematicPrevent?.[side];
   if (!v) return { red: 0, black: 0, special: 0 };

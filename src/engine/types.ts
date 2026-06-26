@@ -1542,10 +1542,13 @@ export type CombatState = {
   // beginCombat from expansion.cinematicCombat. Phase 7b wires (a) and skips
   // the standard tactic draw; Phase 7c adds the cinematic tactic subsystem.
   cinematic?: boolean;
-  // RoE Cinematic Combat dice-prevention accumulator (Phase 7c). A "Prevent
-  // N red/black/special" tactic ability reduces the OPPONENT's next attack
-  // roll in this theatre. Keyed by the side WHOSE DICE are reduced; consumed
-  // (zeroed) by beginAttack when that side rolls. Reset per theatre step.
+  // RoE Cinematic Combat hit-prevention accumulator (Phase 7c). A "Prevent
+  // N red/black/special" tactic ability is set against the OPPONENT's next
+  // attack in this theatre. Keyed by the side whose roll it applies to;
+  // consumed (zeroed) by beginAttack, which stashes it on pendingAttack and
+  // applies it to the ROLLED dice (removing matching HIT/★ results — it does
+  // NOT reduce how many dice are rolled; RAW RotE "PREVENTING HITS", #401/#408).
+  // Reset per theatre step.
   cinematicPrevent?: {
     Rebel?: { red: number; black: number; special: number };
     Empire?: { red: number; black: number; special: number };
@@ -1636,6 +1639,13 @@ export type CombatState = {
     // attack, so re-entry after another pause doesn't re-prompt.
     cinematicRerollResolved?: boolean;
     cinematicHealResolved?: boolean;
+    // CINEMATIC "Prevent N red/black/special" set against THIS attack by the
+    // opponent's tactic card. Stashed at roll time (the dice are NOT reduced);
+    // applied to the rolled dice — removing matching HIT/★ results — after the
+    // reroll window. `cinematicPreventApplied` guards against re-applying it on
+    // re-entry. RAW: RotE rulebook "PREVENTING HITS" (#401, #408).
+    cinematicPrevent?: { red: number; black: number; special: number };
+    cinematicPreventApplied?: boolean;
     // Set when entering 'awaitingDamageAssignment'. Frozen list of hits
     // the attacker must assign (post-blocks), and the legal targets per
     // hit (computed when the choice is queued).

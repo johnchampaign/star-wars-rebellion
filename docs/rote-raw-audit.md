@@ -60,12 +60,20 @@ after merge.
   `scripts/test-roe-objectives-iii.mjs`. NOTE: yes, this is the "more
   complicated interaction" — e.g. the Empire is prompted to place Raid Outposts
   markers mid-Rebel-turn — which is what RAW wants.
-- [x] **#9 Dice-reduction vs the 5-die cap order.** Fixed: `beginAttack` now
-  applies the dice-reduction abilities (cinematic Prevent, According To My
-  Design) to the raw sums first, then caps at 5/5/3 — RAW p.9 "an ability that
-  reduces the number of dice rolled applies BEFORE the limit of 5 is applied."
-  Test `scripts/test-dice-reduction-order.mjs` (8 raw red − 2 prevent = 6 →
-  capped 5, not the old min(5,8)−2 = 3).
+- [x] **#9 Dice-reduction vs the 5-die cap order.** Fixed: `beginAttack`
+  applies genuine "roll N fewer dice" abilities (According To My Design) to the
+  raw sums first, then caps at 5/5/3 — RAW p.9 "an ability that reduces the
+  number of dice rolled applies BEFORE the limit of 5 is applied." Test
+  `scripts/test-dice-reduction-order.mjs` (6 raw red − 1 ATMD = 5, cap does not
+  cut further; not the old min(5,6)−1 = 4).
+- [x] **Cinematic "Prevent N red/black/special" removes HIT results, not dice
+  rolled** (RotE rulebook, "PREVENTING HITS"; reporters #401 Escort, #408
+  Overwhelming Presence). The old code under-rolled (treated Prevent as a
+  dice-reducer like ATMD), which silently dropped potential ★ symbols the
+  roller could heal/spend with, and ignored "prevent special" entirely. Now the
+  opponent rolls ALL its dice; after the reroll window, `applyCinematicPrevent`
+  removes up to N matching red/black HITS (or ★ specials) from the rolled dice,
+  before the ★-heal so a prevented ★ can't also be spent. Same test file.
 
 ### Low / verify
 - [x] **#10 Destroyed system removes its target markers** (p.8). Implemented

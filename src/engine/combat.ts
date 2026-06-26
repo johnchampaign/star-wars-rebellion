@@ -674,6 +674,29 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
   c.currentRoundReportIdx = undefined;
 }
 
+/** Apply a cinematic "Prevent N red/black/special" against an already-rolled
+ *  set of dice. RAW (RotE rulebook, "PREVENTING HITS"): remove up to N dice
+ *  that show a matching red/black HIT (or direct hit), and up to `special`
+ *  dice that show a ★. Only dice that actually rolled the prevented symbol can
+ *  be removed — if fewer rolled than the prevent count, only those are taken.
+ *  Returns the surviving dice plus the counts actually removed. Pure. */
+export function applyCinematicPrevent(
+  dice: DieResult[],
+  want: { red: number; black: number; special: number },
+): { kept: DieResult[]; removed: { red: number; black: number; special: number } } {
+  let needRed = want.red, needBlack = want.black, needSpecial = want.special;
+  const removed = { red: 0, black: 0, special: 0 };
+  const kept: DieResult[] = [];
+  for (const d of dice) {
+    const isHit = d.face === 'hit' || d.face === 'direct-hit';
+    if (needRed > 0 && d.color === 'red' && isHit) { needRed--; removed.red++; continue; }
+    if (needBlack > 0 && d.color === 'black' && isHit) { needBlack--; removed.black++; continue; }
+    if (needSpecial > 0 && d.face === 'special') { needSpecial--; removed.special++; continue; }
+    kept.push(d);
+  }
+  return { kept, removed };
+}
+
 /** Roll dice for `side`, queue the attacker-tactics choice if appropriate.
  *  If no units to roll, marks the side done and returns. */
 export function beginAttack(G: GameState, c: CombatState, side: Side, theater: Theater): void {
@@ -702,17 +725,19 @@ export function beginAttack(G: GameState, c: CombatState, side: Side, theater: T
   // (Prevent, According To My Design) to the RAW sums first; the 5/5/3 cap is
   // applied AFTER them, just before rolling.
 
-  // CINEMATIC COMBAT "Prevent N red/black" tactic effects reduce THIS side's
-  // roll (the prevention was set against them by the opponent's tactic card).
+  // CINEMATIC COMBAT "Prevent N red/black/special" tactic effects. RAW (RotE
+  // rulebook, "PREVENTING HITS"): these do NOT reduce the number of dice the
+  // opponent rolls. The opponent rolls ALL of its dice; at the start of the
+  // Assign Damage step the matching results — red/black HITS, or ★ special
+  // symbols — are removed. So we stash the prevention here (consuming the
+  // accumulator) and apply it to the ROLLED dice in advanceAttackToTactics,
+  // after the reroll window. We must NOT under-roll (the old behaviour, which
+  // also silently dropped potential ★ symbols the roller could heal/spend with
+  // — #401, #408).
+  let cinPrevent: { red: number; black: number; special: number } | undefined;
   if (c.cinematic) {
     const prev = takeCinematicPrevent(c, side);
-    if (prev.red || prev.black) {
-      red = Math.max(0, red - prev.red);
-      black = Math.max(0, black - prev.black);
-      log(G, { kind: 'cinematic-prevent-applied', side, payload: {
-        theater, round: c.round, red: prev.red, black: prev.black,
-      }});
-    }
+    if (prev.red || prev.black || prev.special) cinPrevent = prev;
   }
 
   // "According To My Design" (Emperor Palpatine start-of-combat action card):
@@ -755,6 +780,7 @@ export function beginAttack(G: GameState, c: CombatState, side: Side, theater: T
     attackerUnits: myUnits.length,
     bonusDamage: 0,
     tacticsPlayed: [],
+    cinematicPrevent: cinPrevent,
   };
   // Surface the dice-reduction in the per-attack tactics log so the player
   // can see why fewer dice rolled than expected.
@@ -807,6 +833,25 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
       return;
     }
     pa.cinematicRerollResolved = true;
+  }
+
+  // 0a½) CINEMATIC "Prevent N red/black/special" — the opponent's tactic card
+  //      removes, from this side's now-final (rolled + rerolled) attack, up to
+  //      N dice that show a matching red/black HIT or a ★ special. RAW (RotE
+  //      rulebook, "PREVENTING HITS"): all dice are ROLLED; matching results
+  //      are removed before damage is assigned — the roll is never reduced
+  //      (#401, #408). Done before the ★-heal so a prevented ★ can't also be
+  //      spent on healing.
+  if (c.cinematic && pa.cinematicRerollResolved && pa.cinematicPrevent && !pa.cinematicPreventApplied) {
+    const { kept, removed } = applyCinematicPrevent(pa.dice, pa.cinematicPrevent);
+    pa.dice = kept;
+    pa.cinematicPreventApplied = true;
+    if (removed.red || removed.black || removed.special) {
+      log(G, { kind: 'cinematic-prevent-applied', side: pa.side, payload: {
+        theater: pa.theater, round: c.round,
+        red: removed.red, black: removed.black, special: removed.special,
+      }});
+    }
   }
 
   // 0b) CINEMATIC "Removing damage" ★-spend (rulebook p.8) — after the (post-
