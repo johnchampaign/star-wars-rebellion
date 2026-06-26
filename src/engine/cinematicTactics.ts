@@ -396,6 +396,12 @@ export function isEscapePlanAbility(cardId: string, useTop: boolean): boolean {
 
 /** Is a card's TOP (primary) ability resolvable — its primaryUnit present? */
 function topUsable(G: GameState, c: CombatState, side: Side, theater: Theater, cardId: string): boolean {
+  // A conditional top ability (e.g. Swarm Tactics: "If you have more Imperial
+  // fighters than Rebel fighters, deal 1 damage") is only USABLE while its
+  // condition holds — otherwise it would resolve to nothing, so we don't offer
+  // it as a top play (reporter #400). The bottom ability stays available.
+  const top = ABILITIES[cardId]?.[0];
+  if (top?.kind === 'condDeal' && !condHolds(G, c, side, theater, top.cond)) return false;
   const card = G.catalog.tactics[cardId];
   if (!card?.primaryUnit) return true;
   return unitsOf(G, side, c.systemId, theater).some((u) => u.typeId === card.primaryUnit)
