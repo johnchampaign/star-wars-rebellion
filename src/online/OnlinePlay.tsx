@@ -7,7 +7,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  useGame, useMessages,
+  useGame, useMessages, useIdentity, SignInBar,
   type MessagingClientApi, type ChatMessage,
 } from 'digital-boardgame-framework/client';
 import { subscribeSupabaseRealtime } from 'digital-boardgame-framework/client/realtime';
@@ -18,9 +18,17 @@ import type { RebellionAction } from '../adapter/rebellionAction';
 import type { Side } from '../types';
 
 export default function OnlinePlay({ gameId, token }: { gameId: string; token: string }) {
-  const client = useMemo(() => makeGameClient(gameId, token), [gameId, token]);
+  // Ranked identity (anon or signed-in), kept in a ref so each move carries it
+  // to the server (per-move attribution — robust + race-free).
+  const { identity } = useIdentity();
+  const idTokRef = useRef<string | undefined>(undefined);
+  idTokRef.current = identity?.token;
+  const client = useMemo(
+    () => makeGameClient(gameId, token, () => idTokRef.current),
+    [gameId, token],
+  );
   // Poll every 8s — quick enough to feel live, gentle on the Supabase free tier.
-  const { view, yourTurn, turn, gameOver, you, submit, loading, error, refresh } =
+  const { view, yourTurn, turn, gameOver, you, ranked, submit, loading, error, refresh } =
     useGame<GameState, RebellionAction>(client, { pollMs: 8000 });
   const [busy, setBusy] = useState(false);
   const [actErr, setActErr] = useState<string | null>(null);
@@ -81,6 +89,18 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
 
   return (
     <div style={{ ...pad, maxWidth: 1280, margin: '0 auto', fontFamily: 'system-ui, sans-serif', color: '#e8e6f2' }}>
+      <SignInBar leaderboardHref="https://games-hub-5vo.pages.dev/leaderboard?game=rebellion" />
+      {gameOver && ranked && (
+        <p style={{ margin: '0 0 8px', fontSize: 14, color: ranked.recorded ? '#6c6' : '#caa' }}>
+          {ranked.recorded
+            ? '✓ Recorded to the leaderboard.'
+            : ranked.reason === 'one-player'
+              ? 'Not ranked — both seats were the same player (you need two different people/identities).'
+              : ranked.reason === 'no-identities'
+                ? 'Not ranked — no identities were attached to the seats.'
+                : "Not ranked — couldn't reach the leaderboard."}
+        </p>
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 style={{ margin: '8px 0' }}>Online game <span style={{ color: '#8a7', fontSize: 14 }}>(preview)</span></h2>
         <button onClick={() => void refresh()} className="tab-button">Refresh</button>

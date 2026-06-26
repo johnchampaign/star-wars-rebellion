@@ -12,7 +12,9 @@ async function asJson(r: Response): Promise<any> {
   return j;
 }
 
-export function makeGameClient(gameId: string, token: string): GameClientApi<GameState, RebellionAction> {
+export function makeGameClient(
+  gameId: string, token: string, getIdentityToken?: () => string | undefined,
+): GameClientApi<GameState, RebellionAction> {
   const base = `/api/games/${encodeURIComponent(gameId)}`;
   const q = `?t=${encodeURIComponent(token)}`;
   return {
@@ -23,7 +25,7 @@ export function makeGameClient(gameId: string, token: string): GameClientApi<Gam
       fetch(`${base}/submit${q}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, identityToken: getIdentityToken?.() }),
       }).then(asJson),
     report: (body) =>
       fetch(`${base}/report${q}`, {

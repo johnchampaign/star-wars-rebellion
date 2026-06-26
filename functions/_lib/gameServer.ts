@@ -21,8 +21,8 @@
 // node-only FsStore lives in './server/node', so the barrel is Workers-safe.
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { GameServer, SupabaseStore, NoopNotifier, ResendNotifier, SupabaseBroadcaster } from 'digital-boardgame-framework/server';
-import type { Notifier, SnapshotStore } from 'digital-boardgame-framework/server';
+import { GameServer, SupabaseStore, NoopNotifier, ResendNotifier, SupabaseBroadcaster, verifyIdentityToken } from 'digital-boardgame-framework/server';
+import type { Notifier, SnapshotStore, Jwks } from 'digital-boardgame-framework/server';
 import type { Codec } from 'digital-boardgame-framework';
 import type { GameState, GameCatalog } from '../../src/engine/types';
 import type { Side } from '../../src/types';
@@ -32,9 +32,22 @@ import { makeRebellionCodec } from '../../src/adapter/codec';
 import { buildCatalog, createGame, type DataBundle } from '../../src/engine/setup';
 import { stepOnce } from '../../src/play/randomAI';
 
+const HUB = 'https://games-hub-5vo.pages.dev';
+let _jwks: Jwks | undefined;
+let _jwksAt = 0;
+async function getJwks(): Promise<Jwks> {
+  if (!_jwks || Date.now() - _jwksAt > 3_600_000) {
+    _jwks = (await (await fetch(`${HUB}/id/jwks`)).json()) as Jwks;
+    _jwksAt = Date.now();
+  }
+  return _jwks;
+}
+
 export interface Env {
   SUPABASE_URL?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
+  /** Shared secret matching the hub's RATINGS_INGEST_KEY (enables ranked play). */
+  RATINGS_INGEST_KEY?: string;
   PUBLIC_BASE_URL?: string;
   // Optional — when both are set, players get a "your turn" email (Phase 5).
   // Until then we use NoopNotifier and nothing is sent.
@@ -182,6 +195,11 @@ export async function makeServer(request: Request, env: Env): Promise<{
     // createGame's result (failures/timeouts are swallowed). Hotseat/AI
     // starts call recordPlay() client-side instead.
     playBeacon: { appId: 'rebellion' },
+    // Ranked play: verify hub identity tokens (claimSeat) + auto-report results.
+    verifyIdentity: async (t) => verifyIdentityToken(t, await getJwks()),
+    ...(env.RATINGS_INGEST_KEY
+      ? { ratings: { game: 'rebellion', ingestKey: env.RATINGS_INGEST_KEY } }
+      : {}),
   });
   return { server, store, codec, dataBundle, supabase, notifier, gameUrl };
 }

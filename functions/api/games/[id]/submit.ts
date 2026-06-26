@@ -9,6 +9,7 @@ import type { RebellionAction } from '../../../../src/adapter/rebellionAction';
 
 interface SubmitBody {
   action: RebellionAction;
+  identityToken?: string;
 }
 
 export const onRequestPost: PagesFunction<Env> = async (ctx) => {
@@ -19,6 +20,11 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     const body = (await request.json()) as SubmitBody;
     if (!body || !body.action) return json({ error: 'missing action' }, 400);
     const deps = await makeServer(request, env);
+    // Ranked: attribute this seat from the move's identity (idempotent, race-free
+    // — turns are sequential). Best-effort; never blocks the move.
+    if (typeof body.identityToken === 'string' && body.identityToken) {
+      try { await deps.server.claimSeat(id, token, body.identityToken); } catch { /* attribution optional */ }
+    }
     const view = await deps.server.submit(id, token, body.action);
     // Online-vs-AI: if the human's move handed the turn to an AI seat, let the
     // AI play and persist, then return the submitter's refreshed view.
