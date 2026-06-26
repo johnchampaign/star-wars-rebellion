@@ -74,7 +74,7 @@ function CardHover({ G, cardId, children }: {
           zIndex: 3000,
           background: 'rgba(0,0,0,0.95)', border: '1px solid #555',
           padding: 8, borderRadius: 4, width: POPOVER_W,
-          maxHeight: '92vh', overflowY: 'auto',
+          maxHeight: '92dvh', overflowY: 'auto',
           pointerEvents: 'none',
           boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
           display: 'flex', flexDirection: 'column', alignItems: 'center',

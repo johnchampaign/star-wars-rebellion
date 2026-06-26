@@ -3479,7 +3479,7 @@ function StolenPlansReorderModal({ G, choice, onPick, onUndo }: {
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
         padding: 20, maxWidth: 760, width: '94%',
-        maxHeight: '88vh', overflowY: 'auto',
+        maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
@@ -3828,7 +3828,7 @@ function ReportResponseModal({ notice, onDismiss }: {
         style={{
           background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
           padding: 22, maxWidth: 560, width: '94%',
-          maxHeight: '88vh', overflowY: 'auto',
+          maxHeight: '88dvh', overflowY: 'auto',
           boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
         }}
       >
@@ -3912,7 +3912,7 @@ function RefreshReportModal({ G, report, humanSide, onDismiss }: {
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${sideC}`, borderRadius: 6,
-        padding: 22, maxWidth: 640, width: '92%', maxHeight: '85vh', overflowY: 'auto',
+        padding: 22, maxWidth: 640, width: '92%', maxHeight: '85dvh', overflowY: 'auto',
       }}>
         <div style={{ fontSize: 16, color: sideC, fontWeight: 700, marginBottom: 8 }}>
           Refresh — {side} side, Turn {report.newTurn}
@@ -4143,7 +4143,7 @@ function HandTip({ count, cards }: {
             display: 'flex', flexDirection: 'row', gap: 6, flexWrap: 'nowrap',
             background: 'rgba(0,0,0,0.94)', border: '1px solid #555',
             padding: 8, borderRadius: 4,
-            maxHeight: '92vh', overflowY: 'auto',
+            maxHeight: '92dvh', overflowY: 'auto',
             // Explicit width = N * tile + (N-1) * gap + 16 padding. Stops
             // a narrow ancestor's containing block from forcing column.
             width: cards.length > 0
@@ -4261,7 +4261,7 @@ function CardNameHover({ name, image, rulesText, children, color }: {
             background: 'rgba(0,0,0,0.96)', border: '1px solid #555',
             padding: 8, borderRadius: 4,
             width: TILE_W + 16,
-            maxHeight: '80vh', overflowY: 'auto',
+            maxHeight: '80dvh', overflowY: 'auto',
             boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
             pointerEvents: 'none',
             textAlign: 'center',
@@ -4463,7 +4463,7 @@ function BuildPickModal({ G, choice, onSubmit }: {
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-        padding: 22, maxWidth: 640, width: '92%', maxHeight: '85vh', overflowY: 'auto',
+        padding: 22, maxWidth: 640, width: '92%', maxHeight: '85dvh', overflowY: 'auto',
       }}>
         <div style={{ fontSize: 16, color, fontWeight: 700, marginBottom: 4 }}>
           {choice.side} — Build phase choices
@@ -5150,7 +5150,7 @@ function RecruitCardPickModal({ G, side, drawnIds, canDrawMore, color, onConfirm
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-        padding: 20, maxWidth: 720, width: '94%', maxHeight: '92vh', overflowY: 'auto',
+        padding: 20, maxWidth: 720, width: '94%', maxHeight: '92dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <div style={{ fontSize: 14, color, fontWeight: 700, marginBottom: 6 }}>
@@ -5252,7 +5252,7 @@ function SafeHavenPickModal({ G, choice, onConfirm }: {
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 8,
-        padding: 24, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 24, maxWidth: 520, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
       }}>
         <h3 style={{ color, marginTop: 0 }}>Safe Haven — deploy up to 2 units</h3>
         <div style={{ color: '#cbc4b0', fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>
@@ -5435,7 +5435,7 @@ function DestroyedSystemCullModal({ G, choice, onSubmit }: {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5100 }}>
       <div style={{ background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto' }}>
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88dvh', overflowY: 'auto' }}>
         <h3 style={{ color, marginTop: 0 }}>{sysName} destroyed — not enough transport</h3>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
           Your ships here can only carry {keepCount} ground unit{keepCount === 1 ? '' : 's'} off
@@ -6136,7 +6136,7 @@ function BehindEnemyLinesUnitsModal({ G, choice, onSubmit }: {
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 22, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 22, maxWidth: 560, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
       }}>
         <div style={{ fontSize: 14, color: '#aae0ff', fontWeight: 700, marginBottom: 6 }}>
           Behind Enemy Lines — send up to {choice.max} units to {targetName}
@@ -6236,7 +6236,7 @@ function WereTheBaitUnitsModal({ G, choice, onSubmit }: {
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
-        padding: 22, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 22, maxWidth: 560, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
       }}>
         <div style={{ fontSize: 14, color: '#ffaaaa', fontWeight: 700, marginBottom: 6 }}>
           We're the Bait — drag up to {choice.healthBudget} health of Rebel ground units to {targetName}
@@ -6314,7 +6314,7 @@ function ImperialMightUnitsModal({ G, choice, onSubmit }: {
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
-        padding: 22, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 22, maxWidth: 560, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
       }}>
         <div style={{ fontSize: 14, color: '#ffaaaa', fontWeight: 700, marginBottom: 6 }}>
           Imperial Might — deploy up to {choice.max} units from build queue space 1 to {targetName}
@@ -6433,7 +6433,7 @@ function CombatReportModal({ G, report, onDismiss }: {
         style={{
           background: '#15171c', border: '2px solid #ffd54a', borderRadius: 6,
           padding: 20, maxWidth: 780, width: '92%',
-          maxHeight: '88vh', overflowY: 'auto',
+          maxHeight: '88dvh', overflowY: 'auto',
           boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
         }}
       >
@@ -6577,7 +6577,7 @@ function ActivationReportModal({ G, report, onDismiss }: {
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 8,
-        padding: 20, maxWidth: 560, width: '92%', maxHeight: '90vh', overflowY: 'auto',
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '90dvh', overflowY: 'auto',
         boxShadow: `0 8px 40px ${color}44`,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
@@ -6753,7 +6753,7 @@ function MissionReportModal({ G, report, onDismiss }: {
       <div style={{
         background: '#15171c', border: `2px solid ${resultColor}`, borderRadius: 8,
         padding: 20, maxWidth: 1000, width: '94%',
-        maxHeight: '92vh', overflowY: 'auto',
+        maxHeight: '92dvh', overflowY: 'auto',
         boxShadow: `0 8px 40px ${resultColor}55`,
       }}>
         {/* Header + card image */}
@@ -8892,7 +8892,7 @@ function MapPickerOverlay({
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000, padding: 12 }}>
-      <div style={{ display: 'flex', gap: 12, maxWidth: '98vw', maxHeight: '94vh' }}>
+      <div style={{ display: 'flex', gap: 12, maxWidth: '98vw', maxHeight: '94dvh' }}>
         {/* Map (left) — candidates highlighted + clickable. */}
         <div style={{ overflow: 'auto', border: `1px solid ${color}`, borderRadius: 6, background: '#0a0b0e' }}>
           <Board G={G} systems={systems} masks={masks} humanSide={humanSide}
@@ -8902,7 +8902,7 @@ function MapPickerOverlay({
         {/* Picker sidebar (right). */}
         <div style={{ width: 280, flex: '0 0 auto', display: 'flex', flexDirection: 'column',
           background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-          padding: 14, maxHeight: '94vh', overflowY: 'auto' }}>
+          padding: 14, maxHeight: '94dvh', overflowY: 'auto' }}>
           <div style={{ color, fontWeight: 700, fontSize: 15, marginBottom: 6 }}>{title}</div>
           {instructions && <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>{instructions}</div>}
           {headerExtra}
@@ -10891,7 +10891,7 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
         onClick={(e) => e.stopPropagation()}
         style={{
           background: '#15171c', borderRadius: 6, padding: 20,
-          maxWidth: 800, width: '100%', maxHeight: '90vh', overflowY: 'auto',
+          maxWidth: 800, width: '100%', maxHeight: '90dvh', overflowY: 'auto',
           border: '1px solid #3a3d44',
         }}
       >
@@ -11245,7 +11245,7 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
     // modal never runs off-screen (the header + footer stay pinned). Was a
     // fixed-padding box with no height cap → tall content overflowed and the
     // player had to zoom out to reach the close button (user report).
-    maxHeight: '90vh', display: 'flex', flexDirection: 'column',
+    maxHeight: '90dvh', display: 'flex', flexDirection: 'column',
     overflow: 'hidden',
   };
   // Header stays pinned at the top; body scrolls.
@@ -11590,7 +11590,7 @@ function SupplyPanel({ G, onClose }: { G: GameState; onClose: () => void }) {
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 6000 }}
       onClick={onClose}>
       <div style={{ background: '#15171c', border: '2px solid #555', borderRadius: 8,
-        padding: 20, maxWidth: 640, width: '94%', maxHeight: '88vh', overflowY: 'auto' }}
+        padding: 20, maxWidth: 640, width: '94%', maxHeight: '88dvh', overflowY: 'auto' }}
         onClick={(e) => e.stopPropagation()}>
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>Unit supply</div>
         <div style={{ fontSize: 12, color: '#9a9da2', marginBottom: 14 }}>
@@ -11695,7 +11695,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
     >
       <div onClick={(e) => e.stopPropagation()} style={{
         background: '#15171c', border: '2px solid #ffd54a', borderRadius: 6,
-        padding: 24, maxWidth: 600, width: '100%', maxHeight: '90vh', overflowY: 'auto',
+        padding: 24, maxWidth: 600, width: '100%', maxHeight: '90dvh', overflowY: 'auto',
         color: '#e8e8ea', fontSize: 13, lineHeight: 1.5,
       }}>
         <h2 style={{ marginTop: 0, marginBottom: 12, color: '#ffd54a' }}>
@@ -11789,7 +11789,7 @@ function PlayAssignmentActionCardModal({
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color, marginTop: 0 }}>Play an action card — Assignment phase</h3>
@@ -11843,7 +11843,7 @@ function AssignSecondLeaderModal({ G, choice, onPick }: {
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-        padding: 20, maxWidth: 600, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 600, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color, marginTop: 0 }}>{choice.cardName} — assign a second leader?</h3>
@@ -11887,7 +11887,7 @@ function FalseOrdersWindowModal({
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-        padding: 20, maxWidth: 640, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 640, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color, marginTop: 0 }}>{card?.name ?? 'False Orders'} — end of Assignment</h3>
@@ -11938,7 +11938,7 @@ function ArmCardProbePickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
-        padding: 20, maxWidth: 600, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 600, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>
@@ -11981,7 +11981,7 @@ function PlayImmediateActionCardModal({
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color, marginTop: 0 }}>Play an Immediate action card</h3>
@@ -12050,7 +12050,7 @@ function AttachRingPickModal({
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-        padding: 20, maxWidth: 640, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 640, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color, marginTop: 0 }}>{card?.name ?? choice.cardId} — attach the ring to a leader</h3>
@@ -12103,7 +12103,7 @@ function DiceKeyModal({ onClose }: { onClose: () => void }) {
       onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{
         background: '#15171c', border: '2px solid #5a6b8c', borderRadius: 8,
-        padding: 22, maxWidth: 640, width: '94%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 22, maxWidth: 640, width: '94%', maxHeight: '88dvh', overflowY: 'auto',
         color: '#fff', boxShadow: '0 8px 32px rgba(0,0,0,0.8)' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
           <h3 style={{ margin: 0, color: '#9fb3d9' }}>🎲 Dice key</h3>
@@ -12219,7 +12219,7 @@ function TacticKeyModal({ G, onClose }: { G: GameState; onClose: () => void }) {
       onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{
         background: '#15171c', border: '2px solid #8c7a5a', borderRadius: 8,
-        padding: 22, maxWidth: 720, width: '94%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 22, maxWidth: 720, width: '94%', maxHeight: '88dvh', overflowY: 'auto',
         color: '#fff', boxShadow: '0 8px 32px rgba(0,0,0,0.8)' }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 10 }}>
           <h3 style={{ margin: 0, color: '#d9c79f' }}>🃏 Tactic cards</h3>
@@ -12323,7 +12323,7 @@ function UnitKeyModal({ G, unitStyle, onClose }: {
       onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} style={{
         background: '#15171c', border: '2px solid #555', borderRadius: 6,
-        padding: 20, maxWidth: 720, width: '94%', maxHeight: '90vh', overflowY: 'auto',
+        padding: 20, maxWidth: 720, width: '94%', maxHeight: '90dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
@@ -12607,7 +12607,7 @@ function DeathStarPlansAttemptModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #80dc78', borderRadius: 8,
-        padding: 24, maxWidth: 640, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 24, maxWidth: 640, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(128,220,120,0.4)',
       }}>
         <h3 style={{ color: '#80dc78', marginTop: 0 }}>
@@ -12703,7 +12703,7 @@ function PlayObjectiveModal({
       )}
       <div style={{
         background: '#15171c', border: '2px solid #aed581', borderRadius: 8,
-        padding: 24, maxWidth: 680, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 24, maxWidth: 680, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(174,213,129,0.4)',
       }}>
         <h3 style={{ color: '#aed581', marginTop: 0 }}>
@@ -12783,7 +12783,7 @@ function RaidOutpostsPlaceModal({
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex',
       alignItems: 'center', justifyContent: 'center', zIndex: 2600 }}>
       <div style={{ background: '#15171c', border: '2px solid #e57373', borderRadius: 8, padding: 24,
-        maxWidth: 620, width: '92%', maxHeight: '88vh', overflowY: 'auto' }}>
+        maxWidth: 620, width: '92%', maxHeight: '88dvh', overflowY: 'auto' }}>
         <h3 style={{ color: '#e57373', marginTop: 0 }}>🎯 Raid Outposts — place target markers</h3>
         <div style={{ color: '#cbc4b0', fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>
           The Rebel played <b>Raid Outposts</b>. As the Imperial player you must place this card's
@@ -12829,7 +12829,7 @@ function RebelCellPlaceModal({
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex',
       alignItems: 'center', justifyContent: 'center', zIndex: 2600 }}>
       <div style={{ background: '#15171c', border: '2px solid #aed581', borderRadius: 8, padding: 24,
-        maxWidth: 620, width: '92%', maxHeight: '88vh', overflowY: 'auto' }}>
+        maxWidth: 620, width: '92%', maxHeight: '88dvh', overflowY: 'auto' }}>
         <h3 style={{ color: '#aed581', marginTop: 0 }}>🎯 Rebel Cell — place your target marker</h3>
         <div style={{ color: '#cbc4b0', fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>
           Place this card's target marker in any <b>Rebel-loyalty system</b>. While the marker stands,
@@ -12865,7 +12865,7 @@ function RebelCellDiscardModal({
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex',
       alignItems: 'center', justifyContent: 'center', zIndex: 2600 }}>
       <div style={{ background: '#15171c', border: '2px solid #aed581', borderRadius: 8, padding: 24,
-        maxWidth: 620, width: '92%', maxHeight: '88vh', overflowY: 'auto' }}>
+        maxWidth: 620, width: '92%', maxHeight: '88dvh', overflowY: 'auto' }}>
         <h3 style={{ color: '#aed581', marginTop: 0 }}>🛰️ Rebel Cell — discard for reputation?</h3>
         <div style={{ color: '#cbc4b0', fontSize: 13, marginBottom: 14, lineHeight: 1.5 }}>
           Your Rebel Cell marker still stands. <b>Instead of playing an objective this Refresh</b>,
@@ -13060,7 +13060,7 @@ function DrawThemOutPickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
-        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Draw Them Out — pull a Rebel leader</h3>
@@ -13105,7 +13105,7 @@ function ReconnaissancePickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 680, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 680, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Reconnaissance — recover a discarded mission</h3>
@@ -13153,7 +13153,7 @@ function MissionRecruitLeaderPickModal({
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
-        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color, marginTop: 0 }}>{causeName} — recruit which leader?</h3>
@@ -13201,7 +13201,7 @@ function SecretMissionPickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 680, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 680, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>
@@ -13298,7 +13298,7 @@ function UnderTheRadarKeepModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Under the Radar — hold a probe facedown</h3>
@@ -13376,7 +13376,7 @@ function HeistChoiceModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Heist — at {sysName}</h3>
@@ -13590,7 +13590,7 @@ function PostBountyOfferModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
-        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Post Bounty — bounty a Rebel leader?</h3>
@@ -13679,7 +13679,7 @@ function LeaderPoolEliminateModal({
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${sideColor(choice.side)}`, borderRadius: 6,
-        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: sideColor(choice.side), marginTop: 0 }}>
@@ -13724,7 +13724,7 @@ function TrackThemOfferModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
-        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Track Them — pull a leader home?</h3>
@@ -13764,7 +13764,7 @@ function SomethingToFightForOfferModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Something to Fight For — recycle an objective?</h3>
@@ -13803,7 +13803,7 @@ function ItIsYourDestinyOfferModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
-        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>It Is Your Destiny — capture a rescuer?</h3>
@@ -13844,7 +13844,7 @@ function UndercoverOfferModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Undercover — relocate to {sysName}?</h3>
@@ -13884,7 +13884,7 @@ function SonOfSkywalkerOfferModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 480, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 480, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Son of Skywalker — pull a mission</h3>
@@ -14042,7 +14042,7 @@ function FalconOfferModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Millennium Falcon — rescue a captured leader?</h3>
@@ -14100,7 +14100,7 @@ function BrilliantAdministratorBuildPickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
-        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Brilliant Administrator — build at {sysName}</h3>
@@ -14172,7 +14172,7 @@ function CatchThemBySurpriseMovePickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
-        padding: 20, maxWidth: 620, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 620, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Catch Them By Surprise — move fleet to {targetName}</h3>
@@ -14256,7 +14256,7 @@ function ScoutingMissionTIEPickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
-        padding: 20, maxWidth: 540, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 540, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Scouting Mission — relocate TIE Fighters to {targetName}</h3>
@@ -14418,7 +14418,7 @@ function StartEvacuationPickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 620, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 620, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Start The Evacuation — pick destination + units</h3>
@@ -14484,7 +14484,7 @@ function IndependentOperationEvacPickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
-        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 520, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Independent Operation — pick evac destination</h3>
@@ -14536,7 +14536,7 @@ function HiddenFleetUnitPickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 580, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 580, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Hidden Fleet — pick units to move to {sysName}</h3>
@@ -14618,7 +14618,7 @@ function TemporaryAllianceBuildPickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Temporary Alliance — pick units for {sysName}</h3>
@@ -14692,7 +14692,7 @@ function BuildFromIconsPickModal({
     }}>
       <div style={{
         background: '#15171c', border: `2px solid ${accent}`, borderRadius: 6,
-        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: accent, marginTop: 0 }}>{choice.label} — build units at {sysName}</h3>
@@ -14745,7 +14745,7 @@ function ContingencyPlanPickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 640, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 640, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Contingency Plan — re-assign {ldr?.name ?? choice.leaderId}</h3>
@@ -14929,7 +14929,7 @@ function RapidMobilizationMovePickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 640, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 640, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Rapid Mobilization — move units</h3>
@@ -14997,7 +14997,7 @@ function RapidMobilizationBasePickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #aae0ff', borderRadius: 6,
-        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 560, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Rapid Mobilization — establish new base</h3>
@@ -15036,7 +15036,7 @@ function RetrieveThePlansPickModal({
     }}>
       <div style={{
         background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
-        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88vh', overflowY: 'auto',
+        padding: 20, maxWidth: 720, width: '92%', maxHeight: '88dvh', overflowY: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
         <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>
