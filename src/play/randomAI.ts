@@ -836,6 +836,14 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         // effectively un-findable by the AI's sweep. They're swept LAST via
         // the value ordering below, but they ARE swept.
         if (eliminatedByProbe.has(sid)) return false;
+        // The Empire KNOWS the base can't be at any system holding its own units:
+        // the base auto-reveals the instant an Imperial unit arrives, so a still-
+        // hidden base can't share a system with one. This is the REAL setup
+        // knowledge the Empire has (the box-returned Imperial systems all hold
+        // Imperial units) — it replaces the 2 random starting probes #404 removed.
+        // Deliberately NOT loyalty-based: a mission can flip a UNIT-LESS system to
+        // Imperial loyalty while the base still hides there.
+        if (G.map.systems[sid]?.units.some((u) => u.side === 'Empire')) return false;
         return true;
       }),
     );

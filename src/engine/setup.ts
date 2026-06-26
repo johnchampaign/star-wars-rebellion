@@ -484,14 +484,13 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   const rebel = emptyFaction('Rebel');
   const empire = emptyFaction('Empire');
 
-  // RAW (rr p.15 setup): the Imperial player draws 2 probe cards into hand —
-  // done AFTER the Rebel base probe is out of the deck so the Empire can't
-  // start holding the base location (player report #189: started with 0).
-  // For the interactive base-pick path the deck isn't finalized yet (the real
-  // base probe is removed in pickRebelBase), so the draw is deferred to there.
-  if (!pendingRebelBasePick) {
-    empire.probeHand = probeDeck.splice(0, 2);
-  }
+  // RAW (#404, verified against the rulebook): the Imperial player does NOT hold
+  // probe cards at setup. Setup only USES the probe deck to place loyalty markers
+  // (the 5 Imperial probes go to the box) and to hide the base; nothing enters the
+  // Imperial hand. The first 2 probes are drawn in Refresh step 3 ("Launch probe
+  // droids"), which runs AFTER turn 1's Assignment and Command. The earlier #189
+  // setup draw misread rr p.15 — the hand stays empty here.
+  empire.probeHand = [];
 
   // RoE "New Starter Units" (rules p.8): the Empire begins with its Death
   // Star already part-built — a Death Star Under Construction model on the

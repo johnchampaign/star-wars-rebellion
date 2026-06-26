@@ -322,13 +322,9 @@ export function pickRebelBase(G: GameState, systemId: SystemId): { ok: boolean; 
 
   G.pendingRebelBasePick = undefined;
   log(G, { kind: 'pick-rebel-base', side: 'Rebel', payload: { systemId } });
-  // RAW (rr p.15): the Empire draws its 2 starting probe cards now that the
-  // Rebel base probe is out of the deck (interactive path; the auto-setup path
-  // drew them in createGame). #189. Only if not already drawn.
-  if ((G.empire.probeHand?.length ?? 0) === 0) {
-    G.empire.probeHand = G.probeDeck.splice(0, 2);
-    log(G, { kind: 'empire-starting-probes', side: 'Empire', payload: { count: G.empire.probeHand.length } });
-  }
+  // (#404) The Empire does NOT draw probe cards at setup. RAW gives the first 2
+  // only in Refresh step 3 ("Launch probe droids"), which runs after turn 1's
+  // Assignment and Command. The earlier #189 setup draw misread rr p.15.
   // The base pick can be the LAST remaining setup step (if the Rebel deployed
   // all units before choosing the base). maybeAdvanceFromSetup gates leaving
   // Setup on pendingRebelBasePick being cleared (above), and only this function
