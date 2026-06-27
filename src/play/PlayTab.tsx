@@ -3323,9 +3323,9 @@ function OpposeMissionModal({ G, choice, onResolve }: {
   const card = G.catalog.missions[choice.missionId];
   const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
   const color = sideColor(choice.opposerSide);
-  // Subversion is a "may" (#311): default ON (it's usually good), but let the
-  // opposer turn it off so they aren't forced to commit those leaders.
-  const [useSubversion, setUseSubversion] = useState(true);
+  // Subversion is a "may" (#311/#432): NO silent default. Each oppose action is
+  // an explicit pair — plain "Oppose" vs "Oppose + Subversion" — so the one-shot
+  // card is never spent (and the assigned leaders never relocated) by accident.
   const existingDice = choice.existingAtTarget.reduce((acc, lid) => {
     const ld = G.catalog.leaders[lid];
     return acc + (ld ? (ld.skills as Record<string, number>)[choice.skill] ?? 0 : 0);
@@ -3387,21 +3387,20 @@ function OpposeMissionModal({ G, choice, onResolve }: {
         )}
 
         {choice.subversion && (
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
-            color: '#cbe6ff', marginBottom: 10, background: 'rgba(20,60,90,0.5)',
-            border: '1px solid #2a5a7a', borderRadius: 3, padding: '6px 8px', cursor: 'pointer' }}>
-            <input type="checkbox" checked={useSubversion} onChange={(e) => setUseSubversion(e.target.checked)} />
-            <span>
-              Use <b>Subversion</b>: move {choice.subversion.leaderIds.map((l) => G.catalog.leaders[l]?.name ?? l).join(', ')}
-              {' '}to {targetName} to oppose with <b>+1 die</b> (the card is then spent). Uncheck to keep them on the mission.
-            </span>
-          </label>
+          <div style={{ fontSize: 12, color: '#cbe6ff', marginBottom: 10,
+            background: 'rgba(20,60,90,0.5)', border: '1px solid #2a5a7a',
+            borderRadius: 3, padding: '6px 8px' }}>
+            You have <b>Subversion</b> assigned ({choice.subversion.leaderIds.map((l) => G.catalog.leaders[l]?.name ?? l).join(', ')}).
+            {' '}Each option below comes in two forms: plain <b>Oppose</b> keeps the card, while
+            {' '}<b>+ Subversion</b> reveals it — moving {choice.subversion.leaderIds.length === 1 ? 'that leader' : 'those leaders'} to {targetName},
+            {' '}rolling <b>+1 die</b>, and <b>spending the card</b>. Nothing is selected by default.
+          </div>
         )}
 
         <div style={{ fontSize: 12, color: '#aaa', marginBottom: 4 }}>
           Pool leaders available to send:
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
           {choice.poolLeaders.length === 0 && (
             <div style={{ color: '#666', fontSize: 12, fontStyle: 'italic' }}>(pool empty)</div>
           )}
@@ -3409,24 +3408,39 @@ function OpposeMissionModal({ G, choice, onResolve }: {
             const ld = G.catalog.leaders[lid];
             if (!ld) return null;
             const match = (ld.skills as Record<string, number>)[choice.skill] ?? 0;
+            const skillLabel = (
+              <span style={{ marginLeft: 6, color: match > 0 ? color : '#888', fontSize: 11 }}>
+                {choice.skill} {match} {match > 0 ? `· adds ${match} ${choice.skill} dice` : '· 0 dice (forces roll only)'}
+              </span>
+            );
             return (
-              <button
-                key={lid}
-                onClick={() => onResolve(lid, useSubversion)}
-                style={{
-                  padding: '6px 10px',
-                  background: '#0c0d10',
-                  border: `1px solid ${match > 0 ? color : '#2a2d34'}`,
-                  color: '#e8e8ea',
-                  borderRadius: 3, cursor: 'pointer', fontSize: 12,
-                }}
-                title={`Send ${ld.name} to ${targetName} to oppose`}
-              >
-                <strong>{ld.name}</strong>
-                <span style={{ marginLeft: 6, color: match > 0 ? color : '#888', fontSize: 11 }}>
-                  {choice.skill} {match} {match > 0 ? `· adds ${match} ${choice.skill} dice` : '· 0 dice (forces roll only)'}
-                </span>
-              </button>
+              <div key={lid} style={{ display: 'flex', gap: 4, alignItems: 'stretch', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => onResolve(lid, false)}
+                  style={{
+                    flex: '1 1 auto', textAlign: 'left',
+                    padding: '6px 10px', background: '#0c0d10',
+                    border: `1px solid ${match > 0 ? color : '#2a2d34'}`,
+                    color: '#e8e8ea', borderRadius: 3, cursor: 'pointer', fontSize: 12,
+                  }}
+                  title={`Send ${ld.name} to ${targetName} to oppose${choice.subversion ? ' (keep your Subversion card)' : ''}`}
+                >
+                  Oppose with <strong>{ld.name}</strong>{skillLabel}
+                </button>
+                {choice.subversion && (
+                  <button
+                    onClick={() => onResolve(lid, true)}
+                    style={{
+                      padding: '6px 10px', background: 'rgba(20,60,90,0.6)',
+                      border: '1px solid #2a5a7a', color: '#cbe6ff',
+                      borderRadius: 3, cursor: 'pointer', fontSize: 11, whiteSpace: 'nowrap',
+                    }}
+                    title={`Send ${ld.name} AND reveal Subversion: +1 die, moves your assigned leader(s) to ${targetName}, card spent`}
+                  >
+                    + Subversion <span style={{ opacity: 0.8 }}>(+1 die, spent)</span>
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>
@@ -3436,9 +3450,9 @@ function OpposeMissionModal({ G, choice, onResolve }: {
             className="tab-button active"
             // Declining is a FULL decline — never fire Subversion (it's a form
             // of opposition; you can't subvert a mission you choose not to
-            // oppose). The checkbox above only governs whether SENDING a pool
-            // leader also plays Subversion (player report #343: "Don't oppose"
-            // still triggered Subversion because it passed the checkbox state).
+            // oppose). Each oppose button above now carries its own explicit
+            // Subversion choice, so this path always passes false (#343/#432:
+            // "Don't oppose" must never spend the card).
             onClick={() => onResolve(null, false)}
             style={{ fontWeight: 700 }}
           >
