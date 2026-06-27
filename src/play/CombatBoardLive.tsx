@@ -1160,8 +1160,21 @@ function DicePanel({ dice, side, humanSide }: { dice: DieResult[] | null; side: 
   );
 }
 
+// Combat dice come in three REAL colours: red, black, and green (the RoE die).
+// Green is a first-class colour, not a catch-all — match it explicitly so a
+// genuinely-unknown colour renders as an obvious magenta rather than silently
+// masquerading as a valid green die.
+function dieColor(color: DieResult['color']): string {
+  switch (color) {
+    case 'red': return '#c4423a';
+    case 'black': return '#222';
+    case 'green': return '#357a3a';
+    default: return '#d000d0';
+  }
+}
+
 function Die({ d }: { d: DieResult }) {
-  const bg = d.color === 'red' ? '#c4423a' : d.color === 'black' ? '#222' : '#357a3a';
+  const bg = dieColor(d.color);
   const face =
     d.face === 'hit' ? '✓' :
     d.face === 'direct-hit' ? '✶' :
@@ -2252,7 +2265,11 @@ function CinematicRerollPanel({ G, choice, onPersist }: {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
         {choice.faces.map((f, i) => {
           const on = sel.includes(i);
-          const col = choice.colors[i] === 'red' ? '#c0392b' : choice.colors[i] === 'black' ? '#444' : '#3a7d3a';
+          // Green is an explicit RoE die colour, not the catch-all; an unknown
+          // colour falls through to magenta so it's visibly wrong, not fake-green.
+          const col = choice.colors[i] === 'red' ? '#c0392b'
+            : choice.colors[i] === 'black' ? '#444'
+            : choice.colors[i] === 'green' ? '#3a7d3a' : '#d000d0';
           return (
             <button key={i} onClick={() => toggle(i)}
               style={{ ...btn(on ? '#ffd54a' : '#777'), minWidth: 40, borderColor: col,
