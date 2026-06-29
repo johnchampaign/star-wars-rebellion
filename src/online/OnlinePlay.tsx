@@ -55,6 +55,17 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
     };
   }, []);
 
+  // Fail soft on a server hiccup: while the INITIAL load is failing (error, no
+  // view yet), keep retrying on a gentle interval so a transient backend blip
+  // (a brief Supabase/Cloudflare unavailability — e.g. an over-quota database)
+  // recovers on its own instead of stranding the player on a dead error screen.
+  // Clears the moment a view loads.
+  useEffect(() => {
+    if (!(error && !view)) return;
+    const iv = setInterval(() => { void refreshRef.current?.(); }, 6000);
+    return () => clearInterval(iv);
+  }, [error, view]);
+
   // While waiting on the opponent, poll for abandonment (the server returns
   // opponentAbandoned once they've been away past the grace period).
   useEffect(() => {
@@ -84,12 +95,44 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
   }
 
   if (loading && !view) return <div style={pad}>Loading game {gameId}…</div>;
-  if (error && !view) return <div style={pad}><b>Couldn't load this game.</b><pre style={errBox}>{String(error.message)}</pre></div>;
+  if (error && !view) {
+    return (
+      <div style={{ ...pad, maxWidth: 560, margin: '40px auto', textAlign: 'center',
+        color: '#e8e6f2', fontFamily: 'system-ui, sans-serif' }}>
+        <div style={{ fontSize: 40, marginBottom: 8 }}>⚠️</div>
+        <h2 style={{ margin: '0 0 8px' }}>Trouble reaching the server</h2>
+        <p style={{ color: '#aab', lineHeight: 1.5, margin: '0 0 16px' }}>
+          We couldn’t load your game just now — the server may be briefly busy or unavailable.
+          Your game is saved and safe; this usually clears on its own in a moment.
+          We’ll keep trying automatically.
+        </p>
+        <button onClick={() => void refresh()} className="tab-button" style={{ padding: '8px 18px' }}>
+          Try again now
+        </button>
+        <details style={{ marginTop: 22, textAlign: 'left' }}>
+          <summary style={{ cursor: 'pointer', color: '#778', fontSize: 12 }}>Technical details</summary>
+          <pre style={errBox}>{String(error.message)}</pre>
+        </details>
+      </div>
+    );
+  }
   if (!view) return <div style={pad}>No game data.</div>;
 
   return (
     <div style={{ ...pad, maxWidth: 1280, margin: '0 auto', fontFamily: 'system-ui, sans-serif', color: '#e8e6f2' }}>
       <SignInBar leaderboardHref="https://games-hub-5vo.pages.dev/leaderboard?game=rebellion" />
+      {/* Mid-game server hiccup: a poll/submit failed but we still have the last
+          good view — keep the board alive and surface a non-blocking, retryable
+          banner instead of blacking out the page (the failure mode bobbi hit). */}
+      {error && view && (
+        <div style={{ background: '#3a2e1a', border: '1px solid #7a5a2a', borderRadius: 6,
+          padding: '6px 10px', margin: '0 0 8px', fontSize: 13, color: '#e0c98a',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <span>⚠ Connection hiccup — showing your last view and retrying…</span>
+          <button onClick={() => void refresh()} className="tab-button"
+            style={{ fontSize: 12, padding: '2px 10px' }}>Retry</button>
+        </div>
+      )}
       {gameOver && ranked && (
         <p style={{ margin: '0 0 8px', fontSize: 14, color: ranked.recorded ? '#6c6' : '#caa' }}>
           {ranked.recorded
