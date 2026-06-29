@@ -184,6 +184,7 @@ export async function makeServer(request: Request, env: Env): Promise<{
     serviceKey: env.SUPABASE_SERVICE_ROLE_KEY!,
   });
   const server = new GameServer<GameState, RebellionAction, Side>({
+    snapshotHistory: 20,   // cap per-game snapshot history (framework >=0.32)
     adapter: rebellionAdapter,
     codec,
     store,
