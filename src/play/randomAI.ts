@@ -620,6 +620,26 @@ function rebelMissionTargetScore(
       (lid) => (G.catalog.leaders[lid]?.skills?.specOps ?? 0) > 0);
     s += specOpsHere ? -3 : 4;
   }
+  // Plan the Assault commits Rebel ships from the base into a SPACE BATTLE at the
+  // target. Only worth it if those ships can win — playtester saw the AI throw a
+  // lone X-wing at a fleet and lose it. Compare the committable base ships against
+  // the target's Imperial space force; heavily penalize a losing matchup (same
+  // 1.2x edge the AI's other aggression gates use), reward a winnable strike.
+  if (missionId === 'plan-the-assault') {
+    const shipStr = (u: { typeId: string }): number => {
+      const t = G.catalog.unitTypes[u.typeId];
+      return t && t.theater === 'space'
+        ? ((t.attack.red ?? 0) + (t.attack.black ?? 0) + (t.attack.green ?? 0) + (t.health?.value ?? 0)) : 0;
+    };
+    const baseLoc = G.rebelBaseRevealed ? G.rebelBaseSystemId : 'rebel-base-space';
+    const baseUnits = baseLoc === 'rebel-base-space'
+      ? (G.map.rebelBaseSpace?.units ?? []) : (G.map.systems[baseLoc]?.units ?? []);
+    let reb = 0;
+    for (const u of baseUnits) if (u.side === 'Rebel') reb += shipStr(u);
+    let imp = 0;
+    for (const u of (sysState?.units ?? [])) if (u.side === 'Empire') imp += shipStr(u);
+    if (imp > 0) s += reb >= imp * 1.2 ? 8 : -40;
+  }
   // Prefer an undefended target so the attempt auto-succeeds (see helper).
   s += oppositionTargetTerm(G, 'Rebel', missionId, targetSysId);
   return s;
