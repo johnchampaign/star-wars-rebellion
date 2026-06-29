@@ -307,6 +307,11 @@ export function runCombat(G: GameState): void {
     // instead of being destroyed the moment they were the last Rebel ground).
     applyStructureRule(G, c);
 
+    // DSUC sole-ship rule (rr p.6) — must run BEFORE the stalemate guard below,
+    // otherwise an unkillable Death Star Under Construction is wrongly called a
+    // stalemate instead of being destroyed outright (player report #442).
+    applyDsucSoleShipRule(G, c);
+
     // Retreat decision (RR pp.5-6) — each side may retreat at most once
     // per combat. Defender goes first per RAW; then attacker.
     if (!c.retreatStepDoneThisRound) {
@@ -2964,6 +2969,29 @@ function applyStructureRule(G: GameState, c: NonNullable<GameState['pendingComba
   }
 }
 
+/** RAW (rr p.6 "Building a Death Star", LTP combat steps): "If the Imperial
+ *  player's only remaining ship is the Death Star Under Construction and the
+ *  Rebel player still has ships in the system, the Death Star Under
+ *  Construction is destroyed." Without this the DSUC — which under construction
+ *  may be unable to land lethal hits — sits forever and the fight is wrongly
+ *  declared an inconclusive stalemate (player report #442). Checked at each
+ *  round end (before the stalemate guard) and at combat end. Destroying the
+ *  DSUC also cancels the Death Star on the build queue (handled by
+ *  destroyUnit). Idempotent. */
+function applyDsucSoleShipRule(G: GameState, c: NonNullable<GameState['pendingCombat']>): void {
+  const empSpace = unitsOf(G, 'Empire', c.systemId, 'space');
+  if (empSpace.length !== 1) return;
+  const dsuc = empSpace[0];
+  if (dsuc.typeId !== 'death-star-under-construction') return;
+  // Rebel must still have at least one ship in the space theater.
+  if (unitsOf(G, 'Rebel', c.systemId, 'space').length === 0) return;
+  destroyViaCombatCard(G, c, dsuc.instanceId, 'dsuc-sole-ship');
+  log(G, { kind: 'combat-dsuc-destroyed', side: 'Empire', payload: {
+    systemId: c.systemId, round: c.round,
+    reason: 'only remaining Imperial ship was the Death Star Under Construction',
+  }});
+}
+
 function endCombat(G: GameState): void {
   if (!G.pendingCombat) return;
   const c = G.pendingCombat;
@@ -2988,6 +3016,9 @@ function endCombat(G: GameState): void {
   // reach Ended without a normal round boundary (it's idempotent: no-op once
   // the structures are already gone).
   applyStructureRule(G, c);
+  // DSUC sole-ship rule — same safety-net rationale (idempotent: no-op once the
+  // DSUC is gone or other Imperial ships remain).
+  applyDsucSoleShipRule(G, c);
 
   // Discard tactic hands, reshuffle decks (rr p.14).
   if (c.attackerHand.length > 0 || c.defenderHand.length > 0) {
