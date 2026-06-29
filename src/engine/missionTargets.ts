@@ -517,6 +517,17 @@ export function missionRevealIsPointless(
         return u != null && u.class !== 'station' && u.theater === icon.type && u.tier === icon.shape;
       }));
     }
+    case 'heist': {
+      // "Remove 1 target marker. If on a Death Star or DSUC, you MAY draw the top
+      // objective instead." With no Death Star/DSUC present, the only effect is
+      // removing a marker — a no-op when the target holds none (the handler itself
+      // logs heist-no-effect here). The DS/DSUC draw keeps it worthwhile otherwise.
+      // (Playtester report: Rebel AI ran Heist on a system with nothing to gain.)
+      const hasDsOrDsuc = (ss?.units ?? []).some((u) => u.side === 'Empire'
+        && (u.typeId === 'death-star' || u.typeId === 'death-star-under-construction'));
+      if (hasDsOrDsuc) return false;
+      return (ss?.targetMarkers?.length ?? 0) === 0;
+    }
     default:
       return false;
   }

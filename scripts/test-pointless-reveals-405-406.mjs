@@ -85,5 +85,21 @@ console.log('\n[ Demolition is pointless when nothing queued matches the system 
   } else { check('(found a matchable unit type for the icon)', false, 'no matching unit type'); }
 }
 
+console.log('\n[ Heist is pointless with no target marker and no Death Star to draw off ]');
+{
+  const G = createGame(data, { seed: 4, expansion: { enabled: true, roeUnits: true, roeMissions: true } });
+  G.map.systems.felucia.units = [];
+  G.map.systems.felucia.targetMarkers = [];
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'felucia'); // satisfies "1+ Imperial units" target rule
+  check('pointless with no markers and no DS/DSUC', missionRevealIsPointless(G, 'Rebel', 'heist', 'felucia') === true);
+  // A target marker present → removing it is a real effect.
+  G.map.systems.felucia.targetMarkers = [{ source: 'plant-explosives' }];
+  check('NOT pointless once a target marker is present', missionRevealIsPointless(G, 'Rebel', 'heist', 'felucia') === false);
+  // No marker but a Death Star present → can draw an objective instead.
+  G.map.systems.felucia.targetMarkers = [];
+  M.deployUnit(G, 'Empire', 'death-star', 'felucia');
+  check('NOT pointless with a Death Star present (objective draw)', missionRevealIsPointless(G, 'Rebel', 'heist', 'felucia') === false);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
