@@ -39,6 +39,53 @@ export const COST_OBJECTIVES = new Set<string>(['the-long-war-1', 'a-time-for-pe
  *  with a decline option, like cost objectives. (Currently empty.) */
 export const OPT_IN_OBJECTIVES = new Set<string>([]);
 
+/** For count-threshold objectives the Rebel can deliberately BUILD toward,
+ *  return how many qualifying systems/units exist now (`have`) and the threshold
+ *  (`need`); null for objectives without a simple monotone count (combat/special).
+ *  The AI uses this to STEER loyalty/positioning toward objectives it is near,
+ *  instead of scattering loyalty and completing none (playtester report: "gained
+ *  quite a few loyalty but didn't complete a single objective"). Mirrors the
+ *  counts in objectiveConditionMet — keep the two in sync. */
+export function objectiveProgress(G: GameState, objectiveId: string): { have: number; need: number } | null {
+  const countRebelLoyal = (filter?: (id: SystemId) => boolean): number => {
+    let c = 0;
+    for (const id of Object.keys(G.map.systems)) {
+      if (G.map.systems[id].loyalty === 'rebel' && (!filter || filter(id as SystemId))) c++;
+    }
+    return c;
+  };
+  switch (objectiveId) {
+    case 'popular-support-2': return { have: countRebelLoyal(), need: 6 };
+    case 'uprising-3': return { have: countRebelLoyal(), need: 9 };
+    case 'support-of-the-hutts-1': {
+      const region = G.catalog.systems['nal-hutta']?.region;
+      if (region === undefined) return null;
+      return { have: countRebelLoyal((id) => G.catalog.systems[id]?.region === region), need: 3 };
+    }
+    case 'defend-the-people-1': {
+      let c = 0;
+      for (const ss of Object.values(G.map.systems)) {
+        if (ss.loyalty === 'rebel' && ss.units.some((u) => u.side === 'Rebel')) c++;
+      }
+      return { have: c, need: 4 };
+    }
+    case 'establish-outposts-3': {
+      let c = 0;
+      for (const ss of Object.values(G.map.systems)) if (ss.units.some((u) => u.side === 'Rebel')) c++;
+      return { have: c, need: 5 };
+    }
+    case 'cut-supply-lines-1': {
+      let c = 0;
+      for (const [id, ss] of Object.entries(G.map.systems)) {
+        const isImperial = ss.loyalty === 'imperial' || ss.subjugated || G.catalog.systems[id]?.isCoruscant;
+        if (isImperial && (!!ss.sabotage || ss.units.some((u) => u.side === 'Rebel'))) c++;
+      }
+      return { have: c, need: 3 };
+    }
+    default: return null;
+  }
+}
+
 /** Return true if the given objective's condition is satisfied in the
  *  current state. Caller should already have verified the timing matches. */
 export function objectiveConditionMet(G: GameState, objectiveId: string): boolean {

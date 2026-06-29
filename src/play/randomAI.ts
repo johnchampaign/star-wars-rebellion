@@ -27,7 +27,7 @@ import { missionTargets, missionRevealIsPointless, rebelLoyalSystemsInRegion } f
 // Re-exported so existing callers/tests that import it from the AI module keep
 // working now that the canonical definition lives in the engine (#304).
 export { missionRevealIsPointless } from '../engine/missionTargets';
-import { COST_OBJECTIVES } from '../engine/objectives';
+import { COST_OBJECTIVES, objectiveProgress, objectiveConditionMet } from '../engine/objectives';
 
 // AI randomness. Defaults to Math.random (live app), but the tournament
 // harness calls seedAI() so AI-vs-AI runs are reproducible per seed — without
@@ -559,6 +559,30 @@ function rebelMissionTargetScore(
     // did so sent the Rebel to attempt flips on defended Imperial strongholds,
     // where the mission failed and loyalty-gain crashed.)
     if (sysState?.loyalty === 'rebel') s -= 30;
+    // OBJECTIVE STEERING (playtester: "gained quite a few loyalty but didn't
+    // complete a single objective"). Gaining loyalty here flips the system
+    // Rebel-loyal — reward that when it advances a HELD loyalty objective, scaled
+    // so an objective we're NEAR pulls hardest, with a decisive bonus when it
+    // would COMPLETE one. This concentrates loyalty into scored reputation
+    // (the Rebel win condition) instead of scattering it across the map. The
+    // flip-and-recount is exact, so region objectives only reward in-region gains
+    // and unit-gated ones (defend-the-people) only when a Rebel unit is present.
+    else if (sysState) {
+      for (const oid of G.rebel.objectiveHand ?? []) {
+        if (objectiveConditionMet(G, oid)) continue;
+        const prog = objectiveProgress(G, oid);
+        if (!prog || prog.have >= prog.need) continue;
+        const saved: 'rebel' | 'imperial' | 'neutral' = sysState.loyalty;
+        sysState.loyalty = 'rebel';
+        const after = objectiveProgress(G, oid)?.have ?? prog.have;
+        sysState.loyalty = saved;
+        if (after > prog.have) {
+          const rep = G.catalog.objectives[oid]?.reputation ?? 1;
+          const remaining = prog.need - after;
+          s += remaining <= 0 ? 20 + rep * 6 : 7 / Math.max(1, remaining);
+        }
+      }
+    }
   }
   // Sabotage (Rebel mission) should target ENEMY systems, never own.
   // Issues #10, #13: the AI was sabotaging Bespin / Alderaan when those

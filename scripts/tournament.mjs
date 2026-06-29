@@ -126,6 +126,7 @@ function playOne(seed) {
     winReason: G.winReason ?? null,
     rounds: G.timeMarker,
     reputationMarker: G.reputationMarker,
+    scoredObjectives: (G.rebel.scoredObjectives ?? []).length,
     rebelBaseRevealed: G.rebelBaseRevealed,
     capturedLeaders: (G.empire.capturedLeaders ?? []).length,
     steps,
@@ -176,6 +177,7 @@ const stats = {
   stuck: 0,
   maxRoundsReached: 0,
   totalRounds: 0,
+  totalObjectives: 0,
   totalSteps: 0,
   totalElapsedMs: 0,
   winReasons: {},
@@ -205,6 +207,7 @@ for (let i = 0; i < args.games; i++) {
   else stats.stuck++;
   if (r.winReason === 'max-rounds-reached') stats.maxRoundsReached++;
   stats.totalRounds += r.rounds;
+  stats.totalObjectives += r.scoredObjectives;
   stats.totalSteps += r.steps;
   stats.totalElapsedMs += r.elapsed_ms;
   stats.winReasons[r.winReason ?? 'none'] = (stats.winReasons[r.winReason ?? 'none'] ?? 0) + 1;
@@ -257,6 +260,7 @@ console.log(`Empire wins:            ${stats.empireWins} (${(100 * stats.empireW
 console.log(`Stuck:                  ${stats.stuck} (${(100 * stats.stuck / stats.games).toFixed(1)}%)`);
 console.log(`Max-rounds reached:     ${stats.maxRoundsReached}`);
 console.log(`Avg rounds per game:    ${(stats.totalRounds / stats.games).toFixed(1)}`);
+console.log(`Avg Rebel objectives:   ${(stats.totalObjectives / stats.games).toFixed(2)}`);
 console.log(`Avg steps per game:     ${(stats.totalSteps / stats.games).toFixed(0)}`);
 console.log(`Avg ms per game:        ${(stats.totalElapsedMs / stats.games).toFixed(0)}`);
 console.log('');
