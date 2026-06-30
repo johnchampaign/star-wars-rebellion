@@ -19,7 +19,7 @@
     "verify:vmod": "node scripts/verify-vmod-loader.mjs"
   },
   "dependencies": {
-    "digital-boardgame-framework": "^0.34.0",
+    "digital-boardgame-framework": "^0.36.0",
     "html2canvas": "^1.4.1",
     "jszip": "^3.10.1",
     "react": "^18.3.1",
