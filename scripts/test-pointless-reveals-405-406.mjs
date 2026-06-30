@@ -101,5 +101,50 @@ console.log('\n[ Heist is pointless with no target marker and no Death Star to d
   check('NOT pointless with a Death Star present (objective draw)', missionRevealIsPointless(G, 'Rebel', 'heist', 'felucia') === false);
 }
 
+console.log('\n[ #435 Long Range Probe is pointless when the base answer is already known ]');
+{
+  const G = createGame(data, { seed: 7, expansion: { enabled: true, roeUnits: true, roeMissions: true } });
+  const baseId = G.rebelBaseSystemId;
+  const sys = Object.values(G.catalog.systems).find((d) =>
+    d.id !== baseId && G.map.systems[d.id]?.loyalty !== 'imperial'
+    && !(G.map.systems[d.id]?.units ?? []).some((u) => u.side === 'Empire'));
+  const SID = sys.id;
+  G.map.systems[SID].loyalty = 'neutral';
+  G.map.systems[SID].units = [];
+  check('NOT pointless on a fresh neutral, unoccupied, un-probed system',
+    missionRevealIsPointless(G, 'Empire', 'long-range-probe', SID) === false);
+  check('Rebel side: never pointless (nothing to learn)',
+    missionRevealIsPointless(G, 'Rebel', 'long-range-probe', SID) === false);
+  M.deployUnit(G, 'Empire', 'stormtrooper', SID);
+  check('pointless once Empire ground is present (base would have auto-revealed)',
+    missionRevealIsPointless(G, 'Empire', 'long-range-probe', SID) === true);
+
+  const G2 = createGame(data, { seed: 7, expansion: { enabled: true, roeUnits: true, roeMissions: true } });
+  G2.map.systems[SID].units = [];
+  G2.map.systems[SID].loyalty = 'imperial';
+  check('pointless when the system has Imperial loyalty',
+    missionRevealIsPointless(G2, 'Empire', 'long-range-probe', SID) === true);
+
+  const G3 = createGame(data, { seed: 7, expansion: { enabled: true, roeUnits: true, roeMissions: true } });
+  G3.map.systems[SID].units = []; G3.map.systems[SID].loyalty = 'neutral';
+  G3.empireSearchedRuledOut = [SID];
+  check('pointless when already ruled out by a prior probe/LRP',
+    missionRevealIsPointless(G3, 'Empire', 'long-range-probe', SID) === true);
+
+  const G4 = createGame(data, { seed: 7, expansion: { enabled: true, roeUnits: true, roeMissions: true } });
+  const probe = Object.values(G4.catalog.probes).find((p) => p.systemId && p.systemId !== G4.rebelBaseSystemId);
+  const PSID = probe.systemId;
+  G4.map.systems[PSID].units = []; G4.map.systems[PSID].loyalty = 'neutral';
+  G4.empire.probeHand = [probe.id];
+  check('pointless when a held probe card already names the system',
+    missionRevealIsPointless(G4, 'Empire', 'long-range-probe', PSID) === true);
+
+  const G5 = createGame(data, { seed: 7, expansion: { enabled: true, roeUnits: true, roeMissions: true } });
+  G5.rebelBaseRevealed = true;
+  G5.map.systems[SID].units = []; G5.map.systems[SID].loyalty = 'neutral';
+  check('pointless once the base is already revealed',
+    missionRevealIsPointless(G5, 'Empire', 'long-range-probe', SID) === true);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

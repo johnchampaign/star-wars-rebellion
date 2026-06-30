@@ -528,6 +528,24 @@ export function missionRevealIsPointless(
       if (hasDsOrDsuc) return false;
       return (ss?.targetMarkers?.length ?? 0) === 0;
     }
+    case 'long-range-probe': {
+      // "If successful, the Rebel player must tell you if the base is in this
+      // system." The answer is already known — so the reveal is wasted — when:
+      //  • the base is already revealed; or
+      //  • the system has Imperial loyalty or Empire ground (either would have
+      //    auto-revealed the base were it here — recomputeRebelBaseReveal); or
+      //  • a prior probe/LRP already ruled the system out.
+      // (#435: AI probed Alderaan where it already held ground — a guaranteed
+      // "no".) Empire-only; nothing to learn for the Rebel.
+      if (side !== 'Empire') return false;
+      if (G.rebelBaseRevealed) return true;
+      if (ss?.loyalty === 'imperial') return true;
+      if ((ss?.units ?? []).some((u) => u.side === 'Empire'
+        && G.catalog.unitTypes[u.typeId]?.theater === 'ground')) return true;
+      if (G.empireSearchedRuledOut?.includes(sysId)) return true;
+      return (G.empire.probeHand ?? [])
+        .some((pid) => G.catalog.probes[pid]?.systemId === sysId);
+    }
     default:
       return false;
   }

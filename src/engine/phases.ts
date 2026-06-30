@@ -1333,32 +1333,8 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pending.stage === 'failed') {
-    // RoE "Post Bounty" (Empire/Jabba): after a Rebel mission fails, Empire
-    // may discard the card to slap a bounty ring on one of the Rebel
-    // leaders who attempted it. RAW also requires Jabba is accessible
-    // (pool, on a mission, or on the board). The offer pauses cleanup;
-    // resolvePostBountyOffer attaches the ring (or declines) and then runs
-    // the same discard/advance tail.
-    if (G.expansion?.enabled
-        && pending.resolverSide === 'Rebel'
-        && G.empire.actionHand.includes('post-bounty')
-        && jabbaAccessible(G)
-        && !G.pendingChoice) {
-      const candidates = (pending.leaderIds as LeaderId[]).filter(
-        (lid) => !G.leaderAttachments?.[lid]?.includes('bounty'),
-      );
-      if (candidates.length > 0) {
-        G.pendingChoice = {
-          kind: 'PostBountyOffer',
-          side: 'Empire',
-          missionId: pending.missionId,
-          candidates,
-        };
-        log(G, { kind: 'choice-request', side: 'Empire', payload: {
-          kind: 'PostBountyOffer', missionId: pending.missionId, candidates: candidates.length,
-        }});
-        return { ok: true };
-      }
+    if (maybePostBountyOffer(G, pending.resolverSide, pending.missionId, pending.leaderIds as LeaderId[])) {
+      return { ok: true };
     }
     discardOrReturnMission(G, pending.resolverSide, pending.missionId, pending.stage);
     G.pendingMission = undefined;
@@ -1377,6 +1353,37 @@ function jabbaAccessible(G: GameState): boolean {
     if (board.includes('jabba' as LeaderId)) return true;
   }
   return false;
+}
+
+/** RoE "Post Bounty" (Empire/Jabba): after a Rebel mission FAILS, the Empire
+ *  may discard the card to attach a bounty ring to one of the Rebel leaders who
+ *  attempted it. Posts the PostBountyOffer choice (pausing the failure cleanup)
+ *  and returns true when offered; resolvePostBountyOffer then runs the shared
+ *  discard/advance tail. Shared by BOTH failure paths — the unopposed reveal
+ *  (continueRevealAfterSpecialOffer) and the opposed roll (resolveOpposition),
+ *  which previously lacked the hook (#437). */
+function maybePostBountyOffer(
+  G: GameState, resolverSide: Side, missionId: string, leaderIds: LeaderId[],
+): boolean {
+  if (!(G.expansion?.enabled
+      && resolverSide === 'Rebel'
+      && G.empire.actionHand.includes('post-bounty')
+      && jabbaAccessible(G)
+      && !G.pendingChoice)) return false;
+  const candidates = leaderIds.filter(
+    (lid) => !G.leaderAttachments?.[lid]?.includes('bounty'),
+  );
+  if (candidates.length === 0) return false;
+  G.pendingChoice = {
+    kind: 'PostBountyOffer',
+    side: 'Empire',
+    missionId,
+    candidates,
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'PostBountyOffer', missionId, candidates: candidates.length,
+  }});
+  return true;
 }
 
 /** Continue mission resolution after the player resolves a mid-effect choice.
@@ -1571,6 +1578,11 @@ export function resolveOpposition(
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pm.stage === 'failed') {
+    // Post Bounty fires on a failed Rebel mission regardless of which path
+    // finalized the failure (opposed roll / reroll / ring trigger) (#437).
+    if (maybePostBountyOffer(G, pm.resolverSide, pm.missionId, pm.leaderIds as LeaderId[])) {
+      return { ok: true };
+    }
     discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
@@ -1842,6 +1854,11 @@ function continueMissionFromStash(G: GameState, pm: MissionResolution): void {
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pm.stage === 'failed') {
+    // Post Bounty fires on a failed Rebel mission regardless of which path
+    // finalized the failure (#437); posting the offer pauses cleanup.
+    if (maybePostBountyOffer(G, pm.resolverSide, pm.missionId, pm.leaderIds as LeaderId[])) {
+      return;
+    }
     discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
@@ -1943,6 +1960,11 @@ export function resolveR2D2MissionFlip(G: GameState, flipIndex: number | null): 
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pm.stage === 'failed') {
+    // Post Bounty fires on a failed Rebel mission regardless of which path
+    // finalized the failure (opposed roll / reroll / ring trigger) (#437).
+    if (maybePostBountyOffer(G, pm.resolverSide, pm.missionId, pm.leaderIds as LeaderId[])) {
+      return { ok: true };
+    }
     discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
@@ -2894,6 +2916,13 @@ export function resolveRapidMobilizationBranch(
     log(G, { kind: 'rapid-mobilization-base-no-legal-candidate', side: 'Rebel', payload: {
       twoLeaders, drawnCount: drawnProbeIds.length,
     }});
+    // Tell the player why nothing happened — otherwise this silently jumps
+    // from "establish a new base" to the Refresh discard and looks like a
+    // skipped step (#436).
+    pushNotice(G, `rm-no-base-t${G.timeMarker}`, 'Rapid Mobilization',
+      `None of the ${drawnProbeIds.length} probe ${drawnProbeIds.length === 1 ? 'system' : 'systems'} drawn was a legal base location ` +
+      `(all were Imperial-controlled, Imperial-occupied, or destroyed), so the Rebel base stays where it is.`,
+      'Rebel');
     if (drawnProbeIds.length > 0) {
       G.probeDeck.push(...shuffle(G.rng, [...drawnProbeIds]));
       log(G, { kind: 'rapid-mobilization-probes-to-bottom', side: 'Rebel', payload: { count: drawnProbeIds.length } });
@@ -3158,6 +3187,11 @@ function continueAfterRingTrigger(G: GameState, pm: MissionResolution): void {
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pm.stage === 'failed') {
+    // Post Bounty fires on a failed Rebel mission regardless of which path
+    // finalized the failure (#437); posting the offer pauses cleanup.
+    if (maybePostBountyOffer(G, pm.resolverSide, pm.missionId, pm.leaderIds as LeaderId[])) {
+      return;
+    }
     discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
@@ -3231,6 +3265,11 @@ export function resolveOneInAMillionMission(
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);
   } else if (pm.stage === 'failed') {
+    // Post Bounty fires on a failed Rebel mission regardless of which path
+    // finalized the failure (opposed roll / reroll / ring trigger) (#437).
+    if (maybePostBountyOffer(G, pm.resolverSide, pm.missionId, pm.leaderIds as LeaderId[])) {
+      return { ok: true };
+    }
     discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
     G.pendingMission = undefined;
     if (!G.isGameOver) advanceCommandTurn(G);

@@ -111,9 +111,10 @@ export const UNIT_TYPES: UnitType[] = [
     id: 'tie-striker', name: 'TIE Striker', theater: 'space', class: 'fighter', tier: 'triangle',
     health: { color: 'black', value: 1 },
     attack: { red: 0, black: 0, green: 1 },
-    // TIE Strikers are independently hyperdrive-capable (per the reference
-    // mat — no "must be transported" badge unlike base TIE Fighters).
-    transport: { capacity: 0, restriction: false, immobile: false },
+    // TIE Strikers carry the same "must be transported" badge as the base TIE
+    // Fighter on the reference mat (images/ReferenceEmpire2P.png) — they each
+    // consume 1 transport capacity and can't move without a carrier (#438).
+    transport: { capacity: 0, restriction: true, immobile: false },
     buildResource: 1, supplyCount: 6, set: 'rote',
   }),
   I({

@@ -2086,7 +2086,13 @@ function listStartOfCombatPlayable(G: GameState, c: CombatState, side: Side): st
     const card = G.catalog.actions[cid];
     if (!card || card.timing !== 'StartOfCombat') return false;
     const req = card.leaderRequirement ?? [];
-    if (req.length > 0 && !req.some((lid) => leadersHere.has(lid))) return false;
+    // RAW (Rules Reference, "Action Cards"): a combat/mission action card needs
+    // one of its named leaders already in the system — EXCEPT cards that move a
+    // leader into the system. Ready For Action places a leader from the pool
+    // into the combat, so its leaderRequirement is the card-art association, not
+    // a presence gate; offer it whenever the pool can supply a leader (#441).
+    const movesLeaderIn = cid === 'ready-for-action';
+    if (!movesLeaderIn && req.length > 0 && !req.some((lid) => leadersHere.has(lid))) return false;
     // Some Start-of-Combat cards do nothing unless a legal target exists in the
     // system. Offering them with no valid target lets a player waste the card
     // (player report: "Target the Generator offered where there are no
@@ -2143,6 +2149,10 @@ function hasStartOfCombatLegalTarget(G: GameState, c: CombatState, cardId: strin
       // tactic cards." Only meaningful when there's actually a space battle —
       // otherwise it's a wasted card (player report #160).
       return bothSidesHaveTheater(G, c.systemId, 'space');
+    case 'ready-for-action':
+      // Places a leader from the pool into the combat — nothing to place when
+      // the side's leader pool is empty (#441).
+      return (side === 'Rebel' ? G.rebel : G.empire).leaderPool.length > 0;
     default:
       return true;
   }
