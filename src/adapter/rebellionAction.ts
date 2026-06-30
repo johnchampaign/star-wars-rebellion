@@ -110,6 +110,10 @@ export type RebellionAction =
   | { kind: 'recruitDrawAnother' }
   | { kind: 'resolveBuildPicks'; choices: string[] }
   | { kind: 'resolveDeployUnitPick'; systemId: SystemId }
+  | { kind: 'declineDeployUnit' }
+  | { kind: 'resolveHandLimitDiscard'; missionIds: string[] }
+  | { kind: 'resolveLeaderPoolEliminate'; leaderId: LeaderId }
+  | { kind: 'resolveAssignSecondLeader'; leaderId: LeaderId | null }
   | { kind: 'switchDeployType'; typeId: string }
   | { kind: 'resolveSecretFacilityUnitPick'; typeId: string }
   | { kind: 'resolveArmedCardRevealOffer'; reveal: boolean }

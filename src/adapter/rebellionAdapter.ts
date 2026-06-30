@@ -112,6 +112,10 @@ function dispatch(G: GameState, a: RebellionAction, actor: Side): Result {
     case 'recruitDrawAnother':                   return phases.recruitDrawAnother(G);
     case 'resolveBuildPicks':                    return phases.resolveBuildPicks(G, a.choices);
     case 'resolveDeployUnitPick':                return phases.resolveDeployUnitPick(G, a.systemId);
+    case 'declineDeployUnit':                    return phases.declineDeployUnit(G);
+    case 'resolveHandLimitDiscard':              return phases.resolveHandLimitDiscard(G, a.missionIds);
+    case 'resolveLeaderPoolEliminate':           return phases.resolveLeaderPoolEliminate(G, a.leaderId);
+    case 'resolveAssignSecondLeader':            return phases.resolveAssignSecondLeader(G, a.leaderId);
     case 'switchDeployType':                     return phases.switchDeployType(G, a.typeId);
     case 'resolveSecretFacilityUnitPick':        return phases.resolveSecretFacilityUnitPick(G, a.typeId);
     case 'resolveArmedCardRevealOffer':          return phases.resolveArmedCardRevealOffer(G, a.reveal);
