@@ -31,6 +31,11 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
       initialState,
       players: ['Rebel', 'Empire'],
       emails: body.emails,
+      // Attribute the AI seat so vs-AI games are RATED (the AI appears on the
+      // leaderboard as `ai:rebellion:standard`). Rebellion drives the AI itself
+      // via state.aiSides / runServerAI — this only tags it for rating; the
+      // framework's own AI driver stays idle (no aiControllers configured).
+      ...(body.aiSide ? { ai: { [body.aiSide]: 'standard' } } : {}),
     });
     // Email each seat that has an address on file its private invite link — but
     // not the AI seat. Best-effort, off the response path.
