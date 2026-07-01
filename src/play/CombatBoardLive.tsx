@@ -199,7 +199,14 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
     for (let i = beginIdx + 1; i < tl.length; i++) {
       const e = tl[i];
       if (e.kind === 'combat-end') break;
-      if (e.kind === 'combat-tactic' && e.side) {
+      // combat-tactic fires when a tactic ACTS (reroll/damage). But a cinematic
+      // tactic that's revealed and then CANCELLED by the opponent, or that has
+      // NO applicable ability, logs a different event and would otherwise never
+      // show — so the enemy's defensive/cancel card was invisible unless you dug
+      // through the log (playtester: "you aren't told the enemy tactic card").
+      // All three are post-reveal, so surfacing them leaks nothing face-down.
+      if ((e.kind === 'combat-tactic' || e.kind === 'cinematic-tactic-cancelled'
+        || e.kind === 'cinematic-tactic-no-ability') && e.side) {
         const card = (e.payload as { card?: string })?.card;
         if (card) out.push({ side: e.side as Side, card });
       }
