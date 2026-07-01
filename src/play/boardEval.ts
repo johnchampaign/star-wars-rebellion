@@ -124,6 +124,99 @@ function cloneState(G: GameState): GameState {
 
 const CANDIDATE_CAP = 60;
 
+// ---------------------------------------------------------------------------
+// Depth-2 search (the follow-up experiment): the depth-1 eval-greedy tied the
+// heuristic exactly, and every prior probe says the gap is MULTI-TURN — so try
+// looking one opponent reply ahead. For each root candidate: apply on a clone,
+// settle sub-choices (heuristic resolves both sides' pending prompts, same as
+// live play), then give the OPPONENT their best eval-greedy reply (their eval,
+// their perspective), settle again, and score the result from the root side.
+// Beam-limited: all root candidates get the depth-1 eval; only the top
+// ROOT_BEAM expand the opponent reply (candidates pre-sorted by the heuristic
+// score, capped at OPP_CAP — the heuristic order is a good prefilter).
+// ---------------------------------------------------------------------------
+
+const ROOT_BEAM = 6;
+const OPP_CAP = 20;
+
+import { stepOnce } from './randomAI';
+
+/** Resolve pending sub-choices/mission/combat on a scratch state until it's at
+ *  a clean decision point again (mirrors the tournament driver). Mutates c. */
+function settle(c: GameState): void {
+  let guard = 0;
+  while (!c.isGameOver && (c.pendingChoice || c.pendingMission || c.pendingCombat) && guard++ < 500) {
+    if (stepOnce(c, c.currentPlayer)) continue;
+    const o = c.currentPlayer === 'Rebel' ? 'Empire' : 'Rebel';
+    if (stepOnce(c, o as Side)) continue;
+    break; // nobody can act — leave as-is, evaluate what we have
+  }
+}
+
+/** Apply `side`'s best eval-greedy Command action on scratch state c (used as
+ *  the opponent model inside the depth-2 search). No-op if it isn't a clean
+ *  Command decision for that side. */
+function applyGreedyReply(c: GameState, side: Side): void {
+  if (c.isGameOver || c.phase !== 'Command' || c.currentPlayer !== side) return;
+  if (c.pendingChoice || c.pendingMission || c.pendingCombat) return;
+  const candidates = bestCommandAction(c, side).slice(0, OPP_CAP);
+  let best: GameState | null = null;
+  let bestVal = -Infinity;
+  for (const a of candidates) {
+    const cc = cloneState(c);
+    const ok = a.kind === 'pass' ? phases.pass(cc, side).ok : tryCommandAction(cc, side, a);
+    if (!ok) continue;
+    settle(cc);
+    const val = evaluate(cc, side);
+    if (val > bestVal) { bestVal = val; best = cc; }
+  }
+  if (best) {
+    // Copy the chosen continuation back onto c (cheaper than re-applying).
+    const { catalog, ...rest } = best;
+    void catalog;
+    Object.assign(c, rest);
+  }
+}
+
+/** Depth-2 eval-greedy Command decision: rank all candidates by settled
+ *  depth-1 value, then expand the top ROOT_BEAM through the opponent's best
+ *  reply and commit the root action with the best post-reply value. */
+export function evalCommandStepDeep(G: GameState, side: Side): boolean {
+  if (G.phase !== 'Command' || G.currentPlayer !== side) return false;
+  if (G.pendingChoice || G.pendingMission || G.pendingCombat) return false;
+  const candidates = bestCommandAction(G, side).slice(0, CANDIDATE_CAP);
+  if (candidates.length === 0) return phases.pass(G, side).ok;
+  const opp: Side = side === 'Rebel' ? 'Empire' : 'Rebel';
+
+  // Depth-1 pass: settled value of each candidate.
+  const scored: { a: (typeof candidates)[number]; c: GameState; v1: number }[] = [];
+  for (const a of candidates) {
+    const c = cloneState(G);
+    const ok = a.kind === 'pass' ? phases.pass(c, side).ok : tryCommandAction(c, side, a);
+    if (!ok) continue;
+    settle(c);
+    scored.push({ a, c, v1: evaluate(c, side) });
+  }
+  if (scored.length === 0) return phases.pass(G, side).ok;
+  scored.sort((x, y) => y.v1 - x.v1);
+
+  // Depth-2 pass: expand the beam through the opponent's greedy reply.
+  let bestAction = scored[0].a;
+  let bestVal = -Infinity;
+  for (const s of scored.slice(0, ROOT_BEAM)) {
+    const c = s.c; // already settled post-root state
+    if (!c.isGameOver) { applyGreedyReply(c, opp); settle(c); }
+    const v2 = c.isGameOver
+      ? (c.winner === side ? 1e6 : c.winner ? -1e6 : evaluate(c, side))
+      : evaluate(c, side);
+    if (v2 > bestVal) { bestVal = v2; bestAction = s.a; }
+  }
+
+  if (bestAction.kind === 'pass') return phases.pass(G, side).ok;
+  if (tryCommandAction(G, side, bestAction)) return true;
+  return phases.pass(G, side).ok;
+}
+
 /** Eval-greedy Command decision: enumerate the heuristic's candidate actions
  *  (reusing its legality/enumeration work, IGNORING its scores), apply each on
  *  a clone, and commit the action whose resulting state evaluates best. Returns

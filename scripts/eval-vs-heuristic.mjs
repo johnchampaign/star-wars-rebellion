@@ -20,17 +20,19 @@ const { register } = await import('tsx/esm/api'); register();
 const { createGame } = await import('../src/engine/setup.ts');
 const phases = await import('../src/engine/phases.ts');
 const { stepOnce, seedAI } = await import('../src/play/randomAI.ts');
-const { evalCommandStep } = await import('../src/play/boardEval.ts');
+const { evalCommandStep, evalCommandStepDeep } = await import('../src/play/boardEval.ts');
 
-const args = { games: 150, seed: 1, maxRounds: 14 };
+const args = { games: 150, seed: 1, maxRounds: 14, depth: 1 };
 {
   const a = process.argv.slice(2);
   for (let i = 0; i < a.length; i++) {
     if (a[i] === '--games') args.games = parseInt(a[++i], 10);
     else if (a[i] === '--seed') args.seed = parseInt(a[++i], 10);
     else if (a[i] === '--max-rounds') args.maxRounds = parseInt(a[++i], 10);
+    else if (a[i] === '--depth') args.depth = parseInt(a[++i], 10);
   }
 }
+const evalStep = args.depth >= 2 ? evalCommandStepDeep : evalCommandStep;
 
 const j = (p) => JSON.parse(readFileSync(join(ROOT, 'assets', p), 'utf-8'));
 const data = { systems: j('systems.json'), adjacency: j('adjacency.json'), leaders: j('leaders.json'), actions: j('actions.json'), missions: j('missions.json'), objectives: j('objectives.json'), tactics: j('tactics.json'), probes: j('probes.json') };
@@ -41,7 +43,7 @@ function playOne(seed, evalSide) {
   const G = createGame(data, { seed, autoSetupUnits: false });
 
   const step = (side) => {
-    if (side === evalSide && evalCommandStep(G, side)) return true;
+    if (side === evalSide && evalStep(G, side)) return true;
     return stepOnce(G, side);
   };
 
@@ -91,10 +93,11 @@ function runConfig(label, evalSide) {
   return { rebel, empire, stuck };
 }
 
-console.log(`Eval-greedy vs heuristic head-to-head — ${args.games} games/config, seed ${args.seed}`);
+const tag = args.depth >= 2 ? `depth-${args.depth}` : 'greedy';
+console.log(`Eval-${tag} vs heuristic head-to-head — ${args.games} games/config, seed ${args.seed}`);
 const base = runConfig('BASELINE: heuristic vs heuristic', null);
-const evalEmp = runConfig('Eval-greedy EMPIRE vs heuristic Rebel', 'Empire');
-const evalReb = runConfig('Eval-greedy REBEL vs heuristic Empire', 'Rebel');
+const evalEmp = runConfig(`Eval-${tag} EMPIRE vs heuristic Rebel`, 'Empire');
+const evalReb = runConfig(`Eval-${tag} REBEL vs heuristic Empire`, 'Rebel');
 
 console.log('\n=== Verdict ===');
 const d1 = (100 * (evalEmp.empire - base.empire) / args.games).toFixed(1);
