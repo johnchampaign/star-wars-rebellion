@@ -178,15 +178,20 @@ function applyGreedyReply(c: GameState, side: Side): void {
   }
 }
 
-/** Depth-2 eval-greedy Command decision: rank all candidates by settled
- *  depth-1 value, then expand the top ROOT_BEAM through the opponent's best
- *  reply and commit the root action with the best post-reply value. */
-export function evalCommandStepDeep(G: GameState, side: Side): boolean {
+/** Depth-N eval-greedy Command decision: rank all candidates by settled
+ *  depth-1 value, then expand the top ROOT_BEAM by playing out `depth - 1`
+ *  further moves — each made greedily by WHOEVER holds the turn (usually
+ *  alternating opponent/self, but Rebellion's Command turn order can hand the
+ *  same side consecutive actions; following currentPlayer keeps the line
+ *  turn-order-correct). Commit the root action with the best end-of-line value
+ *  from the root side's perspective.
+ *  depth=2 reproduces the original depth-2 design (one opponent reply);
+ *  depth=3 adds the root side's own follow-up, valuing initiative/tempo. */
+export function evalCommandStepDeep(G: GameState, side: Side, depth = 2): boolean {
   if (G.phase !== 'Command' || G.currentPlayer !== side) return false;
   if (G.pendingChoice || G.pendingMission || G.pendingCombat) return false;
   const candidates = bestCommandAction(G, side).slice(0, CANDIDATE_CAP);
   if (candidates.length === 0) return phases.pass(G, side).ok;
-  const opp: Side = side === 'Rebel' ? 'Empire' : 'Rebel';
 
   // Depth-1 pass: settled value of each candidate.
   const scored: { a: (typeof candidates)[number]; c: GameState; v1: number }[] = [];
@@ -200,16 +205,19 @@ export function evalCommandStepDeep(G: GameState, side: Side): boolean {
   if (scored.length === 0) return phases.pass(G, side).ok;
   scored.sort((x, y) => y.v1 - x.v1);
 
-  // Depth-2 pass: expand the beam through the opponent's greedy reply.
+  // Deep pass: extend the beam lines with greedy moves by whoever is to act.
   let bestAction = scored[0].a;
   let bestVal = -Infinity;
   for (const s of scored.slice(0, ROOT_BEAM)) {
     const c = s.c; // already settled post-root state
-    if (!c.isGameOver) { applyGreedyReply(c, opp); settle(c); }
-    const v2 = c.isGameOver
+    for (let d = 1; d < depth && !c.isGameOver; d++) {
+      applyGreedyReply(c, c.currentPlayer);
+      settle(c);
+    }
+    const v = c.isGameOver
       ? (c.winner === side ? 1e6 : c.winner ? -1e6 : evaluate(c, side))
       : evaluate(c, side);
-    if (v2 > bestVal) { bestVal = v2; bestAction = s.a; }
+    if (v > bestVal) { bestVal = v; bestAction = s.a; }
   }
 
   if (bestAction.kind === 'pass') return phases.pass(G, side).ok;

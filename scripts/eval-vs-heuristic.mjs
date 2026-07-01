@@ -30,9 +30,10 @@ const args = { games: 150, seed: 1, maxRounds: 14, depth: 1 };
     else if (a[i] === '--seed') args.seed = parseInt(a[++i], 10);
     else if (a[i] === '--max-rounds') args.maxRounds = parseInt(a[++i], 10);
     else if (a[i] === '--depth') args.depth = parseInt(a[++i], 10);
+    else if (a[i] === '--only') args.only = a[++i]; // 'Rebel' | 'Empire' — skip the other eval config
   }
 }
-const evalStep = args.depth >= 2 ? evalCommandStepDeep : evalCommandStep;
+const evalStep = args.depth >= 2 ? (G, side) => evalCommandStepDeep(G, side, args.depth) : evalCommandStep;
 
 const j = (p) => JSON.parse(readFileSync(join(ROOT, 'assets', p), 'utf-8'));
 const data = { systems: j('systems.json'), adjacency: j('adjacency.json'), leaders: j('leaders.json'), actions: j('actions.json'), missions: j('missions.json'), objectives: j('objectives.json'), tactics: j('tactics.json'), probes: j('probes.json') };
@@ -96,11 +97,9 @@ function runConfig(label, evalSide) {
 const tag = args.depth >= 2 ? `depth-${args.depth}` : 'greedy';
 console.log(`Eval-${tag} vs heuristic head-to-head — ${args.games} games/config, seed ${args.seed}`);
 const base = runConfig('BASELINE: heuristic vs heuristic', null);
-const evalEmp = runConfig(`Eval-${tag} EMPIRE vs heuristic Rebel`, 'Empire');
-const evalReb = runConfig(`Eval-${tag} REBEL vs heuristic Empire`, 'Rebel');
+const evalEmp = args.only === 'Rebel' ? null : runConfig(`Eval-${tag} EMPIRE vs heuristic Rebel`, 'Empire');
+const evalReb = args.only === 'Empire' ? null : runConfig(`Eval-${tag} REBEL vs heuristic Empire`, 'Rebel');
 
 console.log('\n=== Verdict ===');
-const d1 = (100 * (evalEmp.empire - base.empire) / args.games).toFixed(1);
-const d2 = (100 * (evalReb.rebel - base.rebel) / args.games).toFixed(1);
-console.log(`Empire policy: eval-greedy shifts Empire wins by ${d1}pt vs baseline`);
-console.log(`Rebel policy:  eval-greedy shifts Rebel wins by ${d2}pt vs baseline`);
+if (evalEmp) console.log(`Empire policy: shifts Empire wins by ${(100 * (evalEmp.empire - base.empire) / args.games).toFixed(1)}pt vs baseline`);
+if (evalReb) console.log(`Rebel policy:  shifts Rebel wins by ${(100 * (evalReb.rebel - base.rebel) / args.games).toFixed(1)}pt vs baseline`);
