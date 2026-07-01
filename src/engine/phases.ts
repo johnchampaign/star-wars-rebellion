@@ -4230,6 +4230,10 @@ export function resolveBuildFromIconsPick(
   const sysDef = G.catalog.systems[choice.systemId];
   if (!sysDef || !sysDef.buildSlot) return { ok: false, reason: 'no-build-slot' };
   const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+  // Track how many of each type this submission would add so the supply cap
+  // catches two icons of the same shape both picking the last available mini
+  // (e.g. two space-square icons both choosing the 3rd Mon Cala Cruiser).
+  const pickedByType = new Map<string, number>();
   for (let i = 0; i < typeIds.length; i++) {
     const tid = typeIds[i];
     if (tid === null) continue;
@@ -4252,6 +4256,16 @@ export function resolveBuildFromIconsPick(
     // EXACT tier — a resource icon builds a unit of THAT size (rules ref
     // "Resource Icons"); you can't downgrade to a smaller unit (player #214).
     if (have !== need) return { ok: false, reason: `tier-mismatch:${tid}` };
+    // Supply cap (RR p.6 "Component Limitations → Units": "a player cannot
+    // build a unit type if there are none available"). The normal Build step
+    // already filters unavailable types; this icon-build path skipped the
+    // check, letting a 4th Mon Cala Cruiser onto the queue past the 3-mini
+    // supply (player report #459). Count picks-so-far against remaining supply.
+    const alreadyPicked = pickedByType.get(tid) ?? 0;
+    if (alreadyPicked >= M.unitsAvailableInSupply(G, tid)) {
+      return { ok: false, reason: `no-supply:${tid}` };
+    }
+    pickedByType.set(tid, alreadyPicked + 1);
   }
   let added = 0;
   for (let i = 0; i < typeIds.length; i++) {

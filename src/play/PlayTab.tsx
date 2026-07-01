@@ -14725,7 +14725,10 @@ function BuildFromIconsPickModal({
         // Structures ARE buildable from a ground build icon (#161, #209).
         && !PROJECT_ONLY_UNIT_IDS.has(t.id)
         // RoE units only buildable when the expansion's unit toggle is on.
-        && (t.set !== 'rote' || G.expansion?.roeUnits === true))
+        && (t.set !== 'rote' || G.expansion?.roeUnits === true)
+        // Don't offer a type with no minis left in supply (#459) — the normal
+        // Build step hides these too, and the engine now rejects them.
+        && unitsAvailableInSupply(G, t.id) > 0)
       .map((t) => t.id);
   };
   const defaults = choice.icons.map((icon) => {
