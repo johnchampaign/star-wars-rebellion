@@ -4,7 +4,7 @@
 
 import {
   makeServer, recordTurnTiming, currentActorOf, reclaimSeat, isSideAbandoned, otherSide,
-  json, fail, type Env,
+  advanceAIAndStore, json, fail, type Env,
 } from '../../../_lib/gameServer';
 import type { Side } from '../../../../src/types';
 
@@ -21,6 +21,20 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     if (you && r.view.aiSides?.includes(you)) {
       await reclaimSeat(deps.store, deps.codec, id, you);
       r = await deps.server.fetch(id, token);
+    }
+    // Self-heal a stalled AI seat (#450): normally submit runs the AI right
+    // after a human move, but if that single attempt fails (e.g. the snapshot
+    // write hit a transient Supabase outage) NOTHING retried it — the game sat
+    // at the AI's turn forever ("it's the empire's turn but nothing happens").
+    // The poll path now advances a due AI seat, so one lost attempt heals on
+    // the player's next refresh. No-op whenever it isn't an AI seat's turn.
+    if (!r.gameOver) {
+      const actor = currentActorOf(r);
+      if (actor && r.view.aiSides?.includes(actor)) {
+        if (await advanceAIAndStore(deps.store, deps.codec, id)) {
+          r = await deps.server.fetch(id, token);
+        }
+      }
     }
     // Record who's on the clock (drives abandonment + the reminder sweep's
     // handoff time). No email here — the scheduled sweep owns reminders now.

@@ -976,6 +976,12 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // One In A Million: when the player hasn't armed it, auto-skip the offer so
   // they aren't prompted to spend their one-time power on every roll (#340).
   // The skip keeps the card in hand; the engine continues normally.
+  // #448: the silent skip made the card look unusable to players who never
+  // noticed the toggle ("I wasn't allowed to use my card — no prompt came up"),
+  // so the FIRST auto-skip each session surfaces a dismissible hint pointing
+  // at the toggle. Subsequent skips stay silent, preserving the #340 intent.
+  const [oiamSkipHint, setOiamSkipHint] = useState(false);
+  const oiamHintShownRef = useRef(false);
   useEffect(() => {
     if (online || oiamArmed) return;
     const Gn = gameRef.current;
@@ -985,7 +991,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       : pc.context === 'dsplans' ? combat.resolveDsPlansOneInAMillion(Gn, [])
       : phases.resolveOneInAMillionMission(Gn, []);
     // Only advance on a clean skip — never re-run a failing resolve (would loop).
-    if (r.ok) { persist(); refresh(); }
+    if (r.ok) {
+      if (!oiamHintShownRef.current) { oiamHintShownRef.current = true; setOiamSkipHint(true); }
+      persist(); refresh();
+    }
     else console.warn('[oiam] auto-skip failed:', r.reason);
   }, [tick, oiamArmed, humanSide, online, persist, refresh]);
 
@@ -1399,6 +1408,20 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             </button>
           )}
           <button className="tab-button" onClick={startNew}>New game</button>
+          {oiamSkipHint && (
+            <div style={{
+              flexBasis: '100%', background: '#1d2a38', border: '1px solid #3a5a7a',
+              borderRadius: 4, padding: '6px 10px', fontSize: 12, color: '#aae0ff',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+            }}>
+              <span>
+                ⚡ A <b>One in a Million</b> re-roll offer was just skipped because the toggle above is
+                {' '}<b>off</b>. Flip it ON before a roll you care about to be asked. (The card stays in your hand.)
+              </span>
+              <button className="tab-button" style={{ fontSize: 11, padding: '2px 8px' }}
+                onClick={() => setOiamSkipHint(false)}>Got it</button>
+            </div>
+          )}
           {G.phase === 'Setup' && (
             <button className="tab-button" onClick={() => onSetupAutoFill(G.currentPlayer)}>
               {G.currentPlayer} auto-fill remaining
