@@ -228,6 +228,7 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
     pc?.kind === 'SpecialDieSpend'       ? pc.side :
     pc?.kind === 'CombatStartActionCards' ? pc.side :
     pc?.kind === 'MoreDangerousTheaterPick' ? pc.side :
+    pc?.kind === 'MoreDangerousRetrievePick' ? pc.side :
     pc?.kind === 'FullyOperationalTargetPick' ? pc.side :
     pc?.kind === 'BazesLoyaltyTarget'    ? pc.side :
     pc?.kind === 'TargetTheGeneratorPick' ? pc.side :
@@ -643,6 +644,9 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
         )}
         {pc?.kind === 'MoreDangerousTheaterPick' && isHumanDecision && (
           <MoreDangerousTheaterPanel G={G} choice={pc} onPersist={onPersist} />
+        )}
+        {pc?.kind === 'MoreDangerousRetrievePick' && isHumanDecision && (
+          <MoreDangerousRetrievePanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'FullyOperationalTargetPick' && isHumanDecision && (
           <FullyOperationalPanel G={G} choice={pc} onPersist={onPersist} />
@@ -1839,31 +1843,76 @@ function MoreDangerousTheaterPanel({ G, choice, onPersist }: {
     if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
     onPersist();
   };
-  const spaceLeft = G.spaceTacticDeck.length;
-  const groundLeft = G.groundTacticDeck.length;
+  // Cinematic combat (#449): "draw" = retrieve your own discarded advanced
+  // tactic cards back into your deck, so show DISCARD counts, not base decks.
+  const cinematic = !!G.pendingCombat?.cinematic;
+  const f = choice.side === 'Rebel' ? G.rebel : G.empire;
+  const eliminated = new Set(f.cinematicTacticEliminated ?? []);
+  const discOf = (th: 'space' | 'ground') => (f.cinematicTacticDiscard ?? [])
+    .filter((cid) => G.catalog.tactics[cid]?.theater === th && !eliminated.has(cid)).length;
+  const spaceLeft = cinematic ? discOf('space') : G.spaceTacticDeck.length;
+  const groundLeft = cinematic ? discOf('ground') : G.groundTacticDeck.length;
+  const verb = cinematic ? 'retrieve up to 3 of your discarded tactic cards back into one deck' : 'draw 3 tactic cards from one deck';
+  const src = cinematic ? 'discarded' : 'remaining';
   return (
     <div>
       <div style={{ fontSize: 13, marginBottom: 6 }}>
-        <b>{card?.name ?? choice.cardId}:</b> draw 3 tactic cards from one deck — your choice.
+        <b>{card?.name ?? choice.cardId}:</b> {verb} — your choice.
       </div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
         <button
           onClick={() => pick('space')}
           style={btn('#4fc3f7')}
-          disabled={spaceLeft === 0}
-          title={spaceLeft === 0 ? 'Space deck is empty' : `Draw 3 from ${spaceLeft} remaining space cards`}
+          disabled={spaceLeft === 0 && groundLeft > 0}
+          title={`3 from ${spaceLeft} ${src} space cards`}
         >
-          ◇ Space ({spaceLeft} left)
+          ◇ Space ({spaceLeft} {src})
         </button>
         <button
           onClick={() => pick('ground')}
           style={btn('#ffb74d')}
-          disabled={groundLeft === 0}
-          title={groundLeft === 0 ? 'Ground deck is empty' : `Draw 3 from ${groundLeft} remaining ground cards`}
+          disabled={groundLeft === 0 && spaceLeft > 0}
+          title={`3 from ${groundLeft} ${src} ground cards`}
         >
-          ■ Ground ({groundLeft} left)
+          ■ Ground ({groundLeft} {src})
         </button>
       </div>
+    </div>
+  );
+}
+
+// ---------- "More Dangerous" cinematic retrieval pick (#449) ----------
+
+function MoreDangerousRetrievePanel({ G, choice, onPersist }: {
+  G: GameState;
+  choice: Extract<NonNullable<GameState['pendingChoice']>, { kind: 'MoreDangerousRetrievePick' }>;
+  onPersist: () => void;
+}) {
+  const [sel, setSel] = useState<number[]>([]);
+  const toggle = (i: number) => setSel((s) => (s.includes(i) ? s.filter((x) => x !== i) : s.length < choice.count ? [...s, i] : s));
+  const submit = () => {
+    const r = combat.resolveMoreDangerousRetrievePick(G, sel.map((i) => choice.candidates[i]));
+    if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+    onPersist();
+  };
+  return (
+    <div>
+      <div style={{ fontSize: 13, marginBottom: 6 }}>
+        <b>{G.catalog.actions[choice.cardId]?.name ?? choice.cardId}:</b> pick {choice.count} of your
+        discarded {choice.theater} tactic cards to return to your deck.
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+        {choice.candidates.map((cid, i) => (
+          <button key={i} onClick={() => toggle(i)}
+            style={{ ...btn(sel.includes(i) ? '#80dc78' : '#888'),
+              background: sel.includes(i) ? 'rgba(60,110,60,0.4)' : undefined }}>
+            {G.catalog.tactics[cid]?.name ?? cid}
+          </button>
+        ))}
+      </div>
+      <button onClick={submit} disabled={sel.length !== choice.count} className="tab-button active">
+        Retrieve {sel.length}/{choice.count}
+      </button>
     </div>
   );
 }

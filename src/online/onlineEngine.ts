@@ -156,6 +156,7 @@ export function makeOnlineCombat(submit: Submit, canSubmit: () => boolean): type
     resolveCombatAssignDamage: (_g: any, assignments: any) => act({ kind: 'resolveCombatAssignDamage', assignments }),
     resolveOneInAMillionCombat: (_g: any, picks: any) => act({ kind: 'resolveOneInAMillionCombat', picks }),
     resolveMoreDangerousTheaterPick: (_g: any, theater: any) => act({ kind: 'resolveMoreDangerousTheaterPick', theater }),
+    resolveMoreDangerousRetrievePick: (_g: any, cardIds: any) => act({ kind: 'resolveMoreDangerousRetrievePick', cardIds }),
     resolveFullyOperationalTargetPick: (_g: any, instanceId: any) => act({ kind: 'resolveFullyOperationalTargetPick', instanceId }),
     resolveTargetTheGeneratorPick: (_g: any, instanceId: any) => act({ kind: 'resolveTargetTheGeneratorPick', instanceId }),
     resolveReadyForActionLeaderPick: (_g: any, leaderId: any) => act({ kind: 'resolveReadyForActionLeaderPick', leaderId }),

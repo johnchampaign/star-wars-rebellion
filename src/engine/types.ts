@@ -1386,6 +1386,19 @@ export type ChoiceRequest =
       cardId: string;
     }
   | {
+      // CINEMATIC follow-up to More Dangerous Than You Realize: RoE rulebook,
+      // "if an ability lets a player draw tactic cards, he retrieves that many
+      // cards OF HIS CHOICE from his discard pile and returns them to his
+      // deck" (#449). Posted when the chosen theater's cinematic discard holds
+      // more than 3 retrievable cards; the player picks which 3 come back.
+      kind: 'MoreDangerousRetrievePick';
+      side: Side;
+      cardId: string;
+      theater: 'space' | 'ground';
+      candidates: string[];
+      count: number;
+    }
+  | {
       // "Fully Operational" (Moff Jerjerrod): if a Death Star or Death Star
       // Under Construction is in the system, Empire picks one Rebel ship to
       // destroy. `candidates` are eligible Rebel ship instance ids.

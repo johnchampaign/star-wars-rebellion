@@ -1670,9 +1670,24 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     return phases.resolveRebelCellDiscard(G, null).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'MoreDangerousTheaterPick' && G.pendingChoice.side === side) {
-    // AI: pick the deck with more remaining cards (avoid drawing 0 of 0).
-    const theater: 'space' | 'ground' = G.groundTacticDeck.length >= G.spaceTacticDeck.length ? 'ground' : 'space';
+    // AI: in cinematic combat pick the theater with the fuller DISCARD (that's
+    // what MDTYR retrieves from, #449); in base combat the fuller DECK.
+    let theater: 'space' | 'ground';
+    if (G.pendingCombat?.cinematic) {
+      const f = side === 'Rebel' ? G.rebel : G.empire;
+      const disc = f.cinematicTacticDiscard ?? [];
+      const n = (th: 'space' | 'ground') =>
+        disc.filter((cid) => G.catalog.tactics[cid]?.theater === th).length;
+      theater = n('ground') >= n('space') ? 'ground' : 'space';
+    } else {
+      theater = G.groundTacticDeck.length >= G.spaceTacticDeck.length ? 'ground' : 'space';
+    }
     return combat.resolveMoreDangerousTheaterPick(G, theater).ok;
+  }
+  if (G.pendingChoice && G.pendingChoice.kind === 'MoreDangerousRetrievePick' && G.pendingChoice.side === side) {
+    // AI: retrieve the first N candidates (no per-card ranking available).
+    const c = G.pendingChoice;
+    return combat.resolveMoreDangerousRetrievePick(G, c.candidates.slice(0, c.count)).ok;
   }
   // Fully Operational: prefer highest-value Rebel ship (capital > fighter).
   if (G.pendingChoice && G.pendingChoice.kind === 'FullyOperationalTargetPick' && G.pendingChoice.side === side) {

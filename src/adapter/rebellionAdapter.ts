@@ -138,6 +138,7 @@ function dispatch(G: GameState, a: RebellionAction, actor: Side): Result {
     case 'resolveCombatAssignDamage':       return combat.resolveCombatAssignDamage(G, a.assignments);
     case 'resolveOneInAMillionCombat':      return combat.resolveOneInAMillionCombat(G, a.picks);
     case 'resolveMoreDangerousTheaterPick': return combat.resolveMoreDangerousTheaterPick(G, a.theater);
+    case 'resolveMoreDangerousRetrievePick': return combat.resolveMoreDangerousRetrievePick(G, a.cardIds);
     case 'resolveFullyOperationalTargetPick': return combat.resolveFullyOperationalTargetPick(G, a.instanceId);
     case 'resolveTargetTheGeneratorPick':   return combat.resolveTargetTheGeneratorPick(G, a.instanceId);
     case 'resolveReadyForActionLeaderPick': return combat.resolveReadyForActionLeaderPick(G, a.leaderId);

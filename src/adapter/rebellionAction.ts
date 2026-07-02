@@ -139,6 +139,7 @@ export type RebellionAction =
   | { kind: 'resolveCombatAssignDamage'; assignments: (UnitInstanceId | null)[] }
   | { kind: 'resolveOneInAMillionCombat'; picks: { index: number; face: string }[] }
   | { kind: 'resolveMoreDangerousTheaterPick'; theater: 'space' | 'ground' }
+  | { kind: 'resolveMoreDangerousRetrievePick'; cardIds: string[] }
   | { kind: 'resolveFullyOperationalTargetPick'; instanceId: UnitInstanceId }
   | { kind: 'resolveTargetTheGeneratorPick'; instanceId: UnitInstanceId }
   | { kind: 'resolveReadyForActionLeaderPick'; leaderId: LeaderId }

@@ -2250,6 +2250,37 @@ export function resolveMoreDangerousTheaterPick(
   if (!c) return { ok: false, reason: 'no-pending-combat' };
   const side = pc.side;
   const cardId = pc.cardId;
+
+  // CINEMATIC combat (#449): RoE rulebook — "if an ability lets a player draw
+  // tactic cards, he retrieves that many cards OF HIS CHOICE from his discard
+  // pile and returns them to his deck." So MDTYR here means: pick up to 3 of
+  // the chosen theater's cards from your cinematic discard; they become
+  // selectable again (the cinematic "deck" is all cards minus discard minus
+  // eliminated). With 3 or fewer retrievable, take them all; with more, pause
+  // for the player to pick which 3.
+  if (c.cinematic) {
+    const f = side === 'Rebel' ? G.rebel : G.empire;
+    const eliminated = new Set(f.cinematicTacticEliminated ?? []);
+    const pool = (f.cinematicTacticDiscard ?? []).filter((cid) =>
+      G.catalog.tactics[cid]?.theater === theater && !eliminated.has(cid));
+    if (pool.length > 3) {
+      G.pendingChoice = {
+        kind: 'MoreDangerousRetrievePick', side, cardId, theater, candidates: pool, count: 3,
+      };
+      log(G, { kind: 'choice-request', side, payload: {
+        kind: 'MoreDangerousRetrievePick', theater, candidates: pool.length,
+      }});
+      return { ok: true }; // start-of-combat batch stays paused
+    }
+    retrieveCinematicDiscards(G, side, pool);
+    log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, retrieved: pool, theater } });
+    G.pendingChoice = undefined;
+    const batchSide0 = c.startOfCombatBatch?.side ?? side;
+    if (!processStartOfCombatBatch(G, c)) return { ok: true };
+    advanceStartOfCombatAfterSideDone(G, c, batchSide0);
+    return { ok: true };
+  }
+
   const hand = side === c.attackerSide ? c.attackerHand : c.defenderHand;
   const deck = theater === 'space' ? G.spaceTacticDeck : G.groundTacticDeck;
   const drawn: string[] = [];
@@ -2263,6 +2294,51 @@ export function resolveMoreDangerousTheaterPick(
   const batchSide = c.startOfCombatBatch?.side ?? side;
   const finished = processStartOfCombatBatch(G, c);
   if (!finished) return { ok: true };
+  advanceStartOfCombatAfterSideDone(G, c, batchSide);
+  return { ok: true };
+}
+
+/** Remove the given card ids (one instance each) from `side`'s cinematic
+ *  tactic discard — RoE "returns them to his deck" (the deck is derived as
+ *  all-cards minus discard minus eliminated, so leaving the discard IS
+ *  returning to the deck). */
+function retrieveCinematicDiscards(G: GameState, side: Side, cardIds: string[]): void {
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  const disc = f.cinematicTacticDiscard ?? [];
+  for (const cid of cardIds) {
+    const i = disc.indexOf(cid);
+    if (i >= 0) disc.splice(i, 1);
+  }
+}
+
+/** Resolve the cinematic MDTYR retrieval pick (#449): return the chosen
+ *  discard cards to the deck, then resume the start-of-combat batch exactly
+ *  like resolveMoreDangerousTheaterPick. */
+export function resolveMoreDangerousRetrievePick(
+  G: GameState, cardIds: string[]
+): { ok: boolean; reason?: string } {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'MoreDangerousRetrievePick') return { ok: false, reason: 'no-pending' };
+  const c = G.pendingCombat;
+  if (!c) return { ok: false, reason: 'no-pending-combat' };
+  if (cardIds.length !== pc.count) return { ok: false, reason: `expected-${pc.count}-cards` };
+  // Validate by count (the discard can hold duplicates of a card id).
+  const avail = new Map<string, number>();
+  for (const id of pc.candidates) avail.set(id, (avail.get(id) ?? 0) + 1);
+  const used = new Map<string, number>();
+  for (const id of cardIds) {
+    const u = (used.get(id) ?? 0) + 1;
+    used.set(id, u);
+    if (u > (avail.get(id) ?? 0)) return { ok: false, reason: `not-retrievable:${id}` };
+  }
+  const side = pc.side;
+  retrieveCinematicDiscards(G, side, cardIds);
+  log(G, { kind: 'combat-action-card-effect', side, payload: {
+    card: pc.cardId, retrieved: cardIds, theater: pc.theater,
+  }});
+  G.pendingChoice = undefined;
+  const batchSide = c.startOfCombatBatch?.side ?? side;
+  if (!processStartOfCombatBatch(G, c)) return { ok: true };
   advanceStartOfCombatAfterSideDone(G, c, batchSide);
   return { ok: true };
 }
@@ -2746,31 +2822,36 @@ function legalRetreatDestinations(G: GameState, c: CombatState, side: Side): Sys
     );
     if (hasInterdictor) return [];
   }
-  // Rebel Base space is a special abstract system — can't retreat to it
-  // unless the base is hidden and the side is Rebel.
-  const adj = G.catalog.adjacency[c.systemId] ?? [];
-  if (side === c.attackerSide) {
-    // Attacker may retreat to source — if it's still adjacent (which it
-    // always is by construction) AND not destroyed.
-    const src = c.attackerSourceSystemId;
-    if (!src) return [];
-    const ss = G.map.systems[src];
-    if (!ss || ss.destroyed) return [];
-    // RAW: can't retreat into a system the opponent has units in.
-    const opp = other(side);
-    if (ss.units.some((u) => u.side === opp)) return [];
-    return [src];
-  }
-  // Defender may retreat to any adjacent system without enemy units.
+  // RR p.5 "RETREATING" — the destination rule is the SAME for attacker and
+  // defender (the old code locked the attacker to its single source system,
+  // which is not RAW — and mission-triggered combats like Plan the Assault have
+  // NO source, so the attacker could never retreat at all; player report #456:
+  // no retreat option offered after a round against a Death Star):
+  //   1. Adjacent, not destroyed, and NEVER into a system with opponent units.
+  //   2. "A player cannot retreat to a system that his opponent moved units
+  //      from to initiate the combat" — bans the attacker's source for the
+  //      DEFENDER only (the attacker retreating back to its own source is fine).
+  //   3. MUST pick a system containing his units or his loyalty marker, if able.
+  //   4. Only if no such system exists: "any adjacent system that does not
+  //      contain units" (empty of ALL units, RR's exact fallback wording).
+  //   (Rebel Base space is never a destination — it's not in the adjacency map.)
   const opp = other(side);
-  return adj.filter((sid) => {
-    if (sid === c.attackerSourceSystemId) return false; // can't retreat through attacker's source
+  const adj = G.catalog.adjacency[c.systemId] ?? [];
+  const oppInitiatedFrom = side !== c.attackerSide ? c.attackerSourceSystemId : undefined;
+  const candidates = adj.filter((sid) => {
+    if (sid === oppInitiatedFrom) return false;
     const ss = G.map.systems[sid];
     if (!ss || ss.destroyed) return false;
     if (ss.units.some((u) => u.side === opp)) return false;
-    if (G.catalog.systems[sid]?.isRemote) return false;
     return true;
   });
+  const myLoyalty = side === 'Rebel' ? 'rebel' : 'imperial';
+  const preferred = candidates.filter((sid) => {
+    const ss = G.map.systems[sid];
+    return ss!.units.some((u) => u.side === side) || ss!.loyalty === myLoyalty;
+  });
+  if (preferred.length > 0) return preferred;
+  return candidates.filter((sid) => (G.map.systems[sid]?.units.length ?? 0) === 0);
 }
 
 /** Resolve the retreat decision. `destSystemId === null` means decline to
@@ -3161,6 +3242,23 @@ function playCombatObjective(G: GameState, oid: string): void {
     objectiveId: oid, reputation: rep, timing: 'Combat',
   }});
   M.recordObjectiveScored(G, oid, rep, 'combat', G.turnLog.length);
+
+  // Seize Control (RoE objective): "Win a space or ground battle in a system
+  // with a sabotage marker. You may then remove the marker." The removal
+  // clause was previously dropped entirely (player reports #414/#452: scored
+  // the card, marker stayed). RAW is a "may"; like Return of the Jedi's
+  // elimination clause below, we auto-apply the (near-always wanted) effect
+  // rather than pause the combat tail on a new choice — removing the marker
+  // is what lets the Rebel actually use the system they just won. A decline
+  // modal is a future nicety.
+  if (oid === 'seize-control-2') {
+    const sysId = G.pendingCombat?.systemId;
+    const ss = sysId ? G.map.systems[sysId] : undefined;
+    if (ss?.sabotage) {
+      ss.sabotage = false;
+      log(G, { kind: 'sabotage-removed', side: 'Rebel', payload: { systemId: sysId, via: 'seize-control' } });
+    }
+  }
 
   // Return of the Jedi (objective): "...If Luke Skywalker (Jedi) is in this
   // system, eliminate 1 Imperial leader in this system." The reputation half

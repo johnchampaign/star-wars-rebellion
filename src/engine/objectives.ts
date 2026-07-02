@@ -369,8 +369,8 @@ export function combatObjectivesTriggered(
   // seize-control-2 — win a space or ground battle in a system that has a
   // sabotage marker. Fire on winning EITHER battle (not just the overall
   // combat) so a ground win with Empire ships lingering in orbit still counts
-  // (#423). (The card's optional "you may remove the marker" is a destructive
-  // side-effect left out of auto-play; scoring only.)
+  // (#423). The "you may remove the marker" clause is applied on scoring in
+  // playCombatObjective (#414/#452).
   if (has('seize-control-2') && (rebelWonOverall || rebelWonAnyBattle) && !!G.map.systems[report.systemId]?.sabotage) {
     fired.push('seize-control-2');
   }
