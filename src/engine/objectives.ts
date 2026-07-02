@@ -305,6 +305,19 @@ export function combatObjectivesTriggered(
     || sumDestroyedHp(G, report, 'Empire', theater) > 0
     || sumDestroyedHp(G, report, 'Rebel', theater) > 0;
 
+  // Per-theater "won the battle" test (FFG FAQ p.6): winning a space OR ground
+  // *battle* means the Rebel cleared the enemy from a theater a battle was
+  // actually fought in — even if the enemy still holds the OTHER theater. This
+  // matters because `report.winner` (used by rebelWonOverall) requires being the
+  // SOLE occupant of the whole system, so a Rebel ground win with Empire ships
+  // still in orbit reads as a non-win and silently missed (player report #423).
+  const sysUnits = G.map.systems[report.systemId]?.units ?? [];
+  const sideInTheater = (side: Side, th: import('./types').Theater) =>
+    sysUnits.some((u) => u.side === side && G.catalog.unitTypes[u.typeId]?.theater === th);
+  const rebelWonBattleIn = (th: import('./types').Theater) =>
+    foughtIn(th) && sideInTheater('Rebel', th) && !sideInTheater('Empire', th);
+  const rebelWonAnyBattle = rebelWonBattleIn('space') || rebelWonBattleIn('ground');
+
   // crippling-blow-1 — 3+ health of Imperial GROUND units destroyed in
   // a combat YOU initiated.
   if (has('crippling-blow-1') && rebelInitiated && empGroundHpLost >= 3) {
@@ -354,9 +367,11 @@ export function combatObjectivesTriggered(
   }
 
   // seize-control-2 — win a space or ground battle in a system that has a
-  // sabotage marker. (The card's optional "you may remove the marker" is a
-  // destructive side-effect left out of auto-play; scoring only.)
-  if (has('seize-control-2') && rebelWonOverall && !!G.map.systems[report.systemId]?.sabotage) {
+  // sabotage marker. Fire on winning EITHER battle (not just the overall
+  // combat) so a ground win with Empire ships lingering in orbit still counts
+  // (#423). (The card's optional "you may remove the marker" is a destructive
+  // side-effect left out of auto-play; scoring only.)
+  if (has('seize-control-2') && (rebelWonOverall || rebelWonAnyBattle) && !!G.map.systems[report.systemId]?.sabotage) {
     fired.push('seize-control-2');
   }
 

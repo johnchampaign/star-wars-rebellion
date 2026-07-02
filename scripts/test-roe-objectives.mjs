@@ -97,6 +97,20 @@ console.log('[ seize-control-2: win in sabotage-marked system ]');
   G.map.systems['tatooine'].sabotage = true;
   check('sabotage present → fired', Obj.combatObjectivesTriggered(G, r).includes('seize-control-2'));
 }
+// #423: Rebel wins the GROUND battle but Empire ships remain in orbit, so the
+// Rebel is NOT the sole occupant → report.winner is not 'Rebel'. Seize Control
+// must still fire on the ground-battle win.
+{
+  const G = newG(); G.rebel.objectiveHand = ['seize-control-2'];
+  const rebelGround = Object.values(G.catalog.unitTypes).find((u) => u.side === 'Rebel' && u.theater === 'ground');
+  const empireSpace = Object.values(G.catalog.unitTypes).find((u) => u.side === 'Empire' && u.theater === 'space');
+  G.map.systems['tatooine'].sabotage = true;
+  G.map.systems['tatooine'].units = [unit(rebelGround.id, 'Rebel'), unit(empireSpace.id, 'Empire')];
+  // Ground battle fought (Empire ground cleared); overall winner is NOT Rebel.
+  const rGround = report({ winner: null, rounds: [{ attacks: [atk('ground', 1)] }] });
+  check('ground win + Empire ships in orbit (not overall winner) → still fired',
+    Obj.combatObjectivesTriggered(G, rGround).includes('seize-control-2'));
+}
 
 console.log('[ raid-imperial-factory-3: rebel-initiated win in resource system ]');
 {
