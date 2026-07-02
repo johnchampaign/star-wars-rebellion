@@ -5,7 +5,7 @@
 // `pendingChoice`, `refreshPaused`).
 
 import type { GameState, GameCatalog } from './types';
-import { reseedInstanceCounters } from './mechanics';
+import { reseedInstanceCounters, repairProbeState } from './mechanics';
 import { reseedSetupInstanceCounter } from './phases';
 
 const SCHEMA = 'rebellion-state-v1';
@@ -64,6 +64,10 @@ export function decode(s: string, catalog: GameCatalog): GameState {
   // stormtrooper first and never saw the AC's capacity).
   reseedInstanceCounters(G);
   reseedSetupInstanceCounter(G);
+  // Repair probe-card conservation in saves corrupted by the RM leak (#451):
+  // cards duplicated into both the Empire hand and the deck, in-hand dupes,
+  // and the hidden base's own card wrongly held in hand.
+  repairProbeState(G);
   return G;
 }
 

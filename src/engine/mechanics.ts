@@ -391,6 +391,36 @@ function mkInstance(typeId: UnitTypeId, side: Side): UnitInstance {
  *  symptom: order-builder pushed instanceId u1000003 for two distinct units
  *  at the same system; validateMoveOrderTransport's find() returned only the
  *  first match, so the AC's capacity went uncounted.) */
+/** Repair probe-card conservation in a loaded state (#451). A Rapid
+ *  Mobilization bug leaked the Rebel's private RM probe draw into the EMPIRE'S
+ *  probe hand AND duplicated those cards back into the deck, so existing saves
+ *  can hold: (a) cards present in both hand and deck, (b) duplicate copies in
+ *  the hand, and (c) the current HIDDEN base's own card in the Empire hand
+ *  (falsely ruling out the actual base system). The deck copy is authoritative
+ *  — a card can never legitimately be in the hand and the deck at once. */
+export function repairProbeState(G: GameState): void {
+  const hand = G.empire?.probeHand;
+  if (!hand || hand.length === 0) return;
+  const inDeck = new Set(G.probeDeck ?? []);
+  const baseProbeId = !G.rebelBaseRevealed && G.rebelBaseSystemId
+    ? Object.values(G.catalog.probes).find((p) => p.systemId === G.rebelBaseSystemId)?.id
+    : undefined;
+  const seen = new Set<string>();
+  const repaired = hand.filter((pid) => {
+    if (inDeck.has(pid)) return false;      // duplicated into the deck — deck wins
+    if (pid === baseProbeId) return false;  // the hidden base's card belongs under the base
+    if (seen.has(pid)) return false;        // in-hand duplicate
+    seen.add(pid);
+    return true;
+  });
+  if (repaired.length !== hand.length) {
+    G.empire.probeHand = repaired;
+    log(G, { kind: 'probe-state-repaired', side: 'Empire', payload: {
+      removed: hand.length - repaired.length,
+    }});
+  }
+}
+
 export function reseedInstanceCounters(G: GameState): void {
   let maxU = 1_000_000;
   const visit = (units: UnitInstance[]): void => {

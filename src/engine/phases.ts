@@ -2900,7 +2900,20 @@ export function resolveRapidMobilizationBranch(
   // shown at the branch step. The new base is placed facedown (HIDDEN); a system
   // with Imperial loyalty/units or a destroyed marker cannot be chosen.
   const n = twoLeaders ? 8 : 4;
-  const drawnProbeIds = M.drawProbe(G, n);
+  // Draw the probe cards PRIVATELY for the Rebel's look — NOT via M.drawProbe,
+  // which is the Empire's Refresh helper and pushes every card into the
+  // EMPIRE'S probe hand. Using it here (a) leaked the Rebel's private RM draw
+  // (incl. the new-base candidates!) to the Empire's hand/search view, and
+  // (b) DUPLICATED the cards when the unused ones were later returned to the
+  // deck without leaving the Empire hand — player report #451: the Empire held
+  // "pretty much all the probe cards" by round 2 with the AI Rebel playing RM
+  // every round.
+  const drawnProbeIds: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const card = G.probeDeck.shift();
+    if (!card) break;
+    drawnProbeIds.push(card);
+  }
   log(G, { kind: 'rapid-mobilization-probe-draw', side: 'Rebel', payload: {
     count: n, twoLeaders, drawnProbeIds,
   }});
