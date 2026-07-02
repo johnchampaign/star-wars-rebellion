@@ -3098,6 +3098,26 @@ export function resolveRapidMobilizationBasePick(
   // Base relocated → reset searched-ruled-out knowledge to systems that still
   // qualify (still subjugated / Imperial-loyal).
   M.resetEmpireSearchedForBaseMove(G);
+
+  // Return the drawn probe cards the Rebel did NOT use as the new base to the
+  // bottom of the deck (RR "Establishing a New Base": shuffle the rest back).
+  // Only the chosen base card stays out — it now marks the hidden base and is
+  // excluded from the Empire's ruled-out search. Leaving the others out falsely
+  // told the Empire those systems had been probed (#465/#466). The OLD base's
+  // probe card also returns: that system is no longer the base, so keeping its
+  // card out of the deck would leak the vacated (hidden) base location as a
+  // ruled-out system in the Empire's base-search view.
+  const rmDrawn = choice.drawnProbeIds ?? [];
+  const rmReturn = rmDrawn.filter((pid) => G.catalog.probes[pid]?.systemId !== systemId);
+  const oldBaseProbe = Object.values(G.catalog.probes).find((p) => p.systemId === old);
+  if (oldBaseProbe && !G.probeDeck.includes(oldBaseProbe.id) && !rmReturn.includes(oldBaseProbe.id)) {
+    rmReturn.push(oldBaseProbe.id);
+  }
+  if (rmReturn.length > 0) {
+    G.probeDeck.push(...shuffle(G.rng, [...rmReturn]));
+    log(G, { kind: 'rapid-mobilization-probes-to-bottom', side: 'Rebel', payload: { count: rmReturn.length } });
+  }
+
   log(G, { kind: 'rapid-mobilization-base-established', side: 'Rebel', payload: {
     fromSystemId: old, toSystemId: systemId, baseRevealed: false, wasRevealed,
   }});
@@ -5265,17 +5285,43 @@ function refreshRecruitIfApplicable(G: GameState, logStart: number): boolean {
  *  eliminated. Each recruitable leader appears on TWO recruit cards, so the
  *  duplicate card lingers in the deck after recruitment and must be treated
  *  as recruiting no one. */
+/** Luke Skywalker and his Jedi form are one character in two states. Once he
+ *  has Sought Yoda, plain Luke is gone for good and only the Jedi exists (and
+ *  vice-versa) — so recruiting either form is blocked while the other is in
+ *  play. */
+const LEADER_ALTER_EGO: Record<string, string> = {
+  'luke-skywalker': 'luke-skywalker-jedi',
+  'luke-skywalker-jedi': 'luke-skywalker',
+};
+
+/** True if `lid` is currently in play for `side` anywhere: leader pool, on the
+ *  board, on a mission, eliminated, or (for the Rebel) captured by the Empire. */
+function leaderInPlay(G: GameState, side: Side, lid: string): boolean {
+  const f = faction(G, side);
+  if (f.leaderPool.includes(lid as LeaderId)) return true;
+  if (f.eliminatedLeaders.includes(lid as LeaderId)) return true;
+  for (const arr of Object.values(f.leadersOnBoard)) {
+    if (arr.includes(lid as LeaderId)) return true;
+  }
+  if (f.leadersOnMissions.some((m) => m.leaderIds.includes(lid as LeaderId))) return true;
+  // Captured Rebel leaders are held by the Empire but are still "recruited".
+  if (side === 'Rebel' && (G.empire.capturedLeaders ?? []).some((c) => c.leaderId === lid)) return true;
+  return false;
+}
+
 export function leaderRecruitable(G: GameState, side: Side, lid: string): boolean {
   if (!G.catalog.leaders[lid]) return false;
-  const f = faction(G, side);
-  if (f.leaderPool.includes(lid as LeaderId)) return false;
-  if (f.eliminatedLeaders.includes(lid as LeaderId)) return false;
-  for (const arr of Object.values(f.leadersOnBoard)) {
-    if (arr.includes(lid as LeaderId)) return false;
+  // Check this leader AND his alternate form (Luke ↔ Luke-Jedi): if either
+  // form is in play or has been lured to the dark side, neither is recruitable.
+  const forms = [lid, LEADER_ALTER_EGO[lid]].filter(Boolean) as string[];
+  for (const id of forms) {
+    // A Rebel leader lured to the dark side is now an Imperial leader (moved to
+    // the Empire pool, marked with the 'dark-side' ring) and can never be
+    // Rebel-recruited again (#467: My Only Hope kept offering Jyn after she was
+    // turned; #458/#467: it re-offered plain Luke after he became a Jedi).
+    if (G.leaderAttachments?.[id]?.includes('dark-side')) return false;
+    if (leaderInPlay(G, side, id)) return false;
   }
-  if (f.leadersOnMissions.some((m) => m.leaderIds.includes(lid as LeaderId))) return false;
-  // Captured Rebel leaders are held by the Empire but are still "recruited".
-  if (side === 'Rebel' && (G.empire.capturedLeaders ?? []).some((c) => c.leaderId === lid)) return false;
   return true;
 }
 
