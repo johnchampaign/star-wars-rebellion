@@ -15221,10 +15221,16 @@ function ExpansionPanel({ cfg, onChange }: {
             RoE units
           </label>
           <label style={labelStyle}
-            title="Choice of mission deck. Checked: use the Rise of the Empire mission set (expansion missions + the shared leader-icon missions). Unchecked: use the base mission set. Per the rules you play one set or the other, not both.">
-            <input type="checkbox" checked={cfg.roeMissions}
-              onChange={(e) => onChange({ roeMissions: e.target.checked })} />
-            RoE mission set
+            title="Rebel mission set. Checked: Rebel uses the Rise of the Empire mission set (expansion missions + shared leader-icon missions). Unchecked: Rebel uses the base set. RoE p.2 lets each side choose independently — the two sides may differ.">
+            <input type="checkbox" checked={cfg.roeMissionsRebel}
+              onChange={(e) => onChange({ roeMissionsRebel: e.target.checked })} />
+            RoE missions — Rebel
+          </label>
+          <label style={labelStyle}
+            title="Imperial mission set. Checked: Empire uses the Rise of the Empire mission set (expansion missions + shared leader-icon missions). Unchecked: Empire uses the base set. RoE p.2 lets each side choose independently — the two sides may differ.">
+            <input type="checkbox" checked={cfg.roeMissionsEmpire}
+              onChange={(e) => onChange({ roeMissionsEmpire: e.target.checked })} />
+            RoE missions — Empire
           </label>
           <label style={labelStyle}>
             <input type="checkbox" checked={cfg.cinematicCombat}

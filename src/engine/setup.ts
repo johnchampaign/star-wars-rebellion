@@ -222,13 +222,19 @@ export function resolveExpansion(input?: Partial<ExpansionConfig>): ExpansionCon
     return {
       enabled: false,
       roeUnits: false, roeMissions: false,
+      roeMissionsRebel: false, roeMissionsEmpire: false,
       cinematicCombat: false,
     };
   }
+  // Shared default drives both sides unless a per-side value is given (RoE p.2:
+  // each side chooses its mission set independently and they may differ).
+  const shared = input?.roeMissions ?? true;
   return {
     enabled: true,
     roeUnits: input?.roeUnits ?? true,
-    roeMissions: input?.roeMissions ?? true,
+    roeMissions: shared,
+    roeMissionsRebel: input?.roeMissionsRebel ?? shared,
+    roeMissionsEmpire: input?.roeMissionsEmpire ?? shared,
     cinematicCombat: input?.cinematicCombat ?? false,
   };
 }
@@ -557,8 +563,9 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   // A few cards are RoE-owned yet belong to the base set (the "Core" Subversion);
   // those carry an explicit `missionSet` override. Starting + project cards are
   // always used (additive, base + rote when owned). The selected set is driven by
-  // the visible `roeMissions` toggle (on = RoE set, off = base set), the player's
-  // "choice of mission deck" — we model the rulebook's random reveal as a choice.
+  // the per-side `roeMissions{Rebel,Empire}` toggles (on = RoE set, off = base
+  // set) — RAW has each side choose independently; we model the rulebook's
+  // simultaneous facedown reveal as a straight per-side choice.
   const membership = (m: { set?: 'base' | 'rote'; leaderPortrait?: string | null;
     missionSet?: 'base' | 'rote' | 'both' }): 'base' | 'rote' | 'both' => {
     if (m.missionSet) return m.missionSet;
@@ -566,14 +573,17 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
     if (m.leaderPortrait) return 'both';          // base leader-icon → both sets
     return 'base';                                // base no-icon
   };
-  const missionInDeck = (m: { isStarting: boolean; isProject: boolean; set?: 'base' | 'rote';
-    leaderPortrait?: string | null; missionSet?: 'base' | 'rote' | 'both' }): boolean => {
+  const missionInDeck = (m: { side: 'Rebel' | 'Empire'; isStarting: boolean; isProject: boolean;
+    set?: 'base' | 'rote'; leaderPortrait?: string | null; missionSet?: 'base' | 'rote' | 'both' }): boolean => {
     // Ownership: a rote-origin card only exists when the expansion is enabled.
     const owned = expansion.enabled || !isRoe(m);
     if (!owned) return false;
     if (m.isStarting || m.isProject) return true; // always used
     if (!expansion.enabled) return true;          // base game: all owned regulars
-    const want: 'base' | 'rote' = expansion.roeMissions ? 'rote' : 'base';
+    // RoE p.2 "Choosing Mission Sets": each side selects its set independently
+    // and they may differ — so the wanted set is keyed off the card's own side.
+    const useRoe = m.side === 'Rebel' ? expansion.roeMissionsRebel : expansion.roeMissionsEmpire;
+    const want: 'base' | 'rote' = useRoe ? 'rote' : 'base';
     const set = membership(m);
     return set === 'both' || set === want;
   };

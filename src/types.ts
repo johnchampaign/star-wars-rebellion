@@ -87,8 +87,14 @@ export type ExpansionConfig = {
   enabled: boolean;
   /** Swap base unit roster + supply for the RoE roster. */
   roeUnits: boolean;
-  /** Swap base mission deck for the RoE deck (starting/project always in). */
+  /** Swap base mission deck for the RoE deck (starting/project always in).
+   *  Shared default / back-compat; per-side values below take precedence. */
   roeMissions: boolean;
+  /** Per-side mission set. RoE p.2 "Choosing Mission Sets": the Rebel and
+   *  Imperial player each pick their set independently and MAY differ (one on
+   *  base, one on RoE). Default to `roeMissions` when a game doesn't set them. */
+  roeMissionsRebel: boolean;
+  roeMissionsEmpire: boolean;
   /** Use the optional Cinematic Combat module. */
   cinematicCombat: boolean;
 };
