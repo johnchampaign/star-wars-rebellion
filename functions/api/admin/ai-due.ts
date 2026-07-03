@@ -8,15 +8,15 @@
 // CLOSED — see requireAdmin. This surface exposes UNREDACTED state (base
 // location, hands), which is why it must only ever be reached by the trusted
 // worker, never a browser.
-import { makeServer, requireAdmin, listAiDueGames, json, fail, type Env } from '../../../_lib/gameServer';
+import { makeServer, requireAdmin, listAiDueGames, json, fail, type Env } from '../../_lib/gameServer';
 
 const handler: PagesFunction<Env> = async (ctx) => {
   try {
     const { request, env } = ctx;
     const denied = requireAdmin(request, env);
     if (denied) return denied;
-    const { store, codec } = await makeServer(request, env);
-    const games = await listAiDueGames(store, codec);
+    const { store, codec, supabase } = await makeServer(request, env);
+    const games = await listAiDueGames(store, codec, supabase);
     return json({ games });
   } catch (e) {
     return fail(e);

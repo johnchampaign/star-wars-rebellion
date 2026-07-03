@@ -38,7 +38,10 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     }
     // Record who's on the clock (drives abandonment + the reminder sweep's
     // handoff time). No email here — the scheduled sweep owns reminders now.
-    waitUntil(recordTurnTiming(deps.supabase, id, currentActorOf(r)));
+    {
+      const a = currentActorOf(r);
+      waitUntil(recordTurnTiming(deps.supabase, id, a, !!(a && r.view.aiSides?.includes(a))));
+    }
     // Has the opponent abandoned (their turn, away past grace)? Drives the
     // takeover/claim UI. Only checked when it's not your turn.
     const opponentAbandoned =

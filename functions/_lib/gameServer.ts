@@ -251,16 +251,28 @@ export async function recordTurnTiming(
   supabase: SupabaseClient,
   gameId: string,
   currentActor: Side | null,
+  actorIsAi = false,
 ): Promise<void> {
   try {
     if (!currentActor) return; // game over / nobody on the clock
     const { data: row } = await supabase
       .from('swr_turn_notify').select('actor').eq('game_id', gameId).maybeSingle();
     if (row && row.actor === currentActor) return; // same actor — clock already running
-    // New player on the clock — (re)start it from this real handoff moment.
-    await supabase.from('swr_turn_notify').upsert({
-      game_id: gameId, actor: currentActor, started_at: new Date().toISOString(), emailed: false,
-    });
+    // New player on the clock — (re)start it from this real handoff moment. Also
+    // stamp actor_is_ai so /api/admin/ai-due can find AI-due games with a single
+    // indexed query instead of scanning + decoding every active game (#perf). The
+    // column is optional: if the migration hasn't run yet, retry without it so
+    // timing bookkeeping (abandonment) still works.
+    const full = {
+      game_id: gameId, actor: currentActor,
+      started_at: new Date().toISOString(), emailed: false, actor_is_ai: actorIsAi,
+    };
+    const { error } = await supabase.from('swr_turn_notify').upsert(full);
+    if (error) {
+      const { actor_is_ai: _drop, ...base } = full;
+      void _drop;
+      await supabase.from('swr_turn_notify').upsert(base);
+    }
   } catch {
     /* best-effort — never fail the request over timing bookkeeping */
   }
@@ -364,19 +376,35 @@ export interface AiDueGame { gameId: string; turn: number; actor: Side; snapshot
 
 /** Every active game where it's an AI seat's turn (and the game isn't over),
  *  with the raw latest snapshot so the worker can decode + compute locally.
- *  A decode failure on one game is skipped, never fatal to the sweep. */
-export async function listAiDueGames(store: SnapshotStore, codec: Codec<GameState>): Promise<AiDueGame[]> {
-  const metas = await store.listActiveGames();
+ *
+ *  Candidate selection: when `supabase` is given, ONE indexed query on
+ *  swr_turn_notify(actor_is_ai) narrows to just the AI-due games (written by
+ *  recordTurnTiming), so we decode a handful, not every active game. If that
+ *  column doesn't exist yet (migration not run) the query throws and we fall
+ *  back to the full listActiveGames scan — correct, just slower. Either way each
+ *  candidate is RE-VERIFIED by decoding (the flag is a superset — a game the
+ *  worker just moved may still be flagged until the next timing write). A decode
+ *  failure on one game is skipped, never fatal. */
+export async function listAiDueGames(
+  store: SnapshotStore, codec: Codec<GameState>, supabase?: SupabaseClient,
+): Promise<AiDueGame[]> {
+  let candidateIds: string[] | null = null;
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('swr_turn_notify').select('game_id').eq('actor_is_ai', true);
+    if (!error && data) candidateIds = data.map((r) => r.game_id as string);
+  }
+  const ids = candidateIds ?? (await store.listActiveGames()).map((m) => m.gameId);
   const due: AiDueGame[] = [];
-  for (const meta of metas) {
+  for (const gameId of ids) {
     try {
-      const latest = await store.getLatest(meta.gameId);
+      const latest = await store.getLatest(gameId);
       if (!latest) continue;
       const state = decodeSnapshot(codec, latest.state);
       if (state.isGameOver) continue;
       const actor = rebellionAdapter.currentActor(state);
       if (actor && state.aiSides?.includes(actor)) {
-        due.push({ gameId: meta.gameId, turn: latest.turn, actor, snapshot: latest.state });
+        due.push({ gameId, turn: latest.turn, actor, snapshot: latest.state });
       }
     } catch { /* skip a game whose snapshot won't decode */ }
   }

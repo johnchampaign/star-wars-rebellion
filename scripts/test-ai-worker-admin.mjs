@@ -58,10 +58,31 @@ console.log('\n[ listAiDueGames — only AI-turn, live games; undecodable skippe
     getLatest: async (id) => games[id] ?? null,
     putSnapshot: async () => {},
   };
+  // Fallback path (no supabase): full listActiveGames scan.
   const due = await gs.listAiDueGames(store, codec);
   const ids = due.map((d) => d.gameId).sort();
-  check('exactly the AI-turn live game is returned', JSON.stringify(ids) === JSON.stringify(['g-ai-rebel']), JSON.stringify(ids));
+  check('fallback scan: exactly the AI-turn live game is returned', JSON.stringify(ids) === JSON.stringify(['g-ai-rebel']), JSON.stringify(ids));
   check('due entry carries turn + actor + snapshot', due[0]?.turn === 3 && due[0]?.actor === 'Rebel' && !!due[0]?.snapshot);
+
+  // Fast path: supabase actor_is_ai query narrows candidates (no listActiveGames scan).
+  const mkSupabase = (result, onFrom) => ({ from: (t) => { onFrom?.(t); return { select: () => ({ eq: () => Promise.resolve(result) }) }; } });
+  let scanned = false;
+  const noScanStore = { ...store, listActiveGames: async () => { scanned = true; return []; } };
+  const sbFast = mkSupabase({ data: [{ game_id: 'g-ai-rebel' }], error: null });
+  const dueFast = await gs.listAiDueGames(noScanStore, codec, sbFast);
+  check('fast path: uses the flag query, does NOT scan all games', !scanned);
+  check('fast path: returns the flagged AI-due game', dueFast.length === 1 && dueFast[0].gameId === 'g-ai-rebel');
+
+  // Fast path re-verifies: a stale flag on a game now at the HUMAN's turn is dropped.
+  const sbStale = mkSupabase({ data: [{ game_id: 'g-human' }], error: null });
+  const dueStale = await gs.listAiDueGames(store, codec, sbStale);
+  check('fast path: stale flag (now a human turn) is re-verified out', dueStale.length === 0, JSON.stringify(dueStale.map((d) => d.gameId)));
+
+  // Column-missing (pre-migration): the flag query errors → falls back to the scan.
+  scanned = false;
+  const sbNoCol = mkSupabase({ data: null, error: { message: 'column actor_is_ai does not exist' } });
+  const dueFallback = await gs.listAiDueGames({ ...store, listActiveGames: async () => { scanned = true; return Object.keys(games).map((id) => ({ gameId: id, createdAt: '' })); } }, codec, sbNoCol);
+  check('column missing → falls back to full scan', scanned && dueFallback.length === 1 && dueFallback[0].gameId === 'g-ai-rebel');
 }
 
 console.log('\n[ applyAiWorkerMove — concurrency + turn-ownership + validity guards ]');

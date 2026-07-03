@@ -32,7 +32,10 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     const result = advanced ? await deps.server.fetch(id, token) : view;
     // (Re)start the turn clock for whoever is now on the move (abandonment +
     // reminder-sweep handoff time). The scheduled sweep sends any email.
-    waitUntil(recordTurnTiming(deps.supabase, id, currentActorOf(result)));
+    {
+      const a = currentActorOf(result);
+      waitUntil(recordTurnTiming(deps.supabase, id, a, !!(a && result.view.aiSides?.includes(a))));
+    }
     return json(result);
   } catch (e) {
     return fail(e);
