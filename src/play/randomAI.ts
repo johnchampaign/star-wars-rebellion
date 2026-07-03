@@ -34,6 +34,23 @@ import { COST_OBJECTIVES, objectiveProgress, objectiveConditionMet } from '../en
 // this, the same game seed gives different outcomes run-to-run (the engine is
 // seeded via rng.ts, but the AI's own coin-flips were not), which made
 // intermittent stalls and win-rate comparisons impossible to pin down.
+
+/** Pluggable per-side Command policy. When set for a side, stepOnce tries it
+ *  FIRST for plain Command decisions and falls back to the built-in heuristic
+ *  if it declines or throws. The CLIENT registers the depth-2 board-eval policy
+ *  for the AI Rebel (confirmed +13.9pt over the heuristic across 900 post-#451
+ *  self-play games); the SERVER deliberately never registers one — depth-2's
+ *  ~2s/decision would blow Cloudflare's per-request CPU budget, so online vs-AI
+ *  stays on the fast heuristic. Injection (rather than a direct import of
+ *  boardEval) also avoids a module cycle: boardEval already imports this file. */
+const commandPolicyOverride: Partial<Record<Side, (G: GameState, side: Side) => boolean>> = {};
+export function setCommandPolicyOverride(
+  side: Side, policy: ((G: GameState, side: Side) => boolean) | null,
+): void {
+  if (policy) commandPolicyOverride[side] = policy;
+  else delete commandPolicyOverride[side];
+}
+
 let _aiRng: (() => number) | null = null;
 export function seedAI(seed: number): void {
   let s = seed >>> 0;
@@ -2805,6 +2822,19 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       return phases.skipAssignment(G, side).ok;
     }
     case 'Command': {
+      // Pluggable Command policy (see setCommandPolicyOverride): the CLIENT
+      // registers the depth-2 board-eval policy for the AI Rebel here; the
+      // SERVER (online vs-AI) never registers it, keeping its per-request CPU
+      // within Cloudflare limits. Falls through to the heuristic on any miss.
+      const override = commandPolicyOverride[side];
+      if (override) {
+        try {
+          if (override(G, side)) return true;
+        } catch (e) {
+          // A policy crash must never stall the game — heuristic takes over.
+          console.warn('[ai] command policy override threw; falling back', e);
+        }
+      }
       // Try actions in descending score order, skipping any the engine rejects,
       // so a high-score mission we can't actually reveal no longer forces a
       // pass while feasible lower-score actions go untried (player report #190).

@@ -7,7 +7,8 @@ import { loadAllForEngine, loadBoardMask, MAP_IMAGE_URL, MARKER_IMAGE_BASE, UNIT
 import { UNIT_IMAGE, groupByType, groupTypeIds, getUnitStyle, setUnitStyle, nextStyle, unitImageUrl, type UnitImageStyle } from './unitImages';
 import { capturePageScreenshot, screenshotAutoCaptureSafe } from './screenshot';
 import { missionTargets, missionLeaderTargets, missionRevealIsPointless } from '../engine/missionTargets';
-import { stepOnce as aiStepOnce } from './randomAI';
+import { stepOnce as aiStepOnce, setCommandPolicyOverride } from './randomAI';
+import { evalCommandStepDeep } from './boardEval';
 import { recordPlay } from 'digital-boardgame-framework';
 import { TERRITORIES, territoryFill } from '../data/territories';
 import {
@@ -936,6 +937,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // driver was racing with Strict Mode's effect-cleanup cycle.)
   // Re-arm the AI loop on initial render after data loads.
   useEffect(() => { runAILoop(); }, [runAILoop]);
+
+  // Stronger AI Rebel (single-player only): depth-2 board-eval Command policy —
+  // rank candidate actions by the position AFTER the opponent's best reply.
+  // Confirmed +13.9pt vs the heuristic across 900 post-#451 self-play games
+  // (44.7% -> 58.6%). Costs ~1-2s per AI Rebel command decision, so the ONLINE
+  // server AI stays on the fast heuristic (Cloudflare CPU budget) — hence the
+  // online gate here. Falls back to the heuristic automatically if it throws.
+  useEffect(() => {
+    if (online) return;
+    setCommandPolicyOverride('Rebel', (g, s) => evalCommandStepDeep(g, s, 2));
+    return () => setCommandPolicyOverride('Rebel', null);
+  }, [online]);
 
   // Self-heal a stalled AI driver (#409). The driver advances in setTimeout-
   // chained batches and is otherwise only re-kicked by refresh()/onAckReport().
