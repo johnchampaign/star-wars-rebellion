@@ -30,6 +30,9 @@ fi
 # Ensure the worker is running (restart if it crashed). Lowest priority so the
 # live tutor/forum on this shared 1-vCPU box always pre-empt it.
 if ! pgrep -f "scripts/ai-worker.mjs" >/dev/null 2>&1; then
-  nice -n 19 nohup node "$REPO/scripts/ai-worker.mjs" "$ENV_FILE" >>"$LOG" 2>&1 &
+  # setsid + </dev/null fully detaches so it survives the launching session
+  # closing (a plain `nohup ... &` from an SSH command still dies on channel
+  # close because stdin stays tied to the SSH channel).
+  setsid nice -n 19 node "$REPO/scripts/ai-worker.mjs" "$ENV_FILE" >>"$LOG" 2>&1 </dev/null &
   echo "[tick $(date -u +%FT%TZ)] started worker" >>"$LOG"
 fi
