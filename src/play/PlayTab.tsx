@@ -832,7 +832,23 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     const trimmed = seed.trim();
     const s = trimmed === '' ? Math.floor(Math.random() * 1e9) : Number(trimmed);
     if (Number.isNaN(s)) return;
-    gameRef.current = createGame(dataRef.current, { seed: s, autoSetupUnits: false, expansion: expansionPref });
+    // Resolve the human side first (the other side is the AI). "Random" rolls 50/50.
+    const newHuman: Side =
+      sidePref === 'Rebel' ? 'Rebel' :
+      sidePref === 'Empire' ? 'Empire' :
+      randomSide();
+    // RoE p.2 "Choosing Mission Sets": each side picks its mission set
+    // independently. The human's setup checkboxes set their own side; the AI
+    // opponent picks its own set at random (mirrors the rulebook's facedown
+    // reveal for a side that isn't strategizing it). No-op in a base game
+    // (resolveExpansion forces both false when the expansion is off).
+    const aiSide = otherSide(newHuman);
+    const aiRoe = Math.random() < 0.5;
+    const effExpansion = resolveExpansion({
+      ...expansionPref,
+      ...(aiSide === 'Rebel' ? { roeMissionsRebel: aiRoe } : { roeMissionsEmpire: aiRoe }),
+    });
+    gameRef.current = createGame(dataRef.current, { seed: s, autoSetupUnits: false, expansion: effExpansion });
     // Best-effort play counter: this local build is always human-vs-AI (the
     // human takes one side, the engine AI plays the other). Fire one beacon per
     // game START — never per move or page load. recordPlay never throws/blocks.
@@ -846,11 +862,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     setDrawnObjectiveQueue([]);
     setLeaderRescuedQueue([]);
     setInfoNoticeQueue([]);
-    // Honor the player's side preference. "Random" rolls 50/50.
-    const newHuman: Side =
-      sidePref === 'Rebel' ? 'Rebel' :
-      sidePref === 'Empire' ? 'Empire' :
-      randomSide();
+    // Honor the player's side preference (resolved above as newHuman).
     localStorage.setItem(LS_HUMAN_SIDE, newHuman);
     setHumanSide(newHuman);
     persist();
@@ -15237,6 +15249,12 @@ function ExpansionPanel({ cfg, onChange }: {
               onChange={(e) => onChange({ cinematicCombat: e.target.checked })} />
             Cinematic Combat
           </label>
+        </div>
+      )}
+      {cfg.enabled && (
+        <div style={{ color: '#8a8578', fontSize: 11, textAlign: 'center', maxWidth: 420 }}>
+          The mission-set checkboxes set your own side; the AI opponent picks its
+          mission set at random each game (RoE p.2 — each side chooses independently).
         </div>
       )}
     </div>
