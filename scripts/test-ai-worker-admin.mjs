@@ -1,0 +1,104 @@
+// AI-worker admin surface (/api/admin/ai-*): auth + the ai-due filter + the
+// ai-move optimistic-concurrency/validation guards. This is the "verification
+// system" gating the off-Cloudflare worker that computes stronger AI moves.
+// Run: node scripts/test-ai-worker-admin.mjs
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(__dirname, '..');
+const { register } = await import('tsx/esm/api'); register();
+const { createGame } = await import('../src/engine/setup.ts');
+const { makeRebellionCodec } = await import('../src/adapter/codec.ts');
+const gs = await import('../functions/_lib/gameServer.ts');
+const j = (p) => JSON.parse(readFileSync(join(ROOT, 'assets', p), 'utf-8'));
+const data = { systems: j('systems.json'), adjacency: j('adjacency.json'), leaders: j('leaders.json'), actions: j('actions.json'), missions: j('missions.json'), objectives: j('objectives.json'), tactics: j('tactics.json'), probes: j('probes.json') };
+let pass = 0, fail = 0;
+const check = (n, ok, e = '') => { if (ok) { console.log(`  ✓ ${n}`); pass++; } else { console.log(`  ✗ ${n}${e ? ' — ' + e : ''}`); fail++; } };
+
+const base = createGame(data, { seed: 5, autoSetupUnits: true });
+const codec = makeRebellionCodec(base.catalog);
+/** Build a stored snapshot string for a state at `currentPlayer`'s Command turn,
+ *  with `aiSides` AI-controlled and optional game-over. */
+function snap(currentPlayer, aiSides, over = false) {
+  const g = createGame(data, { seed: 5, autoSetupUnits: true });
+  g.phase = 'Command'; g.currentPlayer = currentPlayer; g.aiSides = aiSides;
+  g.pendingChoice = undefined; g.isGameOver = over;
+  return gs.encodeSnapshot(codec, g);
+}
+const req = (headers) => new Request('https://x/api/admin/ai-due', { headers });
+
+console.log('\n[ requireAdmin — fails CLOSED, constant-time token check ]');
+{
+  const tok = 'super-secret-worker-token-123';
+  check('no SWR_ADMIN_TOKEN configured → denied (503, fail closed)',
+    gs.requireAdmin(req({}), {})?.status === 503);
+  check('token configured, no header → 401',
+    gs.requireAdmin(req({}), { SWR_ADMIN_TOKEN: tok })?.status === 401);
+  check('token configured, wrong token → 401',
+    gs.requireAdmin(req({ authorization: 'Bearer nope' }), { SWR_ADMIN_TOKEN: tok })?.status === 401);
+  check('correct token via Authorization: Bearer → allowed (null)',
+    gs.requireAdmin(req({ authorization: `Bearer ${tok}` }), { SWR_ADMIN_TOKEN: tok }) === null);
+  check('correct token via x-admin-token → allowed (null)',
+    gs.requireAdmin(req({ 'x-admin-token': tok }), { SWR_ADMIN_TOKEN: tok }) === null);
+  check('a token that is a prefix of the real one → 401 (length check)',
+    gs.requireAdmin(req({ 'x-admin-token': tok.slice(0, -1) }), { SWR_ADMIN_TOKEN: tok })?.status === 401);
+}
+
+console.log('\n[ listAiDueGames — only AI-turn, live games; undecodable skipped ]');
+{
+  const games = {
+    'g-ai-rebel': { turn: 3, state: snap('Rebel', ['Rebel']) },   // AI's turn → due
+    'g-human':    { turn: 4, state: snap('Rebel', ['Empire']) },  // human Rebel's turn → NOT due
+    'g-over':     { turn: 9, state: snap('Empire', ['Empire'], true) }, // game over → NOT due
+    'g-garbage':  { turn: 1, state: 'v1:{not valid json' },        // undecodable → skipped
+  };
+  const store = {
+    listActiveGames: async () => Object.keys(games).map((id) => ({ gameId: id, createdAt: '' })),
+    getLatest: async (id) => games[id] ?? null,
+    putSnapshot: async () => {},
+  };
+  const due = await gs.listAiDueGames(store, codec);
+  const ids = due.map((d) => d.gameId).sort();
+  check('exactly the AI-turn live game is returned', JSON.stringify(ids) === JSON.stringify(['g-ai-rebel']), JSON.stringify(ids));
+  check('due entry carries turn + actor + snapshot', due[0]?.turn === 3 && due[0]?.actor === 'Rebel' && !!due[0]?.snapshot);
+}
+
+console.log('\n[ applyAiWorkerMove — concurrency + turn-ownership + validity guards ]');
+{
+  const good = snap('Rebel', ['Rebel']);          // AI Rebel to move
+  const human = snap('Rebel', ['Empire']);         // human Rebel to move
+  const nextGood = snap('Empire', ['Rebel']);      // a plausible post-move snapshot
+  const mk = (state, turn = 5) => {
+    const puts = [];
+    const store = {
+      listActiveGames: async () => [],
+      getLatest: async () => ({ turn, state }),
+      putSnapshot: async (id, row) => { puts.push({ id, row }); },
+    };
+    return { store, puts };
+  };
+
+  let { store, puts } = mk(good, 5);
+  let r = await gs.applyAiWorkerMove(store, codec, 'g1', 5, nextGood);
+  check('valid AI move at the right baseTurn → 200 and stored at turn+1',
+    r.ok && r.status === 200 && puts.length === 1 && puts[0].row.turn === 6 && puts[0].row.state === nextGood, JSON.stringify(r));
+
+  ({ store, puts } = mk(good, 7));
+  r = await gs.applyAiWorkerMove(store, codec, 'g1', 5, nextGood);
+  check('stale baseTurn (someone else advanced) → 409, nothing stored', !r.ok && r.status === 409 && puts.length === 0, JSON.stringify(r));
+
+  ({ store, puts } = mk(human, 5));
+  r = await gs.applyAiWorkerMove(store, codec, 'g1', 5, nextGood);
+  check('current turn is a HUMAN seat → 409, refused', !r.ok && r.status === 409 && puts.length === 0, r.reason);
+
+  ({ store, puts } = mk(good, 5));
+  r = await gs.applyAiWorkerMove(store, codec, 'g1', 5, 'v1:{garbage');
+  check('undecodable new snapshot → 400, nothing stored', !r.ok && r.status === 400 && puts.length === 0, r.reason);
+
+  r = await gs.applyAiWorkerMove({ getLatest: async () => null, putSnapshot: async () => {} }, codec, 'gone', 0, nextGood);
+  check('missing game → 404', !r.ok && r.status === 404);
+}
+
+console.log(`\n${pass} passed, ${fail} failed`);
+process.exit(fail ? 1 : 0);

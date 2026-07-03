@@ -62,6 +62,12 @@ export interface Env {
   // a matching `x-cron-key` header. Set the SAME value on the cron Worker if
   // you enable it.
   CRON_SECRET?: string;
+  // Shared secret gating the /api/admin/ai-* endpoints, which let an off-
+  // Cloudflare AI worker (e.g. the Linode box) fetch full game state and submit
+  // computed moves. Unlike the idempotent, read-only cron sweep (which fails
+  // OPEN), these endpoints expose unredacted secret state and accept writes, so
+  // they MUST fail CLOSED: if SWR_ADMIN_TOKEN is unset, every request is denied.
+  SWR_ADMIN_TOKEN?: string;
 }
 
 /** Resend turn-alert emails when configured, else a no-op. The framework's
@@ -308,11 +314,11 @@ export function runServerAI(state: GameState): boolean {
 function snapshotPrefix(): string {
   return `v${rebellionAdapter.schemaVersion ?? 1}:`;
 }
-function decodeSnapshot(codec: Codec<GameState>, raw: string): GameState {
+export function decodeSnapshot(codec: Codec<GameState>, raw: string): GameState {
   const m = /^v\d+:/.exec(raw);
   return codec.decode(m ? raw.slice(m[0].length) : raw);
 }
-function encodeSnapshot(codec: Codec<GameState>, state: GameState): string {
+export function encodeSnapshot(codec: Codec<GameState>, state: GameState): string {
   return snapshotPrefix() + codec.encode(state);
 }
 
@@ -323,6 +329,89 @@ export async function advanceAIAndStore(store: SnapshotStore, codec: Codec<GameS
   if (!runServerAI(state)) return false;
   await store.putSnapshot(gameId, { turn: latest.turn + 1, state: encodeSnapshot(codec, state) });
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// AI-worker admin surface (/api/admin/ai-*). Lets an off-Cloudflare worker
+// (the Linode box) fetch full state, compute a stronger move with no CPU limit,
+// and submit it back. The worker authenticates with SWR_ADMIN_TOKEN.
+// ---------------------------------------------------------------------------
+
+/** Constant-time string compare (avoids leaking the token via timing). */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+/** Gate an admin request. Returns a 401 Response to return, or null if allowed.
+ *  FAILS CLOSED: an unset SWR_ADMIN_TOKEN denies everything (these endpoints
+ *  expose secret state + accept writes, so they must never be open by default).
+ *  Accepts the token via `Authorization: Bearer <t>` or an `x-admin-token`
+ *  header. */
+export function requireAdmin(request: Request, env: Env): Response | null {
+  const expected = env.SWR_ADMIN_TOKEN;
+  if (!expected) return json({ error: 'admin endpoint disabled (no SWR_ADMIN_TOKEN configured)' }, 503);
+  const auth = request.headers.get('authorization') ?? '';
+  const bearer = /^Bearer\s+(.+)$/i.exec(auth)?.[1];
+  const supplied = bearer ?? request.headers.get('x-admin-token') ?? '';
+  if (!supplied || !timingSafeEqual(supplied, expected)) return json({ error: 'unauthorized' }, 401);
+  return null;
+}
+
+export interface AiDueGame { gameId: string; turn: number; actor: Side; snapshot: string; }
+
+/** Every active game where it's an AI seat's turn (and the game isn't over),
+ *  with the raw latest snapshot so the worker can decode + compute locally.
+ *  A decode failure on one game is skipped, never fatal to the sweep. */
+export async function listAiDueGames(store: SnapshotStore, codec: Codec<GameState>): Promise<AiDueGame[]> {
+  const metas = await store.listActiveGames();
+  const due: AiDueGame[] = [];
+  for (const meta of metas) {
+    try {
+      const latest = await store.getLatest(meta.gameId);
+      if (!latest) continue;
+      const state = decodeSnapshot(codec, latest.state);
+      if (state.isGameOver) continue;
+      const actor = rebellionAdapter.currentActor(state);
+      if (actor && state.aiSides?.includes(actor)) {
+        due.push({ gameId: meta.gameId, turn: latest.turn, actor, snapshot: latest.state });
+      }
+    } catch { /* skip a game whose snapshot won't decode */ }
+  }
+  return due;
+}
+
+/** Store a worker-computed snapshot with optimistic concurrency. Rejects if:
+ *  the game is gone, another writer advanced it (baseTurn stale — the inline
+ *  path or a second worker moved first), the CURRENT actor wasn't an AI seat
+ *  (never let the worker move a human's turn), or the new snapshot won't decode.
+ *  Returns a {ok, reason, status} the endpoint maps to HTTP. */
+export async function applyAiWorkerMove(
+  store: SnapshotStore, codec: Codec<GameState>,
+  gameId: string, baseTurn: number, newSnapshot: string,
+): Promise<{ ok: boolean; reason?: string; status: number }> {
+  const latest = await store.getLatest(gameId);
+  if (!latest) return { ok: false, reason: 'game-not-found', status: 404 };
+  if (latest.turn !== baseTurn) return { ok: false, reason: `stale:${latest.turn}!=${baseTurn}`, status: 409 };
+  let priorActor: Side | null;
+  try {
+    const prior = decodeSnapshot(codec, latest.state);
+    if (prior.isGameOver) return { ok: false, reason: 'game-over', status: 409 };
+    priorActor = rebellionAdapter.currentActor(prior);
+    if (!priorActor || !prior.aiSides?.includes(priorActor)) {
+      return { ok: false, reason: 'not-an-ai-turn', status: 409 };
+    }
+  } catch { return { ok: false, reason: 'prior-decode-failed', status: 500 }; }
+  // Validate the incoming snapshot actually decodes to a real state before we
+  // persist it — a trusted-but-buggy worker must not be able to corrupt a game.
+  try {
+    const next = decodeSnapshot(codec, newSnapshot);
+    void next;
+  } catch { return { ok: false, reason: 'new-snapshot-invalid', status: 400 }; }
+  await store.putSnapshot(gameId, { turn: baseTurn + 1, state: newSnapshot });
+  return { ok: true, status: 200 };
 }
 
 
