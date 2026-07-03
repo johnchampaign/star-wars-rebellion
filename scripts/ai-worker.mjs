@@ -76,13 +76,23 @@ function computeAiTurn(state) {
   return advanced;
 }
 
+const REQ_TIMEOUT_MS = Number(process.env.AI_REQ_TIMEOUT_MS || 30000);
 async function api(path, init) {
-  const r = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json', ...(init?.headers || {}) },
-  });
-  const body = await r.json().catch(() => ({}));
-  return { status: r.status, body };
+  // Bound every request so a hung endpoint (e.g. a degraded Supabase) can't
+  // wedge the poll loop — an abort just throws, the loop logs it and retries.
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
+  try {
+    const r = await fetch(`${BASE}${path}`, {
+      ...init,
+      signal: ctrl.signal,
+      headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json', ...(init?.headers || {}) },
+    });
+    const body = await r.json().catch(() => ({}));
+    return { status: r.status, body };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function tick() {
