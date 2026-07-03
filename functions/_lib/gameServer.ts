@@ -29,7 +29,7 @@ import type { Side } from '../../src/types';
 import type { RebellionAction } from '../../src/adapter/rebellionAction';
 import { rebellionAdapter } from '../../src/adapter/rebellionAdapter';
 import { makeRebellionCodec } from '../../src/adapter/codec';
-import { buildCatalog, createGame, type DataBundle } from '../../src/engine/setup';
+import { buildCatalog, createGame, rebuildMissionDeck, type DataBundle } from '../../src/engine/setup';
 import { stepOnce } from '../../src/play/randomAI';
 
 const HUB = 'https://games-hub-5vo.pages.dev';
@@ -300,6 +300,18 @@ export function newInitialState(
   const seed = Math.floor(Math.random() * 2 ** 31);
   const state = createGame(dataBundle, { seed, autoSetupUnits: false, expansion });
   if (aiSide) state.aiSides = [aiSide];
+  // Per-seat mission set (RoE p.2): in an online game each HUMAN seat picks its
+  // own set the first time it enters (see setSeatMissionSet + the OnlinePlay
+  // chooser), so both human seats start UNLOCKED. An AI seat has no one to
+  // choose for it, so lock it now with a random set (mirrors the single-player
+  // AI). No-op in a base game (rebuildMissionDeck only changes RoE decks).
+  if (state.expansion?.enabled) {
+    state.expansion.missionSetLocked = state.expansion.missionSetLocked ?? {};
+    if (aiSide) {
+      const aiRoe = Math.random() < 0.5;
+      rebuildMissionDeck(state, aiSide, aiRoe, (seed ^ 0x9e3779b9) >>> 0);
+    }
+  }
   return state;
 }
 
@@ -510,6 +522,24 @@ export function claimVictory(store: SnapshotStore, codec: Codec<GameState>, game
     s.isGameOver = true;
     s.winner = winner;
     s.winReason = 'Opponent abandoned the game';
+    return true;
+  });
+}
+
+/** Online per-seat mission-set choice (RoE p.2). A human seat picks its own set
+ *  the first time it enters; the server rebuilds just that side's mission deck
+ *  and locks the choice. Refuses (returns false) unless: the expansion is on,
+ *  the game is still in the Setup phase (missions unused), the seat is human,
+ *  and it hasn't already locked. Optimistic-concurrency via mutateStored. */
+export function setSeatMissionSet(
+  store: SnapshotStore, codec: Codec<GameState>, gameId: string, side: Side, useRoe: boolean, seed: number,
+): Promise<boolean> {
+  return mutateStored(store, codec, gameId, (s) => {
+    if (!s.expansion?.enabled) return false;
+    if (s.phase !== 'Setup') return false;              // window closed (missions may be in use)
+    if (s.aiSides?.includes(side)) return false;        // AI seat is locked at creation
+    if (s.expansion.missionSetLocked?.[side]) return false; // already chosen — idempotent no-op
+    rebuildMissionDeck(s, side, useRoe, seed);
     return true;
   });
 }

@@ -235,8 +235,59 @@ export function resolveExpansion(input?: Partial<ExpansionConfig>): ExpansionCon
     roeMissions: shared,
     roeMissionsRebel: input?.roeMissionsRebel ?? shared,
     roeMissionsEmpire: input?.roeMissionsEmpire ?? shared,
+    ...(input?.missionSetLocked ? { missionSetLocked: input.missionSetLocked } : {}),
     cinematicCombat: input?.cinematicCombat ?? false,
   };
+}
+
+/** Rebuild ONE side's regular mission deck + starting hand for a chosen mission
+ *  set, then lock that seat's choice. Used by the online per-seat flow (RoE p.2):
+ *  each human seat picks base vs RoE the first time they enter, and the server
+ *  re-derives just their deck before any mission is used. Mirrors the per-side
+ *  deck build in createGame — starting missions are always in (set-independent);
+ *  only the regular deck's composition + the 2 extra starting-hand draws change.
+ *  Deterministic in `seed` (no Math.random here — the caller supplies it), and
+ *  it touches ONLY this side's missionHand/missionDeck + the config flags, never
+ *  the opponent, the project deck, units, or leaders. Safe to call only before
+ *  the side has drawn/used a mission (the caller gates on the Setup phase). */
+export function rebuildMissionDeck(G: GameState, side: Side, useRoe: boolean, seed: number): void {
+  const enabled = G.expansion?.enabled ?? false;
+  const cat = G.catalog.missions as Record<string, {
+    id: string; side: Side; isStarting: boolean; isProject: boolean;
+    set?: 'base' | 'rote'; leaderPortrait?: string | null;
+    missionSet?: 'base' | 'rote' | 'both'; copies?: number }>;
+  const faction = side === 'Rebel' ? G.rebel : G.empire;
+
+  const isRoe = (m: { set?: 'base' | 'rote' }) => m.set === 'rote';
+  const membership = (m: { set?: 'base' | 'rote'; leaderPortrait?: string | null;
+    missionSet?: 'base' | 'rote' | 'both' }): 'base' | 'rote' | 'both' =>
+    m.missionSet ? m.missionSet : (m.set === 'rote' ? 'rote' : (m.leaderPortrait ? 'both' : 'base'));
+  const want: 'base' | 'rote' = useRoe ? 'rote' : 'base';
+  const inDeck = (m: { isStarting: boolean; isProject: boolean; set?: 'base' | 'rote';
+    leaderPortrait?: string | null; missionSet?: 'base' | 'rote' | 'both' }): boolean => {
+    if (!(enabled || !isRoe(m))) return false;      // ownership
+    if (m.isStarting || m.isProject) return true;   // always used
+    if (!enabled) return true;                       // base game: all owned regulars
+    const set = membership(m);
+    return set === 'both' || set === want;
+  };
+
+  const mine = Object.values(cat).filter((m) => m.side === side);
+  const startingIds = mine.filter((m) => m.isStarting && !m.isProject && inDeck(m)).map((m) => m.id);
+  const expandCopies = (m: { id: string; copies?: number }) =>
+    Array.from({ length: m.copies ?? 1 }, () => m.id);
+  const rng = createRng(seed);
+  const deck = shuffle(rng, mine.filter((m) => !m.isStarting && !m.isProject && inDeck(m)).flatMap(expandCopies));
+  const hand = [...startingIds];
+  for (let i = 0; i < 2; i++) { const d = deck.shift(); if (d) hand.push(d); }
+  faction.missionHand = hand;
+  faction.missionDeck = deck;
+
+  if (G.expansion) {
+    if (side === 'Rebel') G.expansion.roeMissionsRebel = useRoe;
+    else G.expansion.roeMissionsEmpire = useRoe;
+    G.expansion.missionSetLocked = { ...(G.expansion.missionSetLocked ?? {}), [side]: true };
+  }
 }
 
 export function createGame(data: DataBundle, opts: SetupOptions): GameState {

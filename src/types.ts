@@ -95,6 +95,12 @@ export type ExpansionConfig = {
    *  base, one on RoE). Default to `roeMissions` when a game doesn't set them. */
   roeMissionsRebel: boolean;
   roeMissionsEmpire: boolean;
+  /** Online only: which seats have LOCKED IN their mission-set choice. In an
+   *  async PvP game each human seat picks its own set the first time that player
+   *  enters (before the Setup phase ends); an AI seat is locked at creation with
+   *  a random set. Absent/false for a seat = not yet chosen (show the chooser).
+   *  Single-player leaves this undefined entirely (both sides set at setup). */
+  missionSetLocked?: { Rebel?: boolean; Empire?: boolean };
   /** Use the optional Cinematic Combat module. */
   cinematicCombat: boolean;
 };

@@ -118,6 +118,29 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
   }
   if (!view) return <div style={pad}>No game data.</div>;
 
+  // Per-seat mission set (RoE p.2): the first time a human seat enters an
+  // expansion game, they pick their own set before the Setup phase ends. Gate
+  // the board behind a one-time chooser until this seat has locked its choice.
+  const needsMissionChoice = !!(
+    you &&
+    view.expansion?.enabled &&
+    view.phase === 'Setup' &&
+    !view.aiSides?.includes(you as Side) &&
+    !view.expansion.missionSetLocked?.[you as Side]
+  );
+  if (needsMissionChoice) {
+    const seat = you as Side;
+    return (
+      <MissionSetChooser
+        gameId={gameId}
+        token={token}
+        you={seat}
+        defaultUseRoe={seat === 'Rebel' ? view.expansion!.roeMissionsRebel : view.expansion!.roeMissionsEmpire}
+        onDone={() => void refresh()}
+      />
+    );
+  }
+
   return (
     <div style={{ ...pad, maxWidth: 1280, margin: '0 auto', fontFamily: 'system-ui, sans-serif', color: '#e8e6f2' }}>
       <SignInBar leaderboardHref="https://games-hub-5vo.pages.dev/leaderboard?game=rebellion" />
@@ -222,6 +245,56 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
 const pad: React.CSSProperties = { padding: 20 };
 const card: React.CSSProperties = { background: '#1b1e24', border: '1px solid #333', borderRadius: 8, padding: 14, margin: '12px 0' };
 const errBox: React.CSSProperties = { background: '#3a1d1d', color: '#f3b', padding: 10, borderRadius: 6, whiteSpace: 'pre-wrap' };
+
+// ----- Per-seat mission-set chooser (RoE p.2) -----
+// Shown once, before the board, the first time a human seat enters an expansion
+// game. Each side picks its own set independently; the POST rebuilds just this
+// side's mission deck server-side and locks the choice.
+function MissionSetChooser({ gameId, token, you, defaultUseRoe, onDone }: {
+  gameId: string; token: string; you: Side; defaultUseRoe: boolean; onDone: () => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  async function choose(useRoe: boolean) {
+    setBusy(true); setErr(null);
+    try {
+      const r = await fetch(`/api/games/${encodeURIComponent(gameId)}/mission-set?t=${encodeURIComponent(token)}`, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ useRoe }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error((j as { error?: string })?.error || `HTTP ${r.status}`);
+      onDone();
+    } catch (e) { setErr(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(false); }
+  }
+  const seatColor = you === 'Rebel' ? '#4fc3f7' : '#ff8a80';
+  return (
+    <div style={{ maxWidth: 640, margin: '48px auto', padding: 24, fontFamily: 'system-ui, sans-serif', color: '#e8e6f2', textAlign: 'center' }}>
+      <h2 style={{ marginTop: 0 }}>Choose your mission set</h2>
+      <p style={{ color: '#aab', lineHeight: 1.5 }}>
+        You’re playing <b style={{ color: seatColor }}>{you}</b>. In Rise of the Empire each side
+        picks its own mission set — your choice affects only your own missions, and your opponent
+        chooses theirs independently. This is a one-time pick and can’t be changed once the game starts.
+      </p>
+      <div style={{ display: 'flex', gap: 14, justifyContent: 'center', flexWrap: 'wrap', margin: '22px 0' }}>
+        <button disabled={busy} onClick={() => void choose(true)} className="tab-button" style={cardBtn}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>Rise of the Empire</div>
+          <div style={{ color: '#aab', fontSize: 12, marginTop: 4 }}>The expansion mission set (Vader-icon missions plus the shared leader missions).</div>
+        </button>
+        <button disabled={busy} onClick={() => void choose(false)} className="tab-button" style={cardBtn}>
+          <div style={{ fontSize: 16, fontWeight: 700 }}>Base game</div>
+          <div style={{ color: '#aab', fontSize: 12, marginTop: 4 }}>The original core mission set.</div>
+        </button>
+      </div>
+      <div style={{ color: '#778', fontSize: 12 }}>
+        {busy ? 'Saving…' : `If you’re unsure, the game’s default is ${defaultUseRoe ? 'Rise of the Empire' : 'the base game'}.`}
+      </div>
+      {err && <pre style={{ ...errBox, textAlign: 'left', marginTop: 16 }}>{err}</pre>}
+    </div>
+  );
+}
+const cardBtn: React.CSSProperties = { width: 250, padding: 16, textAlign: 'left', whiteSpace: 'normal', lineHeight: 1.3 };
 
 // ----- In-game chat panel (top-right, under Refresh) -----
 

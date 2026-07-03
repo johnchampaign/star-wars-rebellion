@@ -127,19 +127,24 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
             Rise of the Empire expansion
           </label>
           {expansion.enabled && (
-            <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
-              {([
-                ['roeUnits', 'RoE units'],
-                ['roeMissions', 'RoE missions'],
-                ['cinematicCombat', 'Cinematic Combat'],
-              ] as const).map(([k, label]) => (
-                <label key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#cbc4b0', fontSize: 12 }}>
-                  <input type="checkbox" checked={expansion[k]}
-                    onChange={(e) => patchExpansion({ [k]: e.target.checked } as Partial<ExpansionConfig>)} />
-                  {label}
-                </label>
-              ))}
-            </div>
+            <>
+              <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: '4px 14px' }}>
+                {([
+                  ['roeUnits', 'RoE units'],
+                  ['cinematicCombat', 'Cinematic Combat'],
+                ] as const).map(([k, label]) => (
+                  <label key={k} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: '#cbc4b0', fontSize: 12 }}>
+                    <input type="checkbox" checked={expansion[k]}
+                      onChange={(e) => patchExpansion({ [k]: e.target.checked } as Partial<ExpansionConfig>)} />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div style={{ marginTop: 6, color: '#778', fontSize: 12, lineHeight: 1.4 }}>
+                Mission set isn’t chosen here — each player picks their own (base or Rise of the
+                Empire) the first time they open the game, and the two sides may differ (RoE p.2).
+              </div>
+            </>
           )}
         </div>
       )}

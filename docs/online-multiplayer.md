@@ -75,6 +75,29 @@ mutated). Run it after any redaction or codec change.
 > event banner is suppressed until each log entry is individually redacted,
 > because a raw entry can leak hidden info.
 
+## Per-seat mission set (RoE p.2)
+
+In a Rise of the Empire game each side chooses its own mission set (base vs RoE)
+independently — the two may differ. Online, the two humans aren't both present
+at creation, so instead of a simultaneous facedown reveal **each human seat
+picks its own set the first time that player enters**:
+
+- **Creation** (`newInitialState`): both human seats start with
+  `expansion.missionSetLocked` **unset** for their side. An AI seat is locked
+  immediately with a **random** set (there's no human to choose for it), mirroring
+  single-player. Base game (`enabled:false`) has no locks.
+- **The chooser** (`OnlinePlay` → `MissionSetChooser`): if the seat isn't locked,
+  the expansion is on, and the game is still in the **Setup phase**, the board is
+  gated behind a one-time base-vs-RoE pick. It POSTs `/api/games/:id/mission-set`.
+- **Server** (`setSeatMissionSet` → `rebuildMissionDeck`): re-derives **only that
+  side's** `missionHand`+`missionDeck` for the chosen set and sets
+  `missionSetLocked[side]`. Refused unless expansion-on + Setup phase + human seat
+  + not already locked (idempotent). Optimistic-concurrency via `mutateStored`.
+
+The Setup-phase gate is the safety window: mission cards aren't used until
+Assignment, and the game can't leave Setup until both humans engage. Verified by
+`scripts/verify-online-mission-set.mts` + `scripts/test-online-per-seat-mission-set.mjs`.
+
 ## vs-AI and the abandonment flow
 
 The server can drive a seat with the existing heuristic AI
