@@ -6,7 +6,7 @@
 // after the worker applied the AI's move). Rejects a stale baseTurn (someone
 // else advanced first), a non-AI turn, or an undecodable snapshot — so a
 // trusted-but-buggy worker can't corrupt or hijack a game.
-import { makeServer, requireAdmin, applyAiWorkerMove, json, fail, type Env } from '../../../_lib/gameServer';
+import { makeServer, requireAdmin, applyAiWorkerMove, json, fail, type Env } from '../../_lib/gameServer';
 
 interface Body { gameId?: string; baseTurn?: number; snapshot?: string; }
 
