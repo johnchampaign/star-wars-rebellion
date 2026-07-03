@@ -1272,7 +1272,20 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
     const oppSide: Side = pending.resolverSide === 'Rebel' ? 'Empire' : 'Rebel';
     const oppFaction = oppSide === 'Rebel' ? G.rebel : G.empire;
     const existing = opposerLeadersAt(G, oppSide, pending.targetSystemId, pending.missionId);
-    const pool = pending.blindsideActive ? [] : oppFaction.leaderPool.slice();
+    // Misdirection: if any leader attempting this mission was chosen as protected
+    // this round, the opposing side cannot send POOL leaders to oppose (leaders
+    // already at the target may still oppose). Card: "Imperial leaders in the
+    // leader pool cannot be sent to oppose this leader's mission this round."
+    // (#469 — the flag was set/cleared but never consulted here.)
+    const misdirectionBlocks = (G.misdirectionProtected ?? []).some(
+      (id) => (pending.leaderIds as LeaderId[]).includes(id),
+    );
+    const pool = (pending.blindsideActive || misdirectionBlocks) ? [] : oppFaction.leaderPool.slice();
+    if (misdirectionBlocks && !pending.blindsideActive) {
+      noteIntervention(G, pending,
+        'Misdirection: leaders in the pool cannot be sent to oppose this mission.',
+      );
+    }
     const skill = card.skill as string;
     const countsAll = missionCountsAllSkills(G, pending.missionId);
     const attLeaders = attemptingLeadersAt(G, pending.resolverSide, pending.targetSystemId, pending.leaderIds as LeaderId[]);
