@@ -28,7 +28,7 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
     // at the AI's turn forever ("it's the empire's turn but nothing happens").
     // The poll path now advances a due AI seat, so one lost attempt heals on
     // the player's next refresh. No-op whenever it isn't an AI seat's turn.
-    if (!r.gameOver) {
+    if (!r.gameOver && !env.AI_WORKER_ENABLED) {
       const actor = currentActorOf(r);
       if (actor && r.view.aiSides?.includes(actor)) {
         if (await advanceAIAndStore(deps.store, deps.codec, id)) {

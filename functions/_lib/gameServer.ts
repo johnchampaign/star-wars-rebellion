@@ -68,6 +68,14 @@ export interface Env {
   // OPEN), these endpoints expose unredacted secret state and accept writes, so
   // they MUST fail CLOSED: if SWR_ADMIN_TOKEN is unset, every request is denied.
   SWR_ADMIN_TOKEN?: string;
+  // When set (any value), Cloudflare stops advancing AI seats inline (on submit
+  // and on the poll self-heal), handing sole AI-move ownership to the off-
+  // Cloudflare worker so its stronger depth-2 moves aren't pre-empted by the
+  // inline heuristic. Leave UNSET until the worker is verified running — with it
+  // set and no worker up, AI turns pause until a worker appears. (Running both
+  // is safe — optimistic concurrency prevents double-moves — this only decides
+  // who plays the AI's move.)
+  AI_WORKER_ENABLED?: string;
 }
 
 /** Resend turn-alert emails when configured, else a no-op. The framework's
