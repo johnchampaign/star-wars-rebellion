@@ -9527,6 +9527,19 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
 
   // Valid sources for moves: systems adjacent to target (or the target itself —
   // pre-existing friendly units), where the human has no leader.
+  //
+  // Public Support (Janus Greejatus) exemption: the card explicitly says Janus
+  // "does not prevent you from moving units out of the system." The engine
+  // honours this via greejatusFreeMoveSystemId, but the UI was still hiding the
+  // leader-occupied system as a move source, so the gained Stormtroopers could
+  // never be selected (player report: unable to move units out of the Public
+  // Support system). Mirror the engine's exemption here.
+  const leaderPinsSource = (sysId: string): boolean => {
+    if ((f.leadersOnBoard[sysId] ?? []).length === 0) return false;
+    const greejatusFree = side === 'Empire'
+      && G.actionCardFlags?.greejatusFreeMoveSystemId === sysId;
+    return !greejatusFree;
+  };
   const sources: string[] = [];
   if (targetSystemId === 'rebel-base-space') {
     // Activating the hidden Rebel Base space: pull units IN from the base's own
@@ -9534,14 +9547,14 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass }: {
     const baseId = G.rebelBaseSystemId;
     const candidates = [baseId, ...(G.catalog.adjacency[baseId] ?? [])];
     for (const sysId of candidates) {
-      if ((f.leadersOnBoard[sysId] ?? []).length > 0) continue;
+      if (leaderPinsSource(sysId)) continue;
       const ss = G.map.systems[sysId];
       if (ss && ss.units.some((u) => u.side === side)) sources.push(sysId);
     }
   } else if (targetSystemId) {
     const adj = G.catalog.adjacency[targetSystemId] ?? [];
     for (const sysId of adj) {
-      if ((f.leadersOnBoard[sysId] ?? []).length > 0) continue;
+      if (leaderPinsSource(sysId)) continue;
       const ss = G.map.systems[sysId];
       if (!ss) continue;
       const hasOwn = ss.units.some((u) => u.side === side);
