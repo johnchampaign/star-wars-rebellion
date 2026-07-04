@@ -1875,6 +1875,17 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           combat-triggering activation must surface its combat report first. */}
       {(() => {
         if (online && !online.yourTurn) return null;
+        // A post-mission ring-trigger offer (Son of Skywalker / Falcon / C3PO)
+        // is posted at the same instant its mission report is queued, and the
+        // offer is a REQUIRED decision that must run before the mission finishes
+        // (it's why pendingMission is still set). Show the offer FIRST by
+        // deferring the report while such an offer is pending — otherwise the
+        // report sits in front of the offer and, online, the player can get
+        // trapped there ("mission-already-resolving" on every action, hero never
+        // rescued — #473). Once the offer resolves, pendingChoice clears and the
+        // report surfaces normally.
+        const oc = G.pendingChoice?.kind;
+        if (oc === 'SonOfSkywalkerOffer' || oc === 'FalconOffer' || oc === 'C3POOffer') return null;
         const cr = G.combatReports?.[0];
         const mr = G.missionReports?.[0];
         const or = G.objectiveReports?.[0];
@@ -2488,9 +2499,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           }} />
       )}
 
-      {(!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && G.pendingChoice?.kind === 'SonOfSkywalkerOffer'
+      {/* NOT gated behind reports: this offer must resolve before the mission
+          finishes, so it renders on top and the report is deferred (see the
+          report block above) — #473. */}
+      {G.pendingChoice?.kind === 'SonOfSkywalkerOffer'
         && G.pendingChoice.side === humanSide && (
         <SonOfSkywalkerOfferModal G={G} choice={G.pendingChoice}
           onPick={(mid) => {
@@ -2792,9 +2804,8 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           }} />
       )}
 
-      {(!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && G.pendingChoice?.kind === 'C3POOffer'
+      {/* Required post-mission offer — renders on top of a deferred report (#473). */}
+      {G.pendingChoice?.kind === 'C3POOffer'
         && G.pendingChoice.side === humanSide && (
         <C3POOfferModal G={G} choice={G.pendingChoice}
           onAccept={(accept) => {
@@ -2804,9 +2815,8 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           }} />
       )}
 
-      {(!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && G.pendingChoice?.kind === 'FalconOffer'
+      {/* Required post-mission offer — renders on top of a deferred report (#473). */}
+      {G.pendingChoice?.kind === 'FalconOffer'
         && G.pendingChoice.side === humanSide && (
         <FalconOfferModal G={G} choice={G.pendingChoice}
           onPick={(lid) => {
@@ -3320,8 +3330,14 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
 
       {/* Floating "peek the board" toggle — shown whenever a prompt/overlay is
           up that greys out the map. Lives OUTSIDE the wrapper above so it stays
-          clickable while peeking. (idea: MightyFaben) */}
-      {(!!G.pendingChoice || !!G.pendingCombat
+          clickable while peeking. (idea: MightyFaben)
+          Only show it when the HUMAN actually has something on screen to peek
+          behind: a report, an active combat, or a pendingChoice THEY own. A
+          choice owned by the opponent/AI renders no modal for this player, so
+          the button would otherwise float alone in the corner with nothing to
+          reveal — which is what bobbi saw while soft-locked (#473). */}
+      {((!!G.pendingChoice && !aiOwesChoice(G, aiSide))
+        || !!G.pendingCombat
         || !!(G.missionReports?.length) || !!(G.combatReports?.length)
         || !!(G.refreshReports?.length) || !!(G.objectiveReports?.length)) && (
         <button
