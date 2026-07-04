@@ -19,8 +19,8 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     if (!body.gameId || typeof body.baseTurn !== 'number' || typeof body.snapshot !== 'string') {
       return json({ error: 'expected { gameId, baseTurn:number, snapshot:string }' }, 400);
     }
-    const { store, codec } = await makeServer(request, env);
-    const r = await applyAiWorkerMove(store, codec, body.gameId, body.baseTurn, body.snapshot);
+    const { store, codec, supabase } = await makeServer(request, env);
+    const r = await applyAiWorkerMove(store, codec, body.gameId, body.baseTurn, body.snapshot, supabase);
     return json(r.ok ? { ok: true } : { error: r.reason }, r.status);
   } catch (e) {
     return fail(e);

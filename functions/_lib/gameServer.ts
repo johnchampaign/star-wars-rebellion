@@ -405,18 +405,44 @@ export interface AiDueGame { gameId: string; turn: number; actor: Side; snapshot
  *  candidate is RE-VERIFIED by decoding (the flag is a superset — a game the
  *  worker just moved may still be flagged until the next timing write). A decode
  *  failure on one game is skipped, never fatal. */
+// Cap how many AI-due games we return per call. Each entry costs a snapshot
+// read; the worker drains a backlog across successive polls. Also the CPU-safety
+// bound for the fallback scan below (see AI_DUE_LIMIT usage).
+const AI_DUE_LIMIT = 8;
+
 export async function listAiDueGames(
   store: SnapshotStore, codec: Codec<GameState>, supabase?: SupabaseClient,
 ): Promise<AiDueGame[]> {
-  let candidateIds: string[] | null = null;
+  // FAST PATH (indexed): trust the `actor_is_ai` flag + stored `actor` that
+  // recordTurnTiming wrote, and return the RAW snapshot WITHOUT decoding it.
+  // Decoding N full snapshots per poll (JSON.parse + reseed + repairProbeState)
+  // is what pushed this endpoint past Cloudflare's per-request CPU limit
+  // (error 1102) once AI-due games backed up. Skipping the decode is safe: the
+  // off-Cloudflare worker decodes locally (no CPU cap) and re-checks it's an AI
+  // turn, and applyAiWorkerMove re-verifies again before persisting — a stale
+  // flag just costs the worker one wasted (cheap, local) decode.
   if (supabase) {
     const { data, error } = await supabase
-      .from('swr_turn_notify').select('game_id').eq('actor_is_ai', true);
-    if (!error && data) candidateIds = data.map((r) => r.game_id as string);
+      .from('swr_turn_notify').select('game_id, actor').eq('actor_is_ai', true).limit(AI_DUE_LIMIT);
+    if (!error && data) {
+      const results = await Promise.all(data.map(async (row) => {
+        const gameId = row.game_id as string;
+        const actor = row.actor as Side | null;
+        if (!actor) return null;
+        const latest = await store.getLatest(gameId);
+        if (!latest) return null;
+        return { gameId, turn: latest.turn, actor, snapshot: latest.state } as AiDueGame;
+      }));
+      return results.filter((r): r is AiDueGame => r !== null);
+    }
   }
-  const ids = candidateIds ?? (await store.listActiveGames()).map((m) => m.gameId);
+  // FALLBACK (no supabase / column missing): scan active games and decode to
+  // find AI-due ones. Bounded by AI_DUE_LIMIT so a big backlog can't blow the
+  // CPU budget in a single request — the worker drains it across polls.
+  const ids = (await store.listActiveGames()).map((m) => m.gameId);
   const due: AiDueGame[] = [];
   for (const gameId of ids) {
+    if (due.length >= AI_DUE_LIMIT) break;
     try {
       const latest = await store.getLatest(gameId);
       if (!latest) continue;
@@ -439,6 +465,11 @@ export async function listAiDueGames(
 export async function applyAiWorkerMove(
   store: SnapshotStore, codec: Codec<GameState>,
   gameId: string, baseTurn: number, newSnapshot: string,
+  // Optional: when given, refresh swr_turn_notify with the NEW actor after the
+  // move, so this game's actor_is_ai flag stops matching the ai-due query the
+  // moment the turn passes back to a human (otherwise the fast path keeps
+  // returning an already-moved game until the human's next fetch).
+  supabase?: SupabaseClient,
 ): Promise<{ ok: boolean; reason?: string; status: number }> {
   const latest = await store.getLatest(gameId);
   if (!latest) return { ok: false, reason: 'game-not-found', status: 404 };
@@ -454,11 +485,21 @@ export async function applyAiWorkerMove(
   } catch { return { ok: false, reason: 'prior-decode-failed', status: 500 }; }
   // Validate the incoming snapshot actually decodes to a real state before we
   // persist it — a trusted-but-buggy worker must not be able to corrupt a game.
+  // Reuse this decode to learn the NEW actor (no extra CPU).
+  let nextActor: Side | null = null;
+  let nextIsAi = false;
   try {
     const next = decodeSnapshot(codec, newSnapshot);
-    void next;
+    nextActor = next.isGameOver ? null : rebellionAdapter.currentActor(next);
+    nextIsAi = !!(nextActor && next.aiSides?.includes(nextActor));
   } catch { return { ok: false, reason: 'new-snapshot-invalid', status: 400 }; }
   await store.putSnapshot(gameId, { turn: baseTurn + 1, state: newSnapshot });
+  // Keep the ai-due flag accurate: once the turn passes back to a human, drop
+  // this game from the actor_is_ai candidate set (best-effort — abandonment
+  // timing already tolerates a lost write).
+  if (supabase) {
+    try { await recordTurnTiming(supabase, gameId, nextActor, nextIsAi); } catch { /* best-effort */ }
+  }
   return { ok: true, status: 200 };
 }
 

@@ -64,25 +64,37 @@ console.log('\n[ listAiDueGames — only AI-turn, live games; undecodable skippe
   check('fallback scan: exactly the AI-turn live game is returned', JSON.stringify(ids) === JSON.stringify(['g-ai-rebel']), JSON.stringify(ids));
   check('due entry carries turn + actor + snapshot', due[0]?.turn === 3 && due[0]?.actor === 'Rebel' && !!due[0]?.snapshot);
 
-  // Fast path: supabase actor_is_ai query narrows candidates (no listActiveGames scan).
-  const mkSupabase = (result, onFrom) => ({ from: (t) => { onFrom?.(t); return { select: () => ({ eq: () => Promise.resolve(result) }) }; } });
+  // Fast path: the indexed actor_is_ai query narrows candidates (no
+  // listActiveGames scan) and returns the RAW snapshot WITHOUT decoding — the
+  // worker + applyAiWorkerMove re-verify, so the server pays no decode CPU
+  // (the fix for the ai-due Cloudflare 1102). `.eq(...).limit(...)` chains.
+  const mkSupabase = (result, onFrom) => ({ from: (t) => { onFrom?.(t); return { select: () => ({ eq: () => ({ limit: () => Promise.resolve(result) }) }) }; } });
   let scanned = false;
   const noScanStore = { ...store, listActiveGames: async () => { scanned = true; return []; } };
-  const sbFast = mkSupabase({ data: [{ game_id: 'g-ai-rebel' }], error: null });
+  const sbFast = mkSupabase({ data: [{ game_id: 'g-ai-rebel', actor: 'Rebel' }], error: null });
   const dueFast = await gs.listAiDueGames(noScanStore, codec, sbFast);
   check('fast path: uses the flag query, does NOT scan all games', !scanned);
-  check('fast path: returns the flagged AI-due game', dueFast.length === 1 && dueFast[0].gameId === 'g-ai-rebel');
+  check('fast path: returns the flagged game with stored actor + raw snapshot',
+    dueFast.length === 1 && dueFast[0].gameId === 'g-ai-rebel' && dueFast[0].actor === 'Rebel'
+    && dueFast[0].turn === 3 && !!dueFast[0].snapshot, JSON.stringify(dueFast));
 
-  // Fast path re-verifies: a stale flag on a game now at the HUMAN's turn is dropped.
-  const sbStale = mkSupabase({ data: [{ game_id: 'g-human' }], error: null });
+  // Fast path trusts the flag (no server decode): a flagged game is returned
+  // even if its snapshot would now show a human turn — the worker re-checks and
+  // skips it, and applyAiWorkerMove refreshes the flag on the next real move.
+  const sbStale = mkSupabase({ data: [{ game_id: 'g-human', actor: 'Rebel' }], error: null });
   const dueStale = await gs.listAiDueGames(store, codec, sbStale);
-  check('fast path: stale flag (now a human turn) is re-verified out', dueStale.length === 0, JSON.stringify(dueStale.map((d) => d.gameId)));
+  check('fast path: returns the flagged candidate without a server decode', dueStale.length === 1 && dueStale[0].gameId === 'g-human');
+
+  // A flagged game whose snapshot is missing (getLatest null) is dropped.
+  const sbGone = mkSupabase({ data: [{ game_id: 'g-does-not-exist', actor: 'Empire' }], error: null });
+  const dueGone = await gs.listAiDueGames(store, codec, sbGone);
+  check('fast path: a flagged game with no snapshot is skipped', dueGone.length === 0, JSON.stringify(dueGone.map((d) => d.gameId)));
 
   // Column-missing (pre-migration): the flag query errors → falls back to the scan.
   scanned = false;
   const sbNoCol = mkSupabase({ data: null, error: { message: 'column actor_is_ai does not exist' } });
   const dueFallback = await gs.listAiDueGames({ ...store, listActiveGames: async () => { scanned = true; return Object.keys(games).map((id) => ({ gameId: id, createdAt: '' })); } }, codec, sbNoCol);
-  check('column missing → falls back to full scan', scanned && dueFallback.length === 1 && dueFallback[0].gameId === 'g-ai-rebel');
+  check('column missing → falls back to full scan (decodes, capped)', scanned && dueFallback.length === 1 && dueFallback[0].gameId === 'g-ai-rebel');
 }
 
 console.log('\n[ applyAiWorkerMove — concurrency + turn-ownership + validity guards ]');
@@ -119,6 +131,22 @@ console.log('\n[ applyAiWorkerMove — concurrency + turn-ownership + validity g
 
   r = await gs.applyAiWorkerMove({ getLatest: async () => null, putSnapshot: async () => {} }, codec, 'gone', 0, nextGood);
   check('missing game → 404', !r.ok && r.status === 404);
+
+  // With supabase passed, a successful move refreshes swr_turn_notify with the
+  // NEW actor so the ai-due flag stops matching once the turn passes to a human
+  // (nextGood = Empire's turn, aiSides=['Rebel'] → human's turn → actor_is_ai:false).
+  {
+    const upserts = [];
+    const sb = { from: () => ({
+      select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { actor: 'Rebel' } }) }) }),
+      upsert: async (row) => { upserts.push(row); return { error: null }; },
+    }) };
+    const { store: st, puts: p } = mk(good, 5);
+    const rr = await gs.applyAiWorkerMove(st, codec, 'g1', 5, nextGood, sb);
+    check('flag-refresh: move stored AND swr_turn_notify updated to the new (human) actor',
+      rr.ok && p.length === 1 && upserts.length === 1
+      && upserts[0].actor === 'Empire' && upserts[0].actor_is_ai === false, JSON.stringify(upserts));
+  }
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
