@@ -6,7 +6,7 @@
 // after the worker applied the AI's move). Rejects a stale baseTurn (someone
 // else advanced first), a non-AI turn, or an undecodable snapshot — so a
 // trusted-but-buggy worker can't corrupt or hijack a game.
-import { makeServer, requireAdmin, applyAiWorkerMove, json, fail, type Env } from '../../_lib/gameServer';
+import { makeAdminDeps, requireAdmin, applyAiWorkerMove, json, fail, type Env } from '../../_lib/gameServer';
 
 interface Body { gameId?: string; baseTurn?: number; snapshot?: string; }
 
@@ -19,7 +19,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     if (!body.gameId || typeof body.baseTurn !== 'number' || typeof body.snapshot !== 'string') {
       return json({ error: 'expected { gameId, baseTurn:number, snapshot:string }' }, 400);
     }
-    const { store, codec, supabase } = await makeServer(request, env);
+    const { store, codec, supabase } = await makeAdminDeps(request, env);
     const r = await applyAiWorkerMove(store, codec, body.gameId, body.baseTurn, body.snapshot, supabase);
     return json(r.ok ? { ok: true } : { error: r.reason }, r.status);
   } catch (e) {

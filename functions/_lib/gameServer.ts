@@ -169,6 +169,22 @@ async function getCatalog(request: Request): Promise<GameCatalog> {
   return _catalog;
 }
 
+/** Minimal deps for the admin/worker endpoints. They operate at the store/codec
+ *  level (listAiDueGames / applyAiWorkerMove) and never use the GameServer, its
+ *  notifier, identity verification, or the Realtime broadcaster — so building
+ *  the full makeServer on every ~5s worker poll is pure overhead (and opens a
+ *  Realtime connection the admin path doesn't use). This builds only store +
+ *  codec + supabase. */
+export async function makeAdminDeps(request: Request, env: Env): Promise<{
+  store: SnapshotStore; codec: Codec<GameState>; supabase: SupabaseClient;
+}> {
+  const catalog = await getCatalog(request);
+  const codec = makeRebellionCodec(catalog);
+  const supabase = getSupabase(env);
+  const store: SnapshotStore = new SupabaseStore(supabase);
+  return { store, codec, supabase };
+}
+
 /** Build a GameServer for this request, plus the DataBundle (needed to mint a
  *  fresh initial state when creating a game). */
 type GameUrl = (gameId: string, token: string) => string;
@@ -410,6 +426,16 @@ export interface AiDueGame { gameId: string; turn: number; actor: Side; snapshot
 // bound for the fallback scan below (see AI_DUE_LIMIT usage).
 const AI_DUE_LIMIT = 8;
 
+/** Reject with a labeled error if `p` doesn't settle within `ms`. Temporary
+ *  diagnostic so a hung ai-due request returns WHERE it stalled instead of
+ *  hanging until the platform kills it. */
+export function raceTimeout<T>(p: Promise<T> | PromiseLike<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    Promise.resolve(p),
+    new Promise<never>((_, rej) => setTimeout(() => rej(new Error(`ai-due-hang:${label}:${ms}ms`)), ms)),
+  ]);
+}
+
 export async function listAiDueGames(
   store: SnapshotStore, codec: Codec<GameState>, supabase?: SupabaseClient,
 ): Promise<AiDueGame[]> {
@@ -422,30 +448,47 @@ export async function listAiDueGames(
   // turn, and applyAiWorkerMove re-verifies again before persisting — a stale
   // flag just costs the worker one wasted (cheap, local) decode.
   if (supabase) {
-    const { data, error } = await supabase
-      .from('swr_turn_notify').select('game_id, actor').eq('actor_is_ai', true).limit(AI_DUE_LIMIT);
+    const { data, error } = await raceTimeout(
+      supabase.from('swr_turn_notify').select('game_id, actor').eq('actor_is_ai', true).limit(AI_DUE_LIMIT),
+      7000, 'flag-query',
+    );
+    if (error) {
+      // The indexed fast path is unavailable — almost always because the
+      // actor_is_ai column/index was never created (migration not applied). We
+      // MUST NOT silently fall through to decode every active game (that blows
+      // Cloudflare's CPU limit → 1102). Surface it loudly and take the CAPPED
+      // fallback below.
+      console.warn(`[ai-due] flag query failed (actor_is_ai column?): ${error.message}`);
+    }
     if (!error && data) {
-      const results = await Promise.all(data.map(async (row) => {
+      const results = await raceTimeout(Promise.all(data.map(async (row) => {
         const gameId = row.game_id as string;
         const actor = row.actor as Side | null;
         if (!actor) return null;
         const latest = await store.getLatest(gameId);
         if (!latest) return null;
         return { gameId, turn: latest.turn, actor, snapshot: latest.state } as AiDueGame;
-      }));
+      })), 7000, 'getLatest');
       return results.filter((r): r is AiDueGame => r !== null);
     }
   }
   // FALLBACK (no supabase / column missing): scan active games and decode to
-  // find AI-due ones. Bounded by AI_DUE_LIMIT so a big backlog can't blow the
-  // CPU budget in a single request — the worker drains it across polls.
+  // find AI-due ones. HARD-capped at MAX_FALLBACK_DECODES *total* decodes (not
+  // "until 8 due found") so a large game table can never blow the per-request
+  // CPU budget — decoding is the expensive part (JSON.parse + reseed +
+  // repairProbeState per game), and that is exactly what produced the ai-due
+  // 1102. With the actor_is_ai column present the fast path above runs instead
+  // and this is never reached; without it, we scan a bounded slice per poll.
+  const MAX_FALLBACK_DECODES = 12;
   const ids = (await store.listActiveGames()).map((m) => m.gameId);
   const due: AiDueGame[] = [];
+  let decoded = 0;
   for (const gameId of ids) {
-    if (due.length >= AI_DUE_LIMIT) break;
+    if (due.length >= AI_DUE_LIMIT || decoded >= MAX_FALLBACK_DECODES) break;
     try {
       const latest = await store.getLatest(gameId);
       if (!latest) continue;
+      decoded++;
       const state = decodeSnapshot(codec, latest.state);
       if (state.isGameOver) continue;
       const actor = rebellionAdapter.currentActor(state);
