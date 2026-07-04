@@ -17,6 +17,11 @@ import { missionTargets } from './missionTargets';
 import { PROJECT_ONLY_UNIT_IDS } from './units';
 import { rollDie, shuffle } from './rng';
 import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck, objectiveReturnsToHand, postPlayObjectiveChoice, PERSISTENT_OBJECTIVES, COST_OBJECTIVES, OPT_IN_OBJECTIVES, timeForPeaceQueueTargets } from './objectives';
+import { registerChoice, requestChoice } from './choices';
+// Re-export the generic-choice resolver so all call sites (UI, online adapter,
+// AI, tests) reach it through the same `phases.*` surface as every other
+// resolver.
+export { resolveGenericChoice } from './choices';
 
 /** Time-track turns on which the Rebel recruits a new leader, per the printed
  *  16-space board (turns 2-5). Single source of truth shared by the engine's
@@ -4719,7 +4724,7 @@ function buildRefreshReport(G: GameState, logStart: number): void {
 
 /** Play one StartOfRefresh objective: remove from hand, return-to-deck or box
  *  per the card, log it, record the report entry, and gain the reputation. */
-function playRefreshObjective(G: GameState, objectiveId: string, rep: number): void {
+function playRefreshObjective(G: GameState, objectiveId: string, rep: number, logStart?: number): void {
   const hand = G.rebel.objectiveHand ?? [];
   const handIdx = hand.indexOf(objectiveId);
   if (handIdx < 0) return;
@@ -4733,8 +4738,9 @@ function playRefreshObjective(G: GameState, objectiveId: string, rep: number): v
     G.rebel.objectiveDeck.push(objectiveId);
   }
   // Otherwise the card is returned to the game box (just removed from play).
-  // RoE action-cost objectives apply a side-effect when scored.
-  applyObjectiveScoreSideEffect(G, objectiveId);
+  // RoE action-cost objectives apply a side-effect when scored (The Long War
+  // may raise a discard choice — logStart lets its resolver resume the Refresh).
+  applyObjectiveScoreSideEffect(G, objectiveId, logStart);
   log(G, { kind: 'play-objective', side: 'Rebel', payload: {
     objectiveId, reputation: rep,
   }});
@@ -4743,12 +4749,33 @@ function playRefreshObjective(G: GameState, objectiveId: string, rep: number): v
 }
 
 /** Side-effects applied when an RoE action-cost objective is scored. The card
- *  has already been removed from hand by the caller. Exported for tests. */
-export function applyObjectiveScoreSideEffect(G: GameState, objectiveId: string): void {
+ *  has already been removed from hand by the caller. `logStart` (when supplied)
+ *  is threaded into any choice this raises so its resolver can resume the
+ *  Refresh phase. Exported for tests. */
+export function applyObjectiveScoreSideEffect(G: GameState, objectiveId: string, logStart?: number): void {
   if (objectiveId === 'the-long-war-1') {
-    // Discard 2 other objective cards from hand. Player choice in RAW; the
-    // card is opt-in so auto-discarding the first two others is acceptable
-    // for auto-play. (A future UI prompt could let the player pick which.)
+    // RAW: "Discard 2 other objective cards from your hand." The player chooses
+    // WHICH two (#424/#462 — the old code silently discarded the last two in
+    // hand). With more than 2 others there's a real decision, so raise a
+    // card-domain choice; the 'the-long-war-discard' resolver performs the
+    // discard and resumes the Refresh. With exactly 2 others there's nothing to
+    // choose, so discard both directly and let the caller continue.
+    const others = (G.rebel.objectiveHand ?? []).filter((id) => id !== 'the-long-war-1');
+    if (others.length > 2) {
+      requestChoice(G, {
+        tag: 'the-long-war-discard',
+        side: 'Rebel',
+        domain: 'card',
+        prompt: 'The Long War — discard 2 objective cards',
+        detail: 'Choose exactly 2 objective cards to discard from your hand.',
+        candidates: others.map((id) => ({ id })),
+        min: 2,
+        max: 2,
+        submitLabel: 'Discard selected',
+        context: logStart !== undefined ? { logStart } : {},
+      });
+      return;
+    }
     const hand = G.rebel.objectiveHand ?? [];
     const discarded: string[] = [];
     for (let i = hand.length - 1; i >= 0 && discarded.length < 2; i--) {
@@ -5070,8 +5097,13 @@ export function resolvePlayObjectivePick(
   }
   if (!pc.legal.includes(objectiveId)) return { ok: false, reason: 'illegal' };
   G.pendingChoice = undefined;
-  playRefreshObjective(G, objectiveId, objectiveReputationGain(G, objectiveId));
-  if (G.isGameOver) return { ok: true };
+  playRefreshObjective(G, objectiveId, objectiveReputationGain(G, objectiveId), logStart);
+  // The play may have won the game on the reputation gain — a dangling discard
+  // choice (The Long War) is moot in that case, so drop it.
+  if (G.isGameOver) { G.pendingChoice = undefined; return { ok: true }; }
+  // The Long War raises a "which 2 to discard" choice when the Rebel holds more
+  // than 2 other objectives; its resolver resumes the Refresh, so yield now.
+  if (G.pendingChoice) return { ok: true };
   continueRefreshAfterObjectives(G, logStart);
   return { ok: true };
 }
@@ -7444,3 +7476,34 @@ function enterAssignmentPhase(G: GameState): void {
   clearAssignmentDone(G);
   log(G, { kind: 'phase', payload: { phase: 'Assignment' } });
 }
+
+// ============================================================================
+// Generic-choice tag resolvers (the unified choice framework — see
+// src/engine/choices.ts). Each entry performs one choice's effect from the
+// validated selection + serialized context, then OWNS its resume (mission /
+// combat / refresh). Registered once at module load; `resolveGenericChoice`
+// looks them up by tag. Keep each resolver's tag in sync with the `requestChoice`
+// call that raises it — the choice-coverage test asserts every raised tag has a
+// resolver here.
+// ============================================================================
+
+/** Registered at module load (below). Exported so tests can assert coverage. */
+export function registerAllChoices(): void {
+  // --- #424/#462 The Long War: discard exactly 2 chosen objective cards. ---
+  registerChoice('the-long-war-discard', (G, selection, context) => {
+    const hand = G.rebel.objectiveHand ?? [];
+    const discarded: string[] = [];
+    for (const id of selection) {
+      const idx = hand.indexOf(id);
+      if (idx >= 0) discarded.push(hand.splice(idx, 1)[0]);
+    }
+    if (!G.rebel.objectiveDiscard) G.rebel.objectiveDiscard = [];
+    G.rebel.objectiveDiscard.push(...discarded);
+    log(G, { kind: 'the-long-war-discard', side: 'Rebel', payload: { discarded } });
+    // Resume the Refresh phase from where the objective play paused it.
+    const logStart = typeof context.logStart === 'number' ? context.logStart : G.turnLog.length;
+    if (!G.isGameOver) continueRefreshAfterObjectives(G, logStart);
+  });
+}
+
+registerAllChoices();

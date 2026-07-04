@@ -17,6 +17,10 @@ export function pendingChoiceOwner(G: GameState, side: Side): boolean {
   const pc = G.pendingChoice;
   if (!pc) return false;
   switch (pc.kind) {
+    // Generic choice framework (src/engine/choices.ts): every data-driven
+    // Choice carries its owning side, so ONE case covers all of them — no new
+    // owner entry is ever needed for a new generic prompt.
+    case 'Choice':                   return pc.side === side;
     case 'OpposeMission':            return pc.opposerSide === side;
     // Always-Rebel choices (no `side` tag on the request).
     case 'InfiltrationPick':         return side === 'Rebel';

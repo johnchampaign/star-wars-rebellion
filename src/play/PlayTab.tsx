@@ -36,7 +36,7 @@ import * as _combat from '../engine/combat';
 import { unitsAvailableInSupply } from '../engine/mechanics';
 import { CombatBoardLive } from './CombatBoardLive';
 import { encode, decode, canEncode } from '../engine/codec';
-import type { GameState, Side, LeaderId } from '../engine/types';
+import type { GameState, Side, LeaderId, ChoiceRequest } from '../engine/types';
 import type { RebellionAction } from '../adapter/rebellionAction';
 import { makeOnlinePhases, makeOnlineCombat } from '../online/onlineEngine';
 import type { System, MaskRect, ExpansionConfig } from '../types';
@@ -189,6 +189,9 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
   const pc = G.pendingChoice;
   if (!pc) return false;
   switch (pc.kind) {
+    // Generic choice framework — every data-driven Choice carries its owning
+    // side, so one case covers all present and future generic prompts.
+    case 'Choice':                   return pc.side === side;
     case 'OpposeMission':            return pc.opposerSide === side;
     case 'BuildPick':                return pc.side === side;
     case 'CombatAttackerTactics':    return pc.side === side;
@@ -3124,6 +3127,21 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             },
           }} />
       )}
+      {/* Generic choice framework — one render block for every data-driven
+          Choice (src/engine/choices.ts). Guarded like the other pickers so it
+          stays hidden while a report modal is up. */}
+      {(!G.missionReports || G.missionReports.length === 0)
+        && (!G.combatReports || G.combatReports.length === 0)
+        && G.pendingChoice?.kind === 'Choice'
+        && G.pendingChoice.side === humanSide && (
+        <GenericChoiceModal
+          G={G} choice={G.pendingChoice}
+          onSubmit={(ids) => {
+            const r = phases.resolveGenericChoice(G, ids);
+            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            persist(); refresh();
+          }} />
+      )}
       {(!G.missionReports || G.missionReports.length === 0)
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'PublicUprisingPick'
@@ -6024,11 +6042,20 @@ function PlanTheAssaultShipsModal({ G, choice, onSubmit }: {
     side: Side;
     targetSystemId: string;
     availableShipIds: string[];
+    sourceSystemId?: string;
   };
   onSubmit: (shipIds: string[]) => void;
 }) {
   const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
-  const baseUnits = G.map.rebelBaseSpace.units;
+  // Read ships from the recorded source container — Rebel Base space while
+  // hidden, or the base's actual system once revealed (RR p.11). Reading
+  // rebelBaseSpace unconditionally showed "no ships" on a revealed base, so the
+  // player could only send none (#427/#457). Mirror the engine's sourcing.
+  const sourceId = choice.sourceSystemId ?? 'rebel-base-space';
+  const sourceContainer = sourceId === 'rebel-base-space'
+    ? G.map.rebelBaseSpace
+    : G.map.systems[sourceId];
+  const baseUnits = sourceContainer?.units ?? [];
   const ships = choice.availableShipIds
     .map((sid) => baseUnits.find((u) => u.instanceId === sid))
     .filter((u): u is NonNullable<typeof u> => !!u);
@@ -6462,6 +6489,144 @@ function ImperialMightUnitsModal({ G, choice, onSubmit }: {
               border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 600, fontSize: 13 }}
           >
             Deploy {picked.size} unit{picked.size === 1 ? '' : 's'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Generic, data-driven choice modal — the single UI for the unified choice
+ *  framework (src/engine/choices.ts). Renders any `Choice` pendingChoice by
+ *  `domain` (card / unit / system / leader / option), enforces min/max
+ *  selection, and submits the chosen ids to `resolveGenericChoice`. A new
+ *  engine choice needs NO new modal: it just picks a domain and candidate ids. */
+function GenericChoiceModal({ G, choice, onSubmit }: {
+  G: GameState;
+  choice: Extract<ChoiceRequest, { kind: 'Choice' }>;
+  onSubmit: (ids: string[]) => void;
+}) {
+  const color = sideColor(choice.side);
+  const unitStyle = getUnitStyle();
+  const live = choice.candidates.filter((c) => !c.disabled);
+  const [picked, setPicked] = useState<string[]>([]);
+  const toggle = (id: string) => setPicked((prev) =>
+    prev.includes(id) ? prev.filter((x) => x !== id)
+      : (prev.length < choice.max ? [...prev, id] : prev));
+  const inRange = picked.length >= choice.min && picked.length <= choice.max;
+  const canSelectAll = choice.max >= live.length && live.length > 0;
+
+  // Look up display info for a candidate by domain. A candidate `label` always
+  // wins (for the `option` domain it's required; elsewhere it overrides the
+  // catalog name). Units are searched across every board container by
+  // instanceId; cards across all four card catalogs.
+  const findUnit = (instanceId: string) => {
+    for (const ss of Object.values(G.map.systems)) {
+      const u = ss.units.find((x) => x.instanceId === instanceId);
+      if (u) return u;
+    }
+    return G.map.rebelBaseSpace.units.find((x) => x.instanceId === instanceId);
+  };
+  const cardInfo = (id: string): { name: string; image?: string } => {
+    const c = G.catalog.objectives[id] ?? G.catalog.actions[id]
+      ?? G.catalog.missions[id] ?? G.catalog.tactics?.[id];
+    return { name: c?.name ?? id, image: c?.image };
+  };
+  const display = (c: { id: string; label?: string; sublabel?: string }): React.ReactNode => {
+    if (choice.domain === 'card') {
+      const info = cardInfo(c.id);
+      return (
+        <span style={{ color: '#fff', fontSize: 13 }}>
+          <CardArtHover name={c.label ?? info.name} image={info.image}
+            color={color} style={{ color: '#cfe2f5', textDecoration: info.image ? 'underline dotted' : undefined }} />
+          {c.sublabel && <span style={{ color: '#888', fontSize: 11 }}> · {c.sublabel}</span>}
+        </span>
+      );
+    }
+    if (choice.domain === 'unit') {
+      const u = findUnit(c.id);
+      const t = u ? G.catalog.unitTypes[u.typeId] : undefined;
+      const img = u ? unitImageUrl(u.typeId, UNIT_IMAGE_BASE, unitStyle) : null;
+      return (
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#fff', fontSize: 13 }}>
+          {img && <img src={img} alt="" draggable={false} style={{ width: 22, height: 22, objectFit: 'contain' }} />}
+          {c.label ?? t?.name ?? u?.typeId ?? c.id}
+          {(c.sublabel ?? t?.theater) && <span style={{ color: '#888', fontSize: 11 }}> · {c.sublabel ?? t?.theater}</span>}
+        </span>
+      );
+    }
+    if (choice.domain === 'system') {
+      const s = G.catalog.systems[c.id];
+      return (
+        <span style={{ color: '#fff', fontSize: 13 }}>
+          {c.label ?? s?.name ?? c.id}
+          <span style={{ color: '#888', fontSize: 11 }}> · {c.sublabel ?? (s ? `region ${s.region}` : '')}</span>
+        </span>
+      );
+    }
+    if (choice.domain === 'leader') {
+      const l = G.catalog.leaders[c.id];
+      return <span style={{ color: '#fff', fontSize: 13 }}>{c.label ?? l?.name ?? c.id}</span>;
+    }
+    // option
+    return (
+      <span style={{ color: '#fff', fontSize: 13 }}>
+        {c.label ?? c.id}
+        {c.sublabel && <span style={{ color: '#888', fontSize: 11 }}> · {c.sublabel}</span>}
+      </span>
+    );
+  };
+
+  const rangeLabel = choice.min === choice.max
+    ? `pick ${choice.max}`
+    : `pick ${choice.min}–${choice.max}`;
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000, padding: 12,
+    }}>
+      <div style={{
+        background: '#15171c', border: `2px solid ${color}`, borderRadius: 6,
+        padding: 22, maxWidth: 560, width: '92%', maxHeight: '90dvh', overflowY: 'auto',
+      }}>
+        <div style={{ fontSize: 15, color, fontWeight: 700, marginBottom: 6 }}>{choice.prompt}</div>
+        {choice.detail && <div style={{ fontSize: 12, color: '#aaa', marginBottom: 12 }}>{choice.detail}</div>}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+          {choice.candidates.map((c) => {
+            const isOn = picked.includes(c.id);
+            const blocked = !!c.disabled || (!isOn && picked.length >= choice.max);
+            return (
+              <label key={c.id} style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: 4,
+                background: '#1f2128', borderRadius: 3,
+                cursor: blocked ? 'not-allowed' : 'pointer', opacity: blocked ? 0.5 : 1,
+              }}>
+                <input type="checkbox" checked={isOn} disabled={blocked}
+                  onChange={() => !c.disabled && toggle(c.id)} />
+                {display(c)}
+              </label>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+          <span style={{ color: inRange ? '#888' : '#e0a05a', fontSize: 11, marginRight: 'auto' }}>
+            {picked.length} selected ({rangeLabel})
+          </span>
+          {canSelectAll && (
+            <button className="tab-button" style={{ fontSize: 11 }}
+              onClick={() => setPicked(picked.length === live.length ? [] : live.map((c) => c.id))}>
+              {picked.length === live.length ? 'Clear' : 'Select all'}
+            </button>
+          )}
+          <button
+            onClick={() => inRange && onSubmit([...picked])}
+            disabled={!inRange}
+            style={{ padding: '6px 18px', background: inRange ? color : '#2a2c33',
+              color: inRange ? '#000' : '#777', border: 'none', borderRadius: 3,
+              cursor: inRange ? 'pointer' : 'not-allowed', fontWeight: 600, fontSize: 13 }}
+          >
+            {choice.submitLabel ?? 'Confirm'}
           </button>
         </div>
       </div>

@@ -49,6 +49,31 @@ src/online/           online-only UI
                        to submit() to the server instead of mutating locally
 ```
 
+## Generic choice framework — one adapter action covers all of them
+
+Master added a unified player-choice framework (`src/engine/choices.ts`): a
+single data-driven `Choice` pendingChoice kind (see `GenericChoice` in
+`types.ts`) resolved by ONE engine entry point, `phases.resolveGenericChoice(G,
+selection: string[])`, dispatched internally by a `tag -> resolver` registry.
+New/migrated prompts (The Long War discard, etc.) use it instead of a bespoke
+kind+resolver+modal+AI+adapter quintuple.
+
+**Branch wiring (do this once when merging master in):** the entire framework
+needs exactly ONE new online action, and never another for any future generic
+choice:
+
+- `rebellionAction.ts`: add `| { kind: 'resolveChoice'; selection: string[] }`
+  to the `RebellionAction` union.
+- `rebellionAdapter.ts`: add `case 'resolveChoice': return
+  phases.resolveGenericChoice(G, a.selection);`
+- `onlineEngine.ts`: add `resolveGenericChoice: (_g, selection) => act({ kind:
+  'resolveChoice', selection })`.
+
+The choice payload is plain serializable data (candidate ids, min/max, a JSON
+`context`), so it round-trips through the codec with no special handling, and
+`choiceOwner.ts` already routes ownership via the universal `case 'Choice':
+return pc.side === side`. Nothing else is per-choice.
+
 ## Snapshot format
 
 The framework wraps every stored snapshot as `v<schemaVersion>:` + codec

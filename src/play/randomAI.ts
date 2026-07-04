@@ -27,7 +27,7 @@ import { missionTargets, missionRevealIsPointless, rebelLoyalSystemsInRegion } f
 // Re-exported so existing callers/tests that import it from the AI module keep
 // working now that the canonical definition lives in the engine (#304).
 export { missionRevealIsPointless } from '../engine/missionTargets';
-import { COST_OBJECTIVES, objectiveProgress, objectiveConditionMet } from '../engine/objectives';
+import { COST_OBJECTIVES, objectiveProgress, objectiveConditionMet, objectiveReputationGain } from '../engine/objectives';
 
 // AI randomness. Defaults to Math.random (live app), but the tournament
 // harness calls seedAI() so AI-vs-AI runs are reproducible per seed — without
@@ -1420,6 +1420,14 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     return true; // re-render; the next step will handle whatever was queued
   }
 
+  // Generic choice framework (src/engine/choices.ts): ONE branch answers every
+  // data-driven Choice, so a new engine prompt can never soft-lock an AI turn.
+  // A per-tag heuristic table (AI_CHOICE_HEURISTICS) supplies smart picks; the
+  // fallback selects the minimum legal number of candidates.
+  if (G.pendingChoice && G.pendingChoice.kind === 'Choice' && G.pendingChoice.side === side) {
+    return handleGenericChoice(G);
+  }
+
   // Pending-choice handlers run REGARDLESS of whose turn it is: an opponent
   // can owe a choice (e.g. OpposeMission during the other side's turn,
   // CombatAttackerTactics/CombatDefenderTactics mid-combat).
@@ -1588,8 +1596,12 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     // plus as many restriction-icon fighters as that capacity supports.
     // Sending the raw availableShipIds typically fails validateMoveOrderTransport
     // when fighters outnumber capacity → freeze.
-    const rebelBase = G.map.rebelBaseSpace;
-    const idToUnit = new Map(rebelBase.units.map((u) => [u.instanceId, u]));
+    // Source the units from the recorded container — Rebel Base space while
+    // hidden, or the base's system once revealed (#427/#457) — not always
+    // rebelBaseSpace (empty after reveal → AI would send 0 ships).
+    const srcId = c.sourceSystemId ?? 'rebel-base-space';
+    const srcContainer = srcId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[srcId];
+    const idToUnit = new Map((srcContainer?.units ?? []).map((u) => [u.instanceId, u]));
     const caps: string[] = [];
     const fighters: string[] = [];
     const others: string[] = [];
@@ -3131,6 +3143,56 @@ function handleCombatDefenderTactics(G: GameState): boolean {
 // and at-at (ground) until at least 2 of each exist on board + in
 // queue, then fall through to whatever legalUnitTypes[0] would have
 // been. Rebel uses the prior first-legal behaviour.
+type GenericChoiceReq = Extract<NonNullable<GameState['pendingChoice']>, { kind: 'Choice' }>;
+
+/** Per-tag AI heuristics for generic choices. A tag with no entry falls back to
+ *  "pick the minimum legal number of candidates" — always valid, never a
+ *  soft-lock. Add an entry to make the AI play a specific choice well. */
+const AI_CHOICE_HEURISTICS: Record<string, (G: GameState, choice: GenericChoiceReq) => string[]> = {
+  // The Long War: discard the 2 objectives worth the least right now — prefer
+  // dropping ones whose scoring condition is NOT currently met (dead weight),
+  // breaking ties by lowest reputation value, so the AI keeps its live/high-
+  // value objectives (e.g. Death Star Plans) and pays with the rest.
+  'the-long-war-discard': (G, choice) => {
+    const ids = choice.candidates.filter((c) => !c.disabled).map((c) => c.id);
+    const scored = ids.map((id) => ({
+      id,
+      met: engineTry(() => objectiveConditionMet(G, id), false),
+      rep: engineTry(() => objectiveReputationGain(G, id), 1),
+    }));
+    scored.sort((a, b) =>
+      (a.met === b.met ? 0 : a.met ? 1 : -1) || (a.rep - b.rep));
+    return scored.slice(0, choice.min).map((s) => s.id);
+  },
+};
+
+/** Run an engine query that might throw / be undefined, returning a fallback. */
+function engineTry<T>(fn: () => T, fallback: T): T {
+  try { const v = fn(); return v === undefined ? fallback : v; } catch { return fallback; }
+}
+
+/** Answer any generic (data-driven) choice. Uses the per-tag heuristic when one
+ *  exists, else selects the minimum legal number of live candidates. Always
+ *  clamps the result to a valid selection so it can never reject/soft-lock. */
+function handleGenericChoice(G: GameState): boolean {
+  const pc = G.pendingChoice;
+  if (!pc || pc.kind !== 'Choice') return false;
+  const live = pc.candidates.filter((c) => !c.disabled).map((c) => c.id);
+  const liveSet = new Set(live);
+  const heuristic = AI_CHOICE_HEURISTICS[pc.tag];
+  let selection = (heuristic ? heuristic(G, pc) : live.slice(0, pc.min)).filter((id) => liveSet.has(id));
+  // Clamp to [min, max]. Top up from unused live candidates if the heuristic
+  // under-picked; trim if it over-picked.
+  if (selection.length < pc.min) {
+    for (const id of live) {
+      if (selection.length >= pc.min) break;
+      if (!selection.includes(id)) selection.push(id);
+    }
+  }
+  if (selection.length > pc.max) selection = selection.slice(0, pc.max);
+  return phases.resolveGenericChoice(G, selection).ok;
+}
+
 function handleBuildPick(G: GameState): boolean {
   const c = G.pendingChoice as Extract<NonNullable<GameState['pendingChoice']>, { kind: 'BuildPick' }>;
   const side = c.side;

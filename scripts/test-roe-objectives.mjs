@@ -136,11 +136,22 @@ console.log('[ the-long-war-1: discard 2 other objectives ]');
   check('1 other → condition not met', !Obj.objectiveConditionMet(G, 'the-long-war-1'));
   G.rebel.objectiveHand = ['the-long-war-1', 'uprising-3', 'decisive-victory-1', 'seize-control-2'];
   check('3 others → condition met', Obj.objectiveConditionMet(G, 'the-long-war-1'));
-  // simulate the play path removing the card, then the side-effect
+  // simulate the play path removing the card, then the side-effect. With MORE
+  // than 2 other objectives the player now chooses which 2 to discard (#424/
+  // #462), so the side-effect raises a generic card-domain choice instead of
+  // auto-discarding the last two.
   G.rebel.objectiveHand = G.rebel.objectiveHand.filter((id) => id !== 'the-long-war-1');
   Phases.applyObjectiveScoreSideEffect(G, 'the-long-war-1');
-  check('exactly 2 discarded', (G.rebel.objectiveDiscard?.length ?? 0) === 2);
-  check('1 other objective remains in hand', G.rebel.objectiveHand.length === 1);
+  check('3 others → raises a discard choice (min/max 2)',
+    G.pendingChoice?.kind === 'Choice' && G.pendingChoice.tag === 'the-long-war-discard'
+    && G.pendingChoice.min === 2 && G.pendingChoice.max === 2);
+  check('nothing auto-discarded before the choice', (G.rebel.objectiveDiscard?.length ?? 0) === 0);
+  Phases.resolveGenericChoice(G, ['uprising-3', 'decisive-victory-1']);
+  check('exactly the 2 chosen were discarded',
+    (G.rebel.objectiveDiscard ?? []).includes('uprising-3')
+    && (G.rebel.objectiveDiscard ?? []).includes('decisive-victory-1')
+    && G.rebel.objectiveDiscard.length === 2);
+  check('the unchosen other remains in hand', G.rebel.objectiveHand.includes('seize-control-2'));
 }
 
 console.log('[ a-time-for-peace-2: destroy 2 triangle + 1 circle + 1 square in queue ]');

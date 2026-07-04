@@ -1534,7 +1534,63 @@ export type ChoiceRequest =
       theater: Theater;
       systemId: SystemId;
       candidates: UnitInstanceId[];
-    };
+    }
+  // ---------------------------------------------------------------------------
+  // Generic, data-driven choice (the unified choice framework — see
+  // src/engine/choices.ts). ONE kind that most new/migrated choices use, backed
+  // by a tag -> resolver registry, so a new prompt needs no new union member, no
+  // new resolver export, no new UI modal, no new AI branch, and no new online
+  // adapter action. Everything about the interaction lives in this serializable
+  // payload; the follow-up logic is looked up by `tag`.
+  // ---------------------------------------------------------------------------
+  | GenericChoice;
+
+/** What the candidate ids in a GenericChoice refer to — drives which picker the
+ *  generic UI renders and how the id is looked up for display. */
+export type ChoiceDomain = 'system' | 'unit' | 'card' | 'leader' | 'option';
+
+/** One selectable item in a GenericChoice. `id` is the domain-native id (system
+ *  id / unit instanceId / card id / leader id / opaque option value). `label`
+ *  overrides the UI's default catalog lookup; omit it for systems/units/cards/
+ *  leaders (the UI resolves the name from G). For the `option` domain a label
+ *  is required (there's nothing to look up). */
+export type ChoiceCandidate = {
+  id: string;
+  label?: string;
+  sublabel?: string;
+  disabled?: boolean;
+};
+
+/** Serializable payload handed back to a choice's tag resolver. MUST be plain
+ *  JSON (no functions) so it round-trips through codec.encodeFull for online
+ *  play. Nested objects/arrays of primitives are fine. */
+export type ChoiceContext = {
+  [k: string]: string | number | boolean | null | string[] | number[] | ChoiceContext | ChoiceContext[];
+};
+
+export type GenericChoice = {
+  kind: 'Choice';
+  /** Registry key: identifies both the resume/effect resolver (engine) and the
+   *  optional AI heuristic. Kebab-case, unique per logical choice. */
+  tag: string;
+  /** Side that owns (must answer) this choice — matches choiceOwner's default. */
+  side: Side;
+  domain: ChoiceDomain;
+  /** Modal title. */
+  prompt: string;
+  /** Optional sub-instructions under the title. */
+  detail?: string;
+  candidates: ChoiceCandidate[];
+  /** Minimum selections required to submit. 0 => the player may pick nothing
+   *  (decline / "select none"). */
+  min: number;
+  /** Maximum selections allowed. */
+  max: number;
+  /** Optional custom confirm-button label. */
+  submitLabel?: string;
+  /** Serializable data forwarded to the tag resolver on submit. */
+  context?: ChoiceContext;
+};
 
 export type CombatActionOption =
   | { kind: 'draw-tactic' }
