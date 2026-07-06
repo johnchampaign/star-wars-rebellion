@@ -546,8 +546,14 @@ export function applyCinematicAbility(
       logPlay({ cancel: { side: opp, theater, applied: !tooLate, note: tooLate ? 'opponent already resolved' : undefined } });
     }
   } else if (ab.kind === 'shieldAbsorb') {
-    logPlay({ absorbed: resolveShieldAbsorb(G, side, c.systemId, ab) });
-    restageTheater(G, c); // un-stage ground units healed by the shield absorb
+    // "After the [opponent] assign damage, assign up to N damage to 1 Shield
+    // Generator/Bunker, then cancel that damage from ground units" — REACTIVE,
+    // same timing as removeDamage. DEFER to after this theatre's attacks
+    // (applyDeferredCinematicHeals), before destruction, so it soaks the
+    // just-dealt damage and saves the ground units. Applied here at round-start
+    // it moved 0 — there is no damage yet (#431).
+    (c.cinematicDeferredHeal ??= []).push({ side, theater, amount: ab.amount, structureTypeId: ab.structureTypeId });
+    logPlay({ deferredShieldAbsorb: ab.amount, structure: ab.structureTypeId });
   } else if (ab.kind === 'extraCard') {
     grantExtraCard(c, side, theater);
     logPlay({ extra: true });
@@ -664,6 +670,20 @@ export function applyDeferredCinematicHeals(G: GameState, c: CombatState, theate
     const idx = queue.findIndex((h) => h.theater === theater);
     if (idx < 0) return false;
     const h = queue[idx];
+    // Shield-absorb entry (Planetary Shield / Armored Position): move up to
+    // `amount` of the just-dealt damage onto the structure, cancelling it from
+    // ground units. Auto-resolves (no allocation choice) — always maximises
+    // ground healing — so it never pauses (#431).
+    if (h.structureTypeId) {
+      const absorbed = resolveShieldAbsorb(G, h.side, c.systemId,
+        { kind: 'shieldAbsorb', amount: h.amount, structureTypeId: h.structureTypeId });
+      restageTheater(G, c);
+      log(G, { kind: 'cinematic-shield-absorb', side: h.side, payload: {
+        theater, round: c.round, absorbed, structure: h.structureTypeId,
+      }});
+      queue.splice(idx, 1);
+      continue;
+    }
     const wounded = unitsOf(G, h.side, c.systemId, theater)
       .filter((u) => u.typeId !== h.exceptTypeId && u.damage > 0)
       .map((u) => ({ instanceId: u.instanceId, typeId: u.typeId, damage: u.damage }));

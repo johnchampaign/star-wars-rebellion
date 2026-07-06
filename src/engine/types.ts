@@ -1635,7 +1635,10 @@ export type CombatState = {
   // abilities otherwise resolve at round start (before any attack), which is
   // too early — applied then they heal nothing (#225). Drained per theatre by
   // applyDeferredCinematicHeals just before finalizeTheaterDestructions.
-  cinematicDeferredHeal?: { side: Side; theater: Theater; amount: number; exceptTypeId?: string }[];
+  // `exceptTypeId` = plain remove-damage heal (Draw Their Fire / Energy Shield).
+  // `structureTypeId` = shield-absorb (Planetary Shield / Armored Position): move
+  // up to `amount` damage onto that structure, cancelling it from ground units (#431).
+  cinematicDeferredHeal?: { side: Side; theater: Theater; amount: number; exceptTypeId?: string; structureTypeId?: string }[];
   // Which (side, theatre) cinematic tactic sub-steps have been resolved this
   // round, so re-entry doesn't replay them.
   cinematicTacticDoneThisRound?: string[]; // entries like 'Rebel:space'

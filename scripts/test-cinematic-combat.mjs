@@ -318,9 +318,15 @@ console.log('\n[ Cinematic 7f: Armored Position absorbs ground damage into the S
   const units = G.map.systems['felucia'].units;
   const bunker = units.find((u) => u.typeId === 'shield-bunker');
   const walkers = units.filter((u) => u.typeId === 'at-st');
-  walkers[0].damage = 2; walkers[1].damage = 2; // 4 total wounded
   bunker.damage = 0;
+  // Play Armored Position's absorb at round start — it's REACTIVE ("after the
+  // Rebels assign damage"), so it DEFERS (nothing to soak yet — #431).
   applyCinematicAbility(G, c, 'Empire', 'ground', 'cin-empire-ground-armored-position', true);
+  check('deferred: no absorb at tactic-choice', walkers.every((u) => u.damage === 0) && bunker.damage === 0);
+  // Now the Rebels assign damage this round.
+  walkers[0].damage = 2; walkers[1].damage = 2; // 4 total wounded
+  // Reactive step runs after the attacks, before destruction.
+  applyDeferredCinematicHeals(G, c, 'ground');
   const groundDmgAfter = walkers.reduce((s, u) => s + u.damage, 0);
   check('moved up to 3 damage off the AT-STs (4 → 1)', groundDmgAfter === 1, `ground dmg = ${groundDmgAfter}`);
   check('Shield Bunker soaked the 3 damage', bunker.damage === 3, `bunker dmg = ${bunker.damage}`);
