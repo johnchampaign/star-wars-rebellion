@@ -126,3 +126,20 @@ Code is MIT (see `LICENSE` once added). All game content (rules, card text,
 unit names, board art, etc.) belongs to Fantasy Flight Games. This project
 is a non-commercial fan implementation; do not distribute the original game
 assets via this repo.
+
+
+## Feedback & contributions
+
+The most useful thing you can send is an **in-game problem report** — the report
+button inside the game. Filed while you're playing, it captures the game state and
+context that make an issue reproducible, which helps far more than a code change.
+
+**Pull requests generally won't be merged.** This is a solo-maintained project, and
+reviewing and integrating outside code costs more than it saves. If you open a PR,
+it'll be read as a well-specified bug report or feature request and implemented here
+rather than merged — so it's a fine way to *describe* a change you'd like, just
+please don't expect it to land as-is.
+
+**The whole codebase is MIT-licensed** — fork it and do whatever you want: change
+the rules, reskin it, build and ship your own version. No permission needed; that's
+the point of the license.
