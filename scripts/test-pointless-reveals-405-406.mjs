@@ -56,11 +56,16 @@ console.log('\n[ Lead the Strike Team: pointless only with no base ground AND no
   const G = createGame(data, { seed: 4, expansion: { enabled: true, roeUnits: true, roeMissions: true } });
   G.map.rebelBaseSpace.units = [];
   G.map.systems.felucia.units = [];
-  check('pointless when base has no ground and target has no Rebel units',
+  check('pointless when base has no ground and target has no units',
     missionRevealIsPointless(G, 'Rebel', 'lead-the-strike-team', 'felucia') === true);
-  // A Rebel unit already at the target gives the combat-trigger a purpose → not pointless.
+  // #455: a lone Rebel unit at the target is STILL pointless — "resolve combat"
+  // does nothing without an enemy to fight (this is the exact wasted play the AI made).
   G.map.systems.felucia.units.push({ instanceId: 'r1', typeId: 'rebel-trooper', side: 'Rebel', damage: 0 });
-  check('NOT pointless when the Rebel already has a unit at the target',
+  check('#455: still pointless with only a Rebel unit at the target (no enemy)',
+    missionRevealIsPointless(G, 'Rebel', 'lead-the-strike-team', 'felucia') === true);
+  // A real fight (Rebel AND Empire units at the target) gives the combat-trigger a purpose.
+  G.map.systems.felucia.units.push({ instanceId: 'e1', typeId: 'stormtrooper', side: 'Empire', damage: 0 });
+  check('NOT pointless when the target holds both Rebel and Empire units (a fight)',
     missionRevealIsPointless(G, 'Rebel', 'lead-the-strike-team', 'felucia') === false);
   // Ground at the base → always something to send.
   const G3 = createGame(data, { seed: 4, expansion: { enabled: true, roeUnits: true, roeMissions: true } });

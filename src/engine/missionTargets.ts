@@ -503,7 +503,14 @@ export function missionRevealIsPointless(
         return u.side === 'Rebel' && t?.theater === 'ground' && !t.transport.immobile;
       });
       if (hasGround) return false;
-      return !(ss?.units ?? []).some((u) => u.side === 'Rebel');
+      // Nothing to move from base → the only effect is "resolve combat" at the
+      // target, which does something ONLY if a fight can actually happen there,
+      // i.e. the target holds BOTH Rebel and Empire units. Rebel-only (the AI's
+      // own quiet system, #455) or Empire-only means no combat → pointless.
+      const tgt = ss?.units ?? [];
+      const rebelThere = tgt.some((u) => u.side === 'Rebel');
+      const empireThere = tgt.some((u) => u.side === 'Empire');
+      return !(rebelThere && empireThere);
     }
     case 'demolition': {
       // Destroys queued Empire units that match this system's resource icons

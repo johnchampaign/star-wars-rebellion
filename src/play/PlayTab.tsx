@@ -1878,17 +1878,23 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           combat-triggering activation must surface its combat report first. */}
       {(() => {
         if (online && !online.yourTurn) return null;
-        // A post-mission ring-trigger offer (Son of Skywalker / Falcon / C3PO)
-        // is posted at the same instant its mission report is queued, and the
-        // offer is a REQUIRED decision that must run before the mission finishes
-        // (it's why pendingMission is still set). Show the offer FIRST by
-        // deferring the report while such an offer is pending — otherwise the
-        // report sits in front of the offer and, online, the player can get
-        // trapped there ("mission-already-resolving" on every action, hero never
-        // rescued — #473). Once the offer resolves, pendingChoice clears and the
-        // report surfaces normally.
-        const oc = G.pendingChoice?.kind;
-        if (oc === 'SonOfSkywalkerOffer' || oc === 'FalconOffer' || oc === 'C3POOffer') return null;
+        // A REQUIRED choice is sometimes posted at the same instant a mission/
+        // combat report is queued (the choice is why pendingMission/turn hasn't
+        // advanced). The choice modal is rendered WITHOUT the report-gate below,
+        // so if we let the report show it would sit ON TOP of the choice and the
+        // player gets trapped — can't dismiss the report to reach the choice, and
+        // the prompt repeats on every action (#473, and the same class in #472
+        // Early Promotion, #411 Leia/OMDH, #410/#412 hand-limit discard, #477
+        // Tarkin's 2nd loyalty). Defer the report while such a choice is pending
+        // FOR THIS PLAYER; once it resolves, the report surfaces normally.
+        const oc = G.pendingChoice;
+        const REPORT_DEFERRING_CHOICES = [
+          'SonOfSkywalkerOffer', 'FalconOffer', 'C3POOffer',
+          'StartingCardBranch', 'OurMostDesperateHourPick',
+          'FearWillKeepThemInLinePick', 'HandLimitDiscard',
+        ];
+        if (oc && REPORT_DEFERRING_CHOICES.includes(oc.kind)
+          && (oc as { side?: Side }).side === humanSide) return null;
         const cr = G.combatReports?.[0];
         const mr = G.missionReports?.[0];
         const or = G.objectiveReports?.[0];
@@ -2659,9 +2665,8 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           }} />
       )}
 
-      {(!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && G.pendingChoice?.kind === 'StartingCardBranch'
+      {/* Required choice — renders on top of a deferred report (see report block). */}
+      {G.pendingChoice?.kind === 'StartingCardBranch'
         && G.pendingChoice.side === humanSide && (
         <StartingCardBranchModal G={G} choice={G.pendingChoice}
           onAction={(action) => {
@@ -2865,9 +2870,8 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           }} />
       )}
 
-      {(!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && G.pendingChoice?.kind === 'OurMostDesperateHourPick'
+      {/* Required choice — renders on top of a deferred report (see report block). */}
+      {G.pendingChoice?.kind === 'OurMostDesperateHourPick'
         && G.pendingChoice.side === humanSide && (
         <MissionListPickModal G={G} choice={G.pendingChoice}
           title="Our Most Desperate Hour — pick a mission"
@@ -3107,9 +3111,8 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <PlanetaryConquestModal G={G} choice={G.pendingChoice}
           onPick={(sid) => { const r = phases.resolvePlanetaryConquestSourcePick(G, sid); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
       )}
-      {(!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && G.pendingChoice?.kind === 'FearWillKeepThemInLinePick'
+      {/* Required choice — renders on top of a deferred report (see report block). */}
+      {G.pendingChoice?.kind === 'FearWillKeepThemInLinePick'
         && G.pendingChoice.side === humanSide && (
         <MapPickerOverlay
           G={G} systems={systemsRef.current} masks={masksRef.current} humanSide={humanSide}
@@ -3331,9 +3334,8 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         />
       )}
 
-      {G.pendingChoice?.kind === 'HandLimitDiscard' && G.pendingChoice.side === humanSide
-        && (!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0) && (
+      {/* Required choice — renders on top of a deferred report (see report block). */}
+      {G.pendingChoice?.kind === 'HandLimitDiscard' && G.pendingChoice.side === humanSide && (
         <HandLimitDiscardModal
           G={G}
           choice={G.pendingChoice}
