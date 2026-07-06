@@ -1195,14 +1195,19 @@ export function revealMission(
     }});
     return { ok: true };
   }
-  // Wookie Guardian (Rebel/Chewie): "Use when your opponent attempts a spec ops
-  // mission — it automatically fails." The card has NO location requirement (the
-  // Chewbacca portrait is just its recruit icon) — it's playable from hand for
-  // ANY Empire spec-ops attempt, regardless of where Chewbacca is (or whether
-  // he's even in play). We previously required Chewbacca in the target system,
-  // which wrongly suppressed the offer (#430).
+  // Wookie Guardian (Rebel/Chewie): if Empire reveals a specOps attempt at a
+  // system where Chewie is, AND Rebel holds Wookie Guardian, offer to discard to
+  // auto-fail. Chewbacca MUST be in the mission's system — this is the general
+  // action-card rule (Rules Reference, "Action Cards"): "Action cards used during
+  // a mission or combat can only be used if one of the leaders shown on the card
+  // is already in the system in which the mission or combat is occurring. The only
+  // exceptions are action cards that specifically move the leader to the system."
+  // Wookie Guardian doesn't move Chewie, so he must already be present (#430:
+  // confirmed by the FFG forum + this rule — an earlier "removed the requirement"
+  // change was reverted).
   if (side === 'Empire' && card.isAttempt && card.skill === 'specOps'
-    && G.rebel.actionHand.includes('wookie-guardian')) {
+    && G.rebel.actionHand.includes('wookie-guardian')
+    && (G.rebel.leadersOnBoard[targetSystemId] ?? []).includes('chewbacca')) {
     G.pendingChoice = {
       kind: 'WookieGuardianOffer',
       side: 'Rebel',

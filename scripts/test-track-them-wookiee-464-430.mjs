@@ -34,29 +34,40 @@ console.log('[ #464: Track Them is a starting card, not in the recruit deck ]');
     `hand=${JSON.stringify(G.empire.actionHand)} startDeck=${JSON.stringify(G.empire.startingActionDeck)}`);
 }
 
-console.log('[ #430: Wookiee Guardian fires for any spec-ops attempt (no Chewbacca-location requirement) ]');
-{
-  const G = createGame(data, { seed: 5, expansion: { enabled: true, roeUnits: true, roeMissionsRebel: true, roeMissionsEmpire: true } });
-  G.phase = 'Command';
-  G.currentPlayer = 'Empire';
-  G.passedThisCommand = [];
-  const SYS = 'tatooine'; // NOT where Chewbacca is
-  // Rebel holds Wookiee Guardian; Chewbacca is somewhere ELSE entirely.
+// RAW (Rules Reference, "Action Cards"): "Action cards used during a mission or
+// combat can only be used if one of the leaders shown on the card is already in
+// the system in which the mission or combat is occurring." Wookiee Guardian shows
+// Chewbacca and doesn't move him, so he MUST be in the mission's system.
+console.log('[ #430: Wookiee Guardian requires Chewbacca in the mission system ]');
+function setupWookie(seed, chewSystem, targetSys) {
+  const G = createGame(data, { seed, expansion: { enabled: true, roeUnits: true, roeMissionsRebel: true, roeMissionsEmpire: true } });
+  G.phase = 'Command'; G.currentPlayer = 'Empire'; G.passedThisCommand = [];
   if (!G.rebel.actionHand.includes('wookie-guardian')) G.rebel.actionHand.push('wookie-guardian');
-  if (!G.rebel.leaderPool.includes('chewbacca') && !Object.values(G.rebel.leadersOnBoard).some(a => a.includes('chewbacca'))) G.rebel.leaderPool.push('chewbacca');
-  M.placeLeader(G, 'Rebel', 'chewbacca', 'kashyyyk'); // far from tatooine
-  // Empire attempts a spec-ops mission at tatooine (Chewbacca NOT present).
+  for (const list of Object.values(G.rebel.leadersOnBoard)) { const i = list.indexOf('chewbacca'); if (i >= 0) list.splice(i, 1); }
+  if (!G.rebel.leaderPool.includes('chewbacca')) G.rebel.leaderPool.push('chewbacca');
+  M.placeLeader(G, 'Rebel', 'chewbacca', chewSystem);
   const MISSION = 'hunt-them-down'; // Empire specOps attempt
   if (!G.empire.missionDeck.includes(MISSION)) G.empire.missionDeck.push(MISSION);
   G.empire.leaderPool.push('darth-vader');
-  M.placeLeader(G, 'Empire', 'darth-vader', SYS);
+  M.placeLeader(G, 'Empire', 'darth-vader', targetSys);
   G.empire.leadersOnMissions.push({ missionId: MISSION, leaderIds: ['darth-vader'] });
-
-  const r = phases.revealMission(G, 'Empire', MISSION, SYS);
+  return { G, MISSION, targetSys };
+}
+{
+  // Chewbacca NOT in the target system → NO offer.
+  const { G, MISSION, targetSys } = setupWookie(5, 'kashyyyk', 'tatooine');
+  const r = phases.revealMission(G, 'Empire', MISSION, targetSys);
   check('reveal ok', r.ok, r.reason);
-  check('WookieGuardianOffer posted even though Chewbacca is NOT in the target system',
+  check('NO Wookiee Guardian offer when Chewbacca is elsewhere (RAW: leader must be present)',
+    G.pendingChoice?.kind !== 'WookieGuardianOffer', `pc=${G.pendingChoice?.kind}`);
+}
+{
+  // Chewbacca IN the target system → offer, and it auto-fails.
+  const { G, MISSION, targetSys } = setupWookie(5, 'tatooine', 'tatooine');
+  const r = phases.revealMission(G, 'Empire', MISSION, targetSys);
+  check('reveal ok (Chewbacca present)', r.ok, r.reason);
+  check('Wookiee Guardian offered when Chewbacca IS in the mission system',
     G.pendingChoice?.kind === 'WookieGuardianOffer', `pc=${G.pendingChoice?.kind}`);
-  // And playing it auto-fails the mission.
   if (G.pendingChoice?.kind === 'WookieGuardianOffer') {
     const wr = phases.resolveWookieGuardianOffer(G, true);
     check('playing it auto-fails the spec-ops mission', wr.ok, wr.reason);
