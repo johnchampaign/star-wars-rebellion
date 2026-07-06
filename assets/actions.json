@@ -484,7 +484,7 @@
       "id": "track-them",
       "name": "Track Them",
       "side": "Empire",
-      "isStarting": false,
+      "isStarting": true,
       "timing": "Special",
       "leaderRequirement": [],
       "effectKey": "track-them",
