@@ -15,6 +15,7 @@ import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
+import { registerChoice, requestChoice } from './choices';
 import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, applyDeferredHealAllocation, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal, dealAbilityFor, cinematicDealCandidates, destroyAbilityFor, cinematicDestroyCandidates, applyChosenDestroy } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
@@ -3250,20 +3251,17 @@ function playCombatObjective(G: GameState, oid: string): void {
   M.recordObjectiveScored(G, oid, rep, 'combat', G.turnLog.length);
 
   // Seize Control (RoE objective): "Win a space or ground battle in a system
-  // with a sabotage marker. You may then remove the marker." The removal
-  // clause was previously dropped entirely (player reports #414/#452: scored
-  // the card, marker stayed). RAW is a "may"; like Return of the Jedi's
-  // elimination clause below, we auto-apply the (near-always wanted) effect
-  // rather than pause the combat tail on a new choice — removing the marker
-  // is what lets the Rebel actually use the system they just won. A decline
-  // modal is a future nicety.
+  // with a sabotage marker. You may then remove the marker." The removal clause
+  // was first dropped entirely (#414/#452: marker stayed), then auto-applied —
+  // but RAW is a "may" and players gave real reasons to keep it (system about
+  // to be retaken; won only the ground while the Empire holds space) (#505/#496).
+  // We flag it so finishCombatTail raises the optional choice after the combat
+  // report is acknowledged (the combat tail is a suspended flow; playCombatObjective
+  // runs mid-tail and can't safely pause here).
   if (oid === 'seize-control-2') {
     const sysId = G.pendingCombat?.systemId;
     const ss = sysId ? G.map.systems[sysId] : undefined;
-    if (ss?.sabotage) {
-      ss.sabotage = false;
-      log(G, { kind: 'sabotage-removed', side: 'Rebel', payload: { systemId: sysId, via: 'seize-control' } });
-    }
+    if (ss?.sabotage && G.pendingCombat) G.pendingCombat.seizeControlMarkerPending = true;
   }
 
   // Return of the Jedi (objective): "...If Luke Skywalker (Jedi) is in this
@@ -3329,6 +3327,32 @@ export function resolveCombatObjectivePick(
  *  Split out so it can run either inline (≤1 objective) or after the
  *  player's PlayObjective choice resolves (2+ objectives). */
 function finishCombatTail(G: GameState, c: CombatState): void {
+  // Seize Control (RoE) — RAW is "you MAY remove the sabotage marker" (#505/#496).
+  // Raise the optional choice; its resolver re-enters finishCombatTail (the flag
+  // is cleared first, so it won't loop). Runs before the Death Star Plans window
+  // so the marker decision is made against the just-won system. pendingCombat
+  // stays set so the resolver can resume the tail.
+  if (c.seizeControlMarkerPending) {
+    c.seizeControlMarkerPending = undefined;
+    const ss = G.map.systems[c.systemId];
+    if (ss?.sabotage) {
+      requestChoice(G, {
+        tag: 'seize-control-marker',
+        side: 'Rebel',
+        domain: 'system',
+        prompt: 'Seize Control — remove the sabotage marker?',
+        detail: 'You won a battle here. You may remove the sabotage marker, or keep it (e.g. if the Empire is about to retake the system).',
+        candidates: [{ id: c.systemId }],
+        min: 0,
+        max: 1,
+        submitLabel: 'Confirm',
+        context: { systemId: c.systemId },
+      });
+      log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'Choice', tag: 'seize-control-marker' } });
+      return; // pendingCombat stays set; the resolver calls finishCombatTail again.
+    }
+  }
+
   // Death Star Plans 2/3 — combat-end catch for the edge where combat ends in
   // a round whose space step never offered the window (e.g. a ground-only
   // finish). The per-round window inside the loop is the primary path now;
@@ -3627,3 +3651,19 @@ function finalizeDsPlans(G: GameState): { ok: boolean; reason?: string } {
   }
   return resumeAfterDsPlans(G);
 }
+
+// Generic-choice resolver for the Seize Control optional marker removal (#505/#496).
+// Registered at module load. The selection contains the system id iff the Rebel
+// chose to remove the marker (min:0 → empty selection means "keep it"). Either
+// way it resumes the suspended combat tail via finishCombatTail.
+registerChoice('seize-control-marker', (G, selection, context) => {
+  const sysId = typeof context.systemId === 'string' ? context.systemId : G.pendingCombat?.systemId;
+  const ss = sysId ? G.map.systems[sysId] : undefined;
+  if (ss?.sabotage && sysId && selection.includes(sysId)) {
+    ss.sabotage = false;
+    log(G, { kind: 'sabotage-removed', side: 'Rebel', payload: { systemId: sysId, via: 'seize-control' } });
+  }
+  const c = G.pendingCombat;
+  if (c) finishCombatTail(G, c);
+  else G.pendingCombat = undefined;
+});

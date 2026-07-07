@@ -60,6 +60,10 @@ export type RebellionAction =
   | { kind: 'resolveLeadStrikeTeamUnits'; unitIds: UnitInstanceId[] }
   | { kind: 'resolveOverseeProjectPick'; queueIndex: number; slot: 1 | 2 }
   | { kind: 'resolveRescuerReturn'; leaderIds: LeaderId[] }
+  // Generic data-driven choice framework (src/engine/choices.ts). ONE action
+  // covers every `Choice` pendingChoice (the-long-war-discard, seize-control
+  // marker, and any future prompt) — the selection is the chosen candidate ids.
+  | { kind: 'resolveGenericChoice'; selection: string[] }
   | { kind: 'resolveCaptureOperativePick'; leaderId: LeaderId }
   | { kind: 'resolveCarbonFreezingPick'; leaderId: LeaderId }
   | { kind: 'resolveLureOfTheDarkSidePick'; leaderId: LeaderId }

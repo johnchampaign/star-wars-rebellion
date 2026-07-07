@@ -1647,6 +1647,10 @@ export type CombatState = {
   // FIRST in that theatre for the rest of the combat (overrides the default
   // attacker-first order).
   cinematicResolveFirst?: { space?: Side; ground?: Side };
+  // Seize Control (RoE objective): set when the objective scored in a system that
+  // still has a sabotage marker, so finishCombatTail can raise the optional
+  // "may remove the marker" choice (#505/#496 — RAW is a "may", not automatic).
+  seizeControlMarkerPending?: boolean;
   // RoE Cinematic deck lock (Entrapment / Air Superiority / Outrun Them /
   // Escape Plan secondaries): `${side}:${theatre}` -> the round through which
   // that side is barred from playing a tactic card in that theatre.

@@ -99,10 +99,13 @@ console.log('\n[ #456 the Empire with a Death Star in the combat is NEVER offere
   check('no RetreatDecision for the Empire (DS in combat, RR p.6)', !pc, pc && JSON.stringify(pc));
 }
 
-console.log('\n[ #452 scoring Seize Control removes the sabotage marker ]');
-{
-  seedAI(23);
-  const G = createGame(data, { seed: 23, expansion: { enabled: true, roeUnits: true, roeMissions: true }, autoSetupUnits: true });
+// #452/#414 originally auto-removed the marker; #505/#496 corrected that — RAW is
+// "you MAY remove the marker", so scoring Seize Control now raises an optional
+// generic Choice. Removing requires selecting the system; an empty selection keeps it.
+const choices = await import('../src/engine/choices.ts');
+function driveToSeizeChoice(seed) {
+  seedAI(seed);
+  const G = createGame(data, { seed, expansion: { enabled: true, roeUnits: true, roeMissions: true }, autoSetupUnits: true });
   const SYS = 'rodia';
   G.map.systems[SYS].units = [];
   G.map.systems[SYS].sabotage = true;
@@ -114,14 +117,43 @@ console.log('\n[ #452 scoring Seize Control removes the sabotage marker ]');
   G.rebel.objectiveHand = ['seize-control-2'];
   combat.beginCombat(G, 'Rebel', 'kessel', SYS);
   let guard = 0;
-  while (G.pendingCombat && !G.isGameOver && guard++ < 600) {
+  while (!G.isGameOver && guard++ < 600) {
+    const pc = G.pendingChoice;
+    if (pc?.kind === 'Choice' && pc.tag === 'seize-control-marker') break;
+    if (!G.pendingCombat) break;
     if (stepOnce(G, G.currentPlayer)) continue;
     const o = G.currentPlayer === 'Rebel' ? 'Empire' : 'Rebel';
     if (!stepOnce(G, o)) break;
   }
+  return { G, SYS };
+}
+
+console.log('\n[ #452/#505/#496 Seize Control raises an OPTIONAL remove-marker choice ]');
+{
+  const { G, SYS } = driveToSeizeChoice(23);
   const scored = (G.rebel.scoredObjectives ?? []).some((s) => s.objectiveId === 'seize-control-2');
   check('Seize Control scored on the win', scored, JSON.stringify(G.rebel.scoredObjectives));
-  if (scored) check('the sabotage marker was removed (#452/#414)', G.map.systems[SYS].sabotage === false);
+  const raised = G.pendingChoice?.kind === 'Choice' && G.pendingChoice.tag === 'seize-control-marker';
+  check('an optional remove-marker choice is raised (RAW "may")', raised, `pc=${G.pendingChoice?.kind}/${G.pendingChoice?.tag}`);
+  check('choice is owned by the Rebel', G.pendingChoice?.side === 'Rebel');
+  check('marker still present until the player decides', G.map.systems[SYS].sabotage === true);
+  if (raised) {
+    // Choose to REMOVE (select the system).
+    const r = choices.resolveGenericChoice(G, [SYS]);
+    check('removing resolves ok and resumes the tail', r.ok && !G.pendingCombat, `ok=${r.ok} pc=${G.pendingChoice?.kind}`);
+    check('the sabotage marker was removed', G.map.systems[SYS].sabotage === false);
+  }
+}
+console.log('\n[ #505/#496 the Rebel may KEEP the marker (empty selection) ]');
+{
+  const { G, SYS } = driveToSeizeChoice(23);
+  const raised = G.pendingChoice?.kind === 'Choice' && G.pendingChoice.tag === 'seize-control-marker';
+  check('remove-marker choice raised', raised);
+  if (raised) {
+    const r = choices.resolveGenericChoice(G, []); // keep it
+    check('keeping resolves ok and resumes the tail', r.ok && !G.pendingCombat, `ok=${r.ok}`);
+    check('the sabotage marker is KEPT', G.map.systems[SYS].sabotage === true);
+  }
 }
 
 console.log('\n[ #449 cinematic MDTYR retrieves from the DISCARD (player choice, no eliminated) ]');
