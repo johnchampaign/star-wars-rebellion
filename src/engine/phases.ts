@@ -1368,18 +1368,6 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
   return { ok: true };
 }
 
-/** Is Jabba currently in play on the Empire side? (pool, on board, or
- *  assigned to a mission). Used by Post Bounty's offer gate. */
-function jabbaAccessible(G: GameState): boolean {
-  const e = G.empire;
-  if (e.leaderPool.includes('jabba' as LeaderId)) return true;
-  if (e.leadersOnMissions.some((m) => m.leaderIds.includes('jabba' as LeaderId))) return true;
-  for (const board of Object.values(e.leadersOnBoard)) {
-    if (board.includes('jabba' as LeaderId)) return true;
-  }
-  return false;
-}
-
 /** RoE "Post Bounty" (Empire/Jabba): after a Rebel mission FAILS, the Empire
  *  may discard the card to attach a bounty ring to one of the Rebel leaders who
  *  attempted it. Posts the PostBountyOffer choice (pausing the failure cleanup)
@@ -1390,10 +1378,16 @@ function jabbaAccessible(G: GameState): boolean {
 function maybePostBountyOffer(
   G: GameState, resolverSide: Side, missionId: string, leaderIds: LeaderId[],
 ): boolean {
+  // RAW: "Use after a leader fails a mission in THIS leader's system." Post Bounty
+  // shows Jabba and doesn't move him, so (per the general action-card rule) Jabba
+  // must be IN the failed mission's system — not merely somewhere in play. #430-audit.
+  const targetSystemId = G.pendingMission?.targetSystemId;
+  const jabbaHere = !!targetSystemId
+    && (G.empire.leadersOnBoard[targetSystemId] ?? []).includes('jabba' as LeaderId);
   if (!(G.expansion?.enabled
       && resolverSide === 'Rebel'
       && G.empire.actionHand.includes('post-bounty')
-      && jabbaAccessible(G)
+      && jabbaHere
       && !G.pendingChoice)) return false;
   const candidates = leaderIds.filter(
     (lid) => !G.leaderAttachments?.[lid]?.includes('bounty'),
