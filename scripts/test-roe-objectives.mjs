@@ -112,18 +112,25 @@ console.log('[ seize-control-2: win in sabotage-marked system ]');
     Obj.combatObjectivesTriggered(G, rGround).includes('seize-control-2'));
 }
 
-console.log('[ raid-imperial-factory-3: rebel-initiated win in resource system ]');
+console.log('[ raid-imperial-factory-3: rebel-initiated win in a SQUARE-resource system ]');
 {
   const G = newG(); G.rebel.objectiveHand = ['raid-imperial-factory-3'];
-  // find a system with a resource icon and one without
-  const withRes = Object.keys(G.catalog.systems).find((id) => (G.catalog.systems[id].resources?.length ?? 0) > 0 && G.map.systems[id]);
+  // RAW ("Play after you win a battle during a combat that you initiated in a
+  // system that has a ■ (square) resource icon."): the icon must be a SQUARE,
+  // not any resource. Pick a square system, a resource-but-no-square system
+  // (must NOT qualify), and a no-resource system.
+  const hasSquare = (id) => !!G.catalog.systems[id].resources?.some((r) => r.shape === 'square');
+  const withSquare = Object.keys(G.catalog.systems).find((id) => hasSquare(id) && G.map.systems[id]);
+  const resNoSquare = Object.keys(G.catalog.systems).find((id) => (G.catalog.systems[id].resources?.length ?? 0) > 0 && !hasSquare(id) && G.map.systems[id]);
   const noRes = Object.keys(G.catalog.systems).find((id) => (G.catalog.systems[id].resources?.length ?? 0) === 0 && G.map.systems[id]);
   const rNo = report({ systemId: noRes, rounds: [{ attacks: [atk('ground', 1)] }] });
   check('no resource icon → not fired', !Obj.combatObjectivesTriggered(G, rNo).includes('raid-imperial-factory-3'));
-  const rDef = report({ systemId: withRes, attackerSide: 'Empire', rounds: [{ attacks: [atk('ground', 1)] }] });
+  const rNonSquare = report({ systemId: resNoSquare, rounds: [{ attacks: [atk('ground', 1)] }] });
+  check('resource icon but NOT a square → not fired', !Obj.combatObjectivesTriggered(G, rNonSquare).includes('raid-imperial-factory-3'));
+  const rDef = report({ systemId: withSquare, attackerSide: 'Empire', rounds: [{ attacks: [atk('ground', 1)] }] });
   check('rebel did NOT initiate → not fired', !Obj.combatObjectivesTriggered(G, rDef).includes('raid-imperial-factory-3'));
-  const rYes = report({ systemId: withRes, rounds: [{ attacks: [atk('ground', 1)] }] });
-  check('rebel-initiated win in resource system → fired', Obj.combatObjectivesTriggered(G, rYes).includes('raid-imperial-factory-3'));
+  const rYes = report({ systemId: withSquare, rounds: [{ attacks: [atk('ground', 1)] }] });
+  check('rebel-initiated win in a square-resource system → fired', Obj.combatObjectivesTriggered(G, rYes).includes('raid-imperial-factory-3'));
 }
 
 // ---- 5d-ii: action-cost objectives ----
