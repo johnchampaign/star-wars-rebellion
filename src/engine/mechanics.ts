@@ -245,6 +245,19 @@ function processTargetMarkerRemovals(G: GameState, affected?: SystemId[]): void 
   }
 }
 
+/** Full-board target-marker removal sweep. `processTargetMarkerRemovals` bails
+ *  entirely while ANY combat is pending (so transient mid-combat ground counts
+ *  can't strip a marker early), and post-combat only re-checks the combat system
+ *  — so a DIFFERENT system whose occupation changed during that window (e.g. a
+ *  Rapid Mobilization / multi-system move that also triggered a combat elsewhere)
+ *  can keep a stale marker the opponent has already cleared on the ground (#475).
+ *  Run this at the start of each Refresh, before any target-marker objective
+ *  scores, to catch such misses. RAW-consistent: it only removes markers the
+ *  removal condition already applies to. */
+export function sweepTargetMarkerRemovals(G: GameState): void {
+  processTargetMarkerRemovals(G);
+}
+
 function applyInvariants(G: GameState, affected?: SystemId[]): void {
   recomputeSubjugation(G, affected);
   cullOverTransportInDestroyed(G, affected);

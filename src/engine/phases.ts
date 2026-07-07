@@ -4976,6 +4976,10 @@ export function advanceRefreshPreSteps(G: GameState, logStart: number): boolean 
   while (true) {
     switch (G.refreshPreStep) {
       case 0:
+        // Clear any target marker the opponent has already cleared on the ground
+        // but that was missed by the mid-combat skip in processTargetMarkerRemovals
+        // (#475) — must run BEFORE Raid Outposts / Rebel Cell / Show No Fear score.
+        M.sweepTargetMarkerRemovals(G);
         processPersistentObjectives(G); // Show No Fear place + score
         if (G.isGameOver) return false;
         G.refreshPreStep = 1; break;
