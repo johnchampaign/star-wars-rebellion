@@ -59,6 +59,7 @@ export type RebellionAction =
   | { kind: 'resolvePlanTheAssaultShips'; shipIds: UnitInstanceId[] }
   | { kind: 'resolveLeadStrikeTeamUnits'; unitIds: UnitInstanceId[] }
   | { kind: 'resolveOverseeProjectPick'; queueIndex: number; slot: 1 | 2 }
+  | { kind: 'resolveRescuerReturn'; leaderIds: LeaderId[] }
   | { kind: 'resolveCaptureOperativePick'; leaderId: LeaderId }
   | { kind: 'resolveCarbonFreezingPick'; leaderId: LeaderId }
   | { kind: 'resolveLureOfTheDarkSidePick'; leaderId: LeaderId }

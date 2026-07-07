@@ -98,6 +98,7 @@ export function makeOnlinePhases(submit: Submit, canSubmit: () => boolean): type
     resolveNobleSacrificeOffer: (_g: any, accept: any) => act({ kind: 'resolveNobleSacrificeOffer', accept }),
     resolveItIsYourDestinyOffer: (_g: any, leaderId: any) => act({ kind: 'resolveItIsYourDestinyOffer', leaderId }),
     resolveUndercoverOffer: (_g: any, leaderId: any) => act({ kind: 'resolveUndercoverOffer', leaderId }),
+    resolveRescuerReturn: (_g: any, leaderIds: any) => act({ kind: 'resolveRescuerReturn', leaderIds }),
     resolveSonOfSkywalkerOffer: (_g: any, missionIdOrNull: any) => act({ kind: 'resolveSonOfSkywalkerOffer', missionId: missionIdOrNull }),
     resolveBlindsideOffer: (_g: any, accept: any) => act({ kind: 'resolveBlindsideOffer', accept }),
     resolveWookieGuardianOffer: (_g: any, accept: any) => act({ kind: 'resolveWookieGuardianOffer', accept }),

@@ -1892,6 +1892,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           'SonOfSkywalkerOffer', 'FalconOffer', 'C3POOffer',
           'StartingCardBranch', 'OurMostDesperateHourPick',
           'FearWillKeepThemInLinePick', 'HandLimitDiscard',
+          'RescuerReturn',
         ];
         if (oc && REPORT_DEFERRING_CHOICES.includes(oc.kind)
           && (oc as { side?: Side }).side === humanSide) return null;
@@ -2629,9 +2630,9 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           }} />
       )}
 
-      {(!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && G.pendingChoice?.kind === 'RescuerReturn'
+      {/* Required post-mission choice — renders on top of a deferred report so
+          the queued rescue mission report can't hide it (#490, #473 class). */}
+      {G.pendingChoice?.kind === 'RescuerReturn'
         && G.pendingChoice.side === humanSide && (
         <RescuerReturnModal G={G} choice={G.pendingChoice}
           onConfirm={(leaderIds) => {

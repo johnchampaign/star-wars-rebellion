@@ -405,6 +405,12 @@ export function runCombat(G: GameState): void {
         c.retreatStepDoneThisRound = false;
         c.retreatHappenedThisRound = false; // reset Rogue One trigger for next round
         c.retreatDecidedThisRound = []; // each round each side gets a fresh retreat decision
+        // "Resolve attacks first" (cinematic) only lasts the round it was played (#486).
+        c.cinematicResolveFirst = undefined;
+        // The Yoda ring reroll is once PER ROUND, not once per combat (#481). The
+        // per-combat-round guard (c.yodaRerollUsedRound) self-resets via c.round, but
+        // the global flag must be cleared here too or it blocks every later round.
+        G.yodaRerollUsedThisRound = false;
         // No Escape only lasts the round it was played.
         if (c.flags?.cannotRetreatThisRound) c.flags.cannotRetreatThisRound = {};
       }

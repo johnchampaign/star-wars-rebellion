@@ -88,6 +88,7 @@ function dispatch(G: GameState, a: RebellionAction, actor: Side): Result {
     case 'resolveNobleSacrificeOffer':           return phases.resolveNobleSacrificeOffer(G, a.accept);
     case 'resolveItIsYourDestinyOffer':          return phases.resolveItIsYourDestinyOffer(G, a.leaderId);
     case 'resolveUndercoverOffer':               return phases.resolveUndercoverOffer(G, a.leaderId);
+    case 'resolveRescuerReturn':                 return phases.resolveRescuerReturn(G, a.leaderIds);
     case 'resolveSonOfSkywalkerOffer':           return phases.resolveSonOfSkywalkerOffer(G, a.missionId);
     case 'resolveBlindsideOffer':                return phases.resolveBlindsideOffer(G, a.accept);
     case 'resolveWookieGuardianOffer':           return phases.resolveWookieGuardianOffer(G, a.accept);
