@@ -90,6 +90,16 @@ function dispatch(G: GameState, a: RebellionAction, actor: Side): Result {
     case 'resolveUndercoverOffer':               return phases.resolveUndercoverOffer(G, a.leaderId);
     case 'resolveRescuerReturn':                 return phases.resolveRescuerReturn(G, a.leaderIds);
     case 'resolveGenericChoice':                 return phases.resolveGenericChoice(G, a.selection);
+    case 'resolveRegionalAidPick':               return phases.resolveRegionalAidPick(G, a.systemId);
+    case 'resolveSuperlaserLoyaltyPick':         return phases.resolveSuperlaserLoyaltyPick(G, a.systemId);
+    case 'resolveDrawThemOutPick':               return phases.resolveDrawThemOutPick(G, a.leaderId);
+    case 'resolveDestroyedSystemCull':           return phases.resolveDestroyedSystemCull(G, a.instanceIds);
+    case 'resolveCinematicTacticSelect':         return combat.resolveCinematicTacticSelect(G, a.cardId, a.useTop);
+    case 'resolveCinematicReroll':               return combat.resolveCinematicReroll(G, a.indices);
+    case 'resolveCinematicHeal':                 return combat.resolveCinematicHeal(G, a.allocation);
+    case 'resolveCinematicDeferredHeal':         return combat.resolveCinematicDeferredHeal(G, a.allocation);
+    case 'resolveCinematicTargetPick':           return combat.resolveCinematicTargetPick(G, a.instanceId);
+    case 'resolveCinematicDestroyPick':          return combat.resolveCinematicDestroyPick(G, a.instanceId);
     case 'resolveSonOfSkywalkerOffer':           return phases.resolveSonOfSkywalkerOffer(G, a.missionId);
     case 'resolveBlindsideOffer':                return phases.resolveBlindsideOffer(G, a.accept);
     case 'resolveWookieGuardianOffer':           return phases.resolveWookieGuardianOffer(G, a.accept);

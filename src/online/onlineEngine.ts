@@ -100,6 +100,10 @@ export function makeOnlinePhases(submit: Submit, canSubmit: () => boolean): type
     resolveUndercoverOffer: (_g: any, leaderId: any) => act({ kind: 'resolveUndercoverOffer', leaderId }),
     resolveRescuerReturn: (_g: any, leaderIds: any) => act({ kind: 'resolveRescuerReturn', leaderIds }),
     resolveGenericChoice: (_g: any, selection: any) => act({ kind: 'resolveGenericChoice', selection }),
+    resolveRegionalAidPick: (_g: any, systemId: any) => act({ kind: 'resolveRegionalAidPick', systemId }),
+    resolveSuperlaserLoyaltyPick: (_g: any, systemId: any) => act({ kind: 'resolveSuperlaserLoyaltyPick', systemId }),
+    resolveDrawThemOutPick: (_g: any, leaderId: any) => act({ kind: 'resolveDrawThemOutPick', leaderId }),
+    resolveDestroyedSystemCull: (_g: any, instanceIds: any) => act({ kind: 'resolveDestroyedSystemCull', instanceIds }),
     resolveSonOfSkywalkerOffer: (_g: any, missionIdOrNull: any) => act({ kind: 'resolveSonOfSkywalkerOffer', missionId: missionIdOrNull }),
     resolveBlindsideOffer: (_g: any, accept: any) => act({ kind: 'resolveBlindsideOffer', accept }),
     resolveWookieGuardianOffer: (_g: any, accept: any) => act({ kind: 'resolveWookieGuardianOffer', accept }),
@@ -163,6 +167,13 @@ export function makeOnlineCombat(submit: Submit, canSubmit: () => boolean): type
     resolveTargetTheGeneratorPick: (_g: any, instanceId: any) => act({ kind: 'resolveTargetTheGeneratorPick', instanceId }),
     resolveReadyForActionLeaderPick: (_g: any, leaderId: any) => act({ kind: 'resolveReadyForActionLeaderPick', leaderId }),
     resolveRetreatDecision: (_g: any, destSystemId: any, unitInstanceIds: any, leaderId?: any) => act({ kind: 'resolveRetreatDecision', destSystemId, unitInstanceIds, leaderId }),
+    // RoE Cinematic combat sub-choices.
+    resolveCinematicTacticSelect: (_g: any, cardId: any, useTop: any) => act({ kind: 'resolveCinematicTacticSelect', cardId, useTop }),
+    resolveCinematicReroll: (_g: any, indices: any) => act({ kind: 'resolveCinematicReroll', indices }),
+    resolveCinematicHeal: (_g: any, allocation: any) => act({ kind: 'resolveCinematicHeal', allocation }),
+    resolveCinematicDeferredHeal: (_g: any, allocation: any) => act({ kind: 'resolveCinematicDeferredHeal', allocation }),
+    resolveCinematicTargetPick: (_g: any, instanceId: any) => act({ kind: 'resolveCinematicTargetPick', instanceId }),
+    resolveCinematicDestroyPick: (_g: any, instanceId: any) => act({ kind: 'resolveCinematicDestroyPick', instanceId }),
   } as typeof combatModule;
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

@@ -60,6 +60,10 @@ export type RebellionAction =
   | { kind: 'resolveLeadStrikeTeamUnits'; unitIds: UnitInstanceId[] }
   | { kind: 'resolveOverseeProjectPick'; queueIndex: number; slot: 1 | 2 }
   | { kind: 'resolveRescuerReturn'; leaderIds: LeaderId[] }
+  | { kind: 'resolveRegionalAidPick'; systemId: SystemId }
+  | { kind: 'resolveSuperlaserLoyaltyPick'; systemId: SystemId }
+  | { kind: 'resolveDrawThemOutPick'; leaderId: LeaderId }
+  | { kind: 'resolveDestroyedSystemCull'; instanceIds: UnitInstanceId[] }
   // Generic data-driven choice framework (src/engine/choices.ts). ONE action
   // covers every `Choice` pendingChoice (the-long-war-discard, seize-control
   // marker, and any future prompt) — the selection is the chosen candidate ids.
@@ -140,6 +144,13 @@ export type RebellionAction =
   | { kind: 'resolveCombatDefenderTactics'; plays: { blockCardIds: string[]; sacrificeCardIds: string[] } }
   | { kind: 'resolveYodaReroll'; rerollIndex: number | null }
   | { kind: 'resolveR2D2Flip'; flipIndex: number | null }
+  // RoE Cinematic combat sub-choices (all called from CombatBoardLive).
+  | { kind: 'resolveCinematicTacticSelect'; cardId: string | null; useTop: boolean }
+  | { kind: 'resolveCinematicReroll'; indices: number[] }
+  | { kind: 'resolveCinematicHeal'; allocation: { instanceId: string; amount: number }[] }
+  | { kind: 'resolveCinematicDeferredHeal'; allocation: { instanceId: string; amount: number }[] }
+  | { kind: 'resolveCinematicTargetPick'; instanceId: string }
+  | { kind: 'resolveCinematicDestroyPick'; instanceId: string }
   | { kind: 'resolveSpecialDieSpend'; plays: { draws: number; playCardIds: string[] } }
   | { kind: 'resolveCombatAssignDamage'; assignments: (UnitInstanceId | null)[] }
   | { kind: 'resolveOneInAMillionCombat'; picks: { index: number; face: string }[] }
