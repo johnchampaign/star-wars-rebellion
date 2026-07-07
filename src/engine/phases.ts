@@ -1195,29 +1195,9 @@ export function revealMission(
     }});
     return { ok: true };
   }
-  // Wookie Guardian (Rebel/Chewie): if Empire reveals a specOps attempt at a
-  // system where Chewie is, AND Rebel holds Wookie Guardian, offer to discard to
-  // auto-fail. Chewbacca MUST be in the mission's system — this is the general
-  // action-card rule (Rules Reference, "Action Cards"): "Action cards used during
-  // a mission or combat can only be used if one of the leaders shown on the card
-  // is already in the system in which the mission or combat is occurring. The only
-  // exceptions are action cards that specifically move the leader to the system."
-  // Wookie Guardian doesn't move Chewie, so he must already be present (#430:
-  // confirmed by the FFG forum + this rule — an earlier "removed the requirement"
-  // change was reverted).
-  if (side === 'Empire' && card.isAttempt && card.skill === 'specOps'
-    && G.rebel.actionHand.includes('wookie-guardian')
-    && (G.rebel.leadersOnBoard[targetSystemId] ?? []).includes('chewbacca')) {
-    G.pendingChoice = {
-      kind: 'WookieGuardianOffer',
-      side: 'Rebel',
-      missionId, targetSystemId,
-    };
-    log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-      kind: 'WookieGuardianOffer', missionId,
-    }});
-    return { ok: true };
-  }
+  // Wookie Guardian (Rebel/Chewie) is offered LATER — in resolveOpposition, after
+  // the Rebel's Send-Leaders-to-Oppose step — so Chewie can be brought in to
+  // oppose and the offer survives a Blindside play (see the check there, #430).
   // Undercover (Rebel/Lando|Obi-Wan): if Empire reveals an attempt mission
   // AND Rebel holds Undercover AND Lando or Obi-Wan is on the board (but
   // not already at the target system), offer to relocate them to the
@@ -1483,6 +1463,34 @@ export function resolveOpposition(
       `${G.catalog.systems[pm.targetSystemId]?.name ?? pm.targetSystemId} and rolled +1 die.`,
     );
   }
+
+  // Wookie Guardian (Rebel/Chewie): RAW requires Chewbacca in the mission system
+  // ("Action cards used during a mission or combat can only be used if one of the
+  // leaders shown on the card is already in the system in which the mission or
+  // combat is occurring"). Checked HERE — after the Rebel's Send-Leaders-to-Oppose
+  // step — so the Rebel can bring Chewie in to oppose and then auto-fail, and so
+  // it isn't skipped when the Empire played Blindside (Blindside only blocks POOL
+  // opposition, not a leader already present). Declining resumes the roll below.
+  if (card.skill === 'specOps' && pm.resolverSide === 'Empire'
+    && !pm.wookieOffered
+    && G.rebel.actionHand.includes('wookie-guardian')
+    && (G.rebel.leadersOnBoard[pm.targetSystemId] ?? []).includes('chewbacca')) {
+    pm.wookieOffered = true;
+    pm.oppositionSubversionBonus = subversionBonus;
+    G.pendingChoice = { kind: 'WookieGuardianOffer', side: 'Rebel', missionId: pm.missionId, targetSystemId: pm.targetSystemId };
+    log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'WookieGuardianOffer', missionId: pm.missionId } });
+    return { ok: true };
+  }
+  return finishOpposition(G, pm, subversionBonus);
+}
+
+/** Resolve the opposition roll (or auto-success) and finish the mission. Split
+ *  from resolveOpposition so a Wookie Guardian DECLINE can resume it after the
+ *  offer. Opposer side/leaders are recomputed from the pending mission; the
+ *  subversion +1 die (computed at opposition time) is passed in. */
+function finishOpposition(G: GameState, pm: MissionResolution, subversionBonus: number): { ok: boolean } {
+  const card = G.catalog.missions[pm.missionId];
+  const c = { skill: (card?.skill ?? '') as string, opposerSide: (pm.resolverSide === 'Rebel' ? 'Empire' : 'Rebel') as Side };
 
   // Determine if opposition actually happens: any opposer leader at target.
   // Captured leaders only contribute when the mission targets them (RR p.9).
@@ -3852,7 +3860,9 @@ export function resolveWookieGuardianOffer(G: GameState, accept: boolean): { ok:
   }
   log(G, { kind: 'wookie-guardian-skipped', side: 'Rebel', payload: { missionId: pm.missionId } });
   G.pendingChoice = undefined;
-  continueRevealAfterSpecialOffer(G, pm);
+  // The offer is now presented AFTER the opposition step, so declining resumes
+  // the opposition roll (not the reveal→oppose transition).
+  finishOpposition(G, pm, pm.oppositionSubversionBonus ?? 0);
   return { ok: true };
 }
 

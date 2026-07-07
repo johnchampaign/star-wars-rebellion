@@ -2005,6 +2005,12 @@ export type MissionResolution = {
   // Blindside flag: if true, the opposer cannot send pool leaders to oppose
   // this mission. Set during the Blindside pre-opposition trigger.
   blindsideActive?: boolean;
+  // Wookie Guardian: set once its offer has been presented for this mission (so
+  // it isn't re-offered on a declined-then-resumed opposition). The subversion
+  // +1 die is computed at opposition time and stashed so a Wookie DECLINE can
+  // resume the opposition roll (finishOpposition).
+  wookieOffered?: boolean;
+  oppositionSubversionBonus?: number;
   /** Human-readable notes accumulated during reveal/oppose for response-card
    *  triggers (Undercover, Blindside, Wookie Guardian, etc.). Copied into the
    *  MissionResolutionReport when the report is pushed. */
