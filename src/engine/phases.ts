@@ -827,15 +827,17 @@ export function pass(G: GameState, side: Side): { ok: boolean; reason?: string }
  *  Before transitioning to Refresh, drain any pending Rapid Mobilization
  *  end-of-phase choices (RAW: those resolve after both players pass). */
 function advanceCommandTurn(G: GameState): void {
+  const DBG = (globalThis as { process?: { env?: Record<string, string> } }).process?.env?.DBG_TURN;
+  if (DBG) console.error(`[ACT] enter cp=${G.currentPlayer} passed=[${G.passedThisCommand}] turnLog=${G.turnLog.length}`);
   // RoE: an Immediate objective drawn during this action (Heist, Covert
   // Operation, Rebel Planning, or the setup draw caught on turn 1) reveals and
   // resolves now — pause for its placement before advancing. The resolver
   // re-enters advanceCommandTurn to chain / advance.
-  if (flushImmediateObjectiveActivations(G, 'command')) return;
+  if (flushImmediateObjectiveActivations(G, 'command')) { if (DBG) console.error('[ACT] return: flushImmediateObjective'); return; }
   // RoE: drain the current player's Immediate action cards (Rebel Extremist /
   // Under the Radar / Early Promotion) before advancing — they trigger on draw,
   // not on demand. The resolvers re-enter advanceCommandTurn to chain/continue.
-  if (flushImmediateActionCards(G)) return;
+  if (flushImmediateActionCards(G)) { if (DBG) console.error('[ACT] return: flushImmediateActionCards'); return; }
   if (G.passedThisCommand.length >= 2) {
     // RoE Sweep the Area: "you MAY reveal" at end-of-Command-phase (right before
     // Refresh). Offer it; if an offer is posted we pause, and the offer resolver
@@ -1059,6 +1061,9 @@ export function activateSystem(
     });
   }
 
+  if ((globalThis as { process?: { env?: Record<string, string> } }).process?.env?.DBG_TURN) {
+    console.error(`[ACTV] ${side} activate ${targetSystemId} willFight=${willFight} orders=${moveOrders.length}`);
+  }
   if (willFight) {
     // Source system: use the first move order's from, or the target itself if no moves.
     const src = moveOrders[0]?.fromSystemId ?? targetSystemId;
@@ -6946,6 +6951,27 @@ export function playAssignmentActionCard(G: GameState, cardId: string): { ok: bo
   const legalSystems = legalSystemsForAssignmentCard(G, side, cardId);
   if (legalSystems !== null) {
     if (legalSystems.length === 0) return { ok: false, reason: 'no-legal-system' };
+    // RAW: a card that says "place this leader" but names 2+ possible leaders
+    // (Trust in the Force → Jyn OR Chirrut) lets the PLAYER choose which one,
+    // not auto-take leaderRequirement[0] (#480, same class as #62). When 2+ are
+    // eligible, choose the leader first; its resolver then posts the system pick.
+    const eligibleLeaders = (card.leaderRequirement ?? []).filter((lid) => faction(G, side).leaderPool.includes(lid));
+    if (eligibleLeaders.length >= 2) {
+      requestChoice(G, {
+        tag: 'assignment-card-leader',
+        side,
+        domain: 'leader',
+        prompt: `${card.name ?? cardId} — which leader?`,
+        detail: 'Two of your leaders qualify for this card. Choose which one to place.',
+        candidates: eligibleLeaders.map((id) => ({ id })),
+        min: 1,
+        max: 1,
+        submitLabel: 'Choose',
+        context: { cardId, side },
+      });
+      log(G, { kind: 'choice-request', side, payload: { kind: 'Choice', tag: 'assignment-card-leader', cardId } });
+      return { ok: true };
+    }
     // Swap pending choice from "pick card" → "pick system for this card".
     G.pendingChoice = { kind: 'ActionCardSystemPick', side, cardId, candidates: legalSystems };
     log(G, { kind: 'choice-request', side, payload: { kind: 'ActionCardSystemPick', cardId, candidates: legalSystems } });
@@ -6971,8 +6997,9 @@ export function resolveActionCardSystemPick(G: GameState, systemId: SystemId): {
     return { ok: false, reason: `boba-fett-blocks-system:${systemId}` };
   }
   const { side, cardId } = pc;
+  const chosenLeaderId = pc.chosenLeaderId;
   G.pendingChoice = undefined;
-  applyAssignmentActionCardEffect(G, side, cardId, systemId);
+  applyAssignmentActionCardEffect(G, side, cardId, systemId, chosenLeaderId);
   return { ok: true };
 }
 
@@ -6980,6 +7007,7 @@ export function resolveActionCardSystemPick(G: GameState, systemId: SystemId): {
  *  remove the chosen leader from the pool and place it on the target system. */
 function consumeCardAndPlaceLeader(
   G: GameState, side: Side, cardId: string, systemId: SystemId | null,
+  chosenLeaderId?: LeaderId,
 ): { leaderId: LeaderId | null } {
   const f = faction(G, side);
   // Discard the card.
@@ -6990,8 +7018,15 @@ function consumeCardAndPlaceLeader(
   const card = G.catalog.actions[cardId];
   const reqs = card?.leaderRequirement ?? [];
   let placed: LeaderId | null = null;
-  for (const lid of reqs) {
-    if (f.leaderPool.includes(lid)) { placed = lid; break; }
+  // Honour the player's explicit pick (Trust in the Force etc., #480) when it's
+  // a valid eligible leader; otherwise fall back to the first eligible (the
+  // 0/1-eligible case, where there was nothing to choose).
+  if (chosenLeaderId && reqs.includes(chosenLeaderId) && f.leaderPool.includes(chosenLeaderId)) {
+    placed = chosenLeaderId;
+  } else {
+    for (const lid of reqs) {
+      if (f.leaderPool.includes(lid)) { placed = lid; break; }
+    }
   }
   if (placed && systemId) {
     const pi = f.leaderPool.indexOf(placed);
@@ -7004,8 +7039,9 @@ function consumeCardAndPlaceLeader(
 /** Per-card effect dispatch. `systemId` is null for cards that don't place a leader. */
 function applyAssignmentActionCardEffect(
   G: GameState, side: Side, cardId: string, systemId: SystemId | null,
+  chosenLeaderId?: LeaderId,
 ): void {
-  const { leaderId } = consumeCardAndPlaceLeader(G, side, cardId, systemId);
+  const { leaderId } = consumeCardAndPlaceLeader(G, side, cardId, systemId, chosenLeaderId);
   log(G, { kind: 'action-card-play', side, payload: { cardId, leaderId, systemId, timing: 'Assignment' } });
 
   switch (cardId) {
@@ -7501,6 +7537,22 @@ function enterAssignmentPhase(G: GameState): void {
 /** Registered at module load (below). Exported so tests can assert coverage. */
 export function registerAllChoices(): void {
   // --- #424/#462 The Long War: discard exactly 2 chosen objective cards. ---
+  registerChoice('assignment-card-leader', (G, selection, context) => {
+    // #480 — the player chose which qualifying leader to place (Trust in the
+    // Force: Jyn or Chirrut). Remember it, then continue to the system pick (or
+    // apply the effect directly if the card needs no system).
+    const cardId = typeof context.cardId === 'string' ? context.cardId : '';
+    const side = context.side === 'Empire' ? 'Empire' : 'Rebel';
+    const chosenLeaderId = selection[0] as LeaderId | undefined;
+    const legalSystems = legalSystemsForAssignmentCard(G, side, cardId);
+    if (legalSystems !== null && legalSystems.length > 0) {
+      G.pendingChoice = { kind: 'ActionCardSystemPick', side, cardId, candidates: legalSystems, chosenLeaderId };
+      log(G, { kind: 'choice-request', side, payload: { kind: 'ActionCardSystemPick', cardId, candidates: legalSystems } });
+      return;
+    }
+    applyAssignmentActionCardEffect(G, side, cardId, defaultPlacementSystemForCard(cardId), chosenLeaderId);
+  });
+
   registerChoice('the-long-war-discard', (G, selection, context) => {
     const hand = G.rebel.objectiveHand ?? [];
     const discarded: string[] = [];

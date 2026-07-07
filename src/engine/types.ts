@@ -1143,6 +1143,11 @@ export type ChoiceRequest =
       side: Side;
       cardId: string;
       candidates: SystemId[];
+      // For a card that places one of 2+ eligible leaders (e.g. Trust in the
+      // Force — Jyn OR Chirrut), the leader the player already chose in the
+      // preceding leader-pick step. Carried here so it survives the online
+      // round-trip between the two choices. Undefined = auto-pick (0/1 eligible).
+      chosenLeaderId?: LeaderId;
     }
   | {
       // Droid ring (R2-D2 / C-3PO): the Rebel attaches the ring to one of
@@ -1651,6 +1656,13 @@ export type CombatState = {
   // still has a sabotage marker, so finishCombatTail can raise the optional
   // "may remove the marker" choice (#505/#496 — RAW is a "may", not automatic).
   seizeControlMarkerPending?: boolean;
+  // RAW ("Objective Cards", RR p.10): "Only one objective can be played during
+  // each combat." Set the moment ANY objective scores off this combat — the
+  // combat-end Death Star Plans window AND the decisive-victory/liberation/etc.
+  // combat-objective play both check it so a single fight can't score two
+  // (player report #487: destroying the Death Star scored Death Star Plans AND
+  // Decisive Victory in the same combat).
+  objectivePlayedThisCombat?: boolean;
   // RoE Cinematic deck lock (Entrapment / Air Superiority / Outrun Them /
   // Escape Plan secondaries): `${side}:${theatre}` -> the round through which
   // that side is barred from playing a tactic card in that theatre.

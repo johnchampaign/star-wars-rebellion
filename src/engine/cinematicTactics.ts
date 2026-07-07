@@ -46,7 +46,11 @@ type TargetDealEffect = { kind: 'targetDeal'; amount: number; targetClass: 'capi
 type DestroyEffect = { kind: 'destroy'; tier?: 'triangle'; unitClass?: 'structure'; theater?: Theater };
 // Gain a unit for the playing side (deployed into the system), optionally
 // also preventing the opponent's dice.
-type GainEffect = { kind: 'gain'; typeId: string; prevent?: { red: number; black: number; special: number } };
+// `chooseTriangleGround` (Deployment): the card gains "1 triangle ground unit"
+// — the player picks WHICH of their triangle ground unit types (Rebel: Trooper
+// or Vanguard). `typeId` is the fallback/default when only one type exists. When
+// false the gain is a specific fixed unit (e.g. Reinforcements → TIE Fighter).
+type GainEffect = { kind: 'gain'; typeId: string; prevent?: { red: number; black: number; special: number }; chooseTriangleGround?: boolean };
 // The OPPONENT resolves their attacks first in this theatre for the rest of
 // the combat (rules p.9 "During [theatre] battles this combat, [opp]
 // resolves attacks first").
@@ -95,6 +99,8 @@ const CD = (amount: number, cond: CondDealEffect['cond'], color?: 'red' | 'black
 const TD = (amount: number, targetClass: TargetDealEffect['targetClass']): TargetDealEffect => ({ kind: 'targetDeal', amount, targetClass });
 const DESTROY = (opts: { tier?: 'triangle'; unitClass?: 'structure'; theater?: Theater }): DestroyEffect => ({ kind: 'destroy', ...opts });
 const GAIN = (typeId: string, prevent?: GainEffect['prevent']): GainEffect => ({ kind: 'gain', typeId, prevent });
+// "Gain 1 triangle ground unit" — player chooses the type (Deployment, #497).
+const GAINTRI = (defaultTypeId: string): GainEffect => ({ kind: 'gain', typeId: defaultTypeId, chooseTriangleGround: true });
 const FIRST: ResolveFirstEffect = { kind: 'resolveFirst' };
 const LOCK: LockDeckEffect = { kind: 'lockDeck' };
 const REMOVE = (amount: number, exceptTypeId?: string): RemoveDamageEffect => ({ kind: 'removeDamage', amount, exceptTypeId });
@@ -132,7 +138,7 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   // ---- Rebel Space ----
   'cin-rebel-space-rogue-squadron-support':  [D(2, 'black'), D(1, 'black')],
   'cin-rebel-space-bombing-run':             [D(2, 'red'), D(1, 'red')],
-  'cin-rebel-space-deployment':              [GAIN('rebel-trooper'), LOCKSPECIAL],
+  'cin-rebel-space-deployment':              [GAINTRI('rebel-trooper'), LOCKSPECIAL],
   'cin-rebel-space-fleet-logistics':         [P(2, 0, 0, true), P(2, 0)],
   'cin-rebel-space-ion-blast':               [TD(1, 'capital'), D(1)],
   'cin-rebel-space-outrun-them':             [CANCEL, LOCK],
@@ -1001,6 +1007,25 @@ export function destroyAbilityFor(cardId: string, useTop: boolean): DestroyEffec
   if (!abilities) return null;
   const ab = useTop ? abilities[0] : abilities[1];
   return ab && ab.kind === 'destroy' ? ab : null;
+}
+
+/** The selected ability if it's a "gain a triangle ground unit (player's choice)"
+ *  gain (Deployment, #497) — used to post a type pick when 2+ types are available.
+ *  A fixed-unit gain (Reinforcements → TIE Fighter) returns null. */
+export function gainTriangleAbilityFor(cardId: string, useTop: boolean): GainEffect | null {
+  const abilities = ABILITIES[cardId];
+  if (!abilities) return null;
+  const ab = useTop ? abilities[0] : abilities[1];
+  return ab && ab.kind === 'gain' && ab.chooseTriangleGround ? ab : null;
+}
+
+/** The playing side's triangle ground unit TYPES (Rebel: Trooper, Vanguard) —
+ *  the candidates for a "gain 1 triangle ground unit" choice. */
+export function cinematicTriangleGroundGainTypes(G: GameState, side: Side): string[] {
+  return Object.keys(G.catalog.unitTypes).filter((id) => {
+    const t = G.catalog.unitTypes[id];
+    return t && t.side === side && t.theater === 'ground' && t.tier === 'triangle';
+  });
 }
 
 /** Legal targets for an interactive destroy pick (the eligible enemy units). */

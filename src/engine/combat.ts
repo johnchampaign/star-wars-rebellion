@@ -16,7 +16,7 @@ import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log } from './log';
 import { registerChoice, requestChoice } from './choices';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, applyDeferredHealAllocation, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal, dealAbilityFor, cinematicDealCandidates, destroyAbilityFor, cinematicDestroyCandidates, applyChosenDestroy } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, applyDeferredHealAllocation, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal, dealAbilityFor, cinematicDealCandidates, destroyAbilityFor, cinematicDestroyCandidates, applyChosenDestroy, gainTriangleAbilityFor, cinematicTriangleGroundGainTypes } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -629,6 +629,33 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
             kind: 'CinematicDestroyPick', theater, candidates: dcands.length,
           }});
           return; // paused — resolveCinematicDestroyPick removes the chosen unit
+        }
+        // Interactive "gain a triangle ground unit" pick (Deployment, #497): the
+        // card gains 1 triangle ground unit and the player chooses the TYPE
+        // (Rebel: Trooper or Vanguard). With 2+ types, post the pick; with ≤1,
+        // fall through to the auto-resolver (which deploys the default type).
+        const ga = gainTriangleAbilityFor(sel.cardId, sel.useTop);
+        const gtypes = ga ? cinematicTriangleGroundGainTypes(G, side) : [];
+        if (ga && gtypes.length >= 2) {
+          const f = side === 'Rebel' ? G.rebel : G.empire;
+          (f.cinematicTacticDiscard ??= []).push(sel.cardId);
+          c.cinematicTacticDoneThisRound.push(key);
+          // Deployment's gain has no prevent; its secondary (LOCKSPECIAL) is a
+          // separate ability the player didn't choose, so nothing else to apply.
+          requestChoice(G, {
+            tag: 'cinematic-gain',
+            side,
+            domain: 'unit',
+            prompt: 'Deployment — gain a triangle ground unit',
+            detail: 'Choose which triangle ground unit to deploy into the system.',
+            candidates: gtypes.map((id) => ({ id, label: G.catalog.unitTypes[id]?.name ?? id })),
+            min: 1,
+            max: 1,
+            submitLabel: 'Deploy',
+            context: { systemId: c.systemId, side, cardId: sel.cardId, theater },
+          });
+          log(G, { kind: 'choice-request', side, payload: { kind: 'Choice', tag: 'cinematic-gain', theater } });
+          return; // paused — the 'cinematic-gain' resolver deploys + resumes
         }
       }
       if (sel) applyCinematicAbility(G, c, side, theater, sel.cardId, sel.useTop);
@@ -3171,7 +3198,10 @@ function endCombat(G: GameState): void {
   // hand); pendingCombat is left set and the tail runs from
   // resolveCombatObjectivePick(). Done before clearing pendingCombat so the
   // report sees the combat that triggered them.
-  const fired = objectives.combatObjectivesTriggered(G, c.report);
+  // RAW: only one objective may be played per combat. If Death Star Plans
+  // already scored during a space-battle step this combat, no combat-end
+  // objective can also be played (#487) — skip the trigger entirely.
+  const fired = c.objectivePlayedThisCombat ? [] : objectives.combatObjectivesTriggered(G, c.report);
   if (fired.length >= 2) {
     objectives.postPlayObjectiveChoice(G, fired, 'combat');
     return; // pendingCombat stays set; resolver continues via finishCombatTail
@@ -3249,6 +3279,9 @@ function playCombatObjective(G: GameState, oid: string): void {
     objectiveId: oid, reputation: rep, timing: 'Combat',
   }});
   M.recordObjectiveScored(G, oid, rep, 'combat', G.turnLog.length);
+  // RAW: one objective per combat — mark it so the Death Star Plans window
+  // (finishCombatTail) won't also let a second objective score (#487).
+  if (G.pendingCombat) G.pendingCombat.objectivePlayedThisCombat = true;
 
   // Seize Control (RoE objective): "Win a space or ground battle in a system
   // with a sabotage marker. You may then remove the marker." The removal clause
@@ -3357,7 +3390,7 @@ function finishCombatTail(G: GameState, c: CombatState): void {
   // a round whose space step never offered the window (e.g. a ground-only
   // finish). The per-round window inside the loop is the primary path now;
   // skip here if it already fired this round so the Rebel isn't asked twice.
-  if (!G.isGameOver && !c.dsPlansOfferedThisRound) maybePostDeathStarPlansChoice(G, c);
+  if (!G.isGameOver && !c.dsPlansOfferedThisRound && !c.objectivePlayedThisCombat) maybePostDeathStarPlansChoice(G, c);
 
   G.pendingCombat = undefined;
 
@@ -3642,6 +3675,10 @@ function finalizeDsPlans(G: GameState): { ok: boolean; reason?: string } {
       faces, reputation: rep,
     }});
     M.recordObjectiveScored(G, pc.objectiveId, rep, 'death-star-plans', G.turnLog.length);
+    // RAW: one objective per combat — playing Death Star Plans uses up this
+    // combat's objective, so decisive-victory / liberation / etc. cannot also
+    // score at combat-end (#487).
+    if (G.pendingCombat) G.pendingCombat.objectivePlayedThisCombat = true;
   } else {
     // No direct hit — RAW: "Otherwise return this card to your hand." It's
     // already in hand (we don't remove it on reveal); just log.
@@ -3656,6 +3693,20 @@ function finalizeDsPlans(G: GameState): { ok: boolean; reason?: string } {
 // Registered at module load. The selection contains the system id iff the Rebel
 // chose to remove the marker (min:0 → empty selection means "keep it"). Either
 // way it resumes the suspended combat tail via finishCombatTail.
+// Deployment's "gain 1 triangle ground unit" type pick (#497): deploy the chosen
+// triangle ground unit, then resume the combat state machine.
+registerChoice('cinematic-gain', (G, selection, context) => {
+  const side: Side = context.side === 'Empire' ? 'Empire' : 'Rebel';
+  const systemId = typeof context.systemId === 'string' ? context.systemId : G.pendingCombat?.systemId;
+  const theater = context.theater === 'ground' ? 'ground' : 'space';
+  const typeId = selection[0];
+  if (typeId && systemId) {
+    M.deployUnit(G, side, typeId, systemId);
+    log(G, { kind: 'cinematic-tactic-play', side, payload: { theater, gained: typeId } });
+  }
+  runCombat(G);
+});
+
 registerChoice('seize-control-marker', (G, selection, context) => {
   const sysId = typeof context.systemId === 'string' ? context.systemId : G.pendingCombat?.systemId;
   const ss = sysId ? G.map.systems[sysId] : undefined;
