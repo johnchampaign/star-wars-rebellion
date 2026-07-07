@@ -151,6 +151,47 @@ export type RebellionAction =
   | { kind: 'resolveCinematicDeferredHeal'; allocation: { instanceId: string; amount: number }[] }
   | { kind: 'resolveCinematicTargetPick'; instanceId: string }
   | { kind: 'resolveCinematicDestroyPick'; instanceId: string }
+  // Full-coverage wiring of the remaining UI-dispatched choice resolvers so
+  // human-vs-human online play doesn't soft-lock on any of them (see
+  // docs / memory "online-adapter-missing-resolvers").
+  | { kind: 'resolveAmbitionsOfPowerOffer'; accept: boolean }
+  | { kind: 'resolveArmCardProbePick'; probeId: string }
+  | { kind: 'resolveBehindEnemyLinesUnits'; unitIds: string[] }
+  | { kind: 'resolveBreakTheirWillPick'; systemId: SystemId }
+  | { kind: 'resolveDiscreditRebellion'; action: 'remove' | 'roll' }
+  | { kind: 'resolveEstablishTradeChoice'; action: 'loyalty' | 'cruiser' }
+  | { kind: 'resolveFalseOrders'; targetLeaderId: LeaderId | null }
+  | { kind: 'resolveHeistChoice'; action: string }
+  | { kind: 'resolveImperialMightUnits'; queueIndices: number[] }
+  | { kind: 'resolveMissionRecruitLeaderPick'; leaderId: LeaderId }
+  | { kind: 'resolvePostBountyOffer'; leaderId: LeaderId | null }
+  | { kind: 'resolvePrepareForBattleDeckPick'; deckKind: 'space-tactic' | 'ground-tactic' }
+  | { kind: 'resolveRaidOutpostsPlace'; systemIds: SystemId[] }
+  | { kind: 'resolveRebelCellDiscard'; objectiveId: string | null }
+  | { kind: 'resolveRebelCellPlace'; systemId: SystemId }
+  | { kind: 'resolveReconnaissancePick'; missionId: string }
+  | { kind: 'resolveSabotageChoice'; action: 'destroy-bunker' | 'place-marker' }
+  | { kind: 'resolveSafeHavenPick'; pickedIndices: number[] }
+  | { kind: 'resolveSecretMissionPick'; missionId: string }
+  | { kind: 'resolveStartingCardBranch'; action: 'draw' | 'recruit' }
+  | { kind: 'resolveTrustInTheForceDestroyPick'; instanceId: string }
+  | { kind: 'resolveUnderTheRadarKeep'; probeId: string }
+  | { kind: 'resolveUnderTheRadarReorder'; placements: { cardId: string; position: 'top' | 'bottom' }[] }
+  | { kind: 'resolveUnderTheRadarReturn'; accept: boolean }
+  | { kind: 'resolveWereTheBaitUnits'; unitIds: string[] }
+  | { kind: 'requestImmediateActionCardPlay' }
+  | { kind: 'cancelImmediateActionCardPlay' }
+  | { kind: 'playImmediateActionCard'; cardId: string }
+  | { kind: 'setupUndoDeployUnit'; typeId: string; systemId: SystemId }
+  | { kind: 'undoStolenPlansPick' }
+  | { kind: 'resolveBazesLoyaltyTarget'; instanceId: string }
+  | { kind: 'resolveConfrontationLeaderPick'; leaderId: LeaderId }
+  | { kind: 'resolveDsPlansOneInAMillion'; picks: { index: number; face: string }[] }
+  | { kind: 'resolveDsPlansYoda'; blankIndex: number }
+  | { kind: 'resolveRogueOneChoice'; action: string }
+  | { kind: 'resolveSomethingToFightForOffer'; objectiveId: string | null }
+  | { kind: 'resolveTrackThemOffer'; leaderId: LeaderId | null }
+  | { kind: 'resolveTractorBeamCapturePick'; leaderId: LeaderId }
   | { kind: 'resolveSpecialDieSpend'; plays: { draws: number; playCardIds: string[] } }
   | { kind: 'resolveCombatAssignDamage'; assignments: (UnitInstanceId | null)[] }
   | { kind: 'resolveOneInAMillionCombat'; picks: { index: number; face: string }[] }
