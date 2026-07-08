@@ -1260,8 +1260,13 @@ const demolition: EffectHandler = (G, ctx) => {
 };
 
 const baseDefenses: EffectHandler = (G, _ctx) => {
-  M.deployUnit(G, 'Rebel', 'ion-cannon', 'rebel-base-space');
-  M.deployUnit(G, 'Rebel', 'shield-generator', 'rebel-base-space');
+  // Deploy the structures at the base's ACTUAL location: the hidden "Rebel Base"
+  // space while the base is concealed, but the real system once it's revealed —
+  // otherwise the defenses land in the hidden space, disconnected from the
+  // revealed base on the map (#518).
+  const dest = G.rebelBaseRevealed ? G.rebelBaseSystemId : 'rebel-base-space';
+  M.deployUnit(G, 'Rebel', 'ion-cannon', dest);
+  M.deployUnit(G, 'Rebel', 'shield-generator', dest);
   return true;
 };
 
