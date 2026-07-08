@@ -485,9 +485,16 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   //
   // The chosen card is REMOVED from the probe deck — Imperial cannot draw it
   // later during Refresh probe draws and learn the base location for free.
+  // RAW (RoE rulebook p.8 + RR p.15 step 9): the base is chosen from the
+  // REMAINING probe cards. Imperial-loyalty systems' probes are already boxed
+  // (above), and the Empire's Death Star Under Construction remote has its probe
+  // boxed too — so that system can never be the base (base and DSUC can't share
+  // a system, #501/#491). In the auto path empireDeployTarget is known here; the
+  // interactive path prunes it when the Empire deploys the DSUC.
   const baseLegal = Object.values(catalog.systems)
     .filter((s) => !s.isCoruscant)
     .filter((s) => !imperialLoyaltySystems.includes(s.id))
+    .filter((s) => s.id !== empireDeployTarget)
     .map((s) => s.id);
 
   // Per rr p.15 step 9: the Rebel chooses one card from the (full) probe deck.

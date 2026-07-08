@@ -305,6 +305,15 @@ export function pickRebelBase(G: GameState, systemId: SystemId): { ok: boolean; 
   if (!G.pendingRebelBasePick.includes(systemId)) {
     return { ok: false, reason: 'not-a-candidate' };
   }
+  // RAW (RoE rulebook p.8 + RR p.15 step 9): the base is chosen from the
+  // REMAINING probe cards, so a system whose probe was boxed — the Empire's
+  // Death Star Under Construction remote, or any system holding Imperial units —
+  // can never be the base. Backstop the candidate-list filter here so no setup
+  // ordering can slip one through (#501/#491).
+  if (systemId === G.empireDeployTarget) return { ok: false, reason: 'is-death-star-construction-system' };
+  if ((G.map.systems[systemId]?.units ?? []).some((u) => u.side === 'Empire')) {
+    return { ok: false, reason: 'system-holds-imperial-units' };
+  }
 
   const prevBaseSystemId = G.rebelBaseSystemId;
   if (prevBaseSystemId !== systemId) {
@@ -437,8 +446,23 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
       if (G.empireDeployTarget && G.empireDeployTarget !== systemId) {
         return { ok: false, reason: `empire-already-chose-${G.empireDeployTarget}` };
       }
+      // RAW order is Empire-first, but the engine allows interleaved setup — so if
+      // the Rebel has already COMMITTED their base to this remote, the Empire must
+      // pick a different one (base and DSUC can never share a system, #501/#491).
+      if (!G.pendingRebelBasePick && G.rebelBaseSystemId === systemId) {
+        return { ok: false, reason: 'base-and-dsuc-cannot-share-system' };
+      }
       G.empireDeployTarget = systemId;
       M.removeProbeForSystem(G, systemId); // DSUC system's probe leaves play (#372); idempotent
+      // The DSUC remote's probe is now boxed, so it drops out of the Rebel's
+      // base-candidate pool. Prune it (and repoint the placeholder base if it
+      // happened to sit there) so the pick list stays RAW-correct (#501/#491).
+      if (G.pendingRebelBasePick) {
+        G.pendingRebelBasePick = G.pendingRebelBasePick.filter((s) => s !== systemId);
+        if (G.rebelBaseSystemId === systemId && G.pendingRebelBasePick.length > 0) {
+          G.rebelBaseSystemId = G.pendingRebelBasePick[0];
+        }
+      }
     } else if (isDsuc) {
       // The DSUC may only be placed on the chosen remote system, never on an
       // Imperial-loyalty / subjugated world.
