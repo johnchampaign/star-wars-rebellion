@@ -1068,13 +1068,26 @@ export function activateSystem(
     // Source system: use the first move order's from, or the target itself if no moves.
     const src = moveOrders[0]?.fromSystemId ?? targetSystemId;
     beginCombat(G, side, src, targetSystemId);
-    runCombat(G);
-    // The command hand-off after a fight is done in finishCombatTail once combat
-    // FULLY resolves — combat is resumable and pauses across rounds for player
-    // choices. Advancing here would flip the turn mid-combat, or (if an
-    // immediate-card flush inside advanceCommandTurn short-circuits) leave the
-    // turn un-advanced entirely, so the same player goes again (#268).
-    return { ok: true };
+    // `willFight` is a loose "both sides have SOME unit here" check, but combat
+    // only actually occurs when both sides share a theater (both have space
+    // units, or both have ground units) — beginCombat's bothSidesPresent gate.
+    // When they disagree (e.g. Empire ships arrive where the Rebel has only
+    // ground units or a lone leader), beginCombat no-ops and no combat happens.
+    // In that case we must NOT return early — otherwise the Command turn is
+    // never handed off (finishCombatTail, which does the hand-off, never runs)
+    // and the same side gets to activate again ("double activation" — #493 /
+    // #494 / #500 / #509). Only defer to the combat hand-off when combat truly
+    // began.
+    if (G.pendingCombat) {
+      runCombat(G);
+      // The command hand-off after a fight is done in finishCombatTail once combat
+      // FULLY resolves — combat is resumable and pauses across rounds for player
+      // choices. Advancing here would flip the turn mid-combat, or (if an
+      // immediate-card flush inside advanceCommandTurn short-circuits) leave the
+      // turn un-advanced entirely, so the same player goes again (#268).
+      return { ok: true };
+    }
+    // No real combat — fall through to the normal turn hand-off below.
   }
   if (G.isGameOver) return { ok: true };
 
@@ -2486,8 +2499,21 @@ export function resolveOverseeProjectPick(G: GameState, queueIndex: number, slot
   const q = G.empire.buildQueue;
   if (!q[slot] || queueIndex < 0 || queueIndex >= q[slot].length) return { ok: false, reason: 'bad-index' };
   const typeId = q[slot].splice(queueIndex, 1)[0];
-  M.deployUnit(G, 'Empire', typeId, choice.targetSystemId);
-  log(G, { kind: 'oversee-project-pick', side: 'Empire', payload: { typeId, slot, targetSystemId: choice.targetSystemId } });
+  // RR p.7: "If an ability allows the Imperial player to deploy a Death Star in
+  // a system, it can be placed only in the Death Star Under Construction's
+  // system." So a completed Death Star pulled off the queue by Oversee Project
+  // must go to wherever the DSUC sits, not the card's target system (#502/#513).
+  let deploySystemId = choice.targetSystemId;
+  if (typeId === 'death-star') {
+    const dsucSysId = Object.keys(G.map.systems).find((sid) =>
+      (G.map.systems[sid].units ?? []).some(
+        (u) => u.side === 'Empire' && u.typeId === 'death-star-under-construction',
+      ),
+    );
+    if (dsucSysId) deploySystemId = dsucSysId;
+  }
+  M.deployUnit(G, 'Empire', typeId, deploySystemId);
+  log(G, { kind: 'oversee-project-pick', side: 'Empire', payload: { typeId, slot, targetSystemId: deploySystemId } });
   G.pendingChoice = undefined;
   resumeMissionAfterChoice(G);
   return { ok: true };
