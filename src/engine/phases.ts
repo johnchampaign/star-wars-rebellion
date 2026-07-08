@@ -700,7 +700,9 @@ function maybeAdvanceFromSetup(G: GameState): void {
     // A droid ring (R2-D2 / C-3PO) in the opening hand attaches immediately at
     // game start, before the first Assignment turn (Immediate timing; mirrors
     // recruit-time attachment, #221). Posts an AttachRingPick if one is waiting.
-    flushStartingRings(G);
+    // When no ring is pending, drain the opening-hand Immediate starting cards
+    // (Early Promotion / Rebel Extremist) the same way (#485).
+    if (!flushStartingRings(G)) flushStartingImmediateCards(G);
   }
 }
 
@@ -6396,6 +6398,43 @@ export function flushStartingRings(G: GameState): boolean {
   return false;
 }
 
+/** Auto-fire opening-hand IMMEDIATE starting action cards (Early Promotion,
+ *  Rebel Extremist) at game start — RAW: an Immediate card "must be used as soon
+ *  as the player gains the card," and the opening hand is gained at setup. This
+ *  mirrors flushStartingRings' droid-ring UX so the player is prompted rather
+ *  than left wondering why the card sits unplayed (#485). Fires the first such
+ *  card in either hand; its StartingCardBranch is tagged `viaStartingHand` so its
+ *  resolver chains to the next. Returns true (caller pauses) if it posted a
+ *  choice. Droid rings + the passive Falcon are handled elsewhere and skipped. */
+export function flushStartingImmediateCards(G: GameState): boolean {
+  if (G.pendingChoice) return false;
+  for (const side of ['Empire', 'Rebel'] as const) {
+    const f = faction(G, side);
+    for (const cid of [...f.actionHand]) {
+      const card = G.catalog.actions[cid];
+      if (!card || card.timing !== 'Immediate' || !card.isStarting) continue;
+      if (DROID_RING_CARDS[cid]) continue;            // rings: flushStartingRings
+      if (cid === 'the-milleninium-falcon') continue; // passive from-hand trigger
+      const reqs = card.leaderRequirement ?? [];
+      if (reqs.length > 0 && !reqs.some((lid) => f.leaderPool.includes(lid))) continue;
+      // Reveal + resolve now; the card leaves the hand to the discard.
+      const i = f.actionHand.indexOf(cid);
+      if (i >= 0) f.actionHand.splice(i, 1);
+      f.actionDiscard.push(cid);
+      log(G, { kind: 'action-card-play', side, payload: {
+        cardId: cid, leaderId: null, systemId: null, timing: 'Immediate', viaStartingHand: true,
+      }});
+      applyImmediateActionCardEffect(G, side, cid);
+      // If a StartingCardBranch (or any sub-choice) was posted, tag it so its
+      // resolver chains to the next starting Immediate card, then pause.
+      const pc = G.pendingChoice as { viaStartingHand?: boolean } | undefined;
+      if (pc) { pc.viaStartingHand = true; return true; }
+      // No sub-choice (e.g. recruit branch applied inline) — keep draining.
+    }
+  }
+  return false;
+}
+
 /** Resolve the player's choice of which leader to attach a droid ring to. */
 export function resolveAttachRing(G: GameState, leaderId: LeaderId): { ok: boolean; reason?: string } {
   const pc = G.pendingChoice;
@@ -6418,8 +6457,9 @@ export function resolveAttachRing(G: GameState, leaderId: LeaderId): { ok: boole
   // refresh recruit flow so the rest of recruit/build proceeds.
   if (viaRecruit) return continueRecruitFlow(G);
   // When offered from the opening hand, chain to the next un-attached starting
-  // ring (a hand could hold both R2-D2 and C-3PO).
-  if (viaStartingHand) { flushStartingRings(G); return { ok: true }; }
+  // ring (a hand could hold both R2-D2 and C-3PO); once the rings are done, drain
+  // the opening-hand Immediate starting cards (#485).
+  if (viaStartingHand) { if (!flushStartingRings(G)) flushStartingImmediateCards(G); return { ok: true }; }
   return { ok: true };
 }
 
@@ -6727,10 +6767,15 @@ export function resolveStartingCardBranch(G: GameState, action: 'draw' | 'recrui
   } else {
     applyStartingCardRecruitBranch(G, pc.cardId);
   }
-  const autoFlush = (pc as { autoFlush?: boolean }).autoFlush;
+  const autoFlush = pc.autoFlush;
+  const viaStartingHand = pc.viaStartingHand;
   G.pendingChoice = undefined;
-  // Only when this was auto-triggered on draw: drain further Immediate cards
-  // and continue the turn. A manual play just resolves the card.
+  // Game-start flush (#485): chain to the next opening-hand Immediate starting
+  // card. Do this BEFORE the Command-phase autoFlush path — a setup flush is not
+  // a Command turn, so it must not advance the command turn.
+  if (viaStartingHand) { flushStartingImmediateCards(G); return { ok: true }; }
+  // Only when this was auto-triggered on draw mid-Command: drain further
+  // Immediate cards and continue the turn. A manual play just resolves the card.
   if (autoFlush) advanceCommandTurn(G);
   return { ok: true };
 }

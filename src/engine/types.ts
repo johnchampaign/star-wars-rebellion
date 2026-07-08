@@ -823,6 +823,12 @@ export type ChoiceRequest =
       // Whether the draw branch is available (the starting-action draw pile
       // is non-empty). The recruit branch is always offered.
       canDraw: boolean;
+      // Set when this was auto-triggered by an Immediate card played mid-Command
+      // (drain further Immediate cards + advance the turn on resolve).
+      autoFlush?: boolean;
+      // Set when this fired from the game-start flush of opening-hand Immediate
+      // starting cards (#485): the resolver chains to the next such card.
+      viaStartingHand?: boolean;
     }
   | {
       // RoE Cinematic Combat: this side picks one advanced tactic card to
