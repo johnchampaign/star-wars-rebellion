@@ -1910,7 +1910,8 @@ export type MissionResolutionReport = {
   attackerDice?: { count: number; faces: string[]; colors?: string[]; successes: number };
   opposerDice?: { count: number; faces: string[]; colors?: string[]; successes: number };
   portraitBonus?: number;            // +2 if the assigned leader matches the card's portrait
-  attackerTotal?: number;            // dice successes + portrait
+  landoBonus?: number;               // +2 from Contingency Plan (Lando) — shown in the report (#428)
+  attackerTotal?: number;            // dice successes + portrait + landoBonus
   result: 'success' | 'failure' | 'auto-success';
   /** Monotonic ordering stamp (turnLog length at queue time) — see
    *  CombatReport.seq. */

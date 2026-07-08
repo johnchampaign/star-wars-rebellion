@@ -1741,6 +1741,7 @@ function finalizeMissionRoll(
     attackerDice: { count: Math.min(attackerDice, 10), faces: attFaces, colors: attColors, successes: attSuccesses },
     opposerDice: { count: Math.min(opposerDice, 10), faces: oppFaces, colors: oppColors, successes: oppSuccesses },
     portraitBonus: portrait,
+    landoBonus: landoBonus || undefined,
     attackerTotal,
     result: succeeded ? 'success' : 'failure',
     interventions: pm.interventions ? [...pm.interventions] : undefined,

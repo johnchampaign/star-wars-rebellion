@@ -6947,10 +6947,12 @@ function MissionReportModal({ G, report, onDismiss }: {
     dice: { count: number; faces: string[]; colors?: string[]; successes: number } | undefined,
     portrait: number | undefined,
     align: 'left' | 'right',
+    lando?: number | undefined,
   ) => {
     const color = sideColor(side);
     const showPortrait = !!(portrait && portrait > 0 && side === report.resolverSide);
-    const total = (dice?.successes ?? 0) + (showPortrait ? (portrait ?? 0) : 0);
+    const showLando = !!(lando && lando > 0 && side === report.resolverSide);
+    const total = (dice?.successes ?? 0) + (showPortrait ? (portrait ?? 0) : 0) + (showLando ? (lando ?? 0) : 0);
     return (
       <div style={{
         flex: 1, padding: 14, background: '#0c0d10',
@@ -7012,7 +7014,12 @@ function MissionReportModal({ G, report, onDismiss }: {
                 +{portrait} portrait
               </span>
             )}
-            {showPortrait && (
+            {showLando && (
+              <span style={{ fontSize: 12, color: '#ffd54a', marginLeft: 6, fontWeight: 600 }}>
+                +{lando} Contingency Plan
+              </span>
+            )}
+            {(showPortrait || showLando) && (
               <div style={{ fontSize: 14, color: '#ffd54a', marginTop: 4 }}>= {total} total</div>
             )}
           </div>
@@ -7059,7 +7066,7 @@ function MissionReportModal({ G, report, onDismiss }: {
 
         {/* Two-side panel */}
         <div style={{ display: 'flex', gap: 14, marginBottom: 14, alignItems: 'stretch' }}>
-          {renderSidePanel(report.resolverSide, report.attackerLeaders, report.attackerDice, report.portraitBonus, 'left')}
+          {renderSidePanel(report.resolverSide, report.attackerLeaders, report.attackerDice, report.portraitBonus, 'left', report.landoBonus)}
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', color: '#888', fontSize: 13, padding: '0 4px' }}>
             vs
           </div>
