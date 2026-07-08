@@ -58,18 +58,39 @@ console.log('[ interactive: DSUC deploy prunes the base-candidate list ]');
   }
 }
 
-console.log('[ interactive: Rebel-first — Empire cannot DSUC onto the committed base ]');
+console.log('[ strict order: no base pick until the Empire finishes deploying ]');
 {
   const G = createGame(data, { autoSetupUnits: false, expansion: roe });
-  const remote = Object.keys(G.catalog.systems).find((id) => G.catalog.systems[id]?.isRemote && G.map.systems[id] && G.pendingRebelBasePick?.includes(id));
-  if (remote) {
-    // Rebel commits the base to the remote BEFORE the Empire deploys.
-    const rb = phases.pickRebelBase(G, remote);
-    check('Rebel base commit ok (nothing there yet)', rb.ok, rb.reason);
-    check('base committed to the remote', G.rebelBaseSystemId === remote && !G.pendingRebelBasePick);
-    // Now the Empire tries to put its DSUC on the same remote — must be refused.
-    const de = phases.setupDeployUnit(G, 'Empire', 'death-star-under-construction', remote);
-    check('Empire DSUC on the committed base is refused', !de.ok, `got ok=${de.ok} reason=${de.reason}`);
+  // Empire's step-8 deployment is still pending → a base pick is refused outright.
+  const anyCand = (G.pendingRebelBasePick ?? [])[0];
+  const early = phases.pickRebelBase(G, anyCand);
+  check('base pick refused while the Empire is still deploying',
+    !early.ok && early.reason === 'empire-setup-not-complete', `ok=${early.ok} reason=${early.reason}`);
+
+  // Finish the Empire's deployment (chooses the DSUC remote + boxes its probe).
+  const af = phases.setupAutoFill(G, 'Empire');
+  check('Empire auto-fill completes step 8', af.ok, af.reason);
+  check('Empire has no pending deployment left', (G.pendingDeployment?.Empire?.length ?? 0) === 0);
+  const dsuc = G.empireDeployTarget;
+  check('a DSUC remote was chosen', !!dsuc, `dsuc=${dsuc}`);
+  check('the DSUC remote is NOT in the base-candidate pool', !(G.pendingRebelBasePick ?? []).includes(dsuc));
+
+  // Now the base pick is allowed — and can never be the DSUC remote.
+  const good = (G.pendingRebelBasePick ?? [])[0];
+  const rb = phases.pickRebelBase(G, good);
+  check('base pick now succeeds (Empire done)', rb.ok, rb.reason);
+  check('committed base is not the DSUC remote', G.rebelBaseSystemId !== dsuc, `base=${G.rebelBaseSystemId} dsuc=${dsuc}`);
+
+  // Defense-in-depth: even if a client tried it out of order, the Empire can't
+  // DSUC onto an already-committed base.
+  const G2 = createGame(data, { autoSetupUnits: false, expansion: roe });
+  G2.pendingDeployment.Empire = []; // pretend Empire finished (so the pick is allowed)
+  const remote2 = (G2.pendingRebelBasePick ?? []).find((id) => G2.catalog.systems[id]?.isRemote);
+  if (remote2) {
+    phases.pickRebelBase(G2, remote2);
+    G2.pendingDeployment.Empire = ['death-star-under-construction', 'tie-fighter'];
+    const de = phases.setupDeployUnit(G2, 'Empire', 'death-star-under-construction', remote2);
+    check('Empire DSUC onto an already-committed base is refused', !de.ok, `ok=${de.ok} reason=${de.reason}`);
   }
 }
 

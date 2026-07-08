@@ -301,6 +301,16 @@ function faction(G: GameState, s: Side) { return s === 'Rebel' ? G.rebel : G.emp
  *  Idempotent if the new pick equals the current base. */
 export function pickRebelBase(G: GameState, systemId: SystemId): { ok: boolean; reason?: string } {
   if (G.phase !== 'Setup') return { ok: false, reason: 'wrong-phase' };
+  // STRICT RAW ORDER (RoE p.8 replaces base step 8; RR p.15 step 9 follows it):
+  // the Empire finishes its deployment — choosing the Death Star Under
+  // Construction remote and boxing that system's probe card — BEFORE the Rebel
+  // chooses their base "from the remaining probe cards." So the base pick is not
+  // even legal until the Empire's setup deployment is complete; only then is the
+  // probe pool final. This structurally prevents the base from being committed
+  // against a system the Empire will occupy (#501/#491).
+  if (G.pendingDeployment && (G.pendingDeployment.Empire?.length ?? 0) > 0) {
+    return { ok: false, reason: 'empire-setup-not-complete' };
+  }
   if (!G.pendingRebelBasePick) return { ok: false, reason: 'no-pending-base-pick' };
   if (!G.pendingRebelBasePick.includes(systemId)) {
     return { ok: false, reason: 'not-a-candidate' };
@@ -562,6 +572,14 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
       if (remote) {
         G.empireDeployTarget = remote;
         M.removeProbeForSystem(G, remote); // DSUC system's probe leaves play (#372)
+        // Its probe is boxed → drop it from the Rebel base-candidate pool
+        // (mirrors the manual deploy path; #501/#491).
+        if (G.pendingRebelBasePick) {
+          G.pendingRebelBasePick = G.pendingRebelBasePick.filter((s) => s !== remote);
+          if (G.rebelBaseSystemId === remote && G.pendingRebelBasePick.length > 0) {
+            G.rebelBaseSystemId = G.pendingRebelBasePick[0];
+          }
+        }
         for (const typeId of ['death-star-under-construction', 'tie-fighter', 'tie-fighter',
           'tie-fighter', 'tie-fighter', 'stormtrooper']) {
           const i = remaining.indexOf(typeId);
