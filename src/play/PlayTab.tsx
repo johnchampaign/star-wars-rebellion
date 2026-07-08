@@ -15436,6 +15436,14 @@ function ExpansionPanel({ cfg, onChange }: {
               onChange={(e) => onChange({ roeUnits: e.target.checked })} />
             RoE units
           </label>
+          {cfg.roeUnits && (
+            <label style={labelStyle}
+              title="VARIANT: start the game with the base-game starting forces, but keep the full expansion unit roster available to build during the game. A commonly-played house option.">
+              <input type="checkbox" checked={!!cfg.baseSetupUnits}
+                onChange={(e) => onChange({ baseSetupUnits: e.target.checked })} />
+              Base-game setup units (variant)
+            </label>
+          )}
           <label style={labelStyle}
             title="Rebel mission set. Checked: Rebel uses the Rise of the Empire mission set (expansion missions + shared leader-icon missions). Unchecked: Rebel uses the base set. RoE p.2 lets each side choose independently — the two sides may differ.">
             <input type="checkbox" checked={cfg.roeMissionsRebel}

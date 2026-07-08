@@ -103,7 +103,10 @@ const REBEL_STARTING_UNITS_RoE_NEW: { typeId: string; count: number }[] = [
 // ticking only Cinematic Combat handed them a pile of expansion units). The
 // deprecated VASSAL "Old Starter Units" variant is not implemented.
 function pickStartingUnits(expansion: ExpansionConfig, side: 'Empire' | 'Rebel') {
-  if (expansion.roeUnits) {
+  // VARIANT (#519): `baseSetupUnits` deploys the base-game starting units even in
+  // a RoE game — the expansion roster stays available to build, but setup uses
+  // the classic starting forces.
+  if (expansion.roeUnits && !expansion.baseSetupUnits) {
     return side === 'Empire'
       ? IMPERIAL_STARTING_UNITS_RoE_NEW
       : REBEL_STARTING_UNITS_RoE_NEW;
@@ -237,6 +240,7 @@ export function resolveExpansion(input?: Partial<ExpansionConfig>): ExpansionCon
     roeMissionsEmpire: input?.roeMissionsEmpire ?? shared,
     ...(input?.missionSetLocked ? { missionSetLocked: input.missionSetLocked } : {}),
     cinematicCombat: input?.cinematicCombat ?? false,
+    baseSetupUnits: input?.baseSetupUnits ?? false,
   };
 }
 
@@ -561,9 +565,11 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   // board (deployed via the starting-unit list) AND the completed Death Star
   // on build-track space 3, i.e. 3 Refreshes from completion. When it reaches
   // slot 1 the existing completion logic (phases.ts) swaps it in for the DSUC
-  // on its system. Gated to the RoE setup, so the base game keeps an empty
-  // queue and its prior board.
-  if (expansion.enabled) {
+  // on its system. This belongs to the RoE STARTING deployment specifically —
+  // gate on the RoE starting-unit path, not just expansion.enabled, so the base
+  // starting units (which deploy a completed Death Star directly) don't ALSO get
+  // a queued one (base game / #519 base-setup-units variant).
+  if (expansion.roeUnits && !expansion.baseSetupUnits) {
     empire.buildQueue[3].push('death-star');
   }
 

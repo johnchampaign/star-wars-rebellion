@@ -103,6 +103,11 @@ export type ExpansionConfig = {
   missionSetLocked?: { Rebel?: boolean; Empire?: boolean };
   /** Use the optional Cinematic Combat module. */
   cinematicCombat: boolean;
+  /** VARIANT (#519): deploy the BASE-game starting units at setup while still
+   *  keeping the full expansion unit roster available to build during the game.
+   *  Only meaningful when `roeUnits` is true; otherwise base units are already
+   *  used. Default false. */
+  baseSetupUnits?: boolean;
 };
 
 export type Leader = {
