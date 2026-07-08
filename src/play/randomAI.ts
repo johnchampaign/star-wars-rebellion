@@ -3149,6 +3149,11 @@ type GenericChoiceReq = Extract<NonNullable<GameState['pendingChoice']>, { kind:
  *  "pick the minimum legal number of candidates" — always valid, never a
  *  soft-lock. Add an entry to make the AI play a specific choice well. */
 const AI_CHOICE_HEURISTICS: Record<string, (G: GameState, choice: GenericChoiceReq) => string[]> = {
+  // Show No Fear reveal (#512/#515): revealing places a public marker on the base
+  // system. If the base is already revealed there's no downside — take the free
+  // reputation. If it's still hidden, keep it hidden rather than hand the Empire
+  // the base location.
+  'show-no-fear-reveal': (G) => [G.rebelBaseRevealed ? 'reveal' : 'decline'],
   // The Long War: discard the 2 objectives worth the least right now — prefer
   // dropping ones whose scoring condition is NOT currently met (dead weight),
   // breaking ties by lowest reputation value, so the AI keeps its live/high-

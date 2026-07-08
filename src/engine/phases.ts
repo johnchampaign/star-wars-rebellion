@@ -4899,22 +4899,15 @@ export function processPersistentObjectives(G: GameState): void {
   const hand = G.rebel.objectiveHand ?? [];
   if (hand.includes('show-no-fear-3')) {
     // RAW (card): "If the marker is still present AT THE START of each Refresh
-    // phase, gain 1 reputation." The Refresh in which the marker is first
-    // placed does NOT score — the marker was not present at the start of it.
-    // So decide scoring on the board state at entry, THEN place if missing.
-    const presentAtStart = M.systemsWithTargetMarker(G, 'show-no-fear-3').length > 0;
-    if (presentAtStart) {
+    // phase, gain 1 reputation." Score ONLY when the marker is already on the
+    // board — i.e. the Rebel opted in to reveal Show No Fear on a prior Refresh.
+    // Placement is now opt-in (RR "the Rebel is never forced to play objective
+    // cards"; revealing publicly marks the base) — see the Show No Fear reveal
+    // step in advanceRefreshPreSteps (#512/#515).
+    if (M.systemsWithTargetMarker(G, 'show-no-fear-3').length > 0) {
       M.recordObjectiveScored(G, 'show-no-fear-3', 1, 'refresh', G.turnLog.length);
       log(G, { kind: 'show-no-fear-score', side: 'Rebel', payload: { reputation: 1 } });
       M.gainReputation(G, 1);
-    } else {
-      // First Refresh the objective is in hand: place the marker on the base
-      // system. Scoring begins next Refresh. (When the base later moves the
-      // marker is removed and the objective discarded, so it never re-places.)
-      const baseSys = G.rebelBaseSystemId;
-      if (baseSys && !M.hasTargetMarker(G, baseSys, 'show-no-fear-3')) {
-        M.placeTargetMarker(G, baseSys, 'show-no-fear-3', 'Rebel');
-      }
     }
   }
 }
@@ -5048,14 +5041,44 @@ export function advanceRefreshPreSteps(G: GameState, logStart: number): boolean 
         // but that was missed by the mid-combat skip in processTargetMarkerRemovals
         // (#475) — must run BEFORE Raid Outposts / Rebel Cell / Show No Fear score.
         M.sweepTargetMarkerRemovals(G);
-        processPersistentObjectives(G); // Show No Fear place + score
+        processPersistentObjectives(G); // Show No Fear scoring (marker already placed)
         if (G.isGameOver) return false;
         G.refreshPreStep = 1; break;
-      case 1:
+      case 1: {
+        // Show No Fear — OPT-IN reveal (#512/#515). RAW: "the Rebel player is
+        // never forced to play objective cards." Playing Show No Fear places a
+        // public target marker at the base system (revealing its location), so
+        // the Rebel decides whether/when to reveal it. Offered each Refresh while
+        // it's unrevealed; once placed, the scoring above runs automatically.
+        const hand = G.rebel.objectiveHand ?? [];
+        const baseSys = G.rebelBaseSystemId;
+        const alreadyPlaced = M.systemsWithTargetMarker(G, 'show-no-fear-3').length > 0;
+        if (hand.includes('show-no-fear-3') && baseSys && !alreadyPlaced) {
+          requestChoice(G, {
+            tag: 'show-no-fear-reveal',
+            side: 'Rebel',
+            domain: 'option',
+            prompt: 'Reveal “Show No Fear”?',
+            detail: 'Place a target marker at your base to gain 1 reputation each Refresh it survives — but this publicly marks your base’s location. You may keep it hidden and decide on a later Refresh instead.',
+            candidates: [
+              { id: 'reveal', label: 'Reveal — place the marker at your base' },
+              { id: 'decline', label: 'Keep it hidden for now' },
+            ],
+            min: 1,
+            max: 1,
+            submitLabel: 'Confirm',
+            context: { logStart },
+          });
+          log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'Choice', tag: 'show-no-fear-reveal' } });
+          return true;
+        }
+        G.refreshPreStep = 2; break;
+      }
+      case 2:
         scoreRaidOutposts(G); // remove markers raided by Rebel ground units, score
         if (G.isGameOver) return false;
-        G.refreshPreStep = 2; break;
-      case 2: {
+        G.refreshPreStep = 3; break;
+      case 3: {
         // Rebel Cell's recurring "discard 1 objective to gain 1 reputation"
         // (placement now happens on draw — flushImmediateObjectiveActivations).
         const hand = G.rebel.objectiveHand ?? [];
@@ -5066,7 +5089,7 @@ export function advanceRefreshPreSteps(G: GameState, logStart: number): boolean 
           log(G, { kind: 'choice-request', side: 'Rebel', payload: { kind: 'RebelCellDiscard', legal: discardable } });
           return true;
         }
-        G.refreshPreStep = 3; break;
+        G.refreshPreStep = 4; break;
       }
       default:
         return false; // all pre-steps done
@@ -7609,6 +7632,22 @@ function enterAssignmentPhase(G: GameState): void {
 /** Registered at module load (below). Exported so tests can assert coverage. */
 export function registerAllChoices(): void {
   // --- #424/#462 The Long War: discard exactly 2 chosen objective cards. ---
+  registerChoice('show-no-fear-reveal', (G, selection, context) => {
+    // #512/#515 — the Rebel chose whether to reveal Show No Fear. On 'reveal',
+    // place the base-system marker (scoring then begins next Refresh via
+    // processPersistentObjectives); on 'decline', the card stays hidden in hand
+    // and is re-offered next Refresh. Either way, resume the Refresh pre-steps.
+    const baseSys = G.rebelBaseSystemId;
+    if (selection.includes('reveal') && baseSys && !M.hasTargetMarker(G, baseSys, 'show-no-fear-3')) {
+      M.placeTargetMarker(G, baseSys, 'show-no-fear-3', 'Rebel');
+      log(G, { kind: 'show-no-fear-revealed', side: 'Rebel', payload: { systemId: baseSys } });
+    }
+    const logStart = typeof context.logStart === 'number' ? context.logStart : G.turnLog.length;
+    G.refreshPreStep = 2; // continue with Raid Outposts / Rebel Cell
+    if (G.isGameOver) return;
+    if (!advanceRefreshPreSteps(G, logStart)) runOneShotObjectivesThenContinue(G, logStart);
+  });
+
   registerChoice('assignment-card-leader', (G, selection, context) => {
     // #480 — the player chose which qualifying leader to place (Trust in the
     // Force: Jyn or Chirrut). Remember it, then continue to the system pick (or

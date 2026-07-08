@@ -185,24 +185,38 @@ console.log('[ a-time-for-peace-2: destroy 2 triangle + 1 circle + 1 square in q
 
 // ---- 5d-ii: persistent Show No Fear ----
 
-console.log('[ show-no-fear-3: place at base, score each refresh, removed on relocation ]');
+console.log('[ show-no-fear-3: OPT-IN reveal (#512/#515), then score each refresh ]');
 {
+  const choices = await import('../src/engine/choices.ts');
   const G = newG();
   G.rebel.objectiveHand = ['show-no-fear-3'];
   const base = G.rebelBaseSystemId;
   const rep0 = G.reputationMarker;
-  // RAW (card): "If the marker is still present AT THE START of each Refresh
-  // phase, gain 1 reputation." The Refresh that PLACES the marker must not
-  // score — the marker wasn't present at the start of it. Scoring begins the
-  // following Refresh.
+  // Placement is now OPT-IN: processPersistentObjectives must NOT auto-place.
   Phases.processPersistentObjectives(G);
-  check('marker placed at Rebel Base system', hasMarker(G, base));
-  check('placement refresh does NOT score', G.reputationMarker === rep0);
+  check('processPersistentObjectives does NOT auto-place the marker', !hasMarker(G, base));
+  // The Refresh pre-steps offer a reveal choice. First DECLINE it — no marker, no score.
+  Phases.advanceRefreshPreSteps(G, 0);
+  check('a reveal choice is offered', G.pendingChoice?.kind === 'Choice' && G.pendingChoice.tag === 'show-no-fear-reveal', `pc=${G.pendingChoice?.kind}/${G.pendingChoice?.tag}`);
+  choices.resolveGenericChoice(G, ['decline']);
+  check('declining places no marker', !hasMarker(G, base));
+  check('declining scores nothing', G.reputationMarker === rep0);
+  check('the card stays in hand (re-offerable later)', (G.rebel.objectiveHand ?? []).includes('show-no-fear-3'));
+
+  // Next Refresh: REVEAL. Marker placed; the placing Refresh does NOT score
+  // (RAW: only if present at the START of a Refresh).
+  G.refreshPreStep = 0;
+  Phases.advanceRefreshPreSteps(G, 0); // scores nothing (no marker yet), then offers reveal
+  check('reveal offered again next Refresh', G.pendingChoice?.tag === 'show-no-fear-reveal');
+  choices.resolveGenericChoice(G, ['reveal']);
+  check('revealing places the marker at the base', hasMarker(G, base));
+  check('the reveal Refresh does NOT score', G.reputationMarker === rep0);
+  // Following Refreshes score +1 each (marker present at start).
   Phases.processPersistentObjectives(G);
-  check('next refresh scored +1 (marker present at its start)', G.reputationMarker === rep0 - 1);
+  check('next Refresh scores +1', G.reputationMarker === rep0 - 1);
   Phases.processPersistentObjectives(G);
-  check('each subsequent refresh scores another +1', G.reputationMarker === rep0 - 2);
-  // simulate base relocation: remove marker AND discard the spent card
+  check('each subsequent Refresh scores another +1', G.reputationMarker === rep0 - 2);
+  // Base relocation removes the marker + discards the card → no re-placement/score.
   for (const sid of markerSystems(G)) removeMarker(G, sid);
   G.rebel.objectiveHand = G.rebel.objectiveHand.filter((id) => id !== 'show-no-fear-3');
   const repAfter = G.reputationMarker;
