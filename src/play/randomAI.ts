@@ -522,6 +522,15 @@ function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: 
   // production (player report #199). Strongly prefer a sabotaged Imperial system
   // as the target so Option B cleans it up.
   if (missionId === 'research-and-development' && sysState?.sabotage) s += 25;
+  // Construct Factory places build-queue units by the target's resource icons AND
+  // removes a sabotage marker there before resolving (#468). The AI was building
+  // on arbitrary Imperial systems, ignoring sabotaged ones where it would ALSO
+  // clear the sabotage that's choking that system's production. Prefer a
+  // high-resource Imperial system, and strongly prefer a sabotaged one.
+  if (missionId === 'construct-factory') {
+    s += resourceWeight * 3;
+    if (sysState?.sabotage) s += 25;
+  }
   // Imperial Propaganda flips every Rebel-loyal system in the target's REGION to
   // neutral — so its value scales with how many Rebel-loyal systems that region
   // holds. Aim it at the region with the most to convert; a region with none is
