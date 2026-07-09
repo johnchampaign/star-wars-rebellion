@@ -1467,8 +1467,6 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     return handleCombatAssignDamage(G);
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'CinematicTargetPick' && G.pendingChoice.side === side) {
-    // AI: spend the targeted burst on the most-damaged eligible enemy unit
-    // (likeliest kill) — matches the old auto-pick heuristic.
     const c = G.pendingChoice;
     const findUnit = (id: string) => {
       for (const sys of Object.values(G.map.systems)) {
@@ -1482,7 +1480,21 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       if (!u) return Infinity;
       return (G.catalog.unitTypes[u.typeId]?.health.value ?? 0) - u.damage;
     };
-    const target = [...c.candidates].sort((a, b) => remaining(a) - remaining(b))[0];
+    // Threat = combat power removed by killing it (attack dice + health).
+    const threat = (id: string): number => {
+      const u = findUnit(id);
+      const t = u ? G.catalog.unitTypes[u.typeId] : undefined;
+      return t ? ((t.attack.red ?? 0) + (t.attack.black ?? 0) + (t.attack.green ?? 0)) + (t.health?.value ?? 0) : 0;
+    };
+    // #470: Tow Cables (4 dmg) could kill BOTH the AT-ST and the AT-AT, but the
+    // AI hit the weaker AT-ST because it only picked the LEAST-remaining unit.
+    // Among units this burst can actually KILL, remove the biggest threat; only
+    // fall back to "most-damaged" (closest to a future kill) when none die now.
+    const amount = c.amount ?? 0;
+    const killable = c.candidates.filter((id) => remaining(id) <= amount);
+    const target = killable.length > 0
+      ? [...killable].sort((a, b) => threat(b) - threat(a))[0]
+      : [...c.candidates].sort((a, b) => remaining(a) - remaining(b))[0];
     return combat.resolveCinematicTargetPick(G, target).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'TractorBeamCapturePick' && G.pendingChoice.side === side) {
