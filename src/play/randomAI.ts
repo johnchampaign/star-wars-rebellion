@@ -665,7 +665,17 @@ function rebelMissionTargetScore(
     for (const u of baseUnits) if (u.side === 'Rebel') reb += shipStr(u);
     let imp = 0;
     for (const u of (sysState?.units ?? [])) if (u.side === 'Empire') imp += shipStr(u);
-    if (imp > 0) s += reb >= imp * 1.2 ? 8 : -40;
+    // Plan the Assault commits base ships into a SPACE BATTLE at the target. It's
+    // only worth it against a REAL Empire fleet the committable force can actually
+    // beat, AND with a non-trivial force. The old guard only caught the
+    // defended-but-losing case, so it happily sent a lone X-wing at a lightly
+    // defended system for no gain (#522). Cover all three losing shapes:
+    //   - empty target      → no combat, nothing to assault
+    //   - trivial own force  → a lone fighter (reb < 5, ~2 fighters) just dies
+    //   - losing matchup     → outmatched by the defenders
+    if (imp === 0) s -= 20;
+    else if (reb < 5 || reb < imp * 1.2) s -= 40;
+    else s += 8;
   }
   // Prefer an undefended target so the attempt auto-succeeds (see helper).
   s += oppositionTargetTerm(G, 'Rebel', missionId, targetSysId);
