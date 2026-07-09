@@ -449,10 +449,13 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
     const def = G.catalog.systems[systemId];
     const isImperialSys = ss.loyalty === 'imperial' || ss.subjugated;
     const isDsuc = typeId === 'death-star-under-construction';
-    if (G.expansion?.enabled && def?.isRemote) {
+    if (G.expansion?.enabled && !G.expansion?.baseSetupUnits && def?.isRemote) {
       // RoE (rules p.8): the Empire chooses ONE remote system to hold its Death
       // Star Under Construction + companion units. Once chosen, that is the only
       // remote system its starting units may go to. (Mirrors rebelDeployTarget.)
+      // NOT offered under the base-game-setup-units variant (#523): with base
+      // starting forces there is no DSUC, so the Empire deploys only to its
+      // Imperial-loyalty worlds — remote (neutral) systems are not valid targets.
       if (G.empireDeployTarget && G.empireDeployTarget !== systemId) {
         return { ok: false, reason: `empire-already-chose-${G.empireDeployTarget}` };
       }

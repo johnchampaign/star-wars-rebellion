@@ -9441,7 +9441,10 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onUndoUnit, onReset
   // Legal targets
   const legalTargets: { id: string; name: string; note?: string }[] = [];
   if (side === 'Empire') {
-    const roe = !!G.expansion?.enabled;
+    // The remote "Death Star site" deploy option is a RoE-only thing: it exists
+    // to hold the Death Star Under Construction. Under the base-game-setup-units
+    // variant there is no DSUC, so remote systems must NOT be offered (#523).
+    const roe = !!G.expansion?.enabled && !G.expansion?.baseSetupUnits;
     const placingDsuc = selectedType === 'death-star-under-construction';
     // The Death Star Under Construction may only go on the chosen remote system;
     // all other units go on Imperial-loyalty / subjugated worlds (and may also
