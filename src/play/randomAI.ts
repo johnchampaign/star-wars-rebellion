@@ -1379,11 +1379,21 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         movable += selfMoving + Math.min(capacity, needCarry);
       }
       const ownHere = sys.units.filter((u) => u.side === side).length;
-      if (movable === 0 && ownHere === 0) {
-        // Nothing can actually be brought and no force already there → the
-        // leader would sit alone. Strong negative so the AI moves a different
-        // fleet, runs a mission, or passes (passing IS correct when no unit can
-        // usefully move — user's clarification).
+      const enemyHere = sys.units.some((u) => u.side !== side);
+      if (movable === 0 && !enemyHere) {
+        // Activating this system moves nothing and starts no fight, so it's a
+        // wasted action — and the executor (tryCommandAction) rejects it, so a
+        // high score here just makes the AI reject-then-pass while a real move
+        // goes untried. Two sub-cases both land here:
+        //   • ownHere === 0: the leader would sit alone (nothing to bring).
+        //   • ownHere  >  0: units can't move INTO their own system, so a
+        //     resident stack just idles. RAW only lets you pull units from
+        //     neighbors INTO the activated system — to march a big stack you
+        //     activate a NEIGHBOR of it, not the stack's own system. Player
+        //     report #517: a 14-unit Empire stack idled at Dagobah while the
+        //     last leader passed, because the stack's own system out-scored
+        //     every executable neighbor. Sinking this below pass lets the AI
+        //     pick the neighbor-activation that actually advances the stack.
         ts = -50;
       }
     }
