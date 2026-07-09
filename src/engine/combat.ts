@@ -408,10 +408,12 @@ export function runCombat(G: GameState): void {
         c.retreatDecidedThisRound = []; // each round each side gets a fresh retreat decision
         // "Resolve attacks first" (cinematic) only lasts the round it was played (#486).
         c.cinematicResolveFirst = undefined;
-        // The Yoda ring reroll is once PER ROUND, not once per combat (#481). The
-        // per-combat-round guard (c.yodaRerollUsedRound) self-resets via c.round, but
-        // the global flag must be cleared here too or it blocks every later round.
-        G.yodaRerollUsedThisRound = false;
+        // The Master Yoda ring reroll is once per GAME round (mission card text),
+        // NOT once per combat round (#521). A single combat can span many combat
+        // rounds; the global flag (G.yodaRerollUsedThisRound) is spent for the whole
+        // game round on first use and only resets in the Refresh phase — do NOT
+        // clear it here. (An earlier read of #481 wrongly reset it each combat round,
+        // re-offering the reroll every round of a long fight.)
         // No Escape only lasts the round it was played.
         if (c.flags?.cannotRetreatThisRound) c.flags.cannotRetreatThisRound = {};
       }
