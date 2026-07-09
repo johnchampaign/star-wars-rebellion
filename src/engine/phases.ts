@@ -6720,36 +6720,59 @@ function applyImmediateActionCardEffect(G: GameState, side: Side, cardId: string
 /** Apply the RECRUIT branch of Early Promotion / Rebel Extremist (the
  *  non-draw side of the binary). Shared by the auto path (empty starting
  *  deck) and the branch resolver. */
-function applyStartingCardRecruitBranch(G: GameState, cardId: string): void {
+function applyStartingCardRecruitBranch(
+  G: GameState, cardId: string, resume: 'startingHand' | 'command' | 'none' = 'none',
+): boolean {
   if (cardId === 'early-promotion') {
-    // Recruit Motti, then place Motti + Tarkin at the first Imperial system.
+    // Recruit Motti, then place Motti + Tarkin in an Imperial system. RAW: "any
+    // Imperial system" — the PLAYER chooses (#524; it was auto-taking the first,
+    // which e.g. locked the player out of moving troops from that system that
+    // round). With 2+ Imperial systems, post a system pick; with ≤1 there's
+    // nothing to choose, so place directly.
     if (leaderRecruitable(G, 'Empire', 'motti')) {
       G.empire.leaderPool.push('motti' as LeaderId);
       log(G, { kind: 'recruit-leader', side: 'Empire', payload: { leaderId: 'motti', via: 'early-promotion' } });
     }
-    const targetSys = Object.entries(G.map.systems)
-      .find(([_sid, ss]) => ss.loyalty === 'imperial' || ss.subjugated)?.[0];
-    if (targetSys) {
-      // Place Motti AND Tarkin in the Imperial system. placeLeader already
-      // strips a leader from wherever he currently sits (pool OR board), so
-      // calling it directly relocates Tarkin even when an earlier mission this
-      // same turn already deployed him to the board (#389) — e.g. a Gather
-      // Intel that left him in a Rebel system. The #266 fix only handled the
-      // case where Tarkin was still in the leader pool (indexOf), which
-      // silently skipped him once he was on the board.
-      const onBoard = (lid: LeaderId) =>
-        Object.values(G.empire.leadersOnBoard).some((list) => list.includes(lid));
-      for (const lid of ['motti', 'grand-moff-tarkin'] as LeaderId[]) {
-        if (G.empire.leaderPool.includes(lid) || onBoard(lid)) {
-          M.placeLeader(G, 'Empire', lid, targetSys);
-        }
-      }
+    const imperialSystems = Object.entries(G.map.systems)
+      .filter(([_sid, ss]) => ss.loyalty === 'imperial' || ss.subjugated)
+      .map(([id]) => id);
+    if (imperialSystems.length >= 2) {
+      requestChoice(G, {
+        tag: 'early-promotion-place',
+        side: 'Empire',
+        domain: 'system',
+        prompt: 'Early Promotion — place Motti & Tarkin',
+        detail: 'Choose any Imperial system to place Motti and Tarkin.',
+        candidates: imperialSystems.map((id) => ({ id })),
+        min: 1,
+        max: 1,
+        submitLabel: 'Place',
+        context: { resume },
+      });
+      log(G, { kind: 'choice-request', side: 'Empire', payload: { kind: 'Choice', tag: 'early-promotion-place' } });
+      return true; // paused — the early-promotion-place resolver places + resumes
     }
+    if (imperialSystems.length === 1) placeMottiAndTarkin(G, imperialSystems[0]);
+    return false;
   } else if (cardId === 'rebel-extremist') {
     M.loseReputation(G, 1);
     if (leaderRecruitable(G, 'Rebel', 'saw-gerrera')) {
       G.rebel.leaderPool.push('saw-gerrera' as LeaderId);
       log(G, { kind: 'recruit-leader', side: 'Rebel', payload: { leaderId: 'saw-gerrera', via: 'rebel-extremist' } });
+    }
+  }
+  return false;
+}
+
+/** Place Motti AND Tarkin in `targetSys`. placeLeader strips a leader from
+ *  wherever he currently sits (pool OR board), so this relocates Tarkin even
+ *  when an earlier mission this turn already deployed him to the board (#389). */
+function placeMottiAndTarkin(G: GameState, targetSys: SystemId): void {
+  const onBoard = (lid: LeaderId) =>
+    Object.values(G.empire.leadersOnBoard).some((list) => list.includes(lid));
+  for (const lid of ['motti', 'grand-moff-tarkin'] as LeaderId[]) {
+    if (G.empire.leaderPool.includes(lid) || onBoard(lid)) {
+      M.placeLeader(G, 'Empire', lid, targetSys);
     }
   }
 }
@@ -6768,7 +6791,11 @@ export function resolveStartingCardBranch(G: GameState, action: 'draw' | 'recrui
     f.actionHand.push(drawn);
     log(G, { kind: 'starting-card-draw', side: pc.side, payload: { cardId: drawn, via: pc.cardId } });
   } else {
-    applyStartingCardRecruitBranch(G, pc.cardId);
+    // The recruit branch may PAUSE for Early Promotion's "place in any Imperial
+    // system" pick (#524). Thread the resume so the placement's resolver
+    // continues the same flow (game-start chain / command-turn advance / none).
+    const resume = pc.viaStartingHand ? 'startingHand' : pc.autoFlush ? 'command' : 'none';
+    if (applyStartingCardRecruitBranch(G, pc.cardId, resume)) return { ok: true };
   }
   const autoFlush = pc.autoFlush;
   const viaStartingHand = pc.viaStartingHand;
@@ -7681,6 +7708,16 @@ function enterAssignmentPhase(G: GameState): void {
 /** Registered at module load (below). Exported so tests can assert coverage. */
 export function registerAllChoices(): void {
   // --- #424/#462 The Long War: discard exactly 2 chosen objective cards. ---
+  registerChoice('early-promotion-place', (G, selection, context) => {
+    // #524 — the Empire chose the Imperial system for Motti + Tarkin. Place them,
+    // then resume whatever flow raised Early Promotion.
+    const sys = selection[0] as SystemId;
+    placeMottiAndTarkin(G, sys);
+    const resume = context.resume;
+    if (resume === 'startingHand') flushStartingImmediateCards(G);
+    else if (resume === 'command') advanceCommandTurn(G);
+  });
+
   registerChoice('stolen-intel-discard', (G, selection) => {
     // #526 — the Empire chose which Rebel mission to discard. Remove it from the
     // Rebel hand, then resume the mission flow.

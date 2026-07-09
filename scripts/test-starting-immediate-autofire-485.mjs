@@ -42,7 +42,12 @@ console.log('[ #485 — opening-hand Immediate starting cards auto-fire + chain 
 
   // Resolve it (recruit branch) → should CHAIN to the Rebel's Rebel Extremist.
   const r1 = phases.resolveStartingCardBranch(G, 'recruit');
-  check('resolving chains to the next card', r1.ok && G.pendingChoice?.kind === 'StartingCardBranch', `pc=${G.pendingChoice?.kind}`);
+  // Early Promotion's recruit branch interposes a "place Motti & Tarkin" system
+  // pick (#524) before the chain continues. Resolve it (first Imperial system).
+  check('recruit interposes the Early Promotion placement pick', r1.ok && G.pendingChoice?.kind === 'Choice' && G.pendingChoice.tag === 'early-promotion-place', `pc=${G.pendingChoice?.kind}/${G.pendingChoice?.tag}`);
+  const choices = await import('../src/engine/choices.ts');
+  choices.resolveGenericChoice(G, [G.pendingChoice.candidates[0].id]);
+  check('after placing, the flush chains to the next card', G.pendingChoice?.kind === 'StartingCardBranch', `pc=${G.pendingChoice?.kind}`);
   check('Rebel Extremist fires next', G.pendingChoice?.side === 'Rebel' && G.pendingChoice.cardId === 'rebel-extremist', `side=${G.pendingChoice?.side} card=${G.pendingChoice?.cardId}`);
   check('Rebel Extremist left the Rebel hand', !G.rebel.actionHand.includes('rebel-extremist'));
 

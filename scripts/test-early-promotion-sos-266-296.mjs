@@ -14,6 +14,14 @@ register();
 
 const { createGame } = await import('../src/engine/setup.ts');
 const phases = await import('../src/engine/phases.ts');
+const choices = await import('../src/engine/choices.ts');
+// Early Promotion now lets the player choose the Imperial system for Motti +
+// Tarkin (#524). Resolve that pick (first Imperial candidate) when present.
+function placeEarlyPromo(G) {
+  if (G.pendingChoice?.kind === 'Choice' && G.pendingChoice.tag === 'early-promotion-place') {
+    choices.resolveGenericChoice(G, [G.pendingChoice.candidates[0].id]);
+  }
+}
 
 function loadJson(p) { return JSON.parse(readFileSync(join(ROOT, 'assets', p), 'utf-8')); }
 const data = {
@@ -56,6 +64,7 @@ console.log('\n[ #266 Early Promotion places both Motti and Grand Moff Tarkin ]'
   if (G.pendingChoice?.kind === 'StartingCardBranch') {
     phases.resolveStartingCardBranch(G, 'recruit');
   }
+  placeEarlyPromo(G);
   const onBoard = (lid) => Object.values(G.empire.leadersOnBoard).some((list) => list.includes(lid));
   check('Motti recruited and placed on the board', onBoard('motti'),
     `pool=${G.empire.leaderPool.includes('motti')}`);
@@ -83,6 +92,7 @@ console.log('\n[ #389 Early Promotion relocates Tarkin even when already on the 
   if (G.pendingChoice?.kind === 'StartingCardBranch') {
     phases.resolveStartingCardBranch(G, 'recruit');
   }
+  placeEarlyPromo(G);
   const sysOf = (lid) =>
     Object.entries(G.empire.leadersOnBoard).find(([, list]) => list.includes(lid))?.[0];
   const isImperial = (sid) => {
