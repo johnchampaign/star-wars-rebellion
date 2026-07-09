@@ -7681,6 +7681,20 @@ function enterAssignmentPhase(G: GameState): void {
 /** Registered at module load (below). Exported so tests can assert coverage. */
 export function registerAllChoices(): void {
   // --- #424/#462 The Long War: discard exactly 2 chosen objective cards. ---
+  registerChoice('stolen-intel-discard', (G, selection) => {
+    // #526 — the Empire chose which Rebel mission to discard. Remove it from the
+    // Rebel hand, then resume the mission flow.
+    const missionId = selection[0];
+    const hand = G.rebel.missionHand;
+    const i = hand.indexOf(missionId);
+    if (i >= 0) {
+      hand.splice(i, 1);
+      G.rebel.missionDiscard.push(missionId);
+      log(G, { kind: 'stolen-intel-discard', side: 'Empire', payload: { missionId } });
+    }
+    resumeMissionAfterChoice(G);
+  });
+
   registerChoice('show-no-fear-reveal', (G, selection, context) => {
     // #512/#515 — the Rebel chose whether to reveal Show No Fear. On 'reveal',
     // place the base-system marker (scoring then begins next Refresh via

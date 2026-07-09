@@ -9,6 +9,7 @@ import { beginCombat, runCombat } from '../combat';
 import { notImplemented, log, pushNotice } from '../log';
 import { shuffle, nextInt, rollDie } from '../rng';
 import { leaderRecruitable, postDestroyedSystemCull, superlaserAftermath } from '../phases';
+import { requestChoice } from '../choices';
 
 /** Resolve a combat at `sysId` initiated by `attackerSide`. Used by mission
  *  effects that spawn units and then "resolve a combat" (Ignite Rebellion,
@@ -1510,22 +1511,41 @@ const messageFromHighCommand: EffectHandler = (G, ctx) => {
 };
 
 /** Stolen Intel: "Draw a probe card. Look at the Rebel hand of missions and
- *  discard one (not a starter)." Auto-picks the first non-starter Rebel
- *  mission in hand. Empire-side. */
+ *  discard one (not a starter)." RAW — the IMPERIAL player looks at the Rebel's
+ *  hand and CHOOSES which non-starter mission to discard (#526; it was
+ *  auto-picking the first one). With 2+ choices, post an Empire card-pick; with
+ *  0–1 there's nothing to choose, so resolve directly. Empire-side. */
 const stolenIntel: EffectHandler = (G, _ctx) => {
   M.drawProbe(G, 1);
   const hand = G.rebel.missionHand;
-  const idx = hand.findIndex((mid) => {
+  const targets = hand.filter((mid) => {
     const m = G.catalog.missions[mid];
     return m && !m.isStarting;
   });
-  if (idx < 0) {
+  if (targets.length === 0) {
     log(G, { kind: 'stolen-intel-no-target', side: 'Empire', payload: {} });
     return true;
   }
-  const [discarded] = hand.splice(idx, 1);
-  G.rebel.missionDiscard.push(discarded);
-  log(G, { kind: 'stolen-intel-discard', side: 'Empire', payload: { missionId: discarded } });
+  if (targets.length === 1) {
+    const i = hand.indexOf(targets[0]);
+    if (i >= 0) hand.splice(i, 1);
+    G.rebel.missionDiscard.push(targets[0]);
+    log(G, { kind: 'stolen-intel-discard', side: 'Empire', payload: { missionId: targets[0] } });
+    return true;
+  }
+  // 2+ candidates — the Empire looks at the Rebel hand and picks one to discard.
+  requestChoice(G, {
+    tag: 'stolen-intel-discard',
+    side: 'Empire',
+    domain: 'card',
+    prompt: 'Stolen Intel — discard a Rebel mission',
+    detail: "Look at the Rebel's hand and choose one non-starter mission to discard.",
+    candidates: targets.map((id) => ({ id, label: G.catalog.missions[id]?.name ?? id })),
+    min: 1,
+    max: 1,
+    submitLabel: 'Discard',
+  });
+  log(G, { kind: 'choice-request', side: 'Empire', payload: { kind: 'Choice', tag: 'stolen-intel-discard' } });
   return true;
 };
 
