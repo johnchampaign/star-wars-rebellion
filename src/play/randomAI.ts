@@ -1227,9 +1227,16 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         }
         // Overall outnumbered — scale the penalty by how lopsided it is.
         if (rebAll > 0 && empAll < rebAll) ts -= empAll < rebAll * 0.6 ? 24 : 12;
-        // Can't win the ground fight (and the defender has ground to Confront a
-        // leader / hold the system).
-        if (rebGround > 0 && empGround < rebGround) ts -= 14;
+        // Can't win the GROUND fight where the defender has ground: it doesn't
+        // take the system AND lets the Rebel play Confrontation to ELIMINATE the
+        // committed leader for good (#237/#479 — the AI marched Vader + ships and
+        // barely any ground into a Rebel ground stronghold). The old flat -14 was
+        // too weak against a big subjugation/search bonus, so a badly-outnumbered
+        // assault still went through. Scale it: a ground force that's less than
+        // HALF the defender's is a near-certain leader loss — penalize hard.
+        if (rebGround > 0 && empGround < rebGround) {
+          ts -= empGround < rebGround * 0.5 ? 30 : 14;
+        }
       }
       // Don't waste activations on Coruscant or systems already saturated.
       if (sysId === 'coruscant') ts -= 3;
