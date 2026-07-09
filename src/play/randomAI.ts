@@ -359,8 +359,18 @@ function missionSituationalAdjust(G: GameState, missionId: string, side: Side): 
     // safe (relocating a safe hidden base mostly just disrupts your own
     // position). User-reported gap: the AI never relocated under threat.
     if (missionId === 'rapid-mobilization') {
-      const threatened = G.rebelBaseRevealed || empireProximityToBase(G) > 0;
-      adj += threatened ? 20 : -6;
+      // Player reports #439/#445/#453: the AI mobilizes almost every turn / turn 1
+      // / just to stack ships on the base. Root cause — the old "threatened" flag
+      // fired on ANY Empire ground unit within 2 hops, so it was true almost every
+      // game (the Empire is everywhere) and RM always got +20. Split it properly:
+      //  - base REVEALED → imminent capture; escaping is the whole point (+20).
+      //  - hidden but a real ground force is MASSING near it (>=2 within 2 hops) →
+      //    a preemptive relocation is reasonable, but not urgent (+2).
+      //  - otherwise the hidden base is safe → don't burn the slot; the Rebel
+      //    should spend it on loyalty/economy (-14, net negative → planner skips).
+      if (G.rebelBaseRevealed) adj += 20;
+      else if (empireProximityToBase(G) >= 2) adj += 2;
+      else adj -= 14;
     }
     // ECONOMY (divergence harness): the AI Rebel gained loyalty 43% less per
     // round than the expert, cascading into 30% fewer builds, 16% fewer
