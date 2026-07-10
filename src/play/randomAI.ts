@@ -32,6 +32,7 @@ import { COST_OBJECTIVES, objectiveProgress, objectiveConditionMet, objectiveRep
 // pure from public state each turn. Env-gated (SWR_EMPIRE_PLANNER=1); off by
 // default → byte-identical to the pre-planner scorer.
 import { derivePlan, planSystemBonus, deployProximityScore, PLANNER_ENABLED, type StrikeFleetPlan } from './empirePlanner';
+import { log as logEvent } from '../engine/log';
 
 // AI randomness. Defaults to Math.random (live app), but the tournament
 // harness calls seedAI() so AI-vs-AI runs are reproducible per seed — without
@@ -2929,15 +2930,68 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       // so a high-score mission we can't actually reveal no longer forces a
       // pass while feasible lower-score actions go untried (player report #190).
       const commandActions = bestCommandAction(G, side);
+      // Planner state AT decision time, for the trace (recomputing after the
+      // action would describe the post-move board, not what the scorer saw).
+      const planAtDecision = side === 'Empire' && PLANNER_ENABLED ? derivePlan(G) : null;
+      let rejected = 0;
       for (const action of commandActions) {
-        if (action.kind === 'pass') return phases.pass(G, side).ok;
-        if (tryCommandAction(G, side, action)) return true;
+        if (action.kind === 'pass') {
+          const ok = phases.pass(G, side).ok;
+          if (ok) logCommandDecision(G, side, action, commandActions, rejected, planAtDecision);
+          return ok;
+        }
+        if (tryCommandAction(G, side, action)) {
+          logCommandDecision(G, side, action, commandActions, rejected, planAtDecision);
+          return true;
+        }
+        rejected++;
       }
-      return phases.pass(G, side).ok;
+      const fell = phases.pass(G, side).ok;
+      if (fell) logCommandDecision(G, side, { kind: 'pass', score: 0 }, commandActions, rejected, planAtDecision);
+      return fell;
     }
     default:
       return false;
   }
+}
+
+/** AI decision trace (log-format v2): one `ai-decision` event per heuristic
+ *  Command decision, recording what was chosen, the top-scored alternatives it
+ *  beat, how many higher-scored candidates the engine rejected first, and the
+ *  strike-fleet plan state at decision time (when the planner is enabled).
+ *  This is the "why" the logs never carried — diagnosing a bad Empire turn
+ *  becomes reading one line instead of reverse-engineering intent from moves.
+ *  Logged AFTER the chosen action executes (we only know the choice once the
+ *  engine accepts it), so its seq follows the action's own events.
+ *  NOTE: depth-2 override decisions (client AI Rebel) are not traced — they
+ *  bypass this path entirely via setCommandPolicyOverride. */
+function logCommandDecision(
+  G: GameState,
+  side: Side,
+  chosen: CommandAction,
+  all: CommandAction[],
+  rejected: number,
+  plan: StrikeFleetPlan | null,
+): void {
+  const r1 = (x: number) => Math.round(x * 10) / 10;
+  const brief = (a: CommandAction): Record<string, unknown> =>
+    a.kind === 'reveal'
+      ? { kind: a.kind, missionId: a.missionId, target: a.targetSystemId, score: r1(a.score) }
+      : a.kind === 'activate'
+        ? { kind: a.kind, leaderId: a.leaderId, target: a.targetSystemId, score: r1(a.score) }
+        : { kind: a.kind, score: r1(a.score) };
+  const payload: Record<string, unknown> = {
+    chose: brief(chosen),
+    alts: all.filter((a) => a !== chosen).slice(0, 5).map(brief),
+    rejected,
+  };
+  if (plan) {
+    payload.plan = {
+      mode: plan.mode, target: plan.targetSystemId,
+      needed: plan.neededGround, massed: plan.massedGround, staged: plan.stagedGround,
+    };
+  }
+  logEvent(G, { kind: 'ai-decision', side, payload });
 }
 
 /** Apply ONE non-pass Command action (reveal/activate) to G. Returns true if an
