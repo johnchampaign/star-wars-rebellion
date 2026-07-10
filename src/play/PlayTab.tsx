@@ -1373,6 +1373,17 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             you are {humanSide}
           </span>{' '}
           <span style={{ color: '#888' }}>(AI: {aiSide})</span>
+          {PLANNER_ENABLED && (
+            // Playtest attribution (#539): the strike-fleet planner flag is on
+            // (?planner=1). Visible so a playtest game is never mistaken for a
+            // baseline game; the flag is also stamped into the uploaded log.
+            <span title="Empire strike-fleet planner active (?planner=0 to turn off, then reload)" style={{
+              marginLeft: 8, padding: '1px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700,
+              letterSpacing: 0.5, background: '#3a1518', border: '1px solid #a33', color: '#f66',
+            }}>
+              EMPIRE PLANNER ON
+            </span>
+          )}
         </span>
         <span style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           <button className="tab-button" onClick={() => setShowUnitKey(true)} title="Show a key of every unit type — picture, name, tier shape and theater">
@@ -11159,6 +11170,9 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
     // play log; build says which deployed commit produced the behavior.
     gameId: (() => { try { return localStorage.getItem(LS_GAME_ID) || undefined; } catch { return undefined; } })(),
     build: buildId(),
+    // Whether the Empire strike-fleet planner (#539) was active — a triager
+    // needs to know if reported AI behavior came from the planner or baseline.
+    empirePlanner: PLANNER_ENABLED,
     // Recorded so a bug triager never has to infer it from the outcome.
     humanSide,
     aiSide,
@@ -11996,7 +12010,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
   const allGames = (() => {
     try {
       const raw = localStorage.getItem(LS_HISTORY);
-      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string }>) : [];
+      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean }>) : [];
     } catch { return []; }
   })();
   const games = allGames.filter((g) => !uploadedIds.has(g.encodedAt));
@@ -12034,7 +12048,10 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
           build: buildId(),
           // The client drives the AI Rebel with the depth-2 eval policy and the
           // AI Empire with the heuristic (see setCommandPolicyOverride wiring).
-          ai: aiSide ? { side: aiSide, policy: aiSide === 'Rebel' ? 'depth2-eval' : 'heuristic', empirePlanner: PLANNER_ENABLED } : undefined,
+          // empirePlanner comes from the archived record (stamped at game end);
+          // fall back to the current flag only for games archived before the
+          // stamp existed.
+          ai: aiSide ? { side: aiSide, policy: aiSide === 'Rebel' ? 'depth2-eval' : 'heuristic', empirePlanner: g.empirePlanner ?? PLANNER_ENABLED } : undefined,
         });
       } catch {
         return {
@@ -15484,7 +15501,7 @@ function RetrieveThePlansPickModal({
 function archiveCompletedGame(G: GameState): void {
   try {
     const raw = localStorage.getItem(LS_HISTORY);
-    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string }> =
+    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean }> =
       raw ? JSON.parse(raw) : [];
     const codec = canEncode(G) ? encode(G) : null;
     if (!codec) return;
@@ -15505,6 +15522,11 @@ function archiveCompletedGame(G: GameState): void {
       codec,
       humanSide,
       gameId,
+      // Stamped at game end (the flag is load-time-constant, so this is the
+      // value the whole game ran under). Uploads read it from the record — the
+      // flag may be toggled between playing and uploading, so the CURRENT
+      // value would misattribute playtest games when mining logs.
+      empirePlanner: PLANNER_ENABLED,
     });
     while (history.length > HISTORY_CAP) history.pop();
     // Per-turn snapshots (log-format v2) roughly doubled codec size, so a full

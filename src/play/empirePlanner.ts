@@ -58,12 +58,30 @@ export interface StrikeFleetPlan {
   stagedGround: number;
 }
 
-// ---- env gate (mirrors REBEL_BASE_KEEP; safe in the browser build) ----
+// ---- enable gate ----
+// Two independent switches, OR'd (each guarded so the other runtime is safe):
+//   - node harnesses (tournament/bench/fixtures): SWR_EMPIRE_PLANNER=1 env var,
+//     exactly as before.
+//   - browser (live playtest): visit any URL with ?planner=1 once — it persists
+//     to localStorage['swr-empire-planner'] so the flag survives reloads and new
+//     games; ?planner=0 clears it. Evaluated once at module load, so mid-game
+//     toggles don't half-apply: set the flag, THEN start/reload the game.
+// Default (no env, no flag): OFF — production behavior is byte-identical.
+// PlayTab shows a visible "EMPIRE PLANNER ON" badge and stamps the flag into
+// the archived game record, so playtest logs are attributable when mining.
 export const PLANNER_ENABLED: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-    return proc?.env?.SWR_EMPIRE_PLANNER === '1';
-  } catch { return false; }
+    if (proc?.env?.SWR_EMPIRE_PLANNER === '1') return true;
+  } catch { /* browser: no process */ }
+  try {
+    const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
+    const q = g.location?.search ? new URLSearchParams(g.location.search).get('planner') : null;
+    if (q === '1') g.localStorage?.setItem('swr-empire-planner', '1');
+    else if (q === '0') g.localStorage?.removeItem('swr-empire-planner');
+    return g.localStorage?.getItem('swr-empire-planner') === '1';
+  } catch { /* node without env flag, or storage blocked */ }
+  return false;
 })();
 
 // ---------------------------------------------------------------------------
