@@ -1677,17 +1677,25 @@ function YodaRerollPanel({ G, choice, onPersist }: {
     onPersist();
   };
   const holderName = G.catalog.leaders[choice.holderLeaderId]?.name ?? choice.holderLeaderId;
+  // Candidates include every non-direct-hit die (#540), so show each die's
+  // color+face — the player needs to see WHICH die a button rerolls.
+  const dice = G.pendingCombat?.pendingAttack?.dice ?? [];
   return (
     <div>
       <div style={{ fontSize: 13, marginBottom: 6 }}>
-        <b>Yoda reroll</b> ({holderName} is here) — pick one blank die to reroll, or skip.
+        <b>Yoda reroll</b> ({holderName} is here) — pick one of your dice to reroll
+        (a blank is the usual choice), or skip. Skipping keeps the ring available
+        for later this round.
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-        {choice.blankIndices.map((idx) => (
-          <button key={idx} onClick={() => submit(idx)} style={btn(SIDE_COLOR.Rebel)}>
-            Reroll die #{idx + 1}
-          </button>
-        ))}
+        {choice.blankIndices.map((idx) => {
+          const d = dice[idx];
+          return (
+            <button key={idx} onClick={() => submit(idx)} style={btn(SIDE_COLOR.Rebel)}>
+              Reroll #{idx + 1}{d ? ` — ${d.color} ${d.face}` : ''}
+            </button>
+          );
+        })}
         {/* Light fill + border so "Skip" reads as an obviously-clickable choice,
             not a disabled button (dark-grey-on-black looked dead — player #282,
             same issue as the retreat "Stay and fight" button in #66). */}

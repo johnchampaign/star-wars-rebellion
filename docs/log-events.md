@@ -45,7 +45,7 @@ formats to `{ meta, humanSide, winner, events, snapshots, final }`.
 2. Run `node scripts/gen-log-registry.mjs`, then edit your kind's Description.
 3. `node scripts/test-log-registry.mjs` must pass.
 
-## Kinds (256)
+## Kinds (257)
 
 | Kind | Description | Sample payload | Emitted from |
 |---|---|---|---|
@@ -304,4 +304,5 @@ formats to `{ meta, humanSide, winner, events, snapshots, final }`.
 | `wookie-guardian-applied` | — | `(not seen in corpus or sample game)` | src/engine/phases.ts |
 | `wookie-guardian-skipped` | — | `(not seen in corpus or sample game)` | src/engine/phases.ts |
 | `yoda-reroll` | — | `{"context":"mission","holder":"luke-skywalker-jedi","holderName":"Luke Skywalker (Jedi)","systemId":"sullust",` | src/engine/combat.ts, src/engine/phases.ts |
-| `yoda-skipped` | — | `{"context":"mission","systemId":"toydaria"}` | src/engine/phases.ts |
+| `yoda-reroll-unavailable` | Yoda ring reroll not offered — already used this game round (#540 messaging). | `(not seen in corpus or sample game)` | src/engine/combat.ts |
+| `yoda-skipped` | — | `{"context":"mission","systemId":"toydaria"}` | src/engine/combat.ts, src/engine/phases.ts |

@@ -37,7 +37,7 @@ const opts = (seed) => ({
 });
 
 // Try several seeds until one produces a YodaReroll prompt (needs a blank die).
-let sawPrompt = false, skipped = false, noReQueue = false;
+let sawPrompt = false, skipped = false, noReQueue = false, ringPreserved = false;
 for (let s = 600; s < 640 && !sawPrompt; s++) {
   const G = createGame(data, opts(s));
   G.map.systems['felucia'].units = [];
@@ -61,6 +61,9 @@ for (let s = 600; s < 640 && !sawPrompt; s++) {
       // After skipping, the very next pending choice must NOT be another
       // YodaReroll (that would be the infinite re-queue bug).
       noReQueue = !(G.pendingChoice?.kind === 'YodaReroll');
+      // #540: SKIPPING must NOT spend the once-per-GAME-round ring — players
+      // save it for the Death Star Plans roll later in the same round.
+      ringPreserved = G.yodaRerollUsedThisRound !== true;
       break;
     }
     // Auto-resolve other choices crudely to push the combat forward.
@@ -83,6 +86,7 @@ console.log('\n[ #305 Yoda/Luke combat-reroll skip ]');
 check('reached a Yoda reroll prompt', sawPrompt);
 check('skip resolved ok', skipped);
 check('skip did NOT re-queue another Yoda reroll', noReQueue);
+check('skip did NOT spend the game-round ring (#540)', ringPreserved);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

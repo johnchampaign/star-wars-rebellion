@@ -12778,21 +12778,28 @@ function YodaMissionRerollModal({
         boxShadow: '0 8px 32px rgba(128,220,120,0.4)',
       }}>
         <h3 style={{ color: '#80dc78', marginTop: 0 }}>
-          Yoda's training — reroll a blank die?
+          {choice.context === 'dsplans'
+            ? 'Yoda\'s training — reroll a die? Only ✶ (direct-hit) destroys the Death Star.'
+            : 'Yoda\'s training — reroll a blank die?'}
         </h3>
         <div style={{ color: '#cbc4b0', fontSize: 13, fontStyle: 'italic', marginBottom: 8 }}>
-          Yoda's training: once per round, reroll one blank die on a mission
-          or combat attack rolled by the leader bearing the Yoda ring.
+          Master Yoda ring: once per game round, when this leader is in the same
+          system as a mission or combat, you may reroll 1 of your dice.
         </div>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
           <b>{holderName}</b> (Yoda ring holder) is at <b>{sysName}</b>.
-          Both sides have now rolled. You may reroll one blank die on your
-          mission roll. The reroll is once per round, so skipping here
+          {choice.context === 'dsplans'
+            ? ' Your Death Star Plans roll has no direct-hit yet — you may reroll any one of its dice for another chance at the ✶.'
+            : ' Both sides have now rolled. You may reroll one blank die on your mission roll.'}
+          {' '}The reroll is once per game round, so skipping here
           preserves it for any combat or mission later this round.
         </div>
 
         {/* Both rolls + current standings, so the player decides the reroll
-            with full information (#121). */}
+            with full information (#121). Mission-only: a Death Star Plans roll
+            has no opposing roll or success race, so the block would just show
+            misleading zeros there (#540). */}
+        {choice.context !== 'dsplans' && (
         <div style={{
           background: '#1b1e24', border: '1px solid #333', borderRadius: 6,
           padding: '10px 12px', marginBottom: 12,
@@ -12829,6 +12836,7 @@ function YodaMissionRerollModal({
             </div>
           )}
         </div>
+        )}
 
         <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Your roll:</div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -12849,7 +12857,9 @@ function YodaMissionRerollModal({
                   cursor: rerollable ? 'pointer' : 'not-allowed',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 }}
-                title={rerollable ? `Reroll this ${face} die` : 'Not a blank — Yoda only rerolls blanks'}
+                title={rerollable ? `Reroll this ${face} die`
+                  : face === 'direct-hit' ? 'Direct hit — already the best face'
+                  : 'Not rerollable here (mission rerolls target blanks — every other mission face scores)'}
               >
                 <span>{glyph}</span>
                 <span style={{ fontSize: 9, fontWeight: 500, opacity: 0.8 }}>{face}</span>

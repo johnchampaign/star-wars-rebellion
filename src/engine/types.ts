@@ -1337,19 +1337,26 @@ export type ChoiceRequest =
       max: number;           // up to 4
     }
   | {
-      // Rebel may reroll one blank die via Yoda's ring (once per round, only
+      // Rebel may reroll one die via Yoda's ring (once per GAME round, only
       // if the Yoda holder is at this system). Posted after the dice roll
-      // but before tactic-card windows.
+      // but before tactic-card windows. Skipping does NOT spend the ring.
       kind: 'YodaReroll';
       side: Side;        // always 'Rebel' but kept for consistency
-      // 'combat' = re-roll a blank in pendingCombat.pendingAttack.dice
+      // 'combat' = re-roll a die in pendingCombat.pendingAttack.dice
       // 'mission' = re-roll a blank in the stashed mission roll
-      // 'dsplans' = re-roll a blank in the Death Star Plans objective roll
+      // 'dsplans' = re-roll a die in the Death Star Plans objective roll
       context: 'combat' | 'mission' | 'dsplans';
       // Combat-only: which theater (for the panel header).
       theater?: Theater;
       systemId: SystemId;
-      // Indices into the relevant faces array that are blank.
+      // Indices into the relevant faces array ELIGIBLE for reroll. The ring
+      // text is "reroll 1 of your dice" — no blank restriction (#540) — so:
+      //   combat:  every non-direct-hit die;
+      //   dsplans: every die (offer only fires on a not-yet-successful roll,
+      //            where every face is a dud);
+      //   mission: blanks only (every non-blank mission face SCORES, so a
+      //            non-blank reroll is strictly dominated — kept narrow).
+      // Field name kept for compatibility (it was historically blanks-only).
       blankIndices: number[];
       holderLeaderId: LeaderId;
       // Mission-only: snapshot of the roll's faces (for display in the

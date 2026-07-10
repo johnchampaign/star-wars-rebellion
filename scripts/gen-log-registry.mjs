@@ -100,6 +100,7 @@ const SEED_DESC = new Map(Object.entries({
   'pick-rebel-base': 'Rebel base location chosen at setup.',
   'rapid-mobilization-base-established': 'Base relocated via Rapid Mobilization.',
   'rapid-mobilization-old-base-probe-to-empire': 'Old base probe card given to the Empire after relocation (LTP p.12).',
+  'yoda-reroll-unavailable': 'Yoda ring reroll not offered — already used this game round (#540 messaging).',
   'build-queue': 'Unit added to the build queue.',
   'recruit-leader': 'Leader recruited.',
   'phase': 'Phase transition marker.',

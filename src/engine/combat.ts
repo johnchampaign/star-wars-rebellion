@@ -14,7 +14,7 @@ import type {
 import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
-import { log, logState } from './log';
+import { log, logState, pushNotice } from './log';
 import { registerChoice, requestChoice } from './choices';
 import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, applyDeferredHealAllocation, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal, dealAbilityFor, cinematicDealCandidates, destroyAbilityFor, cinematicDestroyCandidates, applyChosenDestroy, gainTriangleAbilityFor, cinematicTriangleGroundGainTypes } from './cinematicTactics';
 
@@ -947,12 +947,16 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
   }
 
   // 1) Yoda reroll — Rebel only, once per round, requires Yoda holder
-  //    at the system, requires at least one blank die.
+  //    at the system. Ring text: "you may reroll 1 of your dice" — there is
+  //    no blank restriction (#540). Any non-direct-hit die may be worth
+  //    rerolling (e.g. a black hit is unassignable when only red-health
+  //    enemies remain). Direct-hits are excluded: the strictly-best face,
+  //    rerolling one is never right, and excluding them guards misclicks.
   if (canQueueYodaReroll(G, c, pa.side)) {
-    const blanks = pa.dice
-      .map((d, i) => d.face === 'blank' ? i : -1)
+    const rerollable = pa.dice
+      .map((d, i) => d.face !== 'direct-hit' ? i : -1)
       .filter((i) => i >= 0);
-    if (blanks.length > 0) {
+    if (rerollable.length > 0) {
       const yodaHolder = findYodaHolder(G);
       if (yodaHolder) {
         pa.phase = 'awaitingYodaReroll';
@@ -960,10 +964,12 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
           kind: 'YodaReroll',
           side: 'Rebel', context: 'combat',
           theater: pa.theater, systemId: c.systemId,
-          blankIndices: blanks, holderLeaderId: yodaHolder,
+          blankIndices: rerollable, holderLeaderId: yodaHolder,
         };
         log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-          kind: 'YodaReroll', blanks: blanks.length,
+          kind: 'YodaReroll',
+          candidates: rerollable.length,
+          blanks: pa.dice.filter((d) => d.face === 'blank').length,
         }});
         return;
       }
@@ -1149,20 +1155,28 @@ export function resolveYodaReroll(
 
   if (rerollIndex !== null) {
     if (rerollIndex < 0 || rerollIndex >= pa.dice.length) return { ok: false, reason: 'bad-index' };
-    if (pa.dice[rerollIndex].face !== 'blank') return { ok: false, reason: 'not-blank' };
+    // Ring text allows rerolling ANY of your dice (#540) — only a direct-hit
+    // is refused (strictly-best face; a "reroll" of it is always a misclick).
+    if (pa.dice[rerollIndex].face === 'direct-hit') return { ok: false, reason: 'direct-hit-not-rerollable' };
+    const oldFace = pa.dice[rerollIndex].face;
     const fresh = rollDie(G.rng, pa.dice[rerollIndex].color);
     log(G, { kind: 'yoda-reroll', side: 'Rebel', payload: {
       holder: G.pendingChoice.holderLeaderId, systemId: c.systemId,
-      color: pa.dice[rerollIndex].color, oldFace: 'blank', newFace: fresh.face,
+      color: pa.dice[rerollIndex].color, oldFace, newFace: fresh.face,
     }});
     pa.dice[rerollIndex] = fresh;
+    // An actual reroll spends the once-per-GAME-round power.
+    G.yodaRerollUsedThisRound = true;
+  } else {
+    // SKIP does NOT spend the ring (#540): the card says "you may reroll" —
+    // declining isn't using, and players deliberately save it for the Death
+    // Star Plans roll later in the same combat. The combat-round flag below
+    // still prevents the #305 re-queue loop (this prompt won't re-post this
+    // combat round), but the game-round power stays available for the DSP
+    // window, a later combat round, or a mission.
+    log(G, { kind: 'yoda-skipped', side: 'Rebel', payload: { context: 'combat', systemId: c.systemId } });
   }
-  // Mark the once-per-round Yoda reroll as USED whether or not a die was
-  // rerolled — skipping still spends the opportunity. Without this the skip
-  // didn't set the flags, so advanceAttackToTactics re-queued the same prompt
-  // and the player could never get past it (#305).
   c.yodaRerollUsedRound = c.round;
-  G.yodaRerollUsedThisRound = true;
   G.pendingChoice = undefined;
   advanceAttackToTactics(G, c);
   return { ok: true };
@@ -3546,13 +3560,18 @@ export function resolveDeathStarPlansAttempt(
   return dsPlansOfferRerollsOrFinalize(G);
 }
 
-/** Whether the Yoda ring may reroll a blank on the current DSP roll. */
+/** Whether the Yoda ring may reroll a die on the current DSP roll. */
 function canQueueDsPlansYoda(G: GameState, d: NonNullable<GameState['dsPlansAttempt']>): boolean {
   if (G.yodaRerollUsedThisRound) return false;
   const holder = findYodaHolder(G);
   if (!holder) return false;
   if (!(G.rebel.leadersOnBoard[d.systemId] ?? []).includes(holder)) return false;
-  return d.faces.some((f) => f === 'blank');
+  // Only a direct-hit destroys the Death Star, so on a not-yet-successful roll
+  // EVERY die is a dud and rerollable — the ring text ("reroll 1 of your
+  // dice") has no blank restriction. The old blanks-only gate wrongly denied
+  // the reroll on e.g. hit/special/hit rolls (#540). If a direct-hit is
+  // already present the attempt has succeeded — nothing to fix, no offer.
+  return d.faces.length > 0 && !d.faces.includes('direct-hit');
 }
 
 /** Offer the next applicable DSP reroll/manipulation (One-in-a-Million, then
@@ -3573,20 +3592,41 @@ function dsPlansOfferRerollsOrFinalize(G: GameState): { ok: boolean; reason?: st
     }});
     return { ok: true };
   }
-  // Yoda reroll — reroll one blank toward a direct-hit (once per round).
+  // Yoda reroll — reroll one die toward the direct-hit the roll needs (once
+  // per game round). Every die is a candidate: the gate above guarantees no
+  // direct-hit is present, so all faces are duds on this roll (#540).
   if (!d.yodaOffered && canQueueDsPlansYoda(G, d)) {
     d.yodaOffered = true;
     const yoda = findYodaHolder(G)!;
-    const blanks = d.faces.map((f, i) => f === 'blank' ? i : -1).filter((i) => i >= 0);
+    const candidates = d.faces.map((_, i) => i);
     G.pendingChoice = {
       kind: 'YodaReroll', side: 'Rebel', context: 'dsplans',
-      systemId: d.systemId, blankIndices: blanks, holderLeaderId: yoda,
+      systemId: d.systemId, blankIndices: candidates, holderLeaderId: yoda,
       missionFaces: [...d.faces],
     };
     log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-      kind: 'YodaReroll', context: 'dsplans', blanks: blanks.length,
+      kind: 'YodaReroll', context: 'dsplans', candidates: candidates.length,
     }});
     return { ok: true };
+  }
+  // #540 messaging: the ring-holder is HERE but the once-per-game-round
+  // reroll was already spent — say so instead of silently offering nothing
+  // (the reporter read the silence as "I was not able to use Luke's Yoda
+  // ring on Death Star Plans").
+  if (!d.yodaOffered && G.yodaRerollUsedThisRound && !d.faces.includes('direct-hit')) {
+    const holder = findYodaHolder(G);
+    if (holder && (G.rebel.leadersOnBoard[d.systemId] ?? []).includes(holder)) {
+      log(G, { kind: 'yoda-reroll-unavailable', side: 'Rebel', payload: {
+        context: 'dsplans', reason: 'already-used-this-round', systemId: d.systemId,
+      }});
+      pushNotice(
+        G,
+        `yoda-spent-dsp-t${G.timeMarker}`,
+        'Yoda ring — no reroll on this Death Star Plans roll',
+        'The Yoda ring reroll was already used this game round (it\'s once per game round, and a combat reroll counts). It refreshes next game round — skipping a combat reroll offer does NOT spend it.',
+        'Rebel',
+      );
+    }
   }
   return finalizeDsPlans(G);
 }
@@ -3620,12 +3660,15 @@ export function resolveDsPlansYoda(G: GameState, blankIndex: number): { ok: bool
   if (!pc || pc.kind !== 'YodaReroll' || pc.context !== 'dsplans') return { ok: false, reason: 'no-pending' };
   const d = G.dsPlansAttempt;
   if (!d) return { ok: false, reason: 'no-dsplans-attempt' };
-  if (blankIndex >= 0 && d.faces[blankIndex] === 'blank') {
+  // Any die of the roll may be rerolled (#540) — only a direct-hit is refused
+  // (the gate never offers on a successful roll, so this is belt-and-braces).
+  if (blankIndex >= 0 && blankIndex < d.faces.length && d.faces[blankIndex] !== 'direct-hit') {
+    const oldFace = d.faces[blankIndex];
     const nf = rollDie(G.rng, 'red').face;
     d.faces[blankIndex] = nf;
     G.yodaRerollUsedThisRound = true;
     log(G, { kind: 'yoda-reroll', side: 'Rebel', payload: {
-      holder: pc.holderLeaderId, context: 'dsplans', index: blankIndex, newFace: nf, faces: [...d.faces],
+      holder: pc.holderLeaderId, context: 'dsplans', index: blankIndex, oldFace, newFace: nf, faces: [...d.faces],
     }});
   }
   G.pendingChoice = undefined;

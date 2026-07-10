@@ -1568,8 +1568,9 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'YodaReroll' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
     if (c.context === 'dsplans') {
-      // AI: reroll a blank toward the direct-hit the DSP roll needs, unless
-      // it already has one. (#186)
+      // AI: reroll a die toward the direct-hit the DSP roll needs. The offer
+      // only fires on a not-yet-successful roll (#540 gate), where every face
+      // is an equal dud — take the first candidate. (#186)
       const haveHit = (c.missionFaces ?? []).some((f) => f === 'direct-hit');
       const idx = haveHit ? -1 : (c.blankIndices[0] ?? -1);
       return combat.resolveDsPlansYoda(G, idx).ok;
@@ -3452,7 +3453,12 @@ function handleCombatAssignDamage(G: GameState): boolean {
 /** AI: always take the Yoda reroll if available. Reroll the first blank. */
 function handleYodaReroll(G: GameState): boolean {
   const c = G.pendingChoice as Extract<NonNullable<GameState['pendingChoice']>, { kind: 'YodaReroll' }>;
-  const idx = c.blankIndices.length > 0 ? c.blankIndices[0] : null;
+  // Candidates now include every non-direct-hit die (#540) — the AI only ever
+  // rerolls a BLANK (rerolling a hit/special is a downgrade risk). With no
+  // blank it skips, which no longer spends the ring, so it stays available
+  // for the Death Star Plans window or a later roll this game round.
+  const dice = G.pendingCombat?.pendingAttack?.dice ?? [];
+  const idx = c.blankIndices.find((i) => dice[i]?.face === 'blank') ?? null;
   const r = combat.resolveYodaReroll(G, idx);
   return r.ok;
 }
