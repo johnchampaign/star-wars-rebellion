@@ -28,6 +28,10 @@ import { missionTargets, missionRevealIsPointless, rebelLoyalSystemsInRegion } f
 // working now that the canonical definition lives in the engine (#304).
 export { missionRevealIsPointless } from '../engine/missionTargets';
 import { COST_OBJECTIVES, objectiveProgress, objectiveConditionMet, objectiveReputationGain } from '../engine/objectives';
+// Empire strike-fleet plan layer (#539) — a stateful delivery executor recomputed
+// pure from public state each turn. Env-gated (SWR_EMPIRE_PLANNER=1); off by
+// default → byte-identical to the pre-planner scorer.
+import { derivePlan, planSystemBonus, deployProximityScore, PLANNER_ENABLED, type StrikeFleetPlan } from './empirePlanner';
 
 // AI randomness. Defaults to Math.random (live app), but the tournament
 // harness calls seedAI() so AI-vs-AI runs are reproducible per seed — without
@@ -994,6 +998,12 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
     }
   }
   const suspectDist = suspectFocus ? bfsDistances(G, suspectFocus, 4) : null;
+  // Empire strike-fleet plan (#539): a stable, dominant aim point the per-system
+  // scoring defers to so consecutive activations compose into one multi-turn
+  // maneuver (co-locate carrier↔ground, march inward, dash). Pure + recomputed
+  // each turn; env-gated for A/B. null when disabled or no plan this turn.
+  const empirePlan: StrikeFleetPlan | null =
+    side === 'Empire' && PLANNER_ENABLED ? derivePlan(G) : null;
   const systemScore = new Map<string, number>();
   for (const sysId of allSystemIds) {
     let ts = 0;
@@ -1238,6 +1248,12 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
           ts -= empGround < rebGround * 0.5 ? 30 : 14;
         }
       }
+      // STRIKE-FLEET PLAN (#539): add the plan's dominant, stable bonus for
+      // activating this system (sink dash / rendezvous massing / carrier↔ground
+      // co-location / inward gradient). Only positive — never suppresses a
+      // hunting move (#446). Added BEFORE the universal troop guard below so an
+      // activation that can move nothing is still zeroed (no reject-then-pass).
+      if (empirePlan) ts += planSystemBonus(G, empirePlan, sysId);
       // Don't waste activations on Coruscant or systems already saturated.
       if (sysId === 'coruscant') ts -= 3;
     } else {
@@ -1955,7 +1971,11 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     let bestSys = c.candidates[0];
     let bestScore = -Infinity;
     for (const sysId of c.candidates) {
-      const s = scoreSystem(sysId);
+      // Strike-fleet plan (#539): once the base is revealed, pull the strongest
+      // ground (ATAT) and capital ships (SD/SSD) toward base-adjacent systems
+      // with transport, per the Empire's massing doctrine. Env-gated; 0 when off.
+      const s = scoreSystem(sysId)
+        + (side === 'Empire' ? deployProximityScore(G, sysId, c.typeId) : 0);
       if (s > bestScore) { bestScore = s; bestSys = sysId; }
     }
     return phases.resolveDeployUnitPick(G, bestSys).ok;

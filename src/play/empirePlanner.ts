@@ -1,0 +1,273 @@
+// Empire strike-fleet plan layer (#539) — the delivery executor.
+//
+// WHY THIS EXISTS
+// The AI Empire finds the Rebel base on schedule but cannot finish: at reveal
+// ~9.6 mobile ground is staged within 2 hops of the base, yet only ~5.1 is
+// DELIVERED to the assault (consolidation-bench). Capturing the base is a
+// multi-turn logistics sequence — co-locate a carrier with each stranded ground
+// stack, ferry it inward, mass the ground theater, then dash — and the greedy
+// per-action Command scorer has no memory, so consecutive activations never
+// compose into one maneuver. Ten scoring nudges were tried and came back inert
+// or negative because they lacked a STABLE, DOMINANT aim point that persists
+// across turns.
+//
+// SCOPE: POST-REVEAL ONLY. Firing a dominant aim point BEFORE the base is
+// revealed collapses the Empire (measured 60g A/B: win 55%→25%, base-found
+// 30→19) because it pulls every leader toward one suspect region and starves the
+// hunt — the net-negative "blanket pre-reveal ferry" the diagnosis warned about.
+// The delivery failure this fixes (#538: base revealed 3 turns, force never
+// composed) is post-reveal, so the planner leaves the hunt scoring untouched and
+// only engages once the base is exposed.
+//
+// WHAT THIS IS
+// `derivePlan(G)` is a PURE function recomputed deterministically from public
+// state each turn (no serialized plan state → codec/online schema untouched,
+// seeded A/Bs stay reproducible). It reports the force requirement and a mode
+// (STAGE → READY → STRIKE). `planSystemBonus` turns the plan into a dominant,
+// stable bonus the Command scorer adds when activating a system: carrier↔ground
+// co-location and an inward gradient toward the base every turn (so ground
+// actually reaches the assault), plus a force-gated dash in STRIKE.
+//
+// HARD CONSTRAINTS (violating these has measurably hurt Empire win rate before):
+//   - Never strip the last garrison unit from a subjugated system — the executor
+//     (tryCommandAction groundReserve) enforces this; the planner's accounting
+//     excludes that reserved ground so it never counts on it.
+//   - Never suppress lone-leader scouting moves (#446) — the planner only ADDS
+//     positive bonuses; it never zeroes or penalizes a hunting activation.
+//   - No under-strength rush: the base-dash bonus fires ONLY in STRIKE (force
+//     already sufficient); in STAGE/READY the plan adds nothing on the base
+//     itself, leaving the scorer's own readiness gate to decide when to assault.
+//
+// Env-gated (SWR_EMPIRE_PLANNER=1) for A/B. Off by default → byte-identical to
+// the pre-planner scorer.
+
+import type { GameState, SystemId } from '../engine/types';
+
+export type PlanMode = 'STAGE' | 'READY' | 'STRIKE';
+
+export interface StrikeFleetPlan {
+  mode: PlanMode;
+  /** The revealed Rebel base — the sink all delivery flows toward. */
+  targetSystemId: SystemId;
+  /** Ground defenders to clear + margin, in the ground theater. */
+  neededGround: number;
+  /** Empire free ground deliverable to the base in ONE activation (already at
+   *  the base + liftable from base-adjacent co-located carriers). */
+  massedGround: number;
+  /** Empire free mobile ground within 2 hops of the base (the staging pool). */
+  stagedGround: number;
+}
+
+// ---- env gate (mirrors REBEL_BASE_KEEP; safe in the browser build) ----
+export const PLANNER_ENABLED: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    return proc?.env?.SWR_EMPIRE_PLANNER === '1';
+  } catch { return false; }
+})();
+
+// ---------------------------------------------------------------------------
+// Unit helpers (mirror the scorer's classification exactly).
+// ---------------------------------------------------------------------------
+function isMobileGround(G: GameState, typeId: string): boolean {
+  const t = G.catalog.unitTypes[typeId];
+  return !!t && t.theater === 'ground' && t.class !== 'structure' && !t.transport.immobile;
+}
+function carrierCapacity(G: GameState, typeId: string): number {
+  const t = G.catalog.unitTypes[typeId];
+  return t && !t.transport.immobile ? (t.transport.capacity ?? 0) : 0;
+}
+
+function bfs(G: GameState, origin: SystemId, maxHops: number): Map<string, number> {
+  const dist = new Map<string, number>([[origin, 0]]);
+  let frontier = [origin];
+  for (let d = 1; d <= maxHops; d++) {
+    const next: string[] = [];
+    for (const s of frontier) {
+      for (const a of (G.catalog.adjacency[s] ?? [])) {
+        if (!dist.has(a)) { dist.set(a, d); next.push(a); }
+      }
+    }
+    frontier = next;
+  }
+  return dist;
+}
+
+/** Empire free mobile ground at a system — total mobile ground minus the one
+ *  garrison unit the executor reserves at a still-subjugated system (never
+ *  counted on, per the hard constraint). Post-reveal the executor commits every
+ *  ground unit, so nothing is reserved. */
+function freeGroundAt(G: GameState, sysId: SystemId): number {
+  const ss = G.map.systems[sysId];
+  if (!ss) return 0;
+  let g = 0;
+  for (const u of ss.units) if (u.side === 'Empire' && isMobileGround(G, u.typeId)) g++;
+  if (!G.rebelBaseRevealed && ss.subjugated && g > 0) g -= 1; // reserved garrison
+  return g;
+}
+function carrierCapacityAt(G: GameState, sysId: SystemId): number {
+  const ss = G.map.systems[sysId];
+  if (!ss) return 0;
+  let c = 0;
+  for (const u of ss.units) if (u.side === 'Empire') c += carrierCapacity(G, u.typeId);
+  return c;
+}
+function hasEmpireCarrierAt(G: GameState, sysId: SystemId): boolean {
+  return carrierCapacityAt(G, sysId) > 0;
+}
+
+// ---------------------------------------------------------------------------
+// derivePlan — the pure planner. Empire perspective. null = no plan this turn
+// (base not revealed, or no base id).
+// ---------------------------------------------------------------------------
+export function derivePlan(G: GameState): StrikeFleetPlan | null {
+  if (!G.rebelBaseRevealed || !G.rebelBaseSystemId) return null;
+  const target = G.rebelBaseSystemId as SystemId;
+
+  // Force requirement: real Rebel ground + structures at the base + a margin so
+  // we win the ground fight (matches the scorer's own assault gate). Structures
+  // must be destroyed to take the system even though they don't attack.
+  let rebelGround = 0;
+  for (const u of G.map.systems[target]?.units ?? []) {
+    const t = G.catalog.unitTypes[u.typeId];
+    if (u.side === 'Rebel' && t?.theater === 'ground') rebelGround++;
+  }
+  const neededGround = rebelGround + 2;
+
+  // Ground already at the base, plus what a co-located carrier on a base-adjacent
+  // system can lift in one activation → the one-activation deliverable force.
+  const groundAtBase = freeGroundAt(G, target);
+  let liftableAdjacent = 0;
+  for (const n of (G.catalog.adjacency[target] ?? [])) {
+    // A leader on the neighbor blocks pulling its units into the base.
+    if ((G.empire.leadersOnBoard[n] ?? []).length > 0) continue;
+    liftableAdjacent += Math.min(freeGroundAt(G, n), carrierCapacityAt(G, n));
+  }
+  const massedGround = groundAtBase + liftableAdjacent;
+
+  // Staging pool: free ground within 2 hops of the base.
+  const dist2 = bfs(G, target, 2);
+  let stagedGround = 0;
+  for (const sid of Object.keys(G.map.systems)) {
+    if (sid === target) continue;
+    if ((dist2.get(sid) ?? 99) <= 2) stagedGround += freeGroundAt(G, sid);
+  }
+  stagedGround += groundAtBase;
+
+  let mode: PlanMode;
+  if (massedGround >= neededGround) mode = 'STRIKE';      // dash: deliverable force wins the ground fight
+  else if (stagedGround >= neededGround) mode = 'READY';  // force is near — co-locate + mass it inward
+  else mode = 'STAGE';                                    // consolidate more force toward the base
+
+  return { mode, targetSystemId: target, neededGround, massedGround, stagedGround };
+}
+
+// ---------------------------------------------------------------------------
+// planSystemBonus — the dominant, stable bonus the Command scorer ADDS for
+// activating `sysId`. Only positive (never suppresses a hunting move). Returns 0
+// when the planner is disabled or plan is null (caller also guards).
+// ---------------------------------------------------------------------------
+
+// Dominant over the pre-planner staging/converge bonuses (+18 stage, +10/+5
+// gradient) so the SAME sink wins the activation turn after turn — that
+// stability is the point (a fixed aim composes into multi-turn logistics where a
+// thrashing per-turn nudge can't). Deliberately NOT larger than the scorer's own
+// base-converge readiness gate on the base system, which still governs the
+// assault trigger.
+const B_STRIKE_SINK = 30;   // STRIKE only: dash — activate the base to pull the massed ring in
+const B_COLOCATE = 30;      // co-locate a carrier with a stranded free-ground stack near the base
+const B_GRAD_1 = 18;        // one hop from the base, holding movable force → feed inward
+const B_GRAD_2 = 10;
+const B_GRAD_3 = 5;
+
+export function planSystemBonus(G: GameState, plan: StrikeFleetPlan, sysId: SystemId): number {
+  const { mode, targetSystemId } = plan;
+  const ss = G.map.systems[sysId];
+  if (!ss) return 0;
+
+  // A leader already here can't pull units out (activating moves nothing), so
+  // never reward parking a second leader on a feeder/co-location system.
+  const leaderHere = (G.empire.leadersOnBoard[sysId] ?? []).length > 0;
+
+  // 1) The base itself. STRIKE (force sufficient) → dash: activate the base and
+  //    pull the massed ring in. Otherwise 0 — the scorer's own converge gate
+  //    still triggers the every-round attrition assault the doctrine wants; the
+  //    planner never SUPPRESSES it (no deferral — you attack every round because
+  //    attrition, space-denial, and a ground-only win are all worthwhile), it
+  //    only ADDS the dash once the force is overwhelming.
+  if (sysId === targetSystemId) return mode === 'STRIKE' ? B_STRIKE_SINK : 0;
+
+  const dBase = bfs(G, targetSystemId, 3).get(sysId) ?? 99;
+  if (leaderHere || dBase < 1) return 0;
+
+  // 2) Carrier↔ground co-location (the crux): a base-adjacent-ish system holding
+  //    stranded free ground with NO local carrier but a carrier one hop away —
+  //    activating it pulls the carrier in so next turn the ground ferries to the
+  //    base. This is the step the greedy scorer kept skipping. ≤2 hops only, so
+  //    we never ferry force away from the hunt elsewhere.
+  if (dBase <= 2) {
+    const stranded = freeGroundAt(G, sysId);
+    if (stranded > 0 && !hasEmpireCarrierAt(G, sysId)) {
+      const carrierAdjacent = (G.catalog.adjacency[sysId] ?? []).some((a) => hasEmpireCarrierAt(G, a));
+      if (carrierAdjacent) return B_COLOCATE + Math.min(stranded, 4);
+    }
+  }
+
+  // 3) Inward gradient — feed movable force one hop closer to the base each turn.
+  //    Only where the Empire actually has units to flow inward; the scorer's
+  //    universal troop guard removes any activation that can't bring a unit.
+  if (ss.units.some((u) => u.side === 'Empire')) {
+    if (dBase === 1) return B_GRAD_1;
+    if (dBase === 2) return B_GRAD_2;
+    if (dBase === 3) return B_GRAD_3;
+  }
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
+// deployProximityScore — the BUILD-phase lever. Once the base is revealed, the
+// doctrine deploys the strongest GROUND (ATAT) and CAPITAL ships (SD/SSD — they
+// win the space fight AND carry ground) ADJACENT to the base so they join the
+// assault this round, and only where there's transport to carry ground in. The
+// AI's default deploy placement is transport-aware but base-blind; this adds the
+// base pull. Returns a bonus the DeployUnitPick handler adds to its per-system
+// score. 0 when disabled, base hidden, or the system isn't near the base.
+// ---------------------------------------------------------------------------
+function spareCapacityAt(G: GameState, sysId: SystemId): number {
+  const ss = sysId === 'rebel-base-space' ? undefined : G.map.systems[sysId];
+  if (!ss) return 0;
+  let capacity = 0, needs = 0;
+  for (const u of ss.units) {
+    if (u.side !== 'Empire') continue;
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t) continue;
+    if (t.transport.capacity > 0) capacity += t.transport.capacity;
+    else if ((t.theater === 'ground' && t.class !== 'structure') || t.transport.restriction) needs++;
+  }
+  return capacity - needs;
+}
+
+export function deployProximityScore(G: GameState, sysId: SystemId, typeId: string): number {
+  if (!PLANNER_ENABLED) return 0;
+  if (!G.rebelBaseRevealed || !G.rebelBaseSystemId) return 0;
+  const t = G.catalog.unitTypes[typeId];
+  if (!t) return 0;
+  const dBase = bfs(G, G.rebelBaseSystemId as SystemId, 2).get(sysId);
+  if (dBase == null || dBase < 1 || dBase > 2) return 0; // only the base ring / 2-hop
+  const prox = dBase === 1 ? 1 : 0.4;
+  const strength = (t.attack.red ?? 0) + (t.attack.black ?? 0) + (t.attack.green ?? 0) + (t.health?.value ?? 0);
+
+  // Capital / transport-provider (SD, SSD, Death Star, carrier): always wants to
+  // be adjacent — it wins space (denying Rebel deploys) and ferries ground in.
+  if (!t.transport.immobile && t.transport.capacity > 0) {
+    return prox * (12 + strength);
+  }
+  // Ground (ATAT strongest): adjacent to the base is ideal, BUT only if there's
+  // transport capacity here to actually carry it into the assault — deploying a
+  // strong ground unit where nothing can lift it just strands it (doctrine).
+  if (t.theater === 'ground' && t.class !== 'structure' && !t.transport.immobile) {
+    if (spareCapacityAt(G, sysId) <= 0) return 0;
+    return prox * (8 + strength);
+  }
+  return 0; // fighters etc. — no special base pull (they can't take the ground)
+}
