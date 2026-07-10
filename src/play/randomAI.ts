@@ -3048,6 +3048,13 @@ export function tryCommandAction(G: GameState, side: Side, action: CommandAction
         // "activated Palpatine but moved no units"). If there's an enemy at the
         // target a leaderless move still triggers a worthwhile fight; otherwise
         // pass and keep the leader available.
+        //
+        // NOTE (#446): a bare leader walking into an enemy-held base-CANDIDATE
+        // system looks wasteful, but it isn't — a leader's arrival REVEALS the
+        // Rebel base if it's hiding there, which is the Empire's whole win
+        // condition. An earlier attempt to also require own combat units at the
+        // target dropped the Empire self-play win rate 43%→30% (it stopped
+        // finding the base), so the enemy-at-target exception stands as-is.
         if (orders.length === 0) {
           const tss = G.map.systems[action.targetSystemId];
           const enemyAtTarget = tss?.units.some((u) => u.side !== side) ?? false;
