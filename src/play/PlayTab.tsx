@@ -1020,12 +1020,17 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // The skip keeps the card in hand; the engine continues normally.
   // #448: the silent skip made the card look unusable to players who never
   // noticed the toggle ("I wasn't allowed to use my card — no prompt came up"),
-  // so the FIRST auto-skip each session surfaces a dismissible hint pointing
-  // at the toggle. Subsequent skips stay silent, preserving the #340 intent.
+  // so an auto-skip surfaces a dismissible hint pointing at the toggle.
+  // #543/#544: a once-per-session hint was too easy to miss — a player who
+  // dismissed it early then attacked the Death Star (the signature One in a
+  // Million moment) got no reminder. Now the hint re-appears on EVERY auto-skip
+  // (still nothing when the card isn't usable, so it's not spammy — the offer
+  // only fires with Luke/Wedge present + the card in hand), and it carries an
+  // "Arm it now" action so the player can turn it on without hunting for the
+  // toggle. The arm-toggle DESIGN (#340) is unchanged.
   const [oiamSkipHint, setOiamSkipHint] = useState(false);
-  const oiamHintShownRef = useRef(false);
   useEffect(() => {
-    if (online || oiamArmed) return;
+    if (online || oiamArmed) { setOiamSkipHint(false); return; }
     const Gn = gameRef.current;
     const pc = Gn?.pendingChoice;
     if (!Gn || !pc || pc.kind !== 'OneInAMillionOffer' || pc.side !== humanSide) return;
@@ -1034,7 +1039,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       : phases.resolveOneInAMillionMission(Gn, []);
     // Only advance on a clean skip — never re-run a failing resolve (would loop).
     if (r.ok) {
-      if (!oiamHintShownRef.current) { oiamHintShownRef.current = true; setOiamSkipHint(true); }
+      setOiamSkipHint(true); // re-show on every skip (#543/#544)
       persist(); refresh();
     }
     else console.warn('[oiam] auto-skip failed:', r.reason);
@@ -1457,11 +1462,16 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
               display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
             }}>
               <span>
-                ⚡ A <b>One in a Million</b> re-roll offer was just skipped because the toggle above is
-                {' '}<b>off</b>. Flip it ON before a roll you care about to be asked. (The card stays in your hand.)
+                ⚡ Your <b>One in a Million</b> card could have set dice on that roll, but it's
+                {' '}<b>off</b> so it was skipped (the card is still in your hand). Turn it on for the
+                {' '}rolls you want to use it on — e.g. attacking the Death Star.
               </span>
-              <button className="tab-button" style={{ fontSize: 11, padding: '2px 8px' }}
-                onClick={() => setOiamSkipHint(false)}>Got it</button>
+              <span style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                <button className="tab-button" style={{ fontSize: 11, padding: '2px 8px', borderColor: '#aae0ff', color: '#aae0ff', fontWeight: 700 }}
+                  onClick={() => { setOiamArmed(true); setOiamSkipHint(false); }}>Arm it now</button>
+                <button className="tab-button" style={{ fontSize: 11, padding: '2px 8px' }}
+                  onClick={() => setOiamSkipHint(false)}>Dismiss</button>
+              </span>
             </div>
           )}
           {G.phase === 'Setup' && (
