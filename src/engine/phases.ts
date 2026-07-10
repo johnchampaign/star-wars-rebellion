@@ -6996,7 +6996,15 @@ function revealArmedActionCard(G: GameState, armed: ArmedActionCard): void {
         }});
         break;
       }
-      M.captureLeader(G, rebelHere, 'captured');
+      // Defer the auto-rescue: Sweep the Area's whole point is to relocate the
+      // captured leader to the closest Imperial-unit system so the capture
+      // sticks. The reveal system frequently has no Imperial units (the card
+      // arms when a Rebel leader arrives), so an immediate rescue would free the
+      // leader BEFORE the relocate ran — the capture evaporated and a phantom
+      // "relocate" was still logged (player report #536). Mirror Collect Bounty:
+      // capture with the rescue deferred, relocate, THEN run the rescue check at
+      // the destination.
+      M.captureLeader(G, rebelHere, 'captured', { deferAutoRescue: true });
       // Move to closest Imperial-unit-system. BFS over adjacency.
       const dest = closestImperialUnitSystem(G, sys);
       if (dest && dest !== sys) {
@@ -7006,6 +7014,11 @@ function revealArmedActionCard(G: GameState, armed: ArmedActionCard): void {
           leaderId: rebelHere, from: sys, to: dest,
         }});
       }
+      // Resolve the deferred rescue at the leader's final location: dest has
+      // Imperial units so the leader stays held; if no Imperial-unit system was
+      // reachable (dest === null), the capture system has none either, so the
+      // leader is correctly rescued now (rr p.3).
+      M.maybeAutoRescue(G, dest ?? sys);
       void ss;
       break;
     }

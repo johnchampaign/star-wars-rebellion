@@ -6148,12 +6148,20 @@ function LeadStrikeTeamUnitsModal({ G, choice, onSubmit }: {
     side: Side;
     targetSystemId: string;
     availableUnitIds: string[];
+    sourceSystemId?: string;
     max: number;
   };
   onSubmit: (unitIds: string[]) => void;
 }) {
   const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
-  const baseUnits = G.map.rebelBaseSpace.units;
+  // Read units from the recorded source container — the Rebel Base space, or
+  // the base's system once revealed (RR p.11). Reading rebelBaseSpace
+  // unconditionally showed an empty list after reveal, so the player couldn't
+  // deselect and the default 4 units moved with no real choice (report #537).
+  const sourceContainer = !choice.sourceSystemId || choice.sourceSystemId === 'rebel-base-space'
+    ? G.map.rebelBaseSpace
+    : G.map.systems[choice.sourceSystemId];
+  const baseUnits = sourceContainer?.units ?? [];
   const units = choice.availableUnitIds
     .map((uid) => baseUnits.find((u) => u.instanceId === uid))
     .filter((u): u is NonNullable<typeof u> => !!u);
