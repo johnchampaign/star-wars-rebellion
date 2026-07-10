@@ -62,9 +62,19 @@ export default function Lobby({ onClose }: { onClose?: () => void }) {
 
   return (
     <div style={{ maxWidth: 760, margin: '40px auto', padding: 24, fontFamily: 'system-ui, sans-serif', color: '#e8e6f2' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
         <h2 style={{ marginTop: 0 }}>Star Wars: Rebellion — Online <span style={{ color: '#8a7' }}>(preview)</span></h2>
-        {onClose && <button onClick={onClose} className="tab-button">Back to single-player</button>}
+        <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+          <a
+            href="https://games-hub-5vo.pages.dev/leaderboard?game=rebellion"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="tab-button"
+          >
+            Leaderboard
+          </a>
+          {onClose && <button onClick={onClose} className="tab-button">Back to single-player</button>}
+        </div>
       </div>
       <p style={{ color: '#aab' }}>
         Asynchronous two-player game. Create a game, then send each side's invite link to the
