@@ -10747,6 +10747,38 @@ function TurnTrack({ G }: { G: GameState }) {
 // ============================================================================
 
 function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active: boolean) => void }) {
+  // Cinematic Combat (RoE) replaces the shared 15-card Space/Ground tactic decks
+  // entirely with four faction-specific decks of 8 advanced cards each (combat.ts
+  // never draws the base decks when cinematic). Show the decks that are ACTUALLY
+  // in play, not the dead base ones (reporter: "it always shows 15 cards per
+  // space/ground deck rather than separate tactics decks per side of 8 cards").
+  const cinematic = !!G.expansion?.cinematicCombat;
+  const cinCount = (side: 'Rebel' | 'Empire', theater: 'space' | 'ground') => {
+    const f = side === 'Rebel' ? G.rebel : G.empire;
+    const discard = new Set(f.cinematicTacticDiscard ?? []);
+    const eliminated = new Set(f.cinematicTacticEliminated ?? []);
+    let total = 0, avail = 0;
+    for (const t of Object.values(G.catalog.tactics)) {
+      if (!t.cinematic || t.side !== side || t.theater !== theater) continue;
+      total++;
+      if (!discard.has(t.id) && !eliminated.has(t.id)) avail++;
+    }
+    return { avail, used: total - avail };
+  };
+  const tacticDecks: Array<{ label: string; count: number; color: string; subtle?: string }> = cinematic
+    ? ([
+        ['Rebel space tactics',  'Rebel',  'space',  '#4fc3f7'],
+        ['Rebel ground tactics', 'Rebel',  'ground', '#4fc3f7'],
+        ['Empire space tactics', 'Empire', 'space',  '#ff8a80'],
+        ['Empire ground tactics','Empire', 'ground', '#ff8a80'],
+      ] as const).map(([label, side, theater, color]) => {
+        const { avail, used } = cinCount(side, theater);
+        return { label, count: avail, color, subtle: used ? `(${used} used)` : undefined };
+      })
+    : [
+        { label: 'Space tactic deck',  count: G.spaceTacticDeck.length,  color: '#80dc78', subtle: G.spaceTacticDiscard.length ? `(${G.spaceTacticDiscard.length} disc.)` : undefined },
+        { label: 'Ground tactic deck', count: G.groundTacticDeck.length, color: '#80dc78', subtle: G.groundTacticDiscard.length ? `(${G.groundTacticDiscard.length} disc.)` : undefined },
+      ];
   const decks: Array<{ label: string; count: number; color: string; subtle?: string; isProbe?: boolean }> = [
     { label: 'Probe deck',           count: G.probeDeck.length,                color: '#7986cb', subtle: G.empire.probeHand?.length ? `+${G.empire.probeHand.length} drawn` : undefined, isProbe: true },
     { label: 'Objective deck',       count: G.rebel.objectiveDeck?.length ?? 0, color: '#aed581', subtle: G.rebel.objectiveHand?.length ? `+${G.rebel.objectiveHand.length} in hand` : undefined },
@@ -10755,14 +10787,13 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
     { label: 'Empire project deck',  count: G.empire.projectDeck?.length ?? 0,  color: '#ff8a80', subtle: 'projects' },
     { label: 'Rebel action deck',    count: G.rebel.actionDeck.length,          color: '#4fc3f7', subtle: 'recruit' },
     { label: 'Empire action deck',   count: G.empire.actionDeck.length,         color: '#ff8a80', subtle: 'recruit' },
-    { label: 'Space tactic deck',    count: G.spaceTacticDeck.length,           color: '#80dc78', subtle: G.spaceTacticDiscard.length ? `(${G.spaceTacticDiscard.length} disc.)` : undefined },
-    { label: 'Ground tactic deck',   count: G.groundTacticDeck.length,          color: '#80dc78', subtle: G.groundTacticDiscard.length ? `(${G.groundTacticDiscard.length} disc.)` : undefined },
+    ...tacticDecks,
   ];
 
   return (
     <div style={{
       background: '#15171c', borderRadius: 4, padding: 10, marginBottom: 10,
-      display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 6,
+      display: 'grid', gridTemplateColumns: `repeat(${decks.length}, 1fr)`, gap: 6,
     }}>
       {decks.map((d) => (
         <div
