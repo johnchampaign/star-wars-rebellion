@@ -1745,6 +1745,25 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       (a, b) => (G.catalog.objectives[b]?.reputation ?? 0) - (G.catalog.objectives[a]?.reputation ?? 0)
     )[0];
     if (free.length === 0 && pc.allowDecline && pc.window === 'refresh') {
+      // The Long War exception (#478): "discard 2 other objective cards" for
+      // 1 reputation exists precisely for a hand clogged with dead objectives
+      // — the Rebel's win track IS reputation. The blanket never-pay rule made
+      // it a permanently dead card (the AI declined every refresh while
+      // sitting on 6 unscorable objectives). Play it when the hand is big
+      // (4+) and holds at least 2 EXPENDABLE cards — condition not currently
+      // met and not a Death Star Plans (the hold-anyway card) — so the cost
+      // is paid entirely with dead weight. The 'the-long-war-discard'
+      // heuristic then picks those same low-value cards to toss.
+      if (pc.legal.includes('the-long-war-1')) {
+        const hand = G.rebel.objectiveHand ?? [];
+        const expendable = hand.filter((id) =>
+          id !== 'the-long-war-1'
+          && !id.startsWith('death-star-plans')
+          && !engineTry(() => objectiveConditionMet(G, id), false));
+        if (hand.length >= 4 && expendable.length >= 2) {
+          return phases.resolvePlayObjectivePick(G, 'the-long-war-1').ok;
+        }
+      }
       return phases.resolvePlayObjectivePick(G, '').ok;
     }
     return pc.window === 'combat'
