@@ -21,12 +21,17 @@ interface Env {
 }
 
 interface GameRecord {
-  encodedAt: string;
+  // v1 (legacy) records carry a raw codec + flat metadata; v2 records
+  // (schemaVersion === 2) are complete containers built by src/play/logFormat.ts
+  // ({ gameId, meta, timeline, keyframes, final }) and are committed as-is.
+  schemaVersion?: number;
+  encodedAt?: string;
   winner?: string;
   winReason?: string;
-  codec: string;
+  codec?: string;
   inProgress?: boolean;
   source?: string;
+  [key: string]: unknown;
 }
 
 interface UploadBody {
@@ -59,7 +64,13 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
 
   for (const game of games) {
     const hash = await sha256Short(JSON.stringify(game));
-    const payload = JSON.stringify({ schemaVersion: 1, hash, game }, null, 2);
+    // Log-format v2 records (built client-side by src/play/logFormat.ts) are
+    // already a complete top-level container — commit them as-is with the hash
+    // stamped in. Anything else is a legacy v1 record and keeps the old wrapper.
+    const isV2 = (game as { schemaVersion?: unknown }).schemaVersion === 2;
+    const payload = isV2
+      ? JSON.stringify({ ...(game as Record<string, unknown>), hash }, null, 2)
+      : JSON.stringify({ schemaVersion: 1, hash, game }, null, 2);
     try {
       const repoPath = `logs/${hash}.json`;
       const putResp = await fetch(`https://api.github.com/repos/${repo}/contents/${repoPath}`, {

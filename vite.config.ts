@@ -265,7 +265,11 @@ function devPlugin() {
 
           for (const game of games) {
             const hash = hashOf(game);
-            const payload = JSON.stringify({ schemaVersion: 1, hash, game }, null, 2);
+            // Mirror functions/api/upload-logs.ts: v2 records are complete
+            // containers (log-format v2) and are committed as-is with the hash.
+            const payload = game?.schemaVersion === 2
+              ? JSON.stringify({ ...game, hash }, null, 2)
+              : JSON.stringify({ schemaVersion: 1, hash, game }, null, 2);
             // Always write locally first.
             try {
               writeFileSync(resolve(logsDir, `${hash}.json`), payload);

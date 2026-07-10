@@ -8,6 +8,8 @@ import { UNIT_IMAGE, groupByType, groupTypeIds, getUnitStyle, setUnitStyle, next
 import { capturePageScreenshot, screenshotAutoCaptureSafe } from './screenshot';
 import { missionTargets, missionLeaderTargets, missionRevealIsPointless } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce, setCommandPolicyOverride } from './randomAI';
+import { buildV2GameLog, buildId } from './logFormat';
+import { PLANNER_ENABLED } from './empirePlanner';
 import { evalCommandStepDeep } from './boardEval';
 import { recordPlay } from 'digital-boardgame-framework';
 import { TERRITORIES, territoryFill } from '../data/territories';
@@ -85,6 +87,9 @@ function pointInPoly(p: [number, number], poly: [number, number][]): boolean {
 
 const LS_CURRENT = 'rebellion-game-current';
 const LS_HISTORY = 'rebellion-games-history';
+// Per-game id minted at new-game time (log-format v2) — the join key that
+// links this game's play log, its problem reports, and its save.
+const LS_GAME_ID = 'rebellion-game-id';
 // encodedAt ids of completed games already uploaded, so we don't re-send them
 // (player report #125 — uploads kept re-submitting old, already-stored logs).
 const LS_UPLOADED = 'rebellion-uploaded-logs';
@@ -113,7 +118,10 @@ function getReporterId(): string {
     return 'anon-' + Math.random().toString(36).slice(2, 10);
   }
 }
-const HISTORY_CAP = 20;
+// Was 20; per-turn board snapshots (log-format v2) grew a game's codec to
+// ~700KB, and 20 of those would blow the ~5MB localStorage quota every time.
+// archiveCompletedGame also sheds oldest-first on quota errors as a backstop.
+const HISTORY_CAP = 10;
 
 function sideColor(s: Side): string {
   return s === 'Rebel' ? '#aae0ff' : '#ffaaaa';
@@ -867,6 +875,12 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     setInfoNoticeQueue([]);
     // Honor the player's side preference (resolved above as newHuman).
     localStorage.setItem(LS_HUMAN_SIDE, newHuman);
+    // Mint the per-game id (log-format v2): links this game's play log,
+    // problem reports, and save. Client-side on purpose — the engine stays
+    // identity-free (deterministic, codec untouched).
+    try {
+      localStorage.setItem(LS_GAME_ID, `g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
+    } catch { /* quota/private mode — id is best-effort */ }
     setHumanSide(newHuman);
     persist();
     refresh();
@@ -11131,6 +11145,10 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
     userAgent: navigator.userAgent,
     reporterId: getReporterId(),
     description,
+    // Log-format v2 join keys: gameId ties this report to the game's uploaded
+    // play log; build says which deployed commit produced the behavior.
+    gameId: (() => { try { return localStorage.getItem(LS_GAME_ID) || undefined; } catch { return undefined; } })(),
+    build: buildId(),
     // Recorded so a bug triager never has to infer it from the outcome.
     humanSide,
     aiSide,
@@ -11968,7 +11986,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
   const allGames = (() => {
     try {
       const raw = localStorage.getItem(LS_HISTORY);
-      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string }>) : [];
+      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string }>) : [];
     } catch { return []; }
   })();
   const games = allGames.filter((g) => !uploadedIds.has(g.encodedAt));
@@ -11990,16 +12008,34 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
   const onConfirm = async () => {
     setConfirmed(true);
     setStatus({ kind: 'uploading' });
+    // Completed games upload as log-format v2 (timeline + keyframes + meta —
+    // built client-side from the same codec; see src/play/logFormat.ts). The
+    // in-progress record stays a raw v1 codec: it may be mid-turn and isn't
+    // worth restructuring. A v2 build failure falls back to the v1 record so
+    // an odd archived game never blocks the whole upload.
+    const v2 = (g: typeof games[number]) => {
+      const aiSide = g.humanSide === 'Rebel' ? 'Empire' : g.humanSide === 'Empire' ? 'Rebel' : undefined;
+      try {
+        return buildV2GameLog(g.codec, {
+          gameId: g.gameId,
+          humanSide: g.humanSide,
+          source: 'browser-game-archive',
+          encodedAt: g.encodedAt,
+          build: buildId(),
+          // The client drives the AI Rebel with the depth-2 eval policy and the
+          // AI Empire with the heuristic (see setCommandPolicyOverride wiring).
+          ai: aiSide ? { side: aiSide, policy: aiSide === 'Rebel' ? 'depth2-eval' : 'heuristic', empirePlanner: PLANNER_ENABLED } : undefined,
+        });
+      } catch {
+        return {
+          encodedAt: g.encodedAt, winner: g.winner, winReason: g.winReason,
+          humanSide: g.humanSide, codec: g.codec, source: 'browser-game-archive',
+        };
+      }
+    };
     const payload = {
       games: [
-        ...games.map((g) => ({
-          encodedAt: g.encodedAt,
-          winner: g.winner,
-          winReason: g.winReason,
-          humanSide: g.humanSide,
-          codec: g.codec,
-          source: 'browser-game-archive',
-        })),
+        ...games.map(v2),
         ...(inProgressCodec ? [{
           encodedAt: new Date().toISOString(),
           inProgress: true,
@@ -15428,7 +15464,7 @@ function RetrieveThePlansPickModal({
 function archiveCompletedGame(G: GameState): void {
   try {
     const raw = localStorage.getItem(LS_HISTORY);
-    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string }> =
+    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string }> =
       raw ? JSON.parse(raw) : [];
     const codec = canEncode(G) ? encode(G) : null;
     if (!codec) return;
@@ -15439,15 +15475,25 @@ function archiveCompletedGame(G: GameState): void {
     const humanSide = (() => {
       try { return localStorage.getItem(LS_HUMAN_SIDE) || undefined; } catch { return undefined; }
     })();
+    const gameId = (() => {
+      try { return localStorage.getItem(LS_GAME_ID) || undefined; } catch { return undefined; }
+    })();
     history.unshift({
       encodedAt: new Date().toISOString(),
       winner: G.winner,
       winReason: G.winReason,
       codec,
       humanSide,
+      gameId,
     });
     while (history.length > HISTORY_CAP) history.pop();
-    localStorage.setItem(LS_HISTORY, JSON.stringify(history));
+    // Per-turn snapshots (log-format v2) roughly doubled codec size, so a full
+    // history can brush the localStorage quota. On failure, shed oldest games
+    // until it fits — better a short archive than losing the latest game.
+    for (let keep = history.length; keep >= 1; keep--) {
+      try { localStorage.setItem(LS_HISTORY, JSON.stringify(history.slice(0, keep))); return; }
+      catch { /* quota — retry smaller */ }
+    }
   } catch (e) {
     console.warn('archive failed', e);
   }
