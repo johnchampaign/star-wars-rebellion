@@ -194,7 +194,31 @@ export function resetEmpireSearchedForBaseMove(G: GameState): void {
  *  is not a pausable context, and the auto-result already matches what the owner
  *  would choose. Splices directly to avoid re-entering invariants. */
 const GROUND_TIER_RANK: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+// While > 0, the per-move destroyed-system cull is suppressed: a multi-unit move
+// order is executed one unit at a time (each moveUnit re-runs the invariants), so
+// moving a CARRIER out of a destroyed system first would strand — and destroy —
+// the cargo still queued to move with it in the SAME order (player report #532:
+// the Death Star left Kashyyyk and the 3 ground units it was carrying to the same
+// destination were culled the instant it stepped out). RAW (RR "Destroyed
+// Systems") only culls ground that exceeds transport capacity once the move
+// resolves — so we batch the cull to the end of the order. See
+// withDeferredDestroyedCull.
+let deferDestroyedCullDepth = 0;
+/** Execute a batch of unit moves (`fn`) with the destroyed-system transport cull
+ *  suppressed, then run it ONCE over `affected`. Use around any multi-unit move
+ *  order so a carrier and its cargo can leave a destroyed system together without
+ *  the cargo being culled mid-order (#532). Re-entrant (depth-counted). */
+export function withDeferredDestroyedCull<T>(G: GameState, affected: SystemId[] | undefined, fn: () => T): T {
+  deferDestroyedCullDepth++;
+  try {
+    return fn();
+  } finally {
+    deferDestroyedCullDepth--;
+    if (deferDestroyedCullDepth === 0) cullOverTransportInDestroyed(G, affected);
+  }
+}
 function cullOverTransportInDestroyed(G: GameState, affected?: SystemId[]): void {
+  if (deferDestroyedCullDepth > 0) return; // batched — runs once at order's end
   const ids = affected ?? Object.keys(G.map.systems);
   for (const id of ids) {
     const ss = G.map.systems[id];

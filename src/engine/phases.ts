@@ -1073,20 +1073,27 @@ export function activateSystem(
   // activation report surfaced to both players). Capture each unit's type from
   // the source BEFORE moving it (afterward it's gone from the source system).
   const reportMoves: { fromSystemId: SystemId; units: { typeId: UnitTypeId; count: number }[] }[] = [];
-  for (const order of moveOrders) {
-    const counts = new Map<UnitTypeId, number>();
-    for (const uid of order.unitInstanceIds) {
-      const inst = G.map.systems[order.fromSystemId]?.units.find((u) => u.instanceId === uid);
-      if (inst) counts.set(inst.typeId, (counts.get(inst.typeId) ?? 0) + 1);
-      M.moveUnit(G, uid, order.fromSystemId, targetSystemId);
+  // Batch the destroyed-system cull to the end of the whole activation: a carrier
+  // and the ground it is carrying can leave a destroyed system together without
+  // the cargo being culled the moment the carrier moves (#532). Only genuinely
+  // stranded ground (left behind with no remaining capacity) is culled, once.
+  const cullAffected = [...new Set([...moveOrders.map((o) => o.fromSystemId), targetSystemId])];
+  M.withDeferredDestroyedCull(G, cullAffected, () => {
+    for (const order of moveOrders) {
+      const counts = new Map<UnitTypeId, number>();
+      for (const uid of order.unitInstanceIds) {
+        const inst = G.map.systems[order.fromSystemId]?.units.find((u) => u.instanceId === uid);
+        if (inst) counts.set(inst.typeId, (counts.get(inst.typeId) ?? 0) + 1);
+        M.moveUnit(G, uid, order.fromSystemId, targetSystemId);
+      }
+      if (counts.size > 0) {
+        reportMoves.push({
+          fromSystemId: order.fromSystemId,
+          units: [...counts.entries()].map(([typeId, count]) => ({ typeId, count })),
+        });
+      }
     }
-    if (counts.size > 0) {
-      reportMoves.push({
-        fromSystemId: order.fromSystemId,
-        units: [...counts.entries()].map(([typeId, count]) => ({ typeId, count })),
-      });
-    }
-  }
+  });
 
   log(G, { kind: 'activate-system', side, payload: { leaderId, targetSystemId, orders: moveOrders.length } });
 
