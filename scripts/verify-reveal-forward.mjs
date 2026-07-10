@@ -15,6 +15,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readGameLog, snapshotToCodec } from './lib/log-reader.mjs';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { register } = await import('tsx/esm/api'); register();
 const { createGame } = await import('../src/engine/setup.ts');
@@ -30,6 +31,7 @@ const isMobile = (G, u) => { const t = G.catalog.unitTypes[u.typeId]; return !!t
 function bfs(adj, start) { const d = { [start]: 0 }; const q = [start]; while (q.length) { const c = q.shift(); for (const n of adj[c] ?? []) if (d[n] == null) { d[n] = d[c] + 1; q.push(n); } } return d; }
 
 // Pick the log: explicit arg, else newest human-Rebel log with a reveal snapshot.
+// Reads BOTH log formats via the shared reader (scripts/lib/log-reader.mjs).
 function resolveLog() {
   const arg = process.argv[2];
   if (arg) return resolve(arg); // use the given path as-is (absolute or cwd-relative)
@@ -39,31 +41,35 @@ function resolveLog() {
     .sort((a, b) => b.m - a.m);
   for (const { f } of cands) {
     try {
-      const w = JSON.parse(readFileSync(join(dir, f), 'utf8'));
-      if (w.game?.humanSide !== 'Rebel') continue;
-      const tl = JSON.parse(w.game.codec).state.turnLog || [];
-      if (tl.some((e) => e.kind === 'state')) return join(dir, f);
+      const L = readGameLog(join(dir, f));
+      if (L.humanSide !== 'Rebel') continue;
+      if (L.snapshots.length > 0) return join(dir, f);
     } catch { /* skip */ }
   }
   return null;
 }
 
-// Extract the reveal-moment snapshot: the first 'state' event whose decoded
-// board has the base revealed.
-function revealSnapshot(wrapper, catalog) {
-  const tl = JSON.parse(wrapper.game.codec).state.turnLog || [];
-  for (const e of tl) {
-    if (e.kind !== 'state' || !e.payload?.codec) continue;
-    try { const G = codec.decode(e.payload.codec, catalog); if (G.rebelBaseRevealed) return G; } catch { /* skip */ }
+// Extract the reveal-moment snapshot: prefer the labeled base-reveal keyframe,
+// else the first snapshot whose board has the base revealed.
+function revealSnapshot(L, catalog) {
+  const ordered = [
+    ...L.snapshots.filter((s) => s.at === 'base-reveal'),
+    ...L.snapshots.filter((s) => s.at !== 'base-reveal'),
+  ];
+  for (const s of ordered) {
+    try {
+      const G = codec.decode(snapshotToCodec(s.state), catalog);
+      if (G.rebelBaseRevealed) return G;
+    } catch { /* skip */ }
   }
   return null;
 }
 
 const logPath = resolveLog();
 if (!logPath) { console.log('No usable log found (need a human-Rebel game with a reveal snapshot).'); process.exit(1); }
-const wrapper = JSON.parse(readFileSync(logPath, 'utf8'));
-const seedGame = createGame(data, { seed: 1, autoSetupUnits: true, expansion: JSON.parse(wrapper.game.codec).state.expansion });
-const G = revealSnapshot(wrapper, seedGame.catalog);
+const L = readGameLog(logPath);
+const seedGame = createGame(data, { seed: 1, autoSetupUnits: true, expansion: L.final.expansion });
+const G = revealSnapshot(L, seedGame.catalog);
 if (!G) { console.log(`Log ${logPath} has no reveal snapshot (played before logState shipped?).`); process.exit(1); }
 
 const base = G.rebelBaseSystemId;
@@ -78,7 +84,7 @@ for (const [sid, ss] of Object.entries(G.map.systems)) for (const u of ss.units)
 
 const planner = process.env.SWR_EMPIRE_PLANNER === '1' ? 'ON ' : 'off';
 console.log(`\n=== reveal-forward replay [planner=${planner}]  log=${logPath} ===`);
-console.log(`base=${base}  t=${G.timeMarker}  reputation=${G.reputationMarker}  winner(final in log)=${wrapper.game.winner}`);
+console.log(`base=${base}  t=${G.timeMarker}  reputation=${G.reputationMarker}  winner(final in log)=${L.winner}`);
 console.log(`Rebel ground defending base: ${rebelGroundAtBase()}   Empire ground @base=${startDist[0]} 1hop=${startDist[1]} 2hop=${startDist[2]} 3hop=${startDist[3]} 4+=${startDist['4+']}`);
 
 seedAI(20260710);

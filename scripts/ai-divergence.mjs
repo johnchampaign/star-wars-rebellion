@@ -25,6 +25,7 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readGameLog } from './lib/log-reader.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -169,14 +170,12 @@ function loadHumanGames() {
   const files = readdirSync(dir).filter((f) => f.endsWith('.json'));
   const games = [];
   for (const f of files) {
-    let state;
-    try {
-      const wrap = JSON.parse(readFileSync(join(dir, f), 'utf8'));
-      state = JSON.parse(wrap.game.codec).state;
-    } catch { continue; }
-    const tl = state.turnLog;
-    if (!Array.isArray(tl) || tl.length === 0) continue;
-    games.push(extractMetrics(tl));
+    // Dual-format via the shared reader — v2 logs (post-2026-07-10) would
+    // otherwise be silently skipped and the expert corpus would stop growing.
+    let events;
+    try { events = readGameLog(join(dir, f)).events; } catch { continue; }
+    if (!Array.isArray(events) || events.length === 0) continue;
+    games.push(extractMetrics(events));
   }
   return games;
 }
