@@ -11,7 +11,7 @@ import type {
   GameState, Side, SystemId, UnitInstance, UnitInstanceId, UnitTypeId,
   LeaderId, SystemState,
 } from './types';
-import { log } from './log';
+import { log, logState } from './log';
 import { shuffle } from './rng';
 
 // ============================================================================
@@ -344,6 +344,9 @@ export function revealRebelBase(G: GameState, reason: string = 'auto'): void {
   }
 
   log(G, { kind: 'reveal-base', payload: { reason, systemId: G.rebelBaseSystemId } });
+  // Snapshot the exact reveal-moment board (#539) so an analyzer can replay the
+  // AI Empire forward from a real, human-defended reveal position.
+  logState(G);
 }
 
 // ============================================================================
@@ -1345,6 +1348,9 @@ export function advanceTime(G: GameState, n: number = 1): void {
   for (let i = 0; i < n; i++) {
     G.timeMarker += 1;
     log(G, { kind: 'advance-time', payload: { newValue: G.timeMarker } });
+    // Snapshot the board at the start of each turn (#539) — the per-turn history
+    // the saved logs were missing. turnLog-stripped, so it stays linear in size.
+    logState(G);
     recomputeGameEnd(G);
     if (G.isGameOver) return;
   }

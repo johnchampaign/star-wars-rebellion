@@ -6,7 +6,27 @@ export function log(G: GameState, entry: Omit<LogEntry, 'turn'>): void {
   G.turnLog.push({ turn: G.timeMarker, ...entry });
 }
 
-export function logState(G: GameState, codec: string): void {
+/** Append a full-board snapshot to the turn log (`kind: 'state'`), so a saved
+ *  game carries the exact board at key moments (round start, base reveal) and an
+ *  analyzer can decode any past position — not just the final one. (#539: enables
+ *  replaying the AI Empire forward from a real, human-defended reveal position.)
+ *
+ *  The snapshot is encoded INLINE here (rather than importing codec.encode) for
+ *  two reasons: (1) it keeps log.ts free of a codec↔mechanics import cycle, and
+ *  (2) it strips `turnLog` from the snapshot — a snapshot lives INSIDE the turn
+ *  log, so embedding the log-so-far would nest logs and blow up quadratically.
+ *  The shape mirrors codec.encode()'s CodecPayload exactly (schema + same omitted
+ *  transient fields) so codec.decode() reads these snapshots back unchanged. */
+const SNAPSHOT_SCHEMA = 'rebellion-state-v1';
+export function logState(G: GameState): void {
+  const { catalog, pendingMission, pendingCombat, pendingChoice, refreshPaused, turnLog, ...rest } =
+    G as GameState & Record<string, unknown>;
+  void catalog; void pendingMission; void pendingCombat; void pendingChoice; void refreshPaused; void turnLog;
+  const codec = JSON.stringify({
+    schema: SNAPSHOT_SCHEMA,
+    encodedAt: new Date().toISOString(),
+    state: { ...rest, turnLog: [] },
+  });
   G.turnLog.push({ turn: G.timeMarker, kind: 'state', payload: { codec } });
 }
 
