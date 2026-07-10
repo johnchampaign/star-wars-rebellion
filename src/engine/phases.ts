@@ -3244,23 +3244,31 @@ export function resolveRapidMobilizationBasePick(
   // qualify (still subjugated / Imperial-loyal).
   M.resetEmpireSearchedForBaseMove(G);
 
-  // Return the drawn probe cards the Rebel did NOT use as the new base to the
-  // bottom of the deck (RR "Establishing a New Base": shuffle the rest back).
-  // Only the chosen base card stays out — it now marks the hidden base and is
-  // excluded from the Empire's ruled-out search. Leaving the others out falsely
-  // told the Empire those systems had been probed (#465/#466). The OLD base's
-  // probe card also returns: that system is no longer the base, so keeping its
-  // card out of the deck would leak the vacated (hidden) base location as a
-  // ruled-out system in the Empire's base-search view.
+  // Return the UNCHOSEN drawn probe cards to the bottom of the deck (LTP p.12
+  // "Establishing a New Base": shuffle the rest back). The chosen base card stays
+  // out — it now marks the hidden base and is excluded from the Empire's ruled-out
+  // search (leaving the others out falsely told the Empire those systems had been
+  // probed, #465/#466).
   const rmDrawn = choice.drawnProbeIds ?? [];
   const rmReturn = rmDrawn.filter((pid) => G.catalog.probes[pid]?.systemId !== systemId);
-  const oldBaseProbe = Object.values(G.catalog.probes).find((p) => p.systemId === old);
-  if (oldBaseProbe && !G.probeDeck.includes(oldBaseProbe.id) && !rmReturn.includes(oldBaseProbe.id)) {
-    rmReturn.push(oldBaseProbe.id);
-  }
   if (rmReturn.length > 0) {
     G.probeDeck.push(...shuffle(G.rng, [...rmReturn]));
     log(G, { kind: 'rapid-mobilization-probes-to-bottom', side: 'Rebel', payload: { count: rmReturn.length } });
+  }
+  // RAW (LTP p.12): the OLD base's probe card is GIVEN TO THE IMPERIAL PLAYER —
+  // the old location was just revealed as the vacated base — NOT shuffled back
+  // into the deck. It correctly rules out the old location for the Empire's search
+  // of the NEW base (the base just left there); that isn't a "leak" (an earlier
+  // version returned it to the deck on that mistaken reasoning, #541). Putting it
+  // in the Empire's probe hand also tells the human WHY the old garrison now sits
+  // at the vacated system (reporter's "how is this possible on Geonosis?").
+  const oldBaseProbe = Object.values(G.catalog.probes).find((p) => p.systemId === old);
+  if (oldBaseProbe && !G.probeDeck.includes(oldBaseProbe.id)
+      && !(G.empire.probeHand ?? []).includes(oldBaseProbe.id)) {
+    (G.empire.probeHand ??= []).push(oldBaseProbe.id);
+    log(G, { kind: 'rapid-mobilization-old-base-probe-to-empire', side: 'Empire', payload: {
+      probeId: oldBaseProbe.id, systemId: old,
+    }});
   }
 
   log(G, { kind: 'rapid-mobilization-base-established', side: 'Rebel', payload: {

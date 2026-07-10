@@ -1,6 +1,7 @@
-// #465/#466: Rapid Mobilization must return the non-chosen drawn probe cards
-// (and the vacated old-base card) to the deck when a new base is established —
-// otherwise they leak into the Empire's base-search "ruled out" list.
+// #465/#466: Rapid Mobilization must return the NON-CHOSEN drawn probe cards to
+// the deck when a new base is established — otherwise they leak into the Empire's
+// base-search "ruled out" list. (#541 correction: the vacated OLD-base card is
+// instead GIVEN TO THE EMPIRE per LTP p.12, not returned to the deck.)
 // #458/#467: My Only Hope (leaderRecruitable) must not re-offer plain Luke once
 // he has become a Jedi, nor a leader lured to the dark side.
 // Run: node scripts/test-rm-probe-return-and-recruit-465-467.mjs
@@ -57,7 +58,12 @@ for (let seed = 1; seed <= 40 && !verifiedEstablish; seed++) {
     nonChosen.every((pid) => G.probeDeck.includes(pid)),
     `missing: ${nonChosen.filter((pid) => !G.probeDeck.includes(pid)).join(',')}`);
   if (oldBaseProbeId) {
-    check('  vacated old-base probe returned to the deck (no leak)', G.probeDeck.includes(oldBaseProbeId));
+    // RAW correction (#541, LTP p.12): the vacated old-base probe is GIVEN TO THE
+    // EMPIRE, not returned to the deck. (The earlier "return to deck" was a
+    // misread — ruling out the old location for the Empire's search of the NEW
+    // base is correct, not a leak.)
+    check('  vacated old-base probe given to the Empire (not the deck)',
+      !G.probeDeck.includes(oldBaseProbeId) && (G.empire.probeHand ?? []).includes(oldBaseProbeId));
   }
   verifiedEstablish = true;
 }

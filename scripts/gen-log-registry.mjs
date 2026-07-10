@@ -99,6 +99,7 @@ const SEED_DESC = new Map(Object.entries({
   'capture-leader': 'Leader captured (ring: captured/carbonite).',
   'pick-rebel-base': 'Rebel base location chosen at setup.',
   'rapid-mobilization-base-established': 'Base relocated via Rapid Mobilization.',
+  'rapid-mobilization-old-base-probe-to-empire': 'Old base probe card given to the Empire after relocation (LTP p.12).',
   'build-queue': 'Unit added to the build queue.',
   'recruit-leader': 'Leader recruited.',
   'phase': 'Phase transition marker.',
