@@ -141,7 +141,9 @@ export const UNIT_TYPES: UnitType[] = [
     // Phase 6 wires retreat-blocking; stats stand alone.
     health: { color: 'red', value: 4 },
     attack: { red: 0, black: 0, green: 2 },
-    transport: { capacity: 0, restriction: false, immobile: false },
+    // Transport capacity 4 (RoE reference sheet: bottom-left badge on the ship
+    // mini reads 4; was wrongly 0, #542).
+    transport: { capacity: 4, restriction: false, immobile: false },
     buildResource: 3, supplyCount: 3, set: 'rote',
   }),
 
