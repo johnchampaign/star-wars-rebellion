@@ -11,7 +11,7 @@ import type {
 // (Phase advances from Setup → Assignment internally; no extra imports needed.)
 import * as M from './mechanics';
 import { beginCombat, runCombat } from './combat';
-import { log, pushNotice } from './log';
+import { log, logState, pushNotice } from './log';
 import * as Handlers from './handlers/registry';
 import { missionTargets } from './missionTargets';
 import { PROJECT_ONLY_UNIT_IDS } from './units';
@@ -389,8 +389,9 @@ function ensureDsucEscort(G: GameState, remoteId: SystemId): void {
       const pi = pending.indexOf(typeId);
       if (pi >= 0) {
         pending.splice(pi, 1);
-        dest.units.push(mkSetupInstance(typeId, 'Empire'));
-        log(G, { kind: 'setup-deploy', side: 'Empire', payload: { typeId, systemId: remoteId, escort: true } });
+        const esc = mkSetupInstance(typeId, 'Empire');
+        dest.units.push(esc);
+        log(G, { kind: 'setup-deploy', side: 'Empire', payload: { typeId, systemId: remoteId, unit: esc.instanceId, escort: true } });
         continue;
       }
       // Pending exhausted — reclaim one of this type already placed elsewhere.
@@ -400,8 +401,9 @@ function ensureDsucEscort(G: GameState, remoteId: SystemId): void {
         const ui = ss.units.findIndex((u) => u.side === 'Empire' && u.typeId === typeId);
         if (ui >= 0) {
           ss.units.splice(ui, 1);
-          dest.units.push(mkSetupInstance(typeId, 'Empire'));
-          log(G, { kind: 'setup-deploy', side: 'Empire', payload: { typeId, systemId: remoteId, escort: true, reclaimedFrom: sid } });
+          const rec = mkSetupInstance(typeId, 'Empire');
+          dest.units.push(rec);
+          log(G, { kind: 'setup-deploy', side: 'Empire', payload: { typeId, systemId: remoteId, unit: rec.instanceId, escort: true, reclaimedFrom: sid } });
           reclaimed = true;
           break;
         }
@@ -507,10 +509,13 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
 
   // Place
   const dest = systemId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[systemId];
-  dest.units.push(mkSetupInstance(typeId, side));
+  const placed = mkSetupInstance(typeId, side);
+  dest.units.push(placed);
   list.splice(idx, 1);
 
-  log(G, { kind: 'setup-deploy', side, payload: { typeId, systemId } });
+  // `unit` id included (log-format v2) so setup placements are traceable by the
+  // same instance ids move-unit/destroy-unit reference later.
+  log(G, { kind: 'setup-deploy', side, payload: { typeId, systemId, unit: placed.instanceId } });
 
   // RoE (#360): placing the DSUC on its remote also brings its fixed 4 TIE +
   // 1 Stormtrooper escort, so the player can't finish setup with a lone DSUC.
@@ -700,6 +705,11 @@ function maybeAdvanceFromSetup(G: GameState): void {
     G.phase = 'Assignment';
     G.currentPlayer = 'Rebel';
     log(G, { kind: 'phase', payload: { phase: 'Assignment', via: 'setup-complete' } });
+    // Snapshot the turn-1 starting board (log-format v2). Turn-start snapshots
+    // only begin when advanceTime fires (turn 2+), and setupAutoFill places
+    // units without per-unit events — this keyframe closes both gaps: the full
+    // post-setup board is recorded even where placement events are sparse.
+    logState(G, 'setup-complete');
     // A droid ring (R2-D2 / C-3PO) in the opening hand attaches immediately at
     // game start, before the first Assignment turn (Immediate timing; mirrors
     // recruit-time attachment, #221). Posts an AttachRingPick if one is waiting.
@@ -1095,7 +1105,16 @@ export function activateSystem(
     }
   });
 
-  log(G, { kind: 'activate-system', side, payload: { leaderId, targetSystemId, orders: moveOrders.length } });
+  log(G, {
+    kind: 'activate-system', side,
+    payload: {
+      leaderId, targetSystemId,
+      orders: moveOrders.length,
+      // Total units moved (log-format v2) — `orders` alone was the source-system
+      // count, which hid whether an activation actually moved any force.
+      unitsMoved: moveOrders.reduce((a, o) => a + o.unitInstanceIds.length, 0),
+    },
+  });
 
   // Combat check: if both sides have units in the target system, run combat.
   const opp: Side = side === 'Rebel' ? 'Empire' : 'Rebel';

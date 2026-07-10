@@ -14,7 +14,7 @@ import type {
 import * as M from './mechanics';
 import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
-import { log } from './log';
+import { log, logState } from './log';
 import { registerChoice, requestChoice } from './choices';
 import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, applyDeferredHealAllocation, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal, dealAbilityFor, cinematicDealCandidates, destroyAbilityFor, cinematicDestroyCandidates, applyChosenDestroy, gainTriangleAbilityFor, cinematicTriangleGroundGainTypes } from './cinematicTactics';
 
@@ -127,6 +127,11 @@ export function beginCombat(
   };
   G.pendingCombat = state;
   log(G, { kind: 'combat-begin', payload: { systemId, attackerSide, cinematic: state.cinematic } });
+  // Keyframe (#539): snapshot the board at the moment of every base assault, so
+  // analyzers can measure the exact force delivered without replaying events.
+  // (logState strips pendingCombat — the snapshot reads "both armies present,
+  // battle about to start", which is precisely the delivered-force picture.)
+  if (G.rebelBaseRevealed && systemId === G.rebelBaseSystemId) logState(G, 'base-assault');
 }
 
 /** Drive the combat forward. RESUMABLE: returns early whenever a player

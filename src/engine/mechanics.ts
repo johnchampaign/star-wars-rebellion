@@ -346,7 +346,7 @@ export function revealRebelBase(G: GameState, reason: string = 'auto'): void {
   log(G, { kind: 'reveal-base', payload: { reason, systemId: G.rebelBaseSystemId } });
   // Snapshot the exact reveal-moment board (#539) so an analyzer can replay the
   // AI Empire forward from a real, human-defended reveal position.
-  logState(G);
+  logState(G, 'base-reveal');
 }
 
 // ============================================================================
@@ -509,7 +509,9 @@ export function moveUnit(G: GameState, unitInstanceId: UnitInstanceId, from: Sys
   if (i < 0) return;
   const [u] = src.units.splice(i, 1);
   dst.units.push(u);
-  log(G, { kind: 'move-unit', side: u.side, payload: { unit: u.instanceId, from, to } });
+  // typeId included so the event is self-contained (log-format v2: no join
+  // against a snapshot needed to know WHAT moved).
+  log(G, { kind: 'move-unit', side: u.side, payload: { unit: u.instanceId, typeId: u.typeId, from, to } });
   applyInvariants(G, [from, to]);
 }
 
@@ -1350,7 +1352,7 @@ export function advanceTime(G: GameState, n: number = 1): void {
     log(G, { kind: 'advance-time', payload: { newValue: G.timeMarker } });
     // Snapshot the board at the start of each turn (#539) — the per-turn history
     // the saved logs were missing. turnLog-stripped, so it stays linear in size.
-    logState(G);
+    logState(G, 'turn-start');
     recomputeGameEnd(G);
     if (G.isGameOver) return;
   }

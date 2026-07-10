@@ -2068,7 +2068,14 @@ export type MissionResolution = {
 // ---------- Game state ----------
 
 export type LogEntry = {
+  /** Monotonic append index (turnLog position at write time) — stable ordering
+   *  and cross-reference key for analyzers. Optional: absent on logs written
+   *  before the v2 envelope shipped. */
+  seq?: number;
   turn: number;
+  /** G.phase at write time (Setup/Assignment/Command/Refresh/GameOver).
+   *  Optional for the same pre-v2 reason. */
+  phase?: string;
   side?: Side;
   kind: string;
   payload?: Record<string, unknown>;
