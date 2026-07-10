@@ -3290,7 +3290,12 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           tactics, defender tactics, damage assignment. Renders whenever
           combat is active (G.pendingCombat set) so the player can see
           units / leaders / dice / hands continuously. */}
-      {G.pendingCombat && (!G.missionReports || G.missionReports.length === 0) && (
+      {/* Once the game is over, never keep the combat board mounted: a card that
+          removes the base's last defender mid-combat ends the game while
+          pendingCombat/pendingChoice are still set, and without this guard the
+          board stays up showing a "Waiting for AI…" that never resolves, blocking
+          the game-over screen and the log submit (#533). */}
+      {G.pendingCombat && !G.isGameOver && (!G.missionReports || G.missionReports.length === 0) && (
         <CombatBoardLive
           G={G}
           humanSide={humanSide}

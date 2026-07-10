@@ -247,7 +247,11 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
   // way the client doesn't run the AI, so the "resume AI" affordance is
   // single-player-only. Online we just show a neutral "waiting for opponent".
   const waitingForOpponent = decisionSide !== null && !isHumanDecision;
-  const waitingForAI = !online && waitingForOpponent;
+  // Belt-and-suspenders to the render guard in PlayTab: once the game is over the
+  // AI owes nothing, so never show/drive a "Waiting for AI…" state (#533 — a card
+  // that removes the base's last defender ends the game mid-combat with the
+  // pending choice still set).
+  const waitingForAI = !online && !G.isGameOver && waitingForOpponent;
 
   // Self-healing AI driver: any time this component renders and the AI owes
   // a combat decision, step the AI synchronously and notify the parent to
