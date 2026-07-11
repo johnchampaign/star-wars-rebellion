@@ -22,6 +22,8 @@
 import type { GameState, Side, LeaderId, SystemId } from '../engine/types';
 import * as phases from '../engine/phases';
 import * as combat from '../engine/combat';
+import { unitsAvailableInSupply } from '../engine/mechanics';
+import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
 import { pickBestCinematicPlay } from '../engine/cinematicTactics';
 import { missionTargets, missionRevealIsPointless, rebelLoyalSystemsInRegion } from '../engine/missionTargets';
 // Re-exported so existing callers/tests that import it from the AI module keep
@@ -2584,20 +2586,38 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'BuildFromIconsPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
     const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
+    // The engine requires an EXACT tier match (a resource icon builds a unit of
+    // THAT size — phases.ts resolveBuildFromIconsPick) and rejects out-of-supply
+    // or project-only types. The old picker used `tier <= need` and ignored
+    // supply, so a triangle icon whose only exact-tier unit (e.g. TIE Fighter) is
+    // out of supply, or a square icon that landed on a project-only Star Destroyer
+    // variant, made the WHOLE submission invalid — and the fail-safe then nulled
+    // EVERY icon, so the Empire built nothing even when a valid unit was available
+    // on another icon (player report #461). Now each icon is filled independently
+    // with a valid, in-supply, exact-tier combat unit, tracking supply consumed by
+    // earlier picks so two icons of the same shape can't both claim the last mini.
+    const consumed = new Map<string, number>();
+    const threatOf = (t: (typeof G.catalog.unitTypes)[string]) =>
+      (t.attack?.red ?? 0) + (t.attack?.black ?? 0) + (t.attack?.green ?? 0) + (t.health?.value ?? 0);
     const picks = c.icons.map((icon) => {
       const need = tierRank[icon.shape] ?? 2;
       const opts = Object.values(G.catalog.unitTypes)
         .filter((t) => t.side === side && t.theater === icon.theater
-          && t.class !== 'structure' && (tierRank[t.tier ?? 'square'] ?? 2) <= need
+          && t.class !== 'structure'
+          && (tierRank[t.tier ?? 'square'] ?? 2) === need   // EXACT tier, per engine
+          && !PROJECT_ONLY_UNIT_IDS.has(t.id)               // SSD/Death Star/Interdictor never icon-build
           // RoE units only buildable with the expansion's unit toggle on (#219).
-          && (t.set !== 'rote' || G.expansion?.roeUnits === true))
-        .sort((a, b) => (tierRank[a.tier ?? 'square'] ?? 2) - (tierRank[b.tier ?? 'square'] ?? 2));
-      return opts.length > 0 ? opts[opts.length - 1].id : null; // highest tier <= icon
+          && (t.set !== 'rote' || G.expansion?.roeUnits === true)
+          // Must have supply left after earlier picks in THIS submission.
+          && (consumed.get(t.id) ?? 0) < unitsAvailableInSupply(G, t.id))
+        .sort((a, b) => threatOf(b) - threatOf(a)); // best combat unit first
+      const chosen = opts.length > 0 ? opts[0] : null;
+      if (chosen) consumed.set(chosen.id, (consumed.get(chosen.id) ?? 0) + 1);
+      return chosen?.id ?? null;
     });
     let r = phases.resolveBuildFromIconsPick(G, picks);
-    // Fail-safe: a single invalid pick rejects the whole call, which would
-    // leave this choice pending forever (tournament showed games stuck here).
-    // Retry skipping every icon (all-null is always accepted) so we resolve.
+    // Fail-safe: if some pick is still rejected for a reason we didn't model,
+    // fall back to all-null (always accepted) so the choice can't soft-lock.
     if (!r.ok) r = phases.resolveBuildFromIconsPick(G, c.icons.map(() => null));
     return r.ok;
   }
