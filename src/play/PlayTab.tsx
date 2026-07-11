@@ -12060,9 +12060,20 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
         };
       }
     };
+    // Histories written before the archive-side gameId dedupe can hold several
+    // snapshots of the SAME finished game (one per post-game persist) — upload
+    // only the freshest per gameId (history is newest-first) so pre-fix
+    // archives stop producing duplicate log files server-side.
+    const seenGameIds = new Set<string>();
+    const uniqueGames = games.filter((g) => {
+      if (!g.gameId) return true;
+      if (seenGameIds.has(g.gameId)) return false;
+      seenGameIds.add(g.gameId);
+      return true;
+    });
     const payload = {
       games: [
-        ...games.map(v2),
+        ...uniqueGames.map(v2),
         ...(inProgressCodec ? [{
           encodedAt: new Date().toISOString(),
           inProgress: true,
@@ -15515,6 +15526,16 @@ function archiveCompletedGame(G: GameState): void {
     const gameId = (() => {
       try { return localStorage.getItem(LS_GAME_ID) || undefined; } catch { return undefined; }
     })();
+    // A finished game keeps persisting on every post-game interaction
+    // (dismissing the final combat report, closing the game-over modal, …),
+    // and each persist reaches here — so the SAME game was archived as
+    // multiple history entries with slightly different codecs. The uploader
+    // then sent them all, and the server's content-hash dedupe correctly saw
+    // different bytes, landing the one game in logs/ twice (user report:
+    // "it's uploading logs twice"). Dedupe by gameId, keeping this FRESHEST
+    // snapshot (post-game state is more settled — report queues drained).
+    const dupIdx = gameId ? history.findIndex((h) => h.gameId === gameId) : -1;
+    if (dupIdx >= 0) history.splice(dupIdx, 1);
     history.unshift({
       encodedAt: new Date().toISOString(),
       winner: G.winner,
