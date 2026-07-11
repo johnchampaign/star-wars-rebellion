@@ -327,9 +327,18 @@ export function missionTargets(G: GameState, _side: Side, missionId: string): Ta
         // Mobilization couldn't be played at all.)
         return { systemIds: ['rebel-base-space'], permissive: false, note: 'Resolves in the Rebel Base space (auto-targeted).' };
       }
-      const match = allSystems(G).find((id) => (G.catalog.systems[id]?.name ?? id).toLowerCase() === target);
+      // Match against ALL systems, including DESTROYED ones. A mission naming a
+      // specific system resolves there even if it's been destroyed — official
+      // FAQ: "Seek Yoda can be resolved in the Dagobah system even if Dagobah
+      // has been destroyed" (#552: Wookiee Uprising on a destroyed Kashyyyk was
+      // wrongly redirected to another system because allSystems() drops
+      // destroyed ones, so the named match failed and it fell through to the
+      // permissive path). A live-system effect (gain loyalty) simply fizzles on
+      // a destroyed system; the rest of the effect still resolves.
+      const match = Object.keys(G.map.systems).find((id) => (G.catalog.systems[id]?.name ?? id).toLowerCase() === target);
       if (match) {
-        return { systemIds: [match], permissive: false, note: `Specific system: ${G.catalog.systems[match]?.name ?? match}.` };
+        const destroyed = G.map.systems[match]?.destroyed ? ' (destroyed — loyalty effects fizzle)' : '';
+        return { systemIds: [match], permissive: false, note: `Specific system: ${G.catalog.systems[match]?.name ?? match}${destroyed}.` };
       }
     }
   }

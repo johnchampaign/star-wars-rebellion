@@ -881,6 +881,37 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
     pa.cinematicRerollResolved = true;
   }
 
+  // 0a¾) YODA reroll (#549) — must run with the other reroll windows, BEFORE
+  //     the ★-spend heal and the opponent's prevent, so the rolling side's
+  //     dice are final before any are used/removed (reporter: the reroll was
+  //     happening after the heal spent ★ dice). Rebel only, once per game
+  //     round, requires the Yoda holder at the system. Ring text: "you may
+  //     reroll 1 of your dice" — no blank restriction (#540); only a
+  //     direct-hit is excluded (strictly-best face, rerolling it is a misclick).
+  if (canQueueYodaReroll(G, c, pa.side)) {
+    const rerollable = pa.dice
+      .map((d, i) => d.face !== 'direct-hit' ? i : -1)
+      .filter((i) => i >= 0);
+    if (rerollable.length > 0) {
+      const yodaHolder = findYodaHolder(G);
+      if (yodaHolder) {
+        pa.phase = 'awaitingYodaReroll';
+        G.pendingChoice = {
+          kind: 'YodaReroll',
+          side: 'Rebel', context: 'combat',
+          theater: pa.theater, systemId: c.systemId,
+          blankIndices: rerollable, holderLeaderId: yodaHolder,
+        };
+        log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+          kind: 'YodaReroll',
+          candidates: rerollable.length,
+          blanks: pa.dice.filter((d) => d.face === 'blank').length,
+        }});
+        return;
+      }
+    }
+  }
+
   // 0a½) CINEMATIC "Prevent N red/black/special" — the opponent's tactic card
   //      removes, from this side's now-final (rolled + rerolled) attack, up to
   //      N dice that show a matching red/black HIT or a ★ special. RAW (RotE
@@ -944,36 +975,6 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
       }
     }
     pa.cinematicHealResolved = true;
-  }
-
-  // 1) Yoda reroll — Rebel only, once per round, requires Yoda holder
-  //    at the system. Ring text: "you may reroll 1 of your dice" — there is
-  //    no blank restriction (#540). Any non-direct-hit die may be worth
-  //    rerolling (e.g. a black hit is unassignable when only red-health
-  //    enemies remain). Direct-hits are excluded: the strictly-best face,
-  //    rerolling one is never right, and excluding them guards misclicks.
-  if (canQueueYodaReroll(G, c, pa.side)) {
-    const rerollable = pa.dice
-      .map((d, i) => d.face !== 'direct-hit' ? i : -1)
-      .filter((i) => i >= 0);
-    if (rerollable.length > 0) {
-      const yodaHolder = findYodaHolder(G);
-      if (yodaHolder) {
-        pa.phase = 'awaitingYodaReroll';
-        G.pendingChoice = {
-          kind: 'YodaReroll',
-          side: 'Rebel', context: 'combat',
-          theater: pa.theater, systemId: c.systemId,
-          blankIndices: rerollable, holderLeaderId: yodaHolder,
-        };
-        log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-          kind: 'YodaReroll',
-          candidates: rerollable.length,
-          blanks: pa.dice.filter((d) => d.face === 'blank').length,
-        }});
-        return;
-      }
-    }
   }
 
   // 1b) R2-D2 flip — when Empire just rolled, give the Rebel a chance to
