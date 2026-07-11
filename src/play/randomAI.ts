@@ -3008,7 +3008,8 @@ function logCommandDecision(
   if (plan) {
     payload.plan = {
       mode: plan.mode, target: plan.targetSystemId,
-      needed: plan.neededGround, massed: plan.massedGround, staged: plan.stagedGround,
+      needed: plan.neededGround, massed: plan.massedGround, ships: plan.massedShips,
+      staged: plan.stagedGround,
     };
   }
   logEvent(G, { kind: 'ai-decision', side, payload });

@@ -46,6 +46,14 @@ import type { GameState, SystemId } from '../engine/types';
 export type PlanMode = 'STAGE' | 'READY' | 'STRIKE';
 
 export interface StrikeFleetPlan {
+  /** Reporting-only labels (STAGE/READY/STRIKE) — the modes NO LONGER gate the
+   *  attack. Doctrine correction from John (playtest #1 review): "stage first"
+   *  is the wrong attitude — the force grows WHILE moving (build/deploy en
+   *  route, merge converging groups), and attacking with an inferior force is
+   *  usually worthwhile (Imperial production wins the attrition trade, and a
+   *  space-only win denies the Rebel future deploys at the base). The base
+   *  bonus below therefore scales with the deliverable WAVE, from the first
+   *  real wave up — STRIKE just adds a kicker when the wave is decisive. */
   mode: PlanMode;
   /** The revealed Rebel base — the sink all delivery flows toward. */
   targetSystemId: SystemId;
@@ -54,6 +62,10 @@ export interface StrikeFleetPlan {
   /** Empire free ground deliverable to the base in ONE activation (already at
    *  the base + liftable from base-adjacent co-located carriers). */
   massedGround: number;
+  /** Empire mobile SPACE units deliverable in one activation (at the base +
+   *  base-adjacent, leader-free). A ships-only wave has real value: winning the
+   *  base's space theater blocks Rebel deployment there (doctrine). */
+  massedShips: number;
   /** Empire free mobile ground within 2 hops of the base (the staging pool). */
   stagedGround: number;
   /** Hop distance from the base for every reachable system — computed once per
@@ -158,12 +170,25 @@ export function derivePlan(G: GameState): StrikeFleetPlan | null {
 
   // Ground already at the base, plus what a co-located carrier on a base-adjacent
   // system can lift in one activation → the one-activation deliverable force.
+  // Ships counted separately: space units self-move, and a ships-only wave that
+  // wins the base's space theater blocks Rebel deployment there (doctrine).
   const groundAtBase = freeGroundAt(G, target);
+  const shipsAt = (sid: SystemId): number => {
+    let s = 0;
+    for (const u of G.map.systems[sid]?.units ?? []) {
+      if (u.side !== 'Empire') continue;
+      const t = G.catalog.unitTypes[u.typeId];
+      if (t && t.theater === 'space' && !t.transport.immobile) s++;
+    }
+    return s;
+  };
   let liftableAdjacent = 0;
+  let massedShips = shipsAt(target);
   for (const n of (G.catalog.adjacency[target] ?? [])) {
     // A leader on the neighbor blocks pulling its units into the base.
     if ((G.empire.leadersOnBoard[n] ?? []).length > 0) continue;
     liftableAdjacent += Math.min(freeGroundAt(G, n), carrierCapacityAt(G, n));
+    massedShips += shipsAt(n);
   }
   const massedGround = groundAtBase + liftableAdjacent;
 
@@ -184,7 +209,7 @@ export function derivePlan(G: GameState): StrikeFleetPlan | null {
   else if (stagedGround >= neededGround) mode = 'READY';  // force is near — co-locate + mass it inward
   else mode = 'STAGE';                                    // consolidate more force toward the base
 
-  return { mode, targetSystemId: target, neededGround, massedGround, stagedGround, distFromBase };
+  return { mode, targetSystemId: target, neededGround, massedGround, massedShips, stagedGround, distFromBase };
 }
 
 // ---------------------------------------------------------------------------
@@ -199,8 +224,13 @@ export function derivePlan(G: GameState): StrikeFleetPlan | null {
 // thrashing per-turn nudge can't). Deliberately NOT larger than the scorer's own
 // base-converge readiness gate on the base system, which still governs the
 // assault trigger.
-const B_STRIKE_SINK = 30;   // STRIKE only: dash — activate the base to pull the massed ring in
 const B_COLOCATE = 30;      // co-locate a carrier with a stranded free-ground stack near the base
+// Attack-wave floor: the minimum deliverable ground that counts as a real wave.
+// Below this (and without a fleet) the planner adds nothing on the base — a
+// near-empty activation is the measured leader-gift failure (68% of leader-only
+// base invasions in lost games), not doctrine aggression.
+const WAVE_FLOOR_GROUND = 3;
+const RAID_FLOOR_SHIPS = 4;
 // March-pull gradient weight by the pull-target's distance from the base. The
 // bonus is weight × liftable force pulled inward (capped), so marching a real
 // strike stack dominates subjugation/mission scores (~12-29 post-reveal) while
@@ -221,13 +251,26 @@ export function planSystemBonus(G: GameState, plan: StrikeFleetPlan, sysId: Syst
   // never reward parking a second leader on a feeder/co-location system.
   const leaderHere = (G.empire.leadersOnBoard[sysId] ?? []).length > 0;
 
-  // 1) The base itself. STRIKE (force sufficient) → dash: activate the base and
-  //    pull the massed ring in. Otherwise 0 — the scorer's own converge gate
-  //    still triggers the every-round attrition assault the doctrine wants; the
-  //    planner never SUPPRESSES it (no deferral — you attack every round because
-  //    attrition, space-denial, and a ground-only win are all worthwhile), it
-  //    only ADDS the dash once the force is overwhelming.
-  if (sysId === targetSystemId) return mode === 'STRIKE' ? B_STRIKE_SINK : 0;
+  // 1) The base itself — attack-wave bonus, scaled by what's DELIVERABLE now.
+  //    Doctrine (John, playtest #1 review): don't wait to be "ready". The
+  //    Empire out-produces the Rebels, so throwing a real-but-inferior wave at
+  //    the base is usually worthwhile (attrition trade + every wave the march
+  //    keeps feeding), and a ships-only wave that wins the space theater blocks
+  //    Rebel deployment at the base. So:
+  //      - deliverable ground ≥ WAVE_FLOOR: assault wave — bonus grows with the
+  //        wave's ground + ships; STRIKE (decisive force) adds a kicker.
+  //      - else deliverable ships ≥ RAID_FLOOR: space-denial raid — smaller
+  //        bonus; the scorer's own no-ground penalty (−12) stays as the
+  //        counterweight, so raids fire only with a real fleet.
+  //      - else 0: never reward a near-empty activation (the leader-gift trap).
+  if (sysId === targetSystemId) {
+    const g = plan.massedGround, s = plan.massedShips;
+    if (g >= WAVE_FLOOR_GROUND) {
+      return 8 + 2 * Math.min(g, 8) + Math.min(s, 6) + (mode === 'STRIKE' ? 8 : 0);
+    }
+    if (s >= RAID_FLOOR_SHIPS) return 4 + 1.5 * Math.min(s, 8);
+    return 0;
+  }
 
   const dBase = distFromBase.get(sysId) ?? 99;
   if (leaderHere || dBase < 1 || dBase > 90) return 0;
@@ -294,9 +337,12 @@ export function deployProximityScore(G: GameState, sysId: SystemId, typeId: stri
   if (!G.rebelBaseRevealed || !G.rebelBaseSystemId) return 0;
   const t = G.catalog.unitTypes[typeId];
   if (!t) return 0;
-  const dBase = bfs(G, G.rebelBaseSystemId as SystemId, 2).get(sysId);
-  if (dBase == null || dBase < 1 || dBase > 2) return 0; // only the base ring / 2-hop
-  const prox = dBase === 1 ? 1 : 0.4;
+  const dBase = bfs(G, G.rebelBaseSystemId as SystemId, 3).get(sysId);
+  if (dBase == null || dBase < 1 || dBase > 3) return 0; // base ring out to 3 hops
+  // Build-en-route (doctrine): the attack force GROWS as it marches — new units
+  // deploy into the column's path, not just the final ring. d3 is one build
+  // cycle out: a unit deployed there joins the second wave.
+  const prox = dBase === 1 ? 1 : dBase === 2 ? 0.4 : 0.2;
   const strength = (t.attack.red ?? 0) + (t.attack.black ?? 0) + (t.attack.green ?? 0) + (t.health?.value ?? 0);
 
   // Capital / transport-provider (SD, SSD, Death Star, carrier): always wants to
