@@ -1255,6 +1255,14 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
       // hunting move (#446). Added BEFORE the universal troop guard below so an
       // activation that can move nothing is still zeroed (no reject-then-pass).
       if (empirePlan) ts += planSystemBonus(G, empirePlan, sysId);
+      // NOTE: a pre-reveal "hunt march" twin of the plan gradient (march the
+      // army toward the top base suspect) was built and A/B'd here — and the
+      // smoke suite killed it: Empire win 52.0→43.3 and base-finding down in
+      // BOTH benches (marching burns the activations the hunt spends clearing
+      // candidates), while the hunt-replays showed the clock leaves too few
+      // rounds to march by the time candidates narrow. The unwired pieces
+      // (deriveHuntTarget/huntMarchBonus) live in empirePlanner.ts with the
+      // full post-mortem; a real hunt fix must engage EARLIER than narrowing.
       // Don't waste activations on Coruscant or systems already saturated.
       if (sysId === 'coruscant') ts -= 3;
     } else {

@@ -52,17 +52,19 @@ if (!IS_ARM) {
   const on = run('1');
 
   const f = (x, d = 1) => (typeof x === 'number' ? x.toFixed(d) : String(x));
-  console.log('\n================= REPLAYS (real human reveal positions, defender holds) =================');
+  console.log('\n================= REPLAYS (real human positions, defender holds) =================');
   for (let i = 0; i < off.replays.length; i++) {
     const a = off.replays[i], b = on.replays[i];
-    console.log(`  ${a.log}  base=${a.base} defenders=${a.defenders}`);
-    console.log(`    OFF: assaults=${a.assaults} maxDelivered=${a.maxDelivered} captured=${a.captured} minStackDist=${a.minStackDist}`);
-    console.log(`    ON : assaults=${b.assaults} maxDelivered=${b.maxDelivered} captured=${b.captured} minStackDist=${b.minStackDist}`);
+    const rv = (r) => r.kind === 'hunt' ? ` revealed=${r.revealed}${r.revealed ? '@t' + r.revealTurn : ''}` : '';
+    console.log(`  ${a.log} [${a.kind}${a.kind === 'hunt' ? ' from t' + a.startT : ''}]  base=${a.base} defenders=${a.defenders}`);
+    console.log(`    OFF:${rv(a)} assaults=${a.assaults} maxDelivered=${a.maxDelivered} captured=${a.captured} minStackDist=${a.minStackDist}`);
+    console.log(`    ON :${rv(b)} assaults=${b.assaults} maxDelivered=${b.maxDelivered} captured=${b.captured} minStackDist=${b.minStackDist}`);
   }
   console.log('\n================= HOLD-DEFENDER SELF-PLAY =================');
   const row = (k, get, d = 1) => console.log(`  ${k.padEnd(34)} OFF ${f(get(off), d).padStart(6)}   ON ${f(get(on), d).padStart(6)}`);
   row('Empire win-rate %', (r) => 100 * r.sp.empWins / r.sp.games);
   row('base revealed', (r) => r.sp.revealed, 0);
+  row('avg find-turn', (r) => r.sp.sumRevealTurn / Math.max(1, r.sp.revealed));
   row('conversion % (revealed→win)', (r) => 100 * r.sp.converted / Math.max(1, r.sp.revealed));
   row('assault waves / revealed game', (r) => r.sp.assaults / Math.max(1, r.sp.revealed));
   row('delivered ground @ first assault', (r) => r.sp.sumFirst / Math.max(1, r.sp.firsts));
@@ -72,7 +74,11 @@ if (!IS_ARM) {
   console.log('\n================= GATES =================');
   let pass = true;
   const gate = (name, ok, detail) => { console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${name}${detail ? '  (' + detail + ')' : ''}`); if (!ok) pass = false; };
-  gate('hunt unchanged (same reveals, same seeds)', on.sp.revealed === off.sp.revealed, `${off.sp.revealed} vs ${on.sp.revealed}`);
+  // The hunt-march lever runs PRE-reveal, so reveals may legitimately rise;
+  // what must never happen is finding FEWER bases or finding them later.
+  gate('base-finding not down (same seeds)', on.sp.revealed >= off.sp.revealed, `${off.sp.revealed} vs ${on.sp.revealed}`);
+  const rtOff = off.sp.sumRevealTurn / Math.max(1, off.sp.revealed), rtOn = on.sp.sumRevealTurn / Math.max(1, on.sp.revealed);
+  gate('avg find-turn not slower (+0.3 slack)', rtOn <= rtOff + 0.3, `${f(rtOff)} → ${f(rtOn)}`);
   // NOTE: first-assault size is deliberately NOT a gate. Doctrine (John): the
   // first wave goes in early with whatever is deliverable — attrition pays and
   // the force grows en route. The delivery target from #539 (≥8 ground at the
@@ -87,12 +93,26 @@ if (!IS_ARM) {
   gate('reveal→capture not slower', tOn <= tOff + 0.2, `${f(tOff)} → ${f(tOn)} rounds`);
   const wrOff = 100 * off.sp.empWins / off.sp.games, wrOn = 100 * on.sp.empWins / on.sp.games;
   gate('Empire win-rate not down > 2pt', wrOn >= wrOff - 2, `${f(wrOff)}% → ${f(wrOn)}%`);
-  // Outcome-first replay gate: capturing the real held position is the point;
+  // Outcome-first replay gates: capturing the real held position is the point;
   // delivered ground is a means (a leaner, earlier wave that captures beats a
   // bigger, later one that doesn't — doctrine).
-  const repOk = on.replays.every((b, i) =>
-    b.assaults >= 1 && (b.captured || (!off.replays[i].captured && b.maxDelivered >= off.replays[i].maxDelivered)));
-  gate('every real-position replay: ON assaults and captures (or ≥ OFF when neither captures)', repOk);
+  const revealCases = on.replays.filter((b) => b.kind === 'reveal');
+  const repOk = revealCases.every((b) => {
+    const a = off.replays.find((x) => x.log === b.log && x.kind === 'reveal');
+    return b.assaults >= 1 && (b.captured || (a && !a.captured && b.maxDelivered >= a.maxDelivered));
+  });
+  gate('every reveal-replay: ON assaults and captures (or ≥ OFF when neither captures)', repOk);
+  // Hunt replays: positions where the real game's Empire NEVER found the base.
+  // OPEN PROBLEM, not a regression gate — no shipped lever addresses the hunt
+  // yet (the hunt-march attempt was killed by the gates above; post-mortem in
+  // empirePlanner.ts deriveHuntTarget). Reported for tracking; graduates to a
+  // hard gate when a hunt lever ships.
+  const huntCases = on.replays.filter((b) => b.kind === 'hunt');
+  if (huntCases.length) {
+    const found = huntCases.filter((b) => b.revealed).length;
+    console.log(`  OPEN  hunt-replays: ON finds the base in ${found}/${huntCases.length} `
+      + `(${huntCases.map((b) => `${b.log.slice(0, 8)}:${b.revealed ? 'found@t' + b.revealTurn : 'no'}`).join(', ')})`);
+  }
   console.log(pass ? '\nSMOKE: GREEN — ready for a live playtest.' : '\nSMOKE: RED — planner not validated; keep iterating.');
   process.exit(pass ? 0 : 1);
 }
@@ -137,15 +157,23 @@ function fortify(G, base, tough, tag) {
   }
 }
 
-// ---- PART 1: replays of real human reveal positions ----
+// ---- PART 1: replays of real human positions ----
+// Two case kinds:
+//   'reveal' — the base WAS revealed; replay from the reveal moment (does the
+//              Empire march, wave, and capture the real position?).
+//   'hunt'   — the base was NEVER found (e.g. f1eb6cec: 7 candidates left, a
+//              44-unit army 2 hops from ryloth, zero visits); replay from a
+//              mid-game turn-start (does the Empire now FIND it — and then
+//              convert the reveal it earns?).
 function findReplayLogs() {
   const out = [];
   for (const f of readdirSync(join(ROOT, 'logs')).filter((x) => x.endsWith('.json'))) {
     try {
       const L = readGameLog(join(ROOT, 'logs', f));
       if (L.humanSide !== 'Rebel') continue;
-      if (!L.snapshots.some((s) => s.at === 'base-reveal')) continue;
-      out.push({ file: f, L });
+      if (L.snapshots.some((s) => s.at === 'base-reveal')) { out.push({ file: f, L, kind: 'reveal' }); continue; }
+      const ts = L.snapshots.filter((s) => s.at === 'turn-start').map((s) => s.turn);
+      if (ts.length >= 4) out.push({ file: f, L, kind: 'hunt', fromTurn: Math.max(2, Math.max(...ts) - 3) });
     } catch { /* skip */ }
   }
   return out;
@@ -153,8 +181,11 @@ function findReplayLogs() {
 
 const catalogSeed = createGame(data, { seed: 1, autoSetupUnits: true });
 const replays = [];
-for (const { file, L } of findReplayLogs()) {
-  const snap = L.snapshots.find((s) => s.at === 'base-reveal');
+for (const { file, L, kind, fromTurn } of findReplayLogs()) {
+  const snap = kind === 'reveal'
+    ? L.snapshots.find((s) => s.at === 'base-reveal')
+    : L.snapshots.find((s) => s.at === 'turn-start' && s.turn === fromTurn);
+  if (!snap) continue;
   const G = codec.decode(snapshotToCodec(snap.state), catalogSeed.catalog);
   stripRM(G); // the defender holds
   seedAI(424242);
@@ -162,7 +193,9 @@ for (const { file, L } of findReplayLogs()) {
   const defenders = rebelGroundAt(G, base);
   const startT = G.timeMarker;
   let assaults = 0, maxDelivered = 0, captured = false, inCombat = false, st = 0, minStackDist = 99;
+  let revealed = kind === 'reveal', revealTurn = revealed ? startT : null;
   while (!G.isGameOver && G.timeMarker < startT + N_ROUNDS && st < 100000) {
+    if (!revealed && G.rebelBaseRevealed) { revealed = true; revealTurn = G.timeMarker; }
     const pc = G.pendingCombat;
     if (pc && !inCombat && pc.attackerSide === 'Empire' && pc.systemId === base) {
       assaults++; maxDelivered = Math.max(maxDelivered, groundAt(G, base));
@@ -180,12 +213,12 @@ for (const { file, L } of findReplayLogs()) {
     if (aiStep(G, o)) { st++; if (G.winner === 'Empire') { captured = true; break; } continue; }
     break;
   }
-  replays.push({ log: file.slice(0, 12), base, defenders, assaults, maxDelivered, captured, minStackDist });
+  replays.push({ log: file.slice(0, 12), kind, base, defenders, assaults, maxDelivered, captured, minStackDist, revealed, revealTurn, startT });
 }
 
 // ---- PART 2: hold-defender self-play ----
 const TOUGH = 8;
-const sp = { games: 0, empWins: 0, revealed: 0, converted: 0, assaults: 0, sumFirst: 0, firsts: 0, sumPeak: 0, sumCapTurns: 0, captures: 0 };
+const sp = { games: 0, empWins: 0, revealed: 0, converted: 0, assaults: 0, sumFirst: 0, firsts: 0, sumPeak: 0, sumCapTurns: 0, captures: 0, sumRevealTurn: 0 };
 for (let i = 0; i < N_GAMES; i++) {
   const seed = 5000 + i; seedAI(seed);
   const G = createGame(data, { seed, autoSetupUnits: false });
@@ -209,7 +242,7 @@ for (let i = 0; i < N_GAMES; i++) {
   sp.games++;
   const win = G.winner === 'Empire'; if (win) sp.empWins++;
   if (revealedAt != null) {
-    sp.revealed++; sp.sumPeak += peak;
+    sp.revealed++; sp.sumPeak += peak; sp.sumRevealTurn += revealedAt;
     if (win) { sp.converted++; sp.captures++; sp.sumCapTurns += Math.max(0, G.timeMarker - revealedAt); }
   }
 }

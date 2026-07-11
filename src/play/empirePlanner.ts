@@ -151,6 +151,101 @@ function hasEmpireCarrierAt(G: GameState, sysId: SystemId): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// deriveHuntTarget — ⚠️ UNWIRED (post-mortem below). The PRE-reveal final-mile
+// of the hunt (playtest #3, log f1eb6cec): probes narrowed the base to 7
+// candidates by t6, John's actual base (ryloth) was the loudest one
+// (Rebel-loyal, 6 visible defenders), and a 44-unit army sat TWO hops away
+// shuffling between owned systems for the rest of the game. Two mechanisms,
+// read straight from the decision traces:
+//   1. The scorer's don't-start-losing-battles penalty (-24/-30) REPELS the AI
+//      from a defended candidate while it has no adjacent force — and nothing
+//      rewarded getting force adjacent.
+//   2. The old suspect gradient (+9/+5) lost to stack-consolidation (24-39)
+//      every single turn.
+// The attempted fix: aim the pull-target march (validated post-reveal) at the
+// hunt's top suspect, gated on narrowing (≤10 candidates) + a real signal.
+//
+// ⚠️ POST-MORTEM (2026-07-11, why it is unwired): the smoke suite + standard
+// bench KILLED it —
+//   • standard bench: Empire win 52.0→43.3 (−8.7pt), base-found 70→66. The
+//     march burns the activations the hunt economy spends CLEARING candidates
+//     (stepping on them + subjugating); vs a relocating Rebel the suspect goes
+//     stale and the march chases ghosts.
+//   • hold-defender smoke: base-found 122→111 (gate FAIL).
+//   • hunt-replays from real positions (t4-t6): NEITHER arm finds the base —
+//     by the time candidates narrow enough to pick a suspect, the reputation
+//     clock leaves too few rounds to march 3+ hops and assault. "Final-mile"
+//     is the wrong frame: a real hunt fix must shape the EARLY game (candidate-
+//     clearing economy / probe tempo), not add a late march.
+// Kept (with huntMarchBonus) as the documented starting point for that future
+// effort; the smoke suite's hunt gates + replay cases are the standing judge.
+// ---------------------------------------------------------------------------
+export interface HuntTarget {
+  suspectId: SystemId;
+  candidatesLeft: number;
+  distFromSuspect: Map<string, number>;
+}
+
+const HUNT_NARROW = 10;   // candidates ≤ this → the march may engage
+const HUNT_SWEEP = 3;     // candidates ≤ this → march even without a signal
+// March weight vs the post-reveal gradient. 0.7 was inert — max +14 at d3 lost
+// to stack-consolidation scores (28-38) every turn in the f1eb6cec replay, the
+// exact "nudge that doesn't bite" failure mode. 1.2 lets a full 8-pull march
+// (a real army moving toward a strong-signal suspect) win: d1 +33.6 / d2 +28.8
+// / d3 +24 — while a token 1-2-unit pull (+4-8) still loses to everything, so
+// scouting/subjugation keep their turns when no army is in motion.
+const HUNT_SCALE = 1.2;
+
+export function deriveHuntTarget(G: GameState): HuntTarget | null {
+  if (G.rebelBaseRevealed || !G.rebelBaseSystemId) return null;
+  const eliminated = new Set(
+    (G.empire.probeHand ?? []).map((pid) => G.catalog.probes[pid]?.systemId).filter((s): s is string => !!s),
+  );
+  const candidates: string[] = [];
+  for (const sid of Object.keys(G.map.systems)) {
+    if (sid === 'coruscant' || eliminated.has(sid) || !G.catalog.systems[sid]) continue;
+    if (G.map.systems[sid]?.units.some((u) => u.side === 'Empire')) continue;
+    candidates.push(sid);
+  }
+  if (candidates.length === 0 || candidates.length > HUNT_NARROW) return null;
+  let best: string | null = null, bestScore = -1;
+  for (const cid of candidates) {
+    const ss = G.map.systems[cid];
+    if (!ss) continue;
+    let s = 0;
+    if (ss.loyalty === 'rebel') s += 12;
+    if (ss.units.some((u) => u.side === 'Rebel')) s += 6;
+    if (!G.catalog.systems[cid]?.isRemote) s += 2;
+    if (s > bestScore || (s === bestScore && best !== null && cid < best)) { bestScore = s; best = cid; }
+  }
+  if (!best) return null;
+  // Signal gate: march only toward a candidate that LOOKS like a base, unless
+  // the sweep is nearly finished anyway.
+  if (bestScore < 12 && candidates.length > HUNT_SWEEP) return null;
+  return { suspectId: best as SystemId, candidatesLeft: candidates.length, distFromSuspect: bfs(G, best as SystemId, 12) };
+}
+
+/** Pull-target march bonus toward the hunt suspect (pre-reveal twin of
+ *  planSystemBonus part 3, scaled by HUNT_SCALE). Additive only. */
+export function huntMarchBonus(G: GameState, hunt: HuntTarget, sysId: SystemId): number {
+  if (sysId === hunt.suspectId) return 0; // the candidate's own scoring owns the final step
+  const ss = G.map.systems[sysId];
+  if (!ss) return 0;
+  if ((G.empire.leadersOnBoard[sysId] ?? []).length > 0) return 0;
+  const d = hunt.distFromSuspect.get(sysId) ?? 99;
+  if (d < 1 || d > 90) return 0;
+  let pull = 0;
+  for (const n of (G.catalog.adjacency[sysId] ?? [])) {
+    if ((G.empire.leadersOnBoard[n] ?? []).length > 0) continue;
+    if ((hunt.distFromSuspect.get(n) ?? 99) <= d) continue;
+    pull += Math.min(freeGroundAt(G, n), carrierCapacityAt(G, n));
+  }
+  if (pull <= 0) return 0;
+  const w = (MARCH_W[d] ?? MARCH_W_FAR) * HUNT_SCALE;
+  return Math.min(pull, MARCH_PULL_CAP) * w;
+}
+
+// ---------------------------------------------------------------------------
 // derivePlan — the pure planner. Empire perspective. null = no plan this turn
 // (base not revealed, or no base id).
 // ---------------------------------------------------------------------------
