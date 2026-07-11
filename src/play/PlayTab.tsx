@@ -12078,6 +12078,11 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
           encodedAt: new Date().toISOString(),
           inProgress: true,
           humanSide: (() => { try { return localStorage.getItem(LS_HUMAN_SIDE) || undefined; } catch { return undefined; } })(),
+          // Join key + planner attribution for in-progress records too — John's
+          // first planner playtest surfaced as an in-progress upload, and
+          // proving the flag was on took decision-trace forensics.
+          gameId: (() => { try { return localStorage.getItem(LS_GAME_ID) || undefined; } catch { return undefined; } })(),
+          empirePlanner: PLANNER_ENABLED,
           codec: inProgressCodec,
           source: 'browser-in-progress',
         }] : []),

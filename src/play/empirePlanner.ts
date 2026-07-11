@@ -56,6 +56,10 @@ export interface StrikeFleetPlan {
   massedGround: number;
   /** Empire free mobile ground within 2 hops of the base (the staging pool). */
   stagedGround: number;
+  /** Hop distance from the base for every reachable system — computed once per
+   *  plan so the per-system bonus never re-runs a BFS. Runtime-only (the plan
+   *  is derived, never serialized). */
+  distFromBase: Map<string, number>;
 }
 
 // ---- enable gate ----
@@ -163,12 +167,15 @@ export function derivePlan(G: GameState): StrikeFleetPlan | null {
   }
   const massedGround = groundAtBase + liftableAdjacent;
 
+  // Map-wide distance from the base (one BFS per plan; the march gradient needs
+  // it for every system, not just the 2-hop ring).
+  const distFromBase = bfs(G, target, 12);
+
   // Staging pool: free ground within 2 hops of the base.
-  const dist2 = bfs(G, target, 2);
   let stagedGround = 0;
   for (const sid of Object.keys(G.map.systems)) {
     if (sid === target) continue;
-    if ((dist2.get(sid) ?? 99) <= 2) stagedGround += freeGroundAt(G, sid);
+    if ((distFromBase.get(sid) ?? 99) <= 2) stagedGround += freeGroundAt(G, sid);
   }
   stagedGround += groundAtBase;
 
@@ -177,7 +184,7 @@ export function derivePlan(G: GameState): StrikeFleetPlan | null {
   else if (stagedGround >= neededGround) mode = 'READY';  // force is near — co-locate + mass it inward
   else mode = 'STAGE';                                    // consolidate more force toward the base
 
-  return { mode, targetSystemId: target, neededGround, massedGround, stagedGround };
+  return { mode, targetSystemId: target, neededGround, massedGround, stagedGround, distFromBase };
 }
 
 // ---------------------------------------------------------------------------
@@ -194,12 +201,19 @@ export function derivePlan(G: GameState): StrikeFleetPlan | null {
 // assault trigger.
 const B_STRIKE_SINK = 30;   // STRIKE only: dash — activate the base to pull the massed ring in
 const B_COLOCATE = 30;      // co-locate a carrier with a stranded free-ground stack near the base
-const B_GRAD_1 = 18;        // one hop from the base, holding movable force → feed inward
-const B_GRAD_2 = 10;
-const B_GRAD_3 = 5;
+// March-pull gradient weight by the pull-target's distance from the base. The
+// bonus is weight × liftable force pulled inward (capped), so marching a real
+// strike stack dominates subjugation/mission scores (~12-29 post-reveal) while
+// a token 1-unit shuffle doesn't. Map-wide on purpose: John's live playtest
+// (mon-calamari, t3 reveal) had 16 ground + 6 carriers co-located THREE hops
+// out and the old ≤3-hop, holds-units-only gradient never out-scored a
+// subjugation — the army sat still for the whole 2-turn reveal window.
+const MARCH_W: Record<number, number> = { 1: 3.5, 2: 3.0, 3: 2.5, 4: 2.0, 5: 1.5 };
+const MARCH_W_FAR = 1.0;    // 6+ hops — still marches, just softer
+const MARCH_PULL_CAP = 8;   // force units of pull that count toward the bonus
 
 export function planSystemBonus(G: GameState, plan: StrikeFleetPlan, sysId: SystemId): number {
-  const { mode, targetSystemId } = plan;
+  const { mode, targetSystemId, distFromBase } = plan;
   const ss = G.map.systems[sysId];
   if (!ss) return 0;
 
@@ -215,14 +229,13 @@ export function planSystemBonus(G: GameState, plan: StrikeFleetPlan, sysId: Syst
   //    only ADDS the dash once the force is overwhelming.
   if (sysId === targetSystemId) return mode === 'STRIKE' ? B_STRIKE_SINK : 0;
 
-  const dBase = bfs(G, targetSystemId, 3).get(sysId) ?? 99;
-  if (leaderHere || dBase < 1) return 0;
+  const dBase = distFromBase.get(sysId) ?? 99;
+  if (leaderHere || dBase < 1 || dBase > 90) return 0;
 
-  // 2) Carrier↔ground co-location (the crux): a base-adjacent-ish system holding
-  //    stranded free ground with NO local carrier but a carrier one hop away —
-  //    activating it pulls the carrier in so next turn the ground ferries to the
-  //    base. This is the step the greedy scorer kept skipping. ≤2 hops only, so
-  //    we never ferry force away from the hunt elsewhere.
+  // 2) Carrier↔ground co-location: a base-adjacent-ish system holding stranded
+  //    free ground with NO local carrier but a carrier one hop away — activating
+  //    it pulls the carrier in so next turn the ground ferries to the base.
+  //    ≤2 hops only, so we never ferry lift away from the hunt elsewhere.
   if (dBase <= 2) {
     const stranded = freeGroundAt(G, sysId);
     if (stranded > 0 && !hasEmpireCarrierAt(G, sysId)) {
@@ -231,13 +244,24 @@ export function planSystemBonus(G: GameState, plan: StrikeFleetPlan, sysId: Syst
     }
   }
 
-  // 3) Inward gradient — feed movable force one hop closer to the base each turn.
-  //    Only where the Empire actually has units to flow inward; the scorer's
-  //    universal troop guard removes any activation that can't bring a unit.
-  if (ss.units.some((u) => u.side === 'Empire')) {
-    if (dBase === 1) return B_GRAD_1;
-    if (dBase === 2) return B_GRAD_2;
-    if (dBase === 3) return B_GRAD_3;
+  // 3) March-pull gradient — reward activating the PULL-TARGET: the (usually
+  //    empty) system one hop closer to the base than a strike stack. RAW moves
+  //    units INTO the activated system from its neighbors, so this — not
+  //    "activate where the units are" (the old, wrong formulation, which can't
+  //    move a stack at all) — is the actual marching move. Pull counts only
+  //    force that would move INWARD (neighbor strictly farther from the base),
+  //    only from leader-free neighbors (RAW: leaders pin their system's units),
+  //    and only ground a co-located carrier can actually lift (RAW: ground
+  //    crosses space inside a carrier from its own system).
+  let pull = 0;
+  for (const n of (G.catalog.adjacency[sysId] ?? [])) {
+    if ((G.empire.leadersOnBoard[n] ?? []).length > 0) continue;
+    if ((distFromBase.get(n) ?? 99) <= dBase) continue; // lateral/inner — not an inward march
+    pull += Math.min(freeGroundAt(G, n), carrierCapacityAt(G, n));
+  }
+  if (pull > 0) {
+    const w = MARCH_W[dBase] ?? MARCH_W_FAR;
+    return Math.min(pull, MARCH_PULL_CAP) * w;
   }
   return 0;
 }
