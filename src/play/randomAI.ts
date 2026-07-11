@@ -2452,30 +2452,34 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   // that can travel (greedy-pack).
   if (G.pendingChoice && G.pendingChoice.kind === 'CatchThemBySurpriseMovePick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
-    const src = c.candidateSourceSystemIds[0];
-    if (!src) return phases.resolveCatchThemBySurpriseMovePick(G, '', []).ok;
-    const units = G.map.systems[src].units.filter((u) => u.side === 'Empire');
-    // Use the same greedy-pack heuristic.
-    const capShipIds: string[] = [];
-    const fighterIds: string[] = [];
-    const groundIds: string[] = [];
-    for (const u of units) {
-      const t = G.catalog.unitTypes[u.typeId];
-      if (!t || t.transport.immobile) continue;
-      if (t.transport.capacity > 0) capShipIds.push(u.instanceId);
-      else if (t.transport.restriction) fighterIds.push(u.instanceId);
-      else if (t.theater === 'ground' && t.class !== 'structure') groundIds.push(u.instanceId);
+    // Card allows pulling from ALL adjacent sources (#548) — greedy-pack every
+    // candidate system into its own transport-legal order (same heuristic the
+    // activation executor uses: all capitals, then riders up to capacity).
+    const orders: { fromSystemId: SystemId; unitInstanceIds: string[] }[] = [];
+    for (const src of c.candidateSourceSystemIds) {
+      const units = G.map.systems[src].units.filter((u) => u.side === 'Empire');
+      const capShipIds: string[] = [];
+      const fighterIds: string[] = [];
+      const groundIds: string[] = [];
+      for (const u of units) {
+        const t = G.catalog.unitTypes[u.typeId];
+        if (!t || t.transport.immobile) continue;
+        if (t.transport.capacity > 0) capShipIds.push(u.instanceId);
+        else if (t.transport.restriction) fighterIds.push(u.instanceId);
+        else if (t.theater === 'ground' && t.class !== 'structure') groundIds.push(u.instanceId);
+      }
+      let cap = capShipIds.reduce((s, uid) => {
+        const u = units.find((x) => x.instanceId === uid);
+        return s + (u ? (G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0) : 0);
+      }, 0);
+      const picks = [...capShipIds];
+      for (const uid of [...fighterIds, ...groundIds]) {
+        if (cap <= 0) break;
+        picks.push(uid); cap--;
+      }
+      if (picks.length > 0) orders.push({ fromSystemId: src, unitInstanceIds: picks });
     }
-    let cap = capShipIds.reduce((s, uid) => {
-      const u = units.find((x) => x.instanceId === uid);
-      return s + (u ? (G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0) : 0);
-    }, 0);
-    const picks = [...capShipIds];
-    for (const uid of [...fighterIds, ...groundIds]) {
-      if (cap <= 0) break;
-      picks.push(uid); cap--;
-    }
-    return phases.resolveCatchThemBySurpriseMovePick(G, src, picks).ok;
+    return phases.resolveCatchThemBySurpriseMovePick(G, orders).ok;
   }
   // Scouting Mission: relocate up to 4 TIEs from candidates.
   if (G.pendingChoice && G.pendingChoice.kind === 'ScoutingMissionTIEPick' && G.pendingChoice.side === side) {

@@ -138,12 +138,16 @@ function detectQualifiers(G: GameState, t: string): { preds: Pred[]; notes: stri
     for (const [name, typeId] of sorted) {
       if (remain.includes(name)) {
         wanted.add(typeId);
-        if (typeId === 'death-star') wanted.add('death-star-under-construction');
         remain = remain.split(name).join('');
       }
     }
-    // "Resolve on a Death Star (not a DSUC)" — the parenthetical excludes the
-    // under-construction model that 'death star' auto-includes above.
+    // "Death Star" means the COMPLETED station only (#546). The card set names
+    // the DSUC explicitly whenever it's included ("Death Star, DSUC, or Shield
+    // Bunker", "Death Star or DSUC", "(not a DSUC)") — so a card that says just
+    // "Death Star" excludes it. An earlier blanket auto-include let Superlaser
+    // Online fire the superlaser of an unfinished Death Star.
+    // Belt-and-braces: honor an explicit "(not a DSUC)" even if 'dsuc' was
+    // parsed from elsewhere in the sentence.
     if (t.includes('not a dsuc') || t.includes('not dsuc')) {
       wanted.delete('death-star-under-construction');
     }

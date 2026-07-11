@@ -4084,22 +4084,33 @@ export function resolveBrilliantAdministratorBuildPick(
 /** Catch Them By Surprise: Empire moves units from a chosen source to
  *  Ozzel's system. Transport-validated; source must be adjacent. */
 export function resolveCatchThemBySurpriseMovePick(
-  G: GameState, sourceSystemId: SystemId, unitInstanceIds: string[]
+  G: GameState, orders: MoveOrder[]
 ): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;
   if (!choice || choice.kind !== 'CatchThemBySurpriseMovePick') return { ok: false, reason: 'no-pending' };
-  if (!choice.candidateSourceSystemIds.includes(sourceSystemId)) return { ok: false, reason: 'bad-source' };
-  if (unitInstanceIds.length > 0) {
-    const v = validateMoveOrderTransport(G, 'Empire', {
-      fromSystemId: sourceSystemId, unitInstanceIds,
-    });
-    if (!v.ok) return { ok: false, reason: v.reason };
+  // Card text (#548): "move Imperial units from adjacent systemS to this
+  // system" — plural sources, like a normal activation. Validate every order:
+  // legal source, no duplicate sources, transport per source.
+  const seen = new Set<string>();
+  for (const o of orders) {
+    if (!choice.candidateSourceSystemIds.includes(o.fromSystemId)) return { ok: false, reason: `bad-source:${o.fromSystemId}` };
+    if (seen.has(o.fromSystemId)) return { ok: false, reason: `duplicate-source:${o.fromSystemId}` };
+    seen.add(o.fromSystemId);
+    if (o.unitInstanceIds.length > 0) {
+      const v = validateMoveOrderTransport(G, 'Empire', o);
+      if (!v.ok) return { ok: false, reason: v.reason };
+    }
   }
   const targetSystemId = choice.targetSystemId;
-  for (const uid of unitInstanceIds) M.moveUnit(G, uid, sourceSystemId, targetSystemId);
+  let firstSource: SystemId | null = null;
+  for (const o of orders) {
+    if (o.unitInstanceIds.length > 0 && !firstSource) firstSource = o.fromSystemId;
+    for (const uid of o.unitInstanceIds) M.moveUnit(G, uid, o.fromSystemId, targetSystemId);
+  }
   log(G, { kind: 'catch-them-by-surprise-move', side: 'Empire', payload: {
-    fromSystemId: sourceSystemId, toSystemId: targetSystemId,
-    moved: unitInstanceIds.length, movedIds: unitInstanceIds,
+    toSystemId: targetSystemId,
+    orders: orders.map((o) => ({ fromSystemId: o.fromSystemId, moved: o.unitInstanceIds.length })),
+    moved: orders.reduce((s, o) => s + o.unitInstanceIds.length, 0),
   }});
   G.pendingChoice = undefined;
   // Moving a fleet into an enemy-occupied system initiates combat (RAW general
@@ -4107,7 +4118,7 @@ export function resolveCatchThemBySurpriseMovePick(
   // self-guards on both sides being present, so this is a no-op if no Rebels are
   // at the destination. Previously this resolver moved the fleet but never
   // offered battle (player report — Brad Miller / BGG).
-  beginCombat(G, 'Empire', sourceSystemId, targetSystemId);
+  beginCombat(G, 'Empire', firstSource ?? choice.candidateSourceSystemIds[0], targetSystemId);
   if (G.pendingCombat) runCombat(G);
   return { ok: true };
 }

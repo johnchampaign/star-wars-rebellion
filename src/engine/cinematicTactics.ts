@@ -67,7 +67,9 @@ type CaptureEffect = { kind: 'capture' };
 // Cancel the opponent's tactic card this round in this theatre (Entrapment /
 // Air Superiority / Outrun Them primaries). Only bites if the canceller plays
 // before the opponent (sequential resolution — see combat.ts runTheater).
-type CancelEffect = { kind: 'cancel' };
+// `extra`: Entrapment's primary also reads "You may play another card" (#547)
+// — it grants an extra tactic play this round on top of the cancel.
+type CancelEffect = { kind: 'cancel'; extra?: boolean };
 // Shield absorb (Armored Position / Planetary Shield primaries): move up to
 // `amount` accumulated damage from your own GROUND units onto one shield
 // structure (Shield Bunker / Shield Generator), which soaks it.
@@ -106,6 +108,8 @@ const LOCK: LockDeckEffect = { kind: 'lockDeck' };
 const REMOVE = (amount: number, exceptTypeId?: string): RemoveDamageEffect => ({ kind: 'removeDamage', amount, exceptTypeId });
 const CAPTURE: CaptureEffect = { kind: 'capture' };
 const CANCEL: CancelEffect = { kind: 'cancel' };
+// Entrapment primary: "Cancel the Rebel tactic card. You may play another card."
+const CANCEL_EXTRA: CancelEffect = { kind: 'cancel', extra: true };
 const ABSORB = (amount: number, structureTypeId: string): ShieldAbsorbEffect => ({ kind: 'shieldAbsorb', amount, structureTypeId });
 const EXTRA: ExtraCardEffect = { kind: 'extraCard' };
 const ROGUE: RogueOneEffect = { kind: 'rogueOne' };
@@ -123,7 +127,7 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   'cin-empire-space-tractor-beam':           [CAPTURE, D(1, 'red')],
   'cin-empire-space-overwhelming-presence':  [P(2, 0, 1), P(2, 0)],
   'cin-empire-space-superlaser-blast':       [TD(5, 'capital'), D(1)],
-  'cin-empire-space-entrapment':             [CANCEL, LOCK],
+  'cin-empire-space-entrapment':             [CANCEL_EXTRA, LOCK],
   'cin-empire-space-energy-shield':          [REMOVE(2), FIRST],
   'cin-empire-space-intercept':              [DESTROY({ tier: 'triangle', theater: 'ground' }), LOCKSPECIAL],
   // ---- Imperial Ground ----
@@ -257,7 +261,8 @@ function abilityValue(G: GameState, c: CombatState, side: Side, theater: Theater
     const oppKey = `${opp}:${theater}:${c.round}`;
     const tooLate = (c.cinematicTacticDoneThisRound ?? []).includes(oppKey);
     if (tooLate) return 0;
-    return availableCards(G, opp, theater).length > 0 ? 1.2 : 0.2;
+    const base = availableCards(G, opp, theater).length > 0 ? 1.2 : 0.2;
+    return base + (ab.extra ? 0.5 : 0); // Entrapment also grants an extra play (#547)
   }
   if (ab.kind === 'shieldAbsorb') {
     // Worth it only if we have the shield structure AND wounded ground units.
@@ -549,7 +554,11 @@ export function applyCinematicAbility(
       const oppKey = `${opp}:${theater}:${c.round}`;
       const tooLate = (c.cinematicTacticDoneThisRound ?? []).includes(oppKey);
       if (!tooLate) (c.cinematicCancel ??= {})[oppKey] = true;
-      logPlay({ cancel: { side: opp, theater, applied: !tooLate, note: tooLate ? 'opponent already resolved' : undefined } });
+      // Entrapment (#547): the primary also grants "You may play another
+      // card" — an extra tactic play this round, unconditional on whether
+      // the cancel itself bit (that's how the card is printed).
+      if (ab.extra) grantExtraCard(c, side, theater);
+      logPlay({ cancel: { side: opp, theater, applied: !tooLate, note: tooLate ? 'opponent already resolved' : undefined }, extra: !!ab.extra });
     }
   } else if (ab.kind === 'shieldAbsorb') {
     // "After the [opponent] assign damage, assign up to N damage to 1 Shield

@@ -101,7 +101,7 @@ export type RebellionAction =
   | { kind: 'resolveC3POOffer'; accept: boolean }
   | { kind: 'resolveFalconOffer'; leaderId: LeaderId | null }
   | { kind: 'resolveBrilliantAdministratorBuildPick'; typeIds: (UnitTypeId | null)[] }
-  | { kind: 'resolveCatchThemBySurpriseMovePick'; sourceSystemId: SystemId; unitInstanceIds: UnitInstanceId[] }
+  | { kind: 'resolveCatchThemBySurpriseMovePick'; orders: { fromSystemId: SystemId; unitInstanceIds: UnitInstanceId[] }[] }
   | { kind: 'resolveScoutingMissionTIEPick'; unitInstanceIds: UnitInstanceId[] }
   | { kind: 'resolveOurMostDesperateHourPick'; missionId: string }
   | { kind: 'resolveProceedingAsPlannedPick'; missionId: string }

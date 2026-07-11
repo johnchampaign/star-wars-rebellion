@@ -2887,8 +2887,8 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         && G.pendingChoice?.kind === 'CatchThemBySurpriseMovePick'
         && G.pendingChoice.side === humanSide && (
         <CatchThemBySurpriseMovePickModal G={G} choice={G.pendingChoice}
-          onPick={(srcId, ids) => {
-            const r = phases.resolveCatchThemBySurpriseMovePick(G, srcId, ids);
+          onPick={(orders) => {
+            const r = phases.resolveCatchThemBySurpriseMovePick(G, orders);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
@@ -14580,19 +14580,27 @@ function CatchThemBySurpriseMovePickModal({
 }: {
   G: GameState;
   choice: { targetSystemId: string; candidateSourceSystemIds: string[] };
-  onPick: (sourceSystemId: string, ids: string[]) => void;
+  onPick: (orders: { fromSystemId: string; unitInstanceIds: string[] }[]) => void;
 }) {
   const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
   const [srcId, setSrcId] = useState<string | null>(null);
-  const [picks, setPicks] = useState<Set<string>>(new Set());
+  // Picks per SOURCE system — the card moves units "from adjacent systemS"
+  // (plural, #548), so switching sources preserves earlier selections and the
+  // submit sends one transport-validated order per source.
+  const [picksBySrc, setPicksBySrc] = useState<Map<string, Set<string>>>(new Map());
+  const picks = picksBySrc.get(srcId ?? '') ?? new Set<string>();
   const sourceUnits = srcId
     ? G.map.systems[srcId].units.filter((u) => u.side === 'Empire')
     : [];
   const toggle = (uid: string) => {
-    const next = new Set(picks);
-    if (next.has(uid)) next.delete(uid); else next.add(uid);
-    setPicks(next);
+    if (!srcId) return;
+    const next = new Map(picksBySrc);
+    const set = new Set(next.get(srcId) ?? []);
+    if (set.has(uid)) set.delete(uid); else set.add(uid);
+    next.set(srcId, set);
+    setPicksBySrc(next);
   };
+  const totalPicked = [...picksBySrc.values()].reduce((s, v) => s + v.size, 0);
   let cap = 0, riders = 0;
   for (const uid of picks) {
     const u = sourceUnits.find((x) => x.instanceId === uid);
@@ -14614,17 +14622,20 @@ function CatchThemBySurpriseMovePickModal({
       }}>
         <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Catch Them By Surprise — move fleet to {targetName}</h3>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 8 }}>
-          Ozzel's immediate fleet move. Pick an adjacent source system, then units to bring. Transport rules apply.
+          Immediate surprise move: bring Imperial units from ANY adjacent systems into {targetName}. Pick each source in turn and select its units — transport rules apply per source.
         </div>
         <div style={{ marginBottom: 10 }}>
           <select value={srcId ?? ''}
-            onChange={(e) => { setSrcId(e.target.value || null); setPicks(new Set()); }}
+            onChange={(e) => setSrcId(e.target.value || null)}
             style={{ background: '#0c0d10', color: '#e8e8ea', border: '1px solid #3a3d44', padding: '4px 8px' }}
           >
             <option value="">— pick source system —</option>
-            {choice.candidateSourceSystemIds.map((sid) => (
-              <option key={sid} value={sid}>{G.catalog.systems[sid]?.name ?? sid}</option>
-            ))}
+            {choice.candidateSourceSystemIds.map((sid) => {
+              const n = picksBySrc.get(sid)?.size ?? 0;
+              return (
+                <option key={sid} value={sid}>{G.catalog.systems[sid]?.name ?? sid}{n > 0 ? ` (${n} picked)` : ''}</option>
+              );
+            })}
           </select>
         </div>
         {srcId && (
@@ -14652,10 +14663,13 @@ function CatchThemBySurpriseMovePickModal({
             </div>
           </>
         )}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button className="tab-button active" disabled={!srcId}
-            onClick={() => srcId && onPick(srcId, [...picks])}
-          >Move {picks.size} unit{picks.size === 1 ? '' : 's'}</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <button className="tab-button active"
+            onClick={() => onPick([...picksBySrc.entries()]
+              .filter(([, set]) => set.size > 0)
+              .map(([fromSystemId, set]) => ({ fromSystemId, unitInstanceIds: [...set] })))}
+          >Move {totalPicked} unit{totalPicked === 1 ? '' : 's'} from {[...picksBySrc.values()].filter((v) => v.size > 0).length} system{[...picksBySrc.values()].filter((v) => v.size > 0).length === 1 ? '' : 's'}</button>
+          <span style={{ color: '#888', fontSize: 11 }}>You may pull units from several adjacent systems — pick a source, select units, then switch sources.</span>
         </div>
       </div>
     </div>

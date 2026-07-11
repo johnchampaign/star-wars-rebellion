@@ -144,7 +144,7 @@ function dispatch(G: GameState, a: RebellionAction, actor: Side): Result {
     case 'resolveC3POOffer':                     return phases.resolveC3POOffer(G, a.accept);
     case 'resolveFalconOffer':                   return phases.resolveFalconOffer(G, a.leaderId);
     case 'resolveBrilliantAdministratorBuildPick': return phases.resolveBrilliantAdministratorBuildPick(G, a.typeIds);
-    case 'resolveCatchThemBySurpriseMovePick':   return phases.resolveCatchThemBySurpriseMovePick(G, a.sourceSystemId, a.unitInstanceIds);
+    case 'resolveCatchThemBySurpriseMovePick':   return phases.resolveCatchThemBySurpriseMovePick(G, a.orders);
     case 'resolveScoutingMissionTIEPick':        return phases.resolveScoutingMissionTIEPick(G, a.unitInstanceIds);
     case 'resolveOurMostDesperateHourPick':      return phases.resolveOurMostDesperateHourPick(G, a.missionId);
     case 'resolveProceedingAsPlannedPick':       return phases.resolveProceedingAsPlannedPick(G, a.missionId);
