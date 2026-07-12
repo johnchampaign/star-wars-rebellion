@@ -1052,7 +1052,7 @@
       "leaderPortrait": null,
       "effectKey": "subversion-new-rebel",
       "rulesText": "Reveal this mission after the Imperial player reveals a mission. Place all of your leaders assigned to \"Subversion\" in the targeted system. You roll 1 additional die for this opposition.",
-      "image": "Subversion Rebel RotE.jpg",
+      "image": "Subversion Rebels RotE.jpg",
       "set": "rote",
       "missionSet": "rote"
     },
@@ -1068,7 +1068,7 @@
       "leaderPortrait": null,
       "effectKey": "subversion-original-rebel",
       "rulesText": "Reveal this mission after the Imperial player reveals a mission. Place all of your leaders assigned to \"Subversion\" in the targeted system. You roll 1 additional die for this opposition.",
-      "image": "Subversion Rebel Core.jpg",
+      "image": "Subversion Rebels Core.jpg",
       "set": "rote",
       "missionSet": "base"
     },
