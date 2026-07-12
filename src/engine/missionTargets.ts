@@ -436,13 +436,28 @@ export function missionRevealIsPointless(
       const markers = (ss?.targetMarkers?.length ?? 0) > 0;
       return !rebelGround && !markers;
     }
-    case 'hidden-fleet':
-      // "Move units from the 'Rebel Base' space to this system." A no-op once
-      // the Rebel Base space holds no units — which is the normal state after
-      // the base is revealed (its units move onto the map). The AI shouldn't
-      // burn the card moving nothing, and the human gets a "won't do anything"
-      // warning (player report: AI Rebel ran Hidden Fleet but moved no units).
-      return (G.map.rebelBaseSpace?.units?.length ?? 0) === 0;
+    case 'hidden-fleet': {
+      // "Move units from the 'Rebel Base' space to this system" — RAW bypasses
+      // adjacency but NOT transport (see the handler). A no-op when the base
+      // space holds no DELIVERABLE units: immobile structures never move, and
+      // ground can't move without a co-moving carrier's capacity. Just counting
+      // units missed the common case where the base space holds only a lone
+      // trooper + structures and the target has no ships — moving nothing
+      // (players #553/#554: AI Rebel ran Hidden Fleet twice on a shipless system,
+      // each a wasted card). Mirrors behind-enemy-lines' deliverability test.
+      // The handler reads rebelBaseSpace directly, so post-reveal it's empty →
+      // correctly pointless.
+      const baseUnits = G.map.rebelBaseSpace?.units ?? [];
+      let ships = 0, ground = 0, capacity = 0;
+      for (const u of baseUnits) {
+        if (u.side !== 'Rebel') continue;
+        const t = G.catalog.unitTypes[u.typeId];
+        if (!t || t.transport.immobile || t.class === 'structure') continue;
+        if (t.theater === 'ground') ground++;
+        else { ships++; if (t.transport.capacity > 0) capacity += t.transport.capacity; }
+      }
+      return ships + Math.min(ground, capacity) === 0;
+    }
     case 'hunt-them-down':
     case 'hit-and-run':
     case 'rogue-squadron-raid': {

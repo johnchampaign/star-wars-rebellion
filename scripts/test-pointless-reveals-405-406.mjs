@@ -51,6 +51,25 @@ console.log('\n[ Plan the Assault is pointless with no Rebel ships at the base ]
   check('NOT pointless once a Rebel ship is at the base', missionRevealIsPointless(G, 'Rebel', 'plan-the-assault', 'felucia') === false);
 }
 
+console.log('\n[ #553/#554 Hidden Fleet is pointless with no deliverable units at the base ]');
+{
+  const G = createGame(data, { seed: 4, expansion: { enabled: true, roeUnits: true, roeMissions: true } });
+  G.map.rebelBaseSpace.units = [];
+  check('pointless when the Rebel Base space is empty',
+    missionRevealIsPointless(G, 'Rebel', 'hidden-fleet', 'alderaan') === true);
+  // The exact reported state: a lone trooper + immobile structures, target has no
+  // ships → ground can't be transported, structures can't move → nothing moves.
+  G.map.rebelBaseSpace.units.push({ instanceId: 'g1', typeId: 'rebel-trooper', side: 'Rebel', damage: 0 });
+  G.map.rebelBaseSpace.units.push({ instanceId: 'ion', typeId: 'ion-cannon', side: 'Rebel', damage: 0 });
+  G.map.rebelBaseSpace.units.push({ instanceId: 'shg', typeId: 'shield-generator', side: 'Rebel', damage: 0 });
+  check('still pointless with only a lone trooper + immobile structures (no carrier)',
+    missionRevealIsPointless(G, 'Rebel', 'hidden-fleet', 'alderaan') === true);
+  // A self-mobile ship at the base → now Hidden Fleet delivers something.
+  G.map.rebelBaseSpace.units.push({ instanceId: 's1', typeId: 'x-wing', side: 'Rebel', damage: 0 });
+  check('NOT pointless once a self-mobile ship is at the base',
+    missionRevealIsPointless(G, 'Rebel', 'hidden-fleet', 'alderaan') === false);
+}
+
 console.log('\n[ Lead the Strike Team: pointless only with no base ground AND no Rebel at target ]');
 {
   const G = createGame(data, { seed: 4, expansion: { enabled: true, roeUnits: true, roeMissions: true } });
