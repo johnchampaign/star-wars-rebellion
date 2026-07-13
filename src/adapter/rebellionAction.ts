@@ -77,7 +77,7 @@ export type RebellionAction =
   | { kind: 'resolveDestroyUpToHealth'; instanceIds: UnitInstanceId[] }
   | { kind: 'resolveRogueSquadronRaidPick'; picks: { slot: 1 | 2 | 3; queueIndex: number }[] }
   | { kind: 'resolveDoubleOurEffortsPick'; picks: { slot: 2 | 3; queueIndex: number }[] }
-  | { kind: 'resolvePlanetaryConquestSourcePick'; sourceSystemId: SystemId }
+  | { kind: 'resolvePlanetaryConquestSourcePick'; sourceSystemId: SystemId; unitInstanceIds?: UnitInstanceId[] }
   | { kind: 'resolveFearWillKeepThemInLinePick'; systemIds: SystemId[] }
   | {
       kind: 'resolvePublicUprisingPick';

@@ -2791,13 +2791,25 @@ export function resolveDoubleOurEffortsPick(G: GameState, picks: { slot: 2 | 3; 
 
 /** Planetary Conquest: Empire picks source system; engine moves the
  *  pre-computed unit set; combat triggers at target. */
-export function resolvePlanetaryConquestSourcePick(G: GameState, sourceSystemId: string): { ok: boolean; reason?: string } {
+export function resolvePlanetaryConquestSourcePick(G: GameState, sourceSystemId: string, unitInstanceIds?: string[]): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;
   if (!choice || choice.kind !== 'PlanetaryConquestSourcePick') return { ok: false, reason: 'no-pending' };
   const src = choice.sources.find((s) => s.sourceSystemId === sourceSystemId);
   if (!src) return { ok: false, reason: `bad-source:${sourceSystemId}` };
-  for (const uid of src.picks) M.moveUnit(G, uid, sourceSystemId, choice.targetSystemId);
-  log(G, { kind: 'planetary-conquest-source', side: 'Empire', payload: { sourceSystemId, targetSystemId: choice.targetSystemId, units: src.picks.length } });
+  // "Move UP TO 1 AT-AT, 1 AT-ST and 2 Stormtroopers" — the player may bring
+  // FEWER than the maximum, including none (#559: the game forced ALL eligible
+  // units). When unitInstanceIds is given, move exactly that subset; each must
+  // be one of the source's eligible picks (that set already caps per-type
+  // counts, so any subset is a legal "up to" choice). Omitted → move all
+  // eligible (the AI wants max force; keeps back-compat).
+  const toMove = unitInstanceIds
+    ? unitInstanceIds.filter((uid) => src.picks.includes(uid))
+    : src.picks;
+  if (unitInstanceIds && toMove.length !== unitInstanceIds.length) {
+    return { ok: false, reason: 'unit-not-eligible-for-source' };
+  }
+  for (const uid of toMove) M.moveUnit(G, uid, sourceSystemId, choice.targetSystemId);
+  log(G, { kind: 'planetary-conquest-source', side: 'Empire', payload: { sourceSystemId, targetSystemId: choice.targetSystemId, units: toMove.length } });
   G.pendingChoice = undefined;
   // Trigger combat at target (lazy import to avoid cycle).
   beginCombat(G, 'Empire', sourceSystemId, choice.targetSystemId);
@@ -6144,6 +6156,12 @@ function refreshDeployUnits(G: GameState): boolean {
       if (!byType.has(typeId)) { byType.set(typeId, 0); order.push(typeId); }
       byType.set(typeId, byType.get(typeId)! + 1);
     }
+    // Deploy Shield Bunkers FIRST (#560): a Shield Bunker enables deploying
+    // OTHER units into its remote system, so if it lands after them they get no
+    // remote target this Refresh. Stable sort (V8) keeps first-appearance order
+    // within each rank. (Rebel has no shield-bunker, so this only reorders the
+    // Empire's queue.)
+    order.sort((a, b) => (a === 'shield-bunker' ? 0 : 1) - (b === 'shield-bunker' ? 0 : 1));
     for (const typeId of order) {
       for (let i = 0; i < byType.get(typeId)!; i++) queue.push({ side, typeId });
     }

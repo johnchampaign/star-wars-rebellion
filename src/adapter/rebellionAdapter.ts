@@ -76,7 +76,7 @@ function dispatch(G: GameState, a: RebellionAction, actor: Side): Result {
     case 'resolveDestroyUpToHealth':             return phases.resolveDestroyUpToHealth(G, a.instanceIds);
     case 'resolveRogueSquadronRaidPick':         return phases.resolveRogueSquadronRaidPick(G, a.picks);
     case 'resolveDoubleOurEffortsPick':          return phases.resolveDoubleOurEffortsPick(G, a.picks);
-    case 'resolvePlanetaryConquestSourcePick':   return phases.resolvePlanetaryConquestSourcePick(G, a.sourceSystemId);
+    case 'resolvePlanetaryConquestSourcePick':   return phases.resolvePlanetaryConquestSourcePick(G, a.sourceSystemId, a.unitInstanceIds);
     case 'resolveFearWillKeepThemInLinePick':    return phases.resolveFearWillKeepThemInLinePick(G, a.systemIds);
     case 'resolvePublicUprisingPick':            return phases.resolvePublicUprisingPick(G, a.picks);
     case 'resolveSupportOfMonCalamariPick':      return phases.resolveSupportOfMonCalamariPick(G, a.option);

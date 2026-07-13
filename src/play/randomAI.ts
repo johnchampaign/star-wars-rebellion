@@ -545,6 +545,25 @@ function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: 
   if (missionId === 'imperial-propaganda') {
     s += rebelLoyalSystemsInRegion(G, targetSysId) * 12;
   }
+  // Planetary Conquest moves up to 4 ground to the target and fights any Rebel
+  // ground there — an OFFENSIVE strike, not a place to dump troops on an
+  // already-safe Imperial world. It had NO target score, so the AI took the
+  // first legal system alphabetically and just reinforced Alderaan (#561). Aim
+  // it where the force does something: hit the exposed base, clear Rebel ground
+  // (deny production / open an objective), or push into any Rebel presence.
+  if (missionId === 'planetary-conquest') {
+    const units = sysState?.units ?? [];
+    const rebGround = units.filter((u) => {
+      const t = G.catalog.unitTypes[u.typeId];
+      return u.side === 'Rebel' && t?.theater === 'ground' && t.class !== 'structure';
+    }).length;
+    const hasRebelHere = units.some((u) => u.side === 'Rebel');
+    if (G.rebelBaseRevealed && targetSysId === G.rebelBaseSystemId) s += 30; // strike the exposed base
+    else if (rebGround > 0) s += 18 + rebGround * 2;                         // clear Rebel ground
+    else if (hasRebelHere) s += 8;                                          // any Rebel presence
+    else if (sysState?.loyalty === 'imperial' || sysState?.subjugated) s -= 15; // pointless reinforce (#561)
+    else s += 3;                                                            // mild forward push (neutral/Rebel-loyal, empty)
+  }
   // Prefer an undefended target so the attempt auto-succeeds (see helper).
   s += oppositionTargetTerm(G, 'Empire', missionId, targetSysId);
   return s;

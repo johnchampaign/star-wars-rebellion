@@ -3145,7 +3145,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         && G.pendingChoice?.kind === 'PlanetaryConquestSourcePick'
         && G.pendingChoice.side === humanSide && (
         <PlanetaryConquestModal G={G} choice={G.pendingChoice}
-          onPick={(sid) => { const r = phases.resolvePlanetaryConquestSourcePick(G, sid); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
+          onPick={(sid, uids) => { const r = phases.resolvePlanetaryConquestSourcePick(G, sid, uids); if (!r.ok) alert(`Cannot resolve: ${r.reason}`); persist(); refresh(); }} />
       )}
       {/* Required choice — renders on top of a deferred report (see report block). */}
       {G.pendingChoice?.kind === 'FearWillKeepThemInLinePick'
@@ -5838,60 +5838,93 @@ function DoubleOurEffortsModal({ G, choice, onSubmit }: {
   );
 }
 
-/** Planetary Conquest — pick a source system to drain. */
+/** Planetary Conquest — pick a source system, then which units to bring. */
 function PlanetaryConquestModal({ G, choice, onPick }: {
   G: GameState;
   choice: { kind: 'PlanetaryConquestSourcePick'; targetSystemId: string; sources: { sourceSystemId: string; picks: string[] }[] };
-  onPick: (sourceSystemId: string) => void;
+  onPick: (sourceSystemId: string, unitInstanceIds: string[]) => void;
 }) {
   const targetName = G.catalog.systems[choice.targetSystemId]?.name ?? choice.targetSystemId;
+  const labelFor = (typeId: string) => G.catalog.unitTypes[typeId]?.name ?? typeId;
+  const sorted = [...choice.sources].sort((a, b) => b.picks.length - a.picks.length);
+  // Step 1 = pick source; Step 2 = pick which of that source's eligible units
+  // to bring ("up to" — default all selected, #559).
+  const [srcId, setSrcId] = useState<string | null>(null);
+  const [unitPicks, setUnitPicks] = useState<Set<string>>(new Set());
+  const src = srcId ? choice.sources.find((s) => s.sourceSystemId === srcId) : null;
+  const chooseSource = (s: { sourceSystemId: string; picks: string[] }) => {
+    setSrcId(s.sourceSystemId);
+    setUnitPicks(new Set(s.picks)); // default: bring the maximum
+  };
+  const toggle = (uid: string) => {
+    const next = new Set(unitPicks);
+    if (next.has(uid)) next.delete(uid); else next.add(uid);
+    setUnitPicks(next);
+  };
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 5000 }}>
       <div style={{ background: '#15171c', border: '2px solid #ffaaaa', borderRadius: 6,
         padding: 20, maxWidth: 520, width: '92%' }}>
         <div style={{ fontSize: 14, color: '#ffaaaa', fontWeight: 700, marginBottom: 6 }}>
-          Planetary Conquest — pick a source system to draw units from
+          Planetary Conquest — {src ? 'choose which units to bring' : 'pick a source system'}
         </div>
         <div style={{ fontSize: 12, color: '#aaa', marginBottom: 10 }}>
-          Target: {targetName}. Units (up to 1 AT-AT, 1 AT-ST, 2 Stormtroopers) move from the source, then combat fires.
+          Target: {targetName}. Bring UP TO 1 AT-AT, 1 AT-ST and 2 Stormtroopers from one system (you may bring fewer), then combat fires.
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
-          {[...choice.sources]
-            // Sort by units-sent descending so the strongest source is on top.
-            .sort((a, b) => b.picks.length - a.picks.length)
-            .map((s) => {
-              // Break the picks down by unit type so the player can see
-              // exactly what's coming (e.g. "1 AT-AT, 1 AT-ST, 2 Stormtroopers").
+        {!src && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 320, overflowY: 'auto' }}>
+            {sorted.map((s) => {
               const ss = G.map.systems[s.sourceSystemId];
               const byType: Record<string, number> = {};
               for (const uid of s.picks) {
                 const u = ss?.units.find((x) => x.instanceId === uid);
-                if (!u) continue;
-                byType[u.typeId] = (byType[u.typeId] ?? 0) + 1;
+                if (u) byType[u.typeId] = (byType[u.typeId] ?? 0) + 1;
               }
-              const labelFor = (typeId: string) => G.catalog.unitTypes[typeId]?.name ?? typeId;
-              const breakdown = Object.entries(byType)
-                .sort(([a], [b]) => a.localeCompare(b))
-                .map(([typeId, n]) => `${n}× ${labelFor(typeId)}`)
-                .join(', ');
+              const breakdown = Object.entries(byType).sort(([a], [b]) => a.localeCompare(b))
+                .map(([typeId, n]) => `${n}× ${labelFor(typeId)}`).join(', ');
               return (
-                <button key={s.sourceSystemId} onClick={() => onPick(s.sourceSystemId)}
+                <button key={s.sourceSystemId} onClick={() => chooseSource(s)}
                   style={{ textAlign: 'left', padding: 8, background: '#0c0d10', border: '1px solid #2a2d34',
                     borderRadius: 4, color: '#e8e8ea', cursor: 'pointer', fontSize: 13 }}>
                   <div>
                     <strong>{G.catalog.systems[s.sourceSystemId]?.name ?? s.sourceSystemId}</strong>
                     <span style={{ color: '#80dc78', marginLeft: 8, fontWeight: 600 }}>
-                      sends {s.picks.length} unit{s.picks.length === 1 ? '' : 's'}
+                      up to {s.picks.length} unit{s.picks.length === 1 ? '' : 's'}
                     </span>
                   </div>
-                  <div style={{ color: '#cbc4b0', fontSize: 12, marginTop: 2 }}>
-                    {breakdown || '(empty)'}
-                  </div>
+                  <div style={{ color: '#cbc4b0', fontSize: 12, marginTop: 2 }}>{breakdown || '(empty)'}</div>
                 </button>
               );
             })}
-        </div>
+          </div>
+        )}
+        {src && (
+          <>
+            <div style={{ color: '#cbc4b0', fontSize: 12, marginBottom: 6 }}>
+              From <strong>{G.catalog.systems[src.sourceSystemId]?.name ?? src.sourceSystemId}</strong> — tick the units to bring:
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12, maxHeight: 260, overflowY: 'auto' }}>
+              {src.picks.map((uid) => {
+                const u = G.map.systems[src.sourceSystemId]?.units.find((x) => x.instanceId === uid);
+                const on = unitPicks.has(uid);
+                return (
+                  <label key={uid} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px',
+                    border: `1px solid ${on ? '#80dc78' : '#2a2d34'}`, borderRadius: 3, fontSize: 13, cursor: 'pointer' }}>
+                    <input type="checkbox" checked={on} onChange={() => toggle(uid)} />
+                    {u ? labelFor(u.typeId) : uid}
+                  </label>
+                );
+              })}
+            </div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button className="tab-button" onClick={() => { setSrcId(null); setUnitPicks(new Set()); }}>← back</button>
+              <button className="tab-button active" onClick={() => onPick(src.sourceSystemId, [...unitPicks])}>
+                Move {unitPicks.size} unit{unitPicks.size === 1 ? '' : 's'}{unitPicks.size === 0 ? ' (bring none)' : ''}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
