@@ -33,7 +33,7 @@ import { COST_OBJECTIVES, objectiveProgress, objectiveConditionMet, objectiveRep
 // Empire strike-fleet plan layer (#539) — a stateful delivery executor recomputed
 // pure from public state each turn. Env-gated (SWR_EMPIRE_PLANNER=1); off by
 // default → byte-identical to the pre-planner scorer.
-import { derivePlan, planSystemBonus, deployProximityScore, PLANNER_ENABLED, type StrikeFleetPlan } from './empirePlanner';
+import { derivePlan, planSystemBonus, deployProximityScore, PLANNER_ENABLED, HUNT_OCCUPY_ENABLED, type StrikeFleetPlan } from './empirePlanner';
 import { log as logEvent } from '../engine/log';
 
 // AI randomness. Defaults to Math.random (live app), but the tournament
@@ -952,18 +952,42 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         // effectively un-findable by the AI's sweep. They're swept LAST via
         // the value ordering below, but they ARE swept.
         if (eliminatedByProbe.has(sid)) return false;
-        // The Empire KNOWS the base can't be at any system holding its own units:
-        // the base auto-reveals the instant an Imperial unit arrives, so a still-
-        // hidden base can't share a system with one. This is the REAL setup
-        // knowledge the Empire has (the box-returned Imperial systems all hold
-        // Imperial units) — it replaces the 2 random starting probes #404 removed.
-        // Deliberately NOT loyalty-based: a mission can flip a UNIT-LESS system to
-        // Imperial loyalty while the base still hides there.
-        if (G.map.systems[sid]?.units.some((u) => u.side === 'Empire')) return false;
+        // The Empire KNOWS the base can't be at any system it has SEARCHED. What
+        // counts as "searched" must match the engine's reveal condition
+        // (recomputeRebelBaseReveal): the base reveals the instant the Empire has
+        // GROUND or Imperial loyalty there — NOT on a space-only presence.
+        // Baseline (occupy flag OFF) keeps the older any-unit exclusion; with the
+        // flag ON we exclude only truly-searched systems (Empire ground OR
+        // Imperial-loyal OR subjugated), so a candidate where only a FLEET parked
+        // (no ground landed) stays live and the AI is steered to land ground and
+        // actually clear it (expert-hunt-spec: occupy-to-clear, not force-less tap).
+        const ssHere = G.map.systems[sid];
+        if (HUNT_OCCUPY_ENABLED) {
+          const empGroundHere = ssHere?.units.some((u) => {
+            const t = G.catalog.unitTypes[u.typeId];
+            return u.side === 'Empire' && t?.theater === 'ground';
+          });
+          if (empGroundHere || ssHere?.loyalty === 'imperial' || ssHere?.subjugated) return false;
+        } else if (ssHere?.units.some((u) => u.side === 'Empire')) {
+          return false;
+        }
         return true;
       }),
     );
   }
+  // A base candidate is "cleared" (ruled out — the base would have auto-revealed
+  // if it were here) once the Empire has actually SEARCHED it. Reveal-accurate
+  // definition (recomputeRebelBaseReveal): Empire GROUND, Imperial loyalty, or
+  // subjugation. With the occupy flag OFF this widens to any Empire unit
+  // (space-only counted as cleared — the older, RAW-inaccurate behavior) so
+  // production is byte-identical.
+  const isCandidateCleared = (ss: { units: { side: string; typeId: string }[]; loyalty?: string; subjugated?: boolean }): boolean => {
+    if (ss.loyalty === 'imperial' || ss.subjugated) return true;
+    if (HUNT_OCCUPY_ENABLED) {
+      return ss.units.some((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground');
+    }
+    return ss.units.some((u) => u.side === 'Empire');
+  };
   // narrowingMode triggers heavier candidate-system bonuses. Raised from
   // 6 to 10 so Empire pivots to base-stumble searches earlier in the
   // game (by T5 probes typically narrow to 8-12 systems).
@@ -1010,8 +1034,7 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
     for (const cid of baseCandidateSet) {
       const ss = G.map.systems[cid];
       if (!ss) continue;
-      const cleared = ss.units.some((u) => u.side === 'Empire') || ss.loyalty === 'imperial' || ss.subjugated;
-      if (cleared) continue; // already swept — base would have auto-revealed
+      if (isCandidateCleared(ss)) continue; // already swept — base would have auto-revealed
       let s = 0;
       if (ss.loyalty === 'rebel') s += 12;
       if (ss.units.some((u) => u.side === 'Rebel')) s += 6;
@@ -1062,8 +1085,12 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         // already holds 6+ subjugated systems AND no invasion is pending
         // (base not revealed), spreading further is dilution — actively
         // penalize new subjugation pickups so leaders go consolidate
-        // instead.
-        if (subjugationCap && !G.rebelBaseRevealed) ts -= 10;
+        // instead. OCCUPY-TO-CLEAR exemption (expert-hunt-spec): a system that
+        // is still a LIVE base candidate is not tourism — occupying it clears a
+        // candidate the RAW way and rolls the frontier toward the base, so the
+        // cap must not repel it. Only non-candidate pickups stay capped.
+        const isLiveCandidate = HUNT_OCCUPY_ENABLED && (baseCandidateSet?.has(sysId) ?? false);
+        if (subjugationCap && !G.rebelBaseRevealed && !isLiveCandidate) ts -= 10;
       }
       // WEAKNESS 3 cont.: reward consolidating onto or adjacent to the
       // largest existing Empire stack. The "marching column" pattern
@@ -1089,9 +1116,7 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         // been to (own units / Imperial-loyal / subjugated) is "cleared" —
         // the base would have auto-revealed on arrival — so it's nearly
         // worthless to revisit.
-        const cleared = sys.units.some((u) => u.side === 'Empire')
-          || sys.loyalty === 'imperial' || sys.subjugated;
-        if (cleared) {
+        if (isCandidateCleared(sys)) {
           ts += 1;
         } else {
           // Priority: hit Rebel units (combat impact) > Rebel-loyal (deny
@@ -1104,6 +1129,13 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
           else if (!def?.isRemote) cand += 2 + (def?.resources?.length ?? 0) * 3;
           // remote: +0 extra (visited last)
           if (narrowingMode) cand += 6; // push harder once the set is small
+          // OCCUPY-TO-CLEAR (expert-hunt-spec): a candidate the Empire already
+          // has SPACE on but no ground is a half-finished search — landing
+          // ground here reveals the base if it hides here. Nudge finishing it
+          // over starting a fresh candidate, so a force-less space tap doesn't
+          // leave the candidate live-but-neglected. (Only meaningful with the
+          // flag on, where such a candidate is no longer treated as cleared.)
+          if (HUNT_OCCUPY_ENABLED && sys.units.some((u) => u.side === 'Empire')) cand += 5;
           ts += cand;
         }
       }

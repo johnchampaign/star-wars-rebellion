@@ -100,6 +100,32 @@ export const PLANNER_ENABLED: boolean = (() => {
   return false;
 })();
 
+// Occupy-to-clear hunt economy (base-HUNT fix, expert-hunt-spec). Independent
+// A/B flag, same resolution as PLANNER_ENABLED (env SWR_HUNT_OCCUPY=1 for node
+// harnesses; ?hunt=1 / localStorage['swr-hunt-occupy'] in the browser). Off by
+// default → production byte-identical. Shapes the EARLY candidate-clearing
+// economy (NOT a late march — see deriveHuntTarget post-mortem): (1) a base
+// candidate is only "searched"/ruled-out when the Empire has GROUND or
+// loyalty/subjugation there — matching the engine's reveal condition
+// (recomputeRebelBaseReveal), so a space-only tap no longer drops the candidate
+// and the AI is steered to land ground; (2) occupying a still-LIVE base
+// candidate is exempt from the WEAKNESS-3 subjugation cap so the force frontier
+// keeps rolling through candidate space until the base is found.
+export const HUNT_OCCUPY_ENABLED: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_HUNT_OCCUPY === '1') return true;
+  } catch { /* browser: no process */ }
+  try {
+    const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
+    const q = g.location?.search ? new URLSearchParams(g.location.search).get('hunt') : null;
+    if (q === '1') g.localStorage?.setItem('swr-hunt-occupy', '1');
+    else if (q === '0') g.localStorage?.removeItem('swr-hunt-occupy');
+    return g.localStorage?.getItem('swr-hunt-occupy') === '1';
+  } catch { /* node without env flag, or storage blocked */ }
+  return false;
+})();
+
 // ---------------------------------------------------------------------------
 // Unit helpers (mirror the scorer's classification exactly).
 // ---------------------------------------------------------------------------
