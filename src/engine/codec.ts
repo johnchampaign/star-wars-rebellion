@@ -27,6 +27,29 @@ export function encode(G: GameState): string {
   return JSON.stringify(payload);
 }
 
+/** Lightweight encode for the frequent localStorage RESUME save. Identical to
+ *  encode() but drops the per-turn full-board snapshot entries (turnLog
+ *  kind:'state') — those exist only for the uploaded v2 log / AI analysis and
+ *  aren't needed to reload and continue a game. They dominate the codec: a
+ *  late-game state is ~1.3 MB, ~92% of it snapshots, and persist() re-encodes
+ *  and writes the whole thing on EVERY action + AI batch — which is what made
+ *  the UI pause for seconds after confirming a modal. Stripping them cuts the
+ *  save to ~100 KB. archiveCompletedGame() still uses the FULL encode() so the
+ *  end-of-game upload keeps its snapshots. */
+export function encodeForResume(G: GameState): string {
+  const { catalog, pendingMission, pendingCombat, pendingChoice, refreshPaused, turnLog, ...rest } = G;
+  void catalog; void pendingMission; void pendingCombat; void pendingChoice; void refreshPaused;
+  const slimLog = Array.isArray(turnLog)
+    ? turnLog.filter((e) => (e as { kind?: string }).kind !== 'state')
+    : turnLog;
+  const payload: CodecPayload = {
+    schema: SCHEMA,
+    encodedAt: new Date().toISOString(),
+    state: { ...rest, turnLog: slimLog } as CodecPayload['state'],
+  };
+  return JSON.stringify(payload);
+}
+
 /** Full-fidelity encode for ONLINE/MULTIPLAYER snapshots. Unlike encode(),
  *  which strips the transient pendingMission/pendingCombat/pendingChoice/
  *  refreshPaused fields (single-player only ever saves at turn boundaries —

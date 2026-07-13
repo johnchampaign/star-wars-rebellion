@@ -38,7 +38,7 @@ import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
 import * as _combat from '../engine/combat';
 import { unitsAvailableInSupply } from '../engine/mechanics';
 import { CombatBoardLive } from './CombatBoardLive';
-import { encode, decode, canEncode } from '../engine/codec';
+import { encode, encodeForResume, decode, canEncode } from '../engine/codec';
 import type { GameState, Side, LeaderId, ChoiceRequest } from '../engine/types';
 import type { RebellionAction } from '../adapter/rebellionAction';
 import { makeOnlinePhases, makeOnlineCombat } from '../online/onlineEngine';
@@ -680,7 +680,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         lastAiProgressRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
         try {
           const Gf = gameRef.current;
-          if (Gf && canEncode(Gf)) localStorage.setItem(LS_CURRENT, encode(Gf));
+          if (Gf && canEncode(Gf)) localStorage.setItem(LS_CURRENT, encodeForResume(Gf));
         } catch { /* ignore */ }
         setTick((t) => t + 1);
       }
@@ -798,7 +798,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     if (!G) return;
     try {
       if (canEncode(G)) {
-        localStorage.setItem(LS_CURRENT, encode(G));
+        // Resume save on every action — strip the heavy per-turn snapshots
+        // (they're only for the end-of-game upload) so this stays fast even
+        // late-game. archiveCompletedGame() below keeps the full encode().
+        localStorage.setItem(LS_CURRENT, encodeForResume(G));
         setHasSaved(true);
       }
       // If game ended, also push to history.
