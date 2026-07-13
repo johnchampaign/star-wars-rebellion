@@ -4639,7 +4639,11 @@ function discardOrReturnMission(G: GameState, side: Side, missionId: string, sta
   const f = faction(G, side);
   const card = G.catalog.missions[missionId];
   const failReturns = stage === 'failed' && FAIL_RETURNS_TO_HAND.has(missionId);
-  if (card?.isStarting || failReturns) {
+  // One-shot effect override (e.g. Interdictor Development resolved with 2
+  // leaders, whose card says "return the card"): route back to hand, once.
+  const effectReturns = G.missionReturnToHandOverride === missionId;
+  if (effectReturns) G.missionReturnToHandOverride = undefined;
+  if (card?.isStarting || failReturns || effectReturns) {
     f.missionHand.push(missionId);
     log(G, { kind: 'mission-return-to-hand', side, payload: { missionId, onFail: failReturns } });
   } else {

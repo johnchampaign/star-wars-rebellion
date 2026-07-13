@@ -2227,6 +2227,14 @@ export type GameState = {
   // cleared when the Command phase ends (start of enterRefreshPhase).
   cinematicMarkedForElimination?: LeaderId[];
 
+  // Transient one-shot override: when set to a missionId, the very next
+  // discardOrReturnMission for that mission routes the card back to the
+  // owner's mission hand instead of the discard pile, then clears itself.
+  // Used by effects whose card text says "return the card" on success
+  // (e.g. Interdictor Development resolved with 2 leaders). Set inside the
+  // effect handler; consumed by the discard step that runs immediately after.
+  missionReturnToHandOverride?: string;
+
   // Refresh-phase summary, generated each time the refresh phase runs.
   // The UI shows a single modal with everything that happened (objective
   // drawn, missions drawn, probes drawn, leaders retrieved, time advanced,

@@ -1963,10 +1963,11 @@ const interdictorDevelopment: EffectHandler = (G, ctx) => {
   const slot: 1 | 2 = twoLeaders ? 1 : 2;
   M.buildToQueue(G, 'Empire', 'interdictor', slot);
   if (twoLeaders) {
-    // Card returns to hand instead of the discard. We can't intercept the
-    // discard from here (the mission-resolution path does it), so we flag
-    // it and let the mission flow consume the flag. For now log the
-    // intent so a follow-up can pick it up.
+    // "If 2 leaders are assigned, place on space 1 and return the card." The
+    // discard step (discardOrReturnMission) runs immediately after this effect
+    // resolves; flag the mission so it routes back to the Imperial mission hand
+    // instead of the project discard pile. The flag is one-shot and self-clears.
+    G.missionReturnToHandOverride = ctx.card.id;
     log(G, { kind: 'mission-return-to-hand-flag', side: 'Empire', payload: {
       missionId: ctx.card.id, reason: 'interdictor-development-2-leaders',
     }});
