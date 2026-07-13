@@ -4771,6 +4771,25 @@ function continueRefreshAfterObjectiveDraw(G: GameState, logStart: number): void
   finishRefreshAfterBuild(G, logStart);
 }
 
+/** Resume a Refresh that was serialized at the 'turn-start' snapshot point.
+ *  logState('turn-start') fires INSIDE advanceTime (Refresh step 5), i.e. in
+ *  the middle of the synchronous refresh chain — so a state decoded from a
+ *  per-turn snapshot is parked at phase 'Refresh' with no pendingChoice and
+ *  the recruit/build/deploy steps still unexecuted. No driver can advance such
+ *  a state via stepOnce (this deadlocked every hunt-kind replay in the smoke
+ *  suite at step 0). This runs exactly the unexecuted remainder — recruit →
+ *  build → deploy → report → Assignment — pausing on player choices like the
+ *  live flow. Returns false (no-op) unless the state is an idle mid-Refresh. */
+export function resumeRefreshTurnStart(G: GameState): boolean {
+  if (G.isGameOver || G.phase !== 'Refresh') return false;
+  if (G.pendingChoice || G.pendingCombat) return false;
+  const logStart = G.turnLog.length;
+  if (refreshRecruitIfApplicable(G, logStart)) return true;
+  if (refreshBuildIfApplicable(G, logStart)) return true;
+  finishRefreshAfterBuild(G, logStart);
+  return true;
+}
+
 /** Continues the refresh phase after the build step (which may have paused
  *  for BuildPick choices). Runs deploy, builds the report, advances to
  *  Assignment. If the deploy step needs player picks, this returns early

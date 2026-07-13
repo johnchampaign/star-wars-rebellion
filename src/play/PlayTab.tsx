@@ -11,6 +11,7 @@ import { stepOnce as aiStepOnce, setCommandPolicyOverride } from './randomAI';
 import { buildV2GameLog, buildId } from './logFormat';
 import { PLANNER_ENABLED, HUNT_OCCUPY_ENABLED } from './empirePlanner';
 import { evalCommandStepDeep } from './boardEval';
+import { mctsCommandStep, MCTS_ENABLED } from './mctsAI';
 import { recordPlay } from 'digital-boardgame-framework';
 import { TERRITORIES, territoryFill } from '../data/territories';
 import {
@@ -977,6 +978,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     if (online) return;
     setCommandPolicyOverride('Rebel', (g, s) => evalCommandStepDeep(g, s, 2));
     return () => setCommandPolicyOverride('Rebel', null);
+  }, [online]);
+
+  // EXPERIMENTAL AI Empire (single-player only, ?mcts=1 to enable, ?mcts=0 to
+  // clear — sticky via localStorage, same pattern as ?planner=/?hunt=):
+  // determinized Monte-Carlo Command policy (src/play/mctsAI.ts). Costs a few
+  // seconds per Empire command decision; falls back to the heuristic if it
+  // declines or throws. Benched via scripts/mcts-bench.mjs before any default
+  // flip.
+  useEffect(() => {
+    if (online || !MCTS_ENABLED) return;
+    setCommandPolicyOverride('Empire', (g, s) => mctsCommandStep(g, s));
+    return () => setCommandPolicyOverride('Empire', null);
   }, [online]);
 
   // Self-heal a stalled AI driver (#409). The driver advances in setTimeout-

@@ -211,6 +211,12 @@ for (const { file, L, kind, fromTurn } of findReplayLogs()) {
     if (aiStep(G, sd)) { st++; if (G.winner === 'Empire') { captured = true; break; } continue; }
     const o = sd === 'Rebel' ? 'Empire' : 'Rebel';
     if (aiStep(G, o)) { st++; if (G.winner === 'Empire') { captured = true; break; } continue; }
+    // turn-start snapshots decode parked mid-Refresh (advanceTime fires the
+    // snapshot inside the refresh chain), so without this kick every hunt-kind
+    // replay deadlocked at step 0 — the historical "0/17 hunt-replays" line
+    // was measuring a stuck harness, not the hunt. resumeRefreshTurnStart runs
+    // the unexecuted remainder of the refresh and play proceeds normally.
+    if (phases.resumeRefreshTurnStart(G)) { st++; continue; }
     break;
   }
   replays.push({ log: file.slice(0, 12), kind, base, defenders, assaults, maxDelivered, captured, minStackDist, revealed, revealTurn, startT });
