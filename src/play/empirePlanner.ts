@@ -85,19 +85,26 @@ export interface StrikeFleetPlan {
 // Default (no env, no flag): OFF — production behavior is byte-identical.
 // PlayTab shows a visible "EMPIRE PLANNER ON" badge and stamps the flag into
 // the archived game record, so playtest logs are attributable when mining.
+// SHIPPED DEFAULT-ON in the browser 2026-07-13 (with the MCTS default flip):
+// under MCTS the planner benched neutral (81.3% vs 87.5% self-play, captures
+// equal — one game of noise), but it's +6pt for the heuristic that ?mcts=0
+// opt-outs get, and John's live-validated playtest config had it on. `?planner=0`
+// opts out (sticky); node default stays OFF so benches A/B explicitly.
 export const PLANNER_ENABLED: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
     if (proc?.env?.SWR_EMPIRE_PLANNER === '1') return true;
+    if (proc?.env?.SWR_EMPIRE_PLANNER === '0') return false;
   } catch { /* browser: no process */ }
   try {
     const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
     const q = g.location?.search ? new URLSearchParams(g.location.search).get('planner') : null;
-    if (q === '1') g.localStorage?.setItem('swr-empire-planner', '1');
-    else if (q === '0') g.localStorage?.removeItem('swr-empire-planner');
-    return g.localStorage?.getItem('swr-empire-planner') === '1';
+    if (q === '0') g.localStorage?.setItem('swr-empire-planner-off', '1');
+    else if (q === '1') g.localStorage?.removeItem('swr-empire-planner-off');
+    if (g.localStorage?.getItem('swr-empire-planner-off') === '1') return false;
+    if (typeof g.location !== 'undefined') return true; // browser: default ON
   } catch { /* node without env flag, or storage blocked */ }
-  return false;
+  return false; // node without SWR_EMPIRE_PLANNER: benches opt in explicitly
 })();
 
 // Occupy-to-clear hunt economy (base-HUNT fix, expert-hunt-spec). Independent
@@ -111,19 +118,23 @@ export const PLANNER_ENABLED: boolean = (() => {
 // and the AI is steered to land ground; (2) occupying a still-LIVE base
 // candidate is exempt from the WEAKNESS-3 subjugation cap so the force frontier
 // keeps rolling through candidate space until the base is found.
+// SHIPPED DEFAULT-ON in the browser 2026-07-13 (same rationale and pattern as
+// PLANNER_ENABLED above; `?hunt=0` opts out, node default stays OFF).
 export const HUNT_OCCUPY_ENABLED: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
     if (proc?.env?.SWR_HUNT_OCCUPY === '1') return true;
+    if (proc?.env?.SWR_HUNT_OCCUPY === '0') return false;
   } catch { /* browser: no process */ }
   try {
     const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
     const q = g.location?.search ? new URLSearchParams(g.location.search).get('hunt') : null;
-    if (q === '1') g.localStorage?.setItem('swr-hunt-occupy', '1');
-    else if (q === '0') g.localStorage?.removeItem('swr-hunt-occupy');
-    return g.localStorage?.getItem('swr-hunt-occupy') === '1';
+    if (q === '0') g.localStorage?.setItem('swr-hunt-occupy-off', '1');
+    else if (q === '1') g.localStorage?.removeItem('swr-hunt-occupy-off');
+    if (g.localStorage?.getItem('swr-hunt-occupy-off') === '1') return false;
+    if (typeof g.location !== 'undefined') return true; // browser: default ON
   } catch { /* node without env flag, or storage blocked */ }
-  return false;
+  return false; // node without SWR_HUNT_OCCUPY: benches opt in explicitly
 })();
 
 // ---------------------------------------------------------------------------
