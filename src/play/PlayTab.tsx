@@ -12110,22 +12110,22 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
           source: 'browser-game-archive',
           encodedAt: g.encodedAt,
           build: buildId(),
-          // The client drives the AI Rebel with the depth-2 eval policy and the
-          // AI Empire with the heuristic (see setCommandPolicyOverride wiring).
-          // empirePlanner comes from the archived record (stamped at game end);
-          // fall back to the current flag only for games archived before the
-          // stamp existed.
+          // AI flags come ONLY from the archived record (stamped at game end).
+          // NEVER fall back to the current flag: `?? MCTS_ENABLED` misattributed
+          // a whole legacy archive as policy:'mcts' the day the default flipped
+          // on (logs 9bc2e781/7657960d/cb8187cb — pre-v2 games, zero traces,
+          // stamped mcts at upload). The `build` field above has the same
+          // limitation by construction (upload-time client, not play-time) —
+          // trust ai.* stamps and traces for attribution, not build. Records
+          // without a stamp report 'unknown'/undefined and stay unattributed.
           ai: aiSide ? {
             side: aiSide,
-            // AI Empire runs the MCTS policy when the mcts flag was on for the
-            // game (stamped at game end, like empirePlanner) — John's first
-            // ?mcts=1 playtest uploaded as policy:'heuristic' and had to be
-            // attributed by trace forensics. Old records without the stamp
-            // fall back to the current flag.
-            policy: aiSide === 'Rebel' ? 'depth2-eval' : ((g.mctsPolicy ?? MCTS_ENABLED) ? 'mcts' : 'heuristic'),
-            empirePlanner: g.empirePlanner ?? PLANNER_ENABLED,
-            huntOccupy: g.huntOccupy ?? HUNT_OCCUPY_ENABLED,
-            mctsPolicy: g.mctsPolicy ?? MCTS_ENABLED,
+            policy: aiSide === 'Rebel'
+              ? 'depth2-eval'
+              : g.mctsPolicy === true ? 'mcts' : g.mctsPolicy === false ? 'heuristic' : 'unknown',
+            empirePlanner: g.empirePlanner,
+            huntOccupy: g.huntOccupy,
+            mctsPolicy: g.mctsPolicy,
           } : undefined,
         });
       } catch {
