@@ -31,6 +31,10 @@ const flag = (name, dflt) => {
 };
 const N_GAMES = parseInt(flag('--games', '12'), 10);
 const N_ROUNDS = parseInt(flag('--rounds', '6'), 10);
+// Replay AI seed. Each replay is ONE deterministic sample given this seed —
+// vary it across runs to put error bars on the replay metrics (a single run's
+// find-count swung 3/22 -> 13/22 on a pure RNG-consumption refactor).
+const AI_SEED = parseInt(flag('--ai-seed', '424242'), 10);
 const REPLAYS_ONLY = argv.includes('--replays-only');
 const SKIP_REPLAYS = argv.includes('--skip-replays');
 const ON_ONLY = argv.includes('--on-only');
@@ -44,7 +48,7 @@ if (!IS_ARM) {
     for (const [f, v] of [['--budget', 'SWR_MCTS_BUDGET'], ['--dets', 'SWR_MCTS_DETS'], ['--horizon', 'SWR_MCTS_HORIZON'], ['--topk', 'SWR_MCTS_TOPK']]) {
       const x = flag(f, null); if (x != null) env[v] = x;
     }
-    const pass = ['--arm', '--games', String(N_GAMES), '--rounds', String(N_ROUNDS)];
+    const pass = ['--arm', '--games', String(N_GAMES), '--rounds', String(N_ROUNDS), '--ai-seed', String(AI_SEED)];
     if (REPLAYS_ONLY) pass.push('--replays-only');
     if (SKIP_REPLAYS) pass.push('--skip-replays');
     const r = spawnSync(process.execPath, [SELF, ...pass], { env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
@@ -165,8 +169,8 @@ for (const { file, L, kind, fromTurn } of SKIP_REPLAYS ? [] : findReplayLogs()) 
   if (!snap) continue;
   const G = codec.decode(snapshotToCodec(snap.state), catalogSeed.catalog);
   stripRM(G); // the defender holds
-  seedAI(424242);
-  if (mctsMod) mctsMod.seedMCTS(424242);
+  seedAI(AI_SEED);
+  if (mctsMod) mctsMod.seedMCTS(AI_SEED);
   const base = G.rebelBaseSystemId;
   const defenders = rebelGroundAt(G, base);
   const startT = G.timeMarker;

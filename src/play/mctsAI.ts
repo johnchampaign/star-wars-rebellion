@@ -165,6 +165,81 @@ export function baseCandidates(G: GameState): SystemId[] {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Base-location belief (the post-RM re-hunt lever). Uniform sampling wastes
+// rollouts on worlds no human would pick. Empirical grounding from the
+// human-Rebel corpus (scripts/analyze-base-choices.mjs, 24 placements + 4
+// relocations): humans are NOT remote-biased (29% vs 31% pool — the "hides at
+// Dagobah" intuition is false), ARE loyalty-biased (rebel-loyal at ~2x pool
+// rate), and ARE distance-biased (~1 hop farther from Empire ground than the
+// average candidate). Weights use FEATURES only — no system identities — so
+// the model generalizes beyond the one recorded player.
+//
+// STATUS: OFF by default (opt-in SWR_MCTS_BELIEF=1). A 3-seed replay A/B under
+// the production config (2026-07-14) measured NO gain — uniform 13/5/8 finds
+// of 25 vs weighted 5/7/7 (neutral-to-negative, tighter spread). Post-mortem:
+// the weights were fitted on SETUP placements (free choice → informative
+// features), but mid-game bases have usually RELOCATED via RM, whose
+// destination is the best of 4 RANDOM probe draws — that flattens the true
+// posterior toward uniform, so setup-fitted concentration over-commits. A
+// future version should CONDITION on relocation (peaked pre-RM, near-flat
+// post-RM). Side lesson baked into the bench: single-run replay counts swing
+// 5-13 on seed alone — always compare multi-seed (--ai-seed).
+// ---------------------------------------------------------------------------
+const BELIEF_ENABLED: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_MCTS_BELIEF === '1') return true;
+  } catch { /* browser */ }
+  return false;
+})();
+
+/** Per-candidate belief weights (unnormalized). One BFS from the Empire's
+ *  ground presence, shared across all candidates. */
+export function beliefWeights(G: GameState, candidates: SystemId[]): Map<SystemId, number> {
+  const out = new Map<SystemId, number>();
+  if (!BELIEF_ENABLED) { for (const sid of candidates) out.set(sid, 1); return out; }
+  // BFS distances from every system with Empire ground.
+  const dist: Record<string, number> = {};
+  let frontier: string[] = [];
+  for (const [sid, ss] of Object.entries(G.map.systems)) {
+    if (ss.units.some((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground')) {
+      dist[sid] = 0; frontier.push(sid);
+    }
+  }
+  let d = 0;
+  while (frontier.length) {
+    d++; const next: string[] = [];
+    for (const s of frontier) for (const a of (G.catalog.adjacency[s] ?? [])) {
+      if (dist[a] === undefined) { dist[a] = d; next.push(a); }
+    }
+    frontier = next;
+  }
+  for (const sid of candidates) {
+    const far = Math.min(dist[sid] ?? 6, 6); // unreachable/no-Empire-ground = max
+    const loyal = G.map.systems[sid]?.loyalty === 'rebel' ? 2 : 1;
+    // (1+far)^1.5: corpus shows chosen bases ~1 hop beyond the candidate mean;
+    // a superlinear ramp reproduces that shift without zeroing near systems.
+    out.set(sid, Math.pow(1 + far, 1.5) * loyal);
+  }
+  return out;
+}
+
+/** Weighted sample WITHOUT replacement of up to n candidates. */
+function sampleWorlds(candidates: SystemId[], weights: Map<SystemId, number>, n: number): SystemId[] {
+  const pool = candidates.map((sid) => ({ sid, w: weights.get(sid) ?? 1 }));
+  const out: SystemId[] = [];
+  while (out.length < n && pool.length > 0) {
+    let total = 0; for (const p of pool) total += p.w;
+    let r = rand() * total;
+    let idx = pool.length - 1;
+    for (let i = 0; i < pool.length; i++) { r -= pool[i].w; if (r <= 0) { idx = i; break; } }
+    out.push(pool[idx].sid);
+    pool.splice(idx, 1);
+  }
+  return out;
+}
+
 /** Rewrite a CLONE into the world where the base is at `sampled`. Keeps the
  *  probe deck consistent: the sampled system's card leaves the deck (its base
  *  card would have been pulled at placement) and the real base's card returns
@@ -210,13 +285,22 @@ function rollout(c: GameState, horizonRounds: number): void {
  *  otherwise boardEval.evaluate plus an INFORMATION term — each still-alive
  *  base candidate is bad for the Empire (the hunt's whole currency), which is
  *  what makes rule-out progress visible inside a bounded horizon. */
-function leafValue(c: GameState, side: Side): number {
+function leafValue(c: GameState, side: Side, refWeight = 1): number {
   if (c.winner === side) return 1;
   if (c.winner && c.winner !== side) return 0;
   let v = evaluate(c, side);
   if (!c.rebelBaseRevealed) {
-    const nCand = baseCandidates(c).length;
-    v += (side === 'Empire' ? -1 : 1) * 2 * nCand;
+    // Information term as BELIEF MASS, not raw count: ruling out a system a
+    // human would actually pick (far, rebel-loyal) is worth more than ruling
+    // out one they wouldn't. refWeight is the ROOT decision's mean candidate
+    // weight — a fixed scale across all leaves of one search, so the term
+    // equals the old per-candidate count under a flat belief and drops by
+    // w/refWeight (>1 for likely systems) per cleared candidate otherwise.
+    // Normalizing by the LEAF's own mean would cancel the weights entirely.
+    const cand = baseCandidates(c);
+    const w = beliefWeights(c, cand);
+    let sum = 0; for (const sid of cand) sum += w.get(sid) ?? 1;
+    v += (side === 'Empire' ? -1 : 1) * 2 * (sum / Math.max(1e-6, refWeight));
   }
   // Scale-free squash to (0,1): robust to evaluate()'s unbounded range.
   return 0.5 + 0.5 * (v / (Math.abs(v) + 60));
@@ -254,18 +338,19 @@ export function mctsCommandStep(G: GameState, side: Side, cfg?: Partial<MctsConf
     if (p?.systemId) pidBySystem.set(p.systemId, pid);
   }
   let worlds: SystemId[];
+  let refWeight = 1; // root mean belief weight — the leaf info term's scale
   if (G.rebelBaseRevealed) {
     worlds = [G.rebelBaseSystemId];
   } else {
     const pool = baseCandidates(G);
     if (pool.length === 0) worlds = [G.rebelBaseSystemId];
     else {
-      // Fisher-Yates then take up to maxDets distinct worlds.
-      for (let i = pool.length - 1; i > 0; i--) {
-        const k = Math.floor(rand() * (i + 1));
-        [pool[i], pool[k]] = [pool[k], pool[i]];
-      }
-      worlds = pool.slice(0, Math.max(1, conf.maxDets));
+      // Belief-weighted sample (without replacement): spend rollouts on the
+      // worlds a human would actually pick, not uniformly across the map.
+      const rootW = beliefWeights(G, pool);
+      worlds = sampleWorlds(pool, rootW, Math.max(1, conf.maxDets));
+      let wSum = 0; for (const sid of pool) wSum += rootW.get(sid) ?? 1;
+      refWeight = pool.length ? wSum / pool.length : 1;
     }
   }
 
@@ -304,7 +389,7 @@ export function mctsCommandStep(G: GameState, side: Side, cfg?: Partial<MctsConf
     }
     if (!ok) { arm.dead = true; continue; }
     arm.n++;
-    arm.sum += leafValue(c, side);
+    arm.sum += leafValue(c, side, refWeight);
     pulls++;
   }
 
