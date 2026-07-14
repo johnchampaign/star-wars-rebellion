@@ -983,12 +983,14 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     return () => setCommandPolicyOverride('Rebel', null);
   }, [online]);
 
-  // EXPERIMENTAL AI Empire (single-player only, ?mcts=1 to enable, ?mcts=0 to
-  // clear — sticky via localStorage, same pattern as ?planner=/?hunt=):
-  // determinized Monte-Carlo Command policy (src/play/mctsAI.ts). Costs a few
-  // seconds per Empire command decision; falls back to the heuristic if it
-  // declines or throws. Benched via scripts/mcts-bench.mjs before any default
-  // flip.
+  // AI Empire (single-player only): determinized Monte-Carlo Command policy
+  // (src/play/mctsAI.ts). SHIPPED DEFAULT-ON 2026-07-13 after John's live
+  // playtest — `?mcts=0` opts back to the plain heuristic (sticky). Validated
+  // via scripts/mcts-bench.mjs: hold-defender self-play Empire win 56.3% →
+  // 87.5%, replay captures 5/23 vs 2/23. Costs ~1-2s per Empire command
+  // decision (same order as the depth-2 Rebel); falls back to the heuristic
+  // if it declines or throws. The ONLINE server AI is untouched (Cloudflare
+  // CPU budget — same reasoning as the Rebel depth-2 gate above).
   useEffect(() => {
     if (online || !MCTS_ENABLED) return;
     setCommandPolicyOverride('Empire', (g, s) => mctsCommandStep(g, s));

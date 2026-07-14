@@ -39,21 +39,27 @@ import { bestCommandAction, tryCommandAction, stepOnce } from './randomAI';
 import { evaluate } from './boardEval';
 
 // ---------------------------------------------------------------------------
-// Enablement flag (same resolution pattern as PLANNER_ENABLED).
+// Enablement flag. SHIPPED DEFAULT-ON in the browser (John's call after the
+// 2026-07-13 live playtest: "certainly not worse than the old AI — ship it and
+// start getting MCTS games from real players"). `?mcts=0` opts out (sticky via
+// localStorage, `?mcts=1` clears the opt-out). In node the default stays OFF
+// so benches/tournaments A/B explicitly via SWR_MCTS=1.
 // ---------------------------------------------------------------------------
 export const MCTS_ENABLED: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
     if (proc?.env?.SWR_MCTS === '1') return true;
+    if (proc?.env?.SWR_MCTS === '0') return false;
   } catch { /* browser: no process */ }
   try {
     const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
     const q = g.location?.search ? new URLSearchParams(g.location.search).get('mcts') : null;
-    if (q === '1') g.localStorage?.setItem('swr-mcts', '1');
-    if (q === '0') g.localStorage?.removeItem('swr-mcts');
-    if (g.localStorage?.getItem('swr-mcts') === '1') return true;
+    if (q === '0') g.localStorage?.setItem('swr-mcts-off', '1');
+    if (q === '1') g.localStorage?.removeItem('swr-mcts-off');
+    if (g.localStorage?.getItem('swr-mcts-off') === '1') return false;
+    if (typeof g.location !== 'undefined') return true; // browser: default ON
   } catch { /* no localStorage */ }
-  return false;
+  return false; // node without SWR_MCTS: benches opt in explicitly
 })();
 
 // ---------------------------------------------------------------------------
