@@ -12072,7 +12072,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
   const allGames = (() => {
     try {
       const raw = localStorage.getItem(LS_HISTORY);
-      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean }>) : [];
+      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; mctsPolicy?: boolean }>) : [];
     } catch { return []; }
   })();
   const games = allGames.filter((g) => !uploadedIds.has(g.encodedAt));
@@ -12113,7 +12113,18 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
           // empirePlanner comes from the archived record (stamped at game end);
           // fall back to the current flag only for games archived before the
           // stamp existed.
-          ai: aiSide ? { side: aiSide, policy: aiSide === 'Rebel' ? 'depth2-eval' : 'heuristic', empirePlanner: g.empirePlanner ?? PLANNER_ENABLED, huntOccupy: g.huntOccupy ?? HUNT_OCCUPY_ENABLED } : undefined,
+          ai: aiSide ? {
+            side: aiSide,
+            // AI Empire runs the MCTS policy when the mcts flag was on for the
+            // game (stamped at game end, like empirePlanner) — John's first
+            // ?mcts=1 playtest uploaded as policy:'heuristic' and had to be
+            // attributed by trace forensics. Old records without the stamp
+            // fall back to the current flag.
+            policy: aiSide === 'Rebel' ? 'depth2-eval' : ((g.mctsPolicy ?? MCTS_ENABLED) ? 'mcts' : 'heuristic'),
+            empirePlanner: g.empirePlanner ?? PLANNER_ENABLED,
+            huntOccupy: g.huntOccupy ?? HUNT_OCCUPY_ENABLED,
+            mctsPolicy: g.mctsPolicy ?? MCTS_ENABLED,
+          } : undefined,
         });
       } catch {
         return {
@@ -12146,6 +12157,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
           gameId: (() => { try { return localStorage.getItem(LS_GAME_ID) || undefined; } catch { return undefined; } })(),
           empirePlanner: PLANNER_ENABLED,
           huntOccupy: HUNT_OCCUPY_ENABLED,
+          mctsPolicy: MCTS_ENABLED,
           codec: inProgressCodec,
           source: 'browser-in-progress',
         }] : []),
@@ -15594,7 +15606,7 @@ function RetrieveThePlansPickModal({
 function archiveCompletedGame(G: GameState): void {
   try {
     const raw = localStorage.getItem(LS_HISTORY);
-    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean }> =
+    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; mctsPolicy?: boolean }> =
       raw ? JSON.parse(raw) : [];
     const codec = canEncode(G) ? encode(G) : null;
     if (!codec) return;
@@ -15631,6 +15643,7 @@ function archiveCompletedGame(G: GameState): void {
       // value would misattribute playtest games when mining logs.
       empirePlanner: PLANNER_ENABLED,
       huntOccupy: HUNT_OCCUPY_ENABLED,
+      mctsPolicy: MCTS_ENABLED,
     });
     while (history.length > HISTORY_CAP) history.pop();
     // Per-turn snapshots (log-format v2) roughly doubled codec size, so a full

@@ -34,6 +34,7 @@
 
 import type { GameState, Side, SystemId } from '../engine/types';
 import * as phases from '../engine/phases';
+import { log as logEvent } from '../engine/log';
 import { bestCommandAction, tryCommandAction, stepOnce } from './randomAI';
 import { evaluate } from './boardEval';
 
@@ -311,7 +312,34 @@ export function mctsCommandStep(G: GameState, side: Side, cfg?: Partial<MctsConf
   mctsStats.ms += Date.now() - t0;
   if (chosen !== candidates[0]) mctsStats.disagreements++;
 
-  if (chosen.kind === 'pass') return phases.pass(G, side).ok;
-  if (tryCommandAction(G, side, chosen)) return true;
-  return false; // executor rejected on the real state — heuristic fallback
+  const committed = chosen.kind === 'pass'
+    ? phases.pass(G, side).ok
+    : tryCommandAction(G, side, chosen);
+  if (committed) {
+    // Same 'ai-decision' trace the heuristic writes (no new registry kind),
+    // with policy:'mcts' + search stats — John's first ?mcts=1 playtest could
+    // only be attributed by the ABSENCE of traces, which is exactly the
+    // forensics the trace exists to avoid. Logged after commit, like the
+    // heuristic's (we only know the choice stuck once the engine accepts it).
+    const r2 = (x: number) => Math.round(x * 100) / 100;
+    const brief = (a: (typeof candidates)[number]): Record<string, unknown> => {
+      const arm = arms.find((x) => x.a === a);
+      const mean = arm && arm.n > 0 ? r2(arm.sum / arm.n) : null;
+      return a.kind === 'reveal'
+        ? { kind: a.kind, missionId: a.missionId, target: a.targetSystemId, score: r2(a.score), mc: mean }
+        : a.kind === 'activate'
+          ? { kind: a.kind, leaderId: a.leaderId, target: a.targetSystemId, score: r2(a.score), mc: mean }
+          : { kind: a.kind, score: r2(a.score), mc: mean };
+    };
+    logEvent(G, {
+      kind: 'ai-decision', side,
+      payload: {
+        policy: 'mcts',
+        chose: brief(chosen),
+        alts: alive.slice(1, 6).map((x) => brief(x.a)),
+        search: { pulls, worlds: worlds.length, ms: Date.now() - t0, heuristicRank: candidates.indexOf(chosen) },
+      },
+    });
+  }
+  return committed; // false → executor rejected on the real state — heuristic fallback
 }
