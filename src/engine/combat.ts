@@ -16,7 +16,7 @@ import * as objectives from './objectives';
 import { rollDie, shuffle } from './rng';
 import { log, logState, pushNotice } from './log';
 import { registerChoice, requestChoice } from './choices';
-import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, applyDeferredHealAllocation, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal, dealAbilityFor, cinematicDealCandidates, destroyAbilityFor, cinematicDestroyCandidates, applyChosenDestroy, gainTriangleAbilityFor, cinematicTriangleGroundGainTypes } from './cinematicTactics';
+import { takeCinematicPrevent, cinematicSelectOptions, applyCinematicAbility, resolveCinematicEndOfRound, resolveCinematicRetreatTriggers, isCancelCard, isEscapePlanAbility, restageTheater, applyDeferredCinematicHeals, applyDeferredHealAllocation, targetDealAbilityFor, cinematicTargetDealCandidates, applyChosenTargetDeal, effectiveDealAbilityFor, cinematicDealCandidates, destroyAbilityFor, cinematicDestroyCandidates, applyChosenDestroy, gainTriangleAbilityFor, cinematicTriangleGroundGainTypes } from './cinematicTactics';
 
 function other(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
@@ -596,10 +596,13 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
       if (sel && !sel.noAbility) {
         // A targeted-deal (Tow Cables / Ion Blast) OR a plain deal (Bombing Run,
         // Rogue Squadron Support, …) both let the playing side choose which
-        // enemy unit eats the damage when 2+ are legal (#290/#312). Compute the
+        // enemy unit eats the damage when 2+ are legal (#290/#312). A conditional
+        // deal (Swarm Tactics, Bombardment) whose condition currently holds is
+        // treated exactly like a plain deal so it prompts too, instead of
+        // auto-assigning to the cheapest-to-kill enemy (#570). Compute the
         // amount + candidates from whichever applies and post one CinematicTargetPick.
         const td = targetDealAbilityFor(sel.cardId, sel.useTop);
-        const dl = td ? null : dealAbilityFor(sel.cardId, sel.useTop);
+        const dl = td ? null : effectiveDealAbilityFor(G, c, side, theater, sel.cardId, sel.useTop);
         const amount = td ? td.amount : (dl ? dl.amount : 0);
         const cands = td ? cinematicTargetDealCandidates(G, c, side, theater, td)
           : (dl ? cinematicDealCandidates(G, c, side, theater, dl) : []);
@@ -2623,7 +2626,7 @@ export function resolveCinematicTargetPick(
   // point at a time and may spread it across different units (player report
   // #391: Overrun's 2 damage was being forced entirely onto a single target).
   const plainDeal = ctx && !targetDealAbilityFor(ctx.cardId, ctx.useTop)
-    ? dealAbilityFor(ctx.cardId, ctx.useTop) : null;
+    ? effectiveDealAbilityFor(G, c, pc.side, pc.theater, ctx.cardId, ctx.useTop) : null;
   if (plainDeal) {
     // Apply ONE point to the chosen unit; stage it if that's lethal.
     const dead = M.damageUnit(G, instanceId, 1);

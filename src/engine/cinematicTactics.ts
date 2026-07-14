@@ -992,6 +992,26 @@ export function dealAbilityFor(cardId: string, useTop: boolean): DealEffect | nu
   return ab && ab.kind === 'deal' ? ab : null;
 }
 
+/** The EFFECTIVE plain-deal for interactive targeting (#570): a plain `deal`
+ *  ability, OR a `condDeal` (Swarm Tactics, Bombardment) whose condition
+ *  currently holds — both let the playing side choose which enemy unit eats the
+ *  damage, just like a plain deal. A condDeal whose condition is NOT met deals
+ *  nothing, so it returns null and the auto-resolver logs the 0. Needs the game
+ *  context to evaluate the condition, unlike the static dealAbilityFor. */
+export function effectiveDealAbilityFor(
+  G: GameState, c: CombatState, side: Side, theater: Theater, cardId: string, useTop: boolean,
+): DealEffect | null {
+  const abilities = ABILITIES[cardId];
+  if (!abilities) return null;
+  const ab = useTop ? abilities[0] : abilities[1];
+  if (!ab) return null;
+  if (ab.kind === 'deal') return ab;
+  if (ab.kind === 'condDeal' && condHolds(G, c, side, theater, ab.cond)) {
+    return { kind: 'deal', amount: ab.amount, color: ab.color };
+  }
+  return null;
+}
+
 /** Legal targets for an interactive plain-deal pick: enemy units whose health
  *  colour matches the deal's colour (or any colour when uncoloured), excluding
  *  the indestructible Death Star (#312). Staged units stay eligible so the
