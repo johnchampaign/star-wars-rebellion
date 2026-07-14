@@ -1819,9 +1819,16 @@ function maybePostMissionYodaReroll(G: GameState, pm: MissionResolution): boolea
   // opposer; "own" is whichever side the Yoda holder is on.
   const rebelIsResolver = pm.resolverSide === 'Rebel';
   const rebelFaces = rebelIsResolver ? stash.attFaces : stash.oppFaces;
-  const ownSuccesses = rebelIsResolver ? stash.attSuccesses : stash.oppSuccesses;
+  // The leader-portrait +2 lands on the mission RESOLVER (the attacker) and is
+  // applied later in finalizeMissionRoll — but the stashed dice successes don't
+  // include it. Fold it into the ATTACKER's total here so the "you're winning /
+  // losing" readout (and the player's decision to spend Yoda) reflects the real
+  // result, not dice alone (#568: Yoda was suggested as if the mission would
+  // fail when Obi-Wan's +2 portrait bonus already made it a success).
+  const attTotal = stash.attSuccesses + portraitBonus(G, pm.missionId, pm.leaderIds as LeaderId[]);
+  const ownSuccesses = rebelIsResolver ? attTotal : stash.oppSuccesses;
   const oppFaces = rebelIsResolver ? stash.oppFaces : stash.attFaces;
-  const oppSuccesses = rebelIsResolver ? stash.oppSuccesses : stash.attSuccesses;
+  const oppSuccesses = rebelIsResolver ? stash.oppSuccesses : attTotal;
   const blanks = rebelFaces.map((f, i) => f === 'blank' ? i : -1).filter((i) => i >= 0);
   if (blanks.length === 0) return false;
   G.pendingChoice = {

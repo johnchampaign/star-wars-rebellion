@@ -1539,7 +1539,13 @@ export function resolveCombatDefenderTactics(
       // card, and it blocks up to 2 (not 1 — that was the bug). finalizeAttack
       // caps blocks at the actual incoming hits, so overshooting is harmless.
       const sacrifice = plays.sacrificeCardIds[sacrificeIdx++];
-      if (!sacrifice || !defHand.includes(sacrifice) || sacrifice === cid) continue;
+      if (!sacrifice || !defHand.includes(cid)) continue;
+      // The sacrifice may be ANOTHER COPY of the same card — two Dig In cards
+      // share the id 'ground-dig-in', so the old `sacrifice === cid` reject
+      // wrongly blocked playing one and discarding the other (#565). Verify by
+      // COPY COUNT: need 2 of `cid` when self-sacrificing, else 1 of each.
+      const cidCount = defHand.filter((x) => x === cid).length;
+      if (sacrifice === cid ? cidCount < 2 : !defHand.includes(sacrifice)) continue;
       discardCard(G, defHand, cid);
       discardCard(G, defHand, sacrifice);
       blocks += 2;

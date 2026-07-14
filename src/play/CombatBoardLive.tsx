@@ -1308,9 +1308,14 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
   ) ?? null;
   // The Dig In / Outmaneuver sacrifice may be ANY other tactic card in hand —
   // including a Defensive Formation you'd otherwise play for the free block
-  // (#122). A card spent as the sacrifice just can't ALSO be played as the
-  // free block, which the mutual-exclusion below enforces.
-  const sacrificeCandidates = choice.hand.filter((cid) => cid !== paid);
+  // (#122), OR a SECOND COPY of the same card (two Dig In → play one, sacrifice
+  // the other). Remove only ONE copy of the played card (not every same-id copy,
+  // which blocked using a duplicate as the sacrifice, #565).
+  const sacrificeCandidates = (() => {
+    const rest = [...choice.hand];
+    if (paid) { const i = rest.indexOf(paid); if (i >= 0) rest.splice(i, 1); }
+    return rest;
+  })();
   // No Escape (free space tactic): the defender can trap the attacking fleet so
   // it can't retreat this round. Independent of blocks (it prevents no damage).
   const defNoEscape = choice.hand.find((cid) => cid.includes('no-escape')) ?? null;

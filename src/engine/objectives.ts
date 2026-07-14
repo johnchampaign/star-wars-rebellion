@@ -327,14 +327,18 @@ export function combatObjectivesTriggered(
   if (has('rebel-assault-1') && rebelInitiated && empSDLost >= 1) {
     fired.push('rebel-assault-1');
   }
-  // liberation-2 — Win a ground battle in a subjugated system.
-  if (has('liberation-2') && rebelWonOverall) {
+  // liberation-2 — Win a ground BATTLE in a subjugated system. RAW/FAQ: it's the
+  // GROUND battle that counts, not the whole combat — the Empire may still hold
+  // orbit. The overall-winner gate (report.winner === 'Rebel' requires being the
+  // system's SOLE occupant) wrongly missed a ground liberation fought under
+  // contested space (#567; same class as #423, using the per-theater helper).
+  if (has('liberation-2') && rebelWonBattleIn('ground')) {
     // Use the at-combat-start subjugation snapshot, NOT the live flag —
     // winning the ground battle liberates the system (clears subjugated)
     // before this check runs, so the live flag is always false here. (#53)
     const wasSubjugated = report.systemSubjugatedAtStart
       ?? G.map.systems[report.systemId]?.subjugated; // fallback for old reports
-    if (wasSubjugated && foughtIn('ground')) fired.push('liberation-2');
+    if (wasSubjugated) fired.push('liberation-2');
   }
   // major-victory-3 — 3+ health of Imperial SHIPS destroyed in a combat
   // you initiated.
@@ -346,7 +350,11 @@ export function combatObjectivesTriggered(
   // leader" sub-effect is applied in playCombatObjective (combat.ts) when the
   // objective is actually scored — keyed on the live `luke-skywalker-jedi`
   // leader id, which the engine does track.
-  if (has('return-of-the-jedi-3') && rebelWonOverall) {
+  // RAW: "win a BATTLE in Vader's or Palpatine's system" — a theater win counts,
+  // not just winning the whole combat (same FAQ principle as liberation #567 /
+  // #423). rebelWonOverall was too strict and would MISS a valid score when the
+  // Empire still held the other theater.
+  if (has('return-of-the-jedi-3') && rebelWonAnyBattle) {
     const sys = report.systemId;
     const vaderHere = (G.empire.leadersOnBoard[sys] ?? []).includes('darth-vader');
     const empHere = (G.empire.leadersOnBoard[sys] ?? []).includes('emperor-palpatine');
