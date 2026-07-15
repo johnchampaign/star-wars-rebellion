@@ -33,6 +33,45 @@ function unitsOf(G: GameState, side: Side, sysId: SystemId, theater?: Theater): 
   });
 }
 
+/** Suggested ★-heal allocation for a cinematic "removing damage" window (#571).
+ *  A ★ removes 1 damage, but pouring it into a unit that still dies (damage stays
+ *  >= health after the heal) wastes it — the reporter watched three 1-health TIEs
+ *  die while the ★ "healed" the one carrying 2 damage (2→1, still dead). So per
+ *  colour we greedily fully-heal the wounded units we can bring back below their
+ *  health, cheapest-to-save first (fewest ★ needed), maximising the count of
+ *  ships/troops saved; only if ★ remain do we spill onto the most-damaged unit
+ *  (harmless carry-over relief). The AI takes this default verbatim; the human
+ *  sees it pre-filled and may reassign. Exported for direct testing. */
+export function suggestHealAllocation(
+  candidates: { instanceId: string; color: 'red' | 'black'; damage: number; health: number }[],
+  budget: { red: number; black: number },
+): { instanceId: string; amount: number }[] {
+  const suggested: { instanceId: string; amount: number }[] = [];
+  for (const color of ['red', 'black'] as const) {
+    let b = budget[color];
+    const pool = candidates.filter((x) => x.color === color).map((x) => ({
+      instanceId: x.instanceId,
+      remaining: x.damage,
+      toSave: x.damage - (x.health - 1), // ★ needed to drop below health
+    }));
+    // Phase 1: save units, cheapest-to-save first, only when affordable.
+    for (const u of [...pool].sort((a, z) => a.toSave - z.toSave)) {
+      if (u.toSave >= 1 && u.toSave <= b) {
+        suggested.push({ instanceId: u.instanceId, amount: u.toSave });
+        u.remaining -= u.toSave; b -= u.toSave;
+      }
+    }
+    // Phase 2: spill leftover ★ onto the most-damaged remaining unit.
+    while (b > 0 && pool.some((w) => w.remaining > 0)) {
+      const w = [...pool].filter((w) => w.remaining > 0).sort((a, z) => z.remaining - a.remaining)[0];
+      const ex = suggested.find((s) => s.instanceId === w.instanceId);
+      if (ex) ex.amount += 1; else suggested.push({ instanceId: w.instanceId, amount: 1 });
+      w.remaining -= 1; b -= 1;
+    }
+  }
+  return suggested;
+}
+
 function bothSidesHaveTheater(G: GameState, sysId: SystemId, theater: Theater): boolean {
   return unitsOf(G, 'Rebel', sysId, theater).length > 0
       && unitsOf(G, 'Empire', sysId, theater).length > 0;
@@ -952,19 +991,10 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
         .filter((x) => x.color === 'red' || x.color === 'black')
         .map((x) => ({ instanceId: x.u.instanceId, typeId: x.u.typeId, color: x.color as 'red' | 'black', damage: x.u.damage }));
       if (candidates.length > 0) {
-        // Suggested allocation: per colour, most-damaged first, 1 point at a time.
-        const suggested: { instanceId: string; amount: number }[] = [];
-        for (const color of ['red', 'black'] as const) {
-          let b = budget[color];
-          const wounded = candidates.filter((x) => x.color === color).sort((a, z) => z.damage - a.damage)
-            .map((x) => ({ instanceId: x.instanceId, remaining: x.damage }));
-          while (b > 0 && wounded.some((w) => w.remaining > 0)) {
-            const w = wounded.find((w) => w.remaining > 0)!;
-            const ex = suggested.find((s) => s.instanceId === w.instanceId);
-            if (ex) ex.amount += 1; else suggested.push({ instanceId: w.instanceId, amount: 1 });
-            w.remaining -= 1; b -= 1;
-          }
-        }
+        const suggested = suggestHealAllocation(
+          candidates.map((x) => ({ ...x, health: G.catalog.unitTypes[x.typeId]?.health.value ?? 1 })),
+          budget,
+        );
         pa.phase = 'awaitingCinematicHeal';
         G.pendingChoice = {
           kind: 'CinematicHeal',
