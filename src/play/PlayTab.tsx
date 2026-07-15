@@ -11106,6 +11106,10 @@ const ONSCREEN_HIDDEN_KINDS = new Set<string>([
   'mission-hand-trim',
   // UI noise + would expose candidate lists in payload.
   'choice-request',
+  // AI decision traces (#583): full reasoning incl. chosen/alternative targets.
+  // Reading the Rebel AI's traces reveals its plans (and can point straight at
+  // the hidden base). Analysis-only — belongs in uploaded logs, never on screen.
+  'ai-decision',
   // Internal/debug.
   'not-implemented', 'note', 'state', 'setup-warning',
 ]);
@@ -11139,7 +11143,14 @@ const ONSCREEN_REDACTED_KINDS = new Set<string>([
  *  revealed. Your OWN show normally; the opponent's render as "(private)" so
  *  the log can't be used to peek at their plans (player report #90 — follow-up
  *  to the assignment info-leak fix #87). */
-const OPPONENT_SECRET_KINDS = new Set<string>(['assign-leader', 'unassign-leader']);
+const OPPONENT_SECRET_KINDS = new Set<string>([
+  'assign-leader', 'unassign-leader',
+  // Rapid Mobilization relocation (#583): the payload names BOTH the old and
+  // the NEW hidden base system. The Rebel viewer may see it; the Empire viewer
+  // sees only that a relocation happened ("(private)"), matching the physical
+  // game where the Empire watches RM resolve but never learns the destination.
+  'rapid-mobilization-base-established',
+]);
 
 /** Card draws where the NUMBER is public (you can watch the draws / deduce it
  *  from the deck size) but the card identities are private. Show "drew N",
