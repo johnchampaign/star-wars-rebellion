@@ -1509,6 +1509,27 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   return actions;
 }
 
+/** Empire's forced placement of the Rebel's Raid Outposts markers. The Rebel
+ *  scores each time a marker is REMOVED, so the Empire buries them where Rebel
+ *  forces can't get at them. Threat per remote = Rebel units in the system
+ *  (can clear it immediately, weighted heavily) + adjacent systems holding
+ *  Rebel units (one move away). #576: the old check only looked INSIDE the
+ *  system, so it placed a marker on an empty remote with a massive Rebel fleet
+ *  parked right next door — free reputation. Prefer the lowest total threat.
+ *  Deterministic (stable sort). Exported for direct testing. */
+export function chooseRaidOutpostRemotes(
+  G: GameState, legal: readonly SystemId[], count: number,
+): SystemId[] {
+  const rebelIn = (sid: SystemId) =>
+    (G.map.systems[sid]?.units ?? []).some((u) => u.side === 'Rebel');
+  const score = (sid: SystemId) => {
+    const here = rebelIn(sid) ? 100 : 0;
+    const adj = (G.catalog.adjacency[sid] ?? []).filter((n) => rebelIn(n)).length;
+    return here + adj;
+  };
+  return [...legal].sort((a, b) => score(a) - score(b)).slice(0, count);
+}
+
 /** Run one AI action for `side`. Returns true if something happened (caller
  *  should re-render and may call again), false if nothing left to do. */
 export function stepOnce(G: GameState, side: Side): boolean {
@@ -1832,13 +1853,10 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       : phases.resolvePlayObjectivePick(G, best).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'RaidOutpostsPlace' && G.pendingChoice.side === side) {
-    // AI (Empire forced to place the Rebel's Raid Outposts markers): pick
-    // remotes the Rebel is least likely to reach — prefer ones without a
-    // Rebel ground unit, else the first legal ones. Deterministic.
+    // AI (Empire forced to place the Rebel's Raid Outposts markers): bury them
+    // where Rebel forces can't reach (see chooseRaidOutpostRemotes / #576).
     const pc = G.pendingChoice;
-    const score = (sid: string) =>
-      (G.map.systems[sid]?.units ?? []).some((u) => u.side === 'Rebel') ? 1 : 0;
-    const picks = [...pc.legal].sort((a, b) => score(a) - score(b)).slice(0, pc.count);
+    const picks = chooseRaidOutpostRemotes(G, pc.legal, pc.count);
     return phases.resolveRaidOutpostsPlace(G, picks).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'RebelCellPlace' && G.pendingChoice.side === side) {

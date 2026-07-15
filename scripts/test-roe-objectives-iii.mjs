@@ -57,6 +57,39 @@ console.log('[ scoreRaidOutposts: ground unit removes marker + scores ]');
   check('Imperial ground present → no reputation scored', G.reputationMarker === repBefore);
 }
 
+// ---- #576: Empire buries Raid Outposts markers away from Rebel reach ----
+console.log('[ #576: Raid Outposts placement avoids remotes near Rebel forces ]');
+{
+  const { chooseRaidOutpostRemotes } = await import('../src/play/randomAI.ts');
+  const G = newG();
+  // Clear Rebel units everywhere so we control the picture exactly.
+  for (const sid of Object.keys(G.map.systems)) {
+    G.map.systems[sid].units = (G.map.systems[sid].units ?? []).filter((u) => u.side !== 'Rebel');
+  }
+  const remotes = Object.keys(G.map.systems).filter((id) => G.catalog.systems[id]?.isRemote);
+  // rBad: empty itself but has a Rebel fleet in an ADJACENT system (the #576 case).
+  const rBad = remotes.find((r) => (G.catalog.adjacency[r] ?? []).length > 0);
+  const neighbor = G.catalog.adjacency[rBad][0];
+  G.map.systems[neighbor].units.push(unit('mon-calamari-cruiser', 'Rebel'));
+  // rInside: a remote with a Rebel unit sitting right in it (worst case).
+  const rInside = remotes.find((r) => r !== rBad && !(G.catalog.adjacency[r] ?? []).includes(neighbor));
+  G.map.systems[rInside].units.push(unit('rebel-trooper', 'Rebel'));
+  // Two clean remotes: no Rebel units in or adjacent.
+  const clean = remotes.filter((r) =>
+    r !== rBad && r !== rInside &&
+    !(G.map.systems[r].units ?? []).some((u) => u.side === 'Rebel') &&
+    !(G.catalog.adjacency[r] ?? []).some((n) => (G.map.systems[n]?.units ?? []).some((u) => u.side === 'Rebel')));
+  const [safe1, safe2] = clean;
+  const legal = [rInside, rBad, safe1, safe2];
+  const picks = chooseRaidOutpostRemotes(G, legal, 2);
+  check('picks the two clean remotes, not the adjacent-fleet or occupied ones',
+    picks.length === 2 && picks.includes(safe1) && picks.includes(safe2)
+    && !picks.includes(rBad) && !picks.includes(rInside), JSON.stringify(picks));
+  // With only the adjacent-fleet remote vs a clean one, prefer the clean one.
+  const picks2 = chooseRaidOutpostRemotes(G, [rBad, safe1], 1);
+  check('adjacent Rebel fleet outweighs an empty neighborhood', picks2[0] === safe1, JSON.stringify(picks2));
+}
+
 // ---- #8: Immediate objectives activate ON DRAW (flush posts placement) ----
 console.log('[ #8: Immediate objectives activate on draw, chaining via the flush ]');
 {
