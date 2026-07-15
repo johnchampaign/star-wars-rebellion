@@ -122,7 +122,9 @@ const U: UnwiredEffect = { kind: 'unwired' };
 // scripts/add-cinematic-tactics.mjs.
 const ABILITIES: Record<string, [Ability, Ability]> = {
   // ---- Imperial Space ----
-  'cin-empire-space-swarm-tactics':          [CD(1, 'more-fighters'), D(1, 'black')],
+  // Card scan (images/Swarm Tactics_s.png): "If there are more Imperial
+  // fighters than Rebel fighters, deal 2 damage." — was mis-entered as 1 (#570).
+  'cin-empire-space-swarm-tactics':          [CD(2, 'more-fighters'), D(1, 'black')],
   'cin-empire-space-reinforcements':         [GAIN('tie-fighter', { red: 0, black: 2, special: 0 }), P(0, 2)],
   'cin-empire-space-tractor-beam':           [CAPTURE, D(1, 'red')],
   'cin-empire-space-overwhelming-presence':  [P(2, 0, 1), P(2, 0)],
