@@ -2349,6 +2349,11 @@ export type GameState = {
 
   // Log
   turnLog: LogEntry[];
+  /** Set on throwaway AI-search clones (MCTS rollouts, depth-2 eval). Makes
+   *  logState() a no-op — serializing a full-board snapshot per simulated
+   *  turn × 64 rollouts per decision was a large share of late-game AI think
+   *  time (#569). Never set on the real game state; not persisted. */
+  ephemeralSearchClone?: boolean;
 
   // Static data loaded at setup (references; not mutated)
   // We hold references so engine functions can be pure and not require global lookups.

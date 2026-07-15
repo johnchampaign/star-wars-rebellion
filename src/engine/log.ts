@@ -32,6 +32,10 @@ const SNAPSHOT_SCHEMA = 'rebellion-state-v1';
  *  keyframes list. Snapshots without a label (written by the first deployed
  *  version of this code) are treated as 'turn-start' by readers. */
 export function logState(G: GameState, at: string = 'turn-start'): void {
+  // AI-search clones are simulated forward and discarded; serializing a full
+  // snapshot per simulated turn × dozens of rollouts per decision was a large
+  // share of late-game AI think time (#569). Real games are never marked.
+  if (G.ephemeralSearchClone) return;
   const { catalog, pendingMission, pendingCombat, pendingChoice, refreshPaused, turnLog, ...rest } =
     G as GameState & Record<string, unknown>;
   void catalog; void pendingMission; void pendingCombat; void pendingChoice; void refreshPaused; void turnLog;

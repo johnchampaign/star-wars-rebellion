@@ -129,11 +129,18 @@ export function resetMctsStats(): void {
 // State plumbing.
 // ---------------------------------------------------------------------------
 
-/** Clone the state cheaply (catalog reattached by reference — it's immutable). */
+/** Clone the state cheaply (catalog reattached by reference — it's immutable).
+ *  The turnLog is cloned WITHOUT its 'state' snapshot entries (~1MB each, one
+ *  per game turn): cloning them 64×/decision made late-game decisions take
+ *  tens of seconds (#569). The AI only reads reveal-mission history from the
+ *  log, so decisions are unchanged. The clone is also marked ephemeral so
+ *  logState() skips snapshot writes during rollouts. */
 function cloneState(G: GameState): GameState {
-  const { catalog, ...rest } = G;
+  const { catalog, turnLog, ...rest } = G;
   const c = structuredClone(rest) as GameState;
   c.catalog = catalog;
+  c.turnLog = structuredClone(turnLog.filter((e) => e.kind !== 'state'));
+  c.ephemeralSearchClone = true;
   return c;
 }
 

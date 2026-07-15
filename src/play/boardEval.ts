@@ -114,11 +114,16 @@ export function evaluate(G: GameState, side: Side): number {
   return v;
 }
 
-/** Clone the state cheaply (catalog reattached by reference — it's immutable). */
+/** Clone the state cheaply (catalog reattached by reference — it's immutable).
+ *  Strips 'state' snapshot entries (~1MB/turn) from the cloned turnLog and
+ *  marks the clone ephemeral (logState no-op) — same fix as mctsAI (#569):
+ *  depth-2 clones candidates × replies, so full-log clones went quadratic. */
 function cloneState(G: GameState): GameState {
-  const { catalog, ...rest } = G;
+  const { catalog, turnLog, ...rest } = G;
   const c = structuredClone(rest) as GameState;
   c.catalog = catalog;
+  c.turnLog = structuredClone(turnLog.filter((e) => e.kind !== 'state'));
+  c.ephemeralSearchClone = true;
   return c;
 }
 
