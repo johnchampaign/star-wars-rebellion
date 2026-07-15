@@ -170,5 +170,26 @@ console.log('\n[ #435 Long Range Probe is pointless when the base answer is alre
     missionRevealIsPointless(G5, 'Empire', 'long-range-probe', SID) === true);
 }
 
+console.log('\n[ #578 Wookie Uprising is pointless on already-loyal Kashyyyk with no Empire units ]');
+{
+  const G = createGame(data, { seed: 4, expansion: { enabled: true, roeUnits: true, roeMissions: true } });
+  G.map.systems.kashyyyk.units = [];
+  G.map.systems.kashyyyk.loyalty = 'rebel';
+  check('pointless when already Rebel-loyal and no Empire units (both halves no-op)',
+    missionRevealIsPointless(G, 'Rebel', 'wookie-uprising', 'kashyyyk') === true);
+  // Loyalty not yet Rebel → the loyalty gain still does something.
+  G.map.systems.kashyyyk.loyalty = 'neutral';
+  check('NOT pointless when the system is neutral (loyalty gain matters)',
+    missionRevealIsPointless(G, 'Rebel', 'wookie-uprising', 'kashyyyk') === false);
+  G.map.systems.kashyyyk.loyalty = 'imperial';
+  check('NOT pointless when the system is Imperial (loyalty removal matters)',
+    missionRevealIsPointless(G, 'Rebel', 'wookie-uprising', 'kashyyyk') === false);
+  // Already Rebel-loyal but an Empire unit present → the destroy half has a target.
+  G.map.systems.kashyyyk.loyalty = 'rebel';
+  M.deployUnit(G, 'Empire', 'stormtrooper', 'kashyyyk');
+  check('NOT pointless once an Empire unit is present (destroy has a target)',
+    missionRevealIsPointless(G, 'Rebel', 'wookie-uprising', 'kashyyyk') === false);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

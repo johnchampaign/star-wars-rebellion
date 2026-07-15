@@ -469,6 +469,17 @@ export function missionRevealIsPointless(
       return !(ss?.units ?? []).some(
         (u) => u.side === opp && G.catalog.unitTypes[u.typeId]?.health.color !== null);
     }
+    case 'wookie-uprising': {
+      // "Gain 1 loyalty in Kashyyyk AND destroy up to 4 health of Empire units
+      // there." Both halves can be no-ops at once: gainLoyalty is inert when the
+      // system is already Rebel-loyal (logs loyalty-already), and the destroy
+      // does nothing with no Empire units present. Pointless only when BOTH hold
+      // (#578: Rebel AI ran it on already-loyal Kashyyyk with 0 Empire units —
+      // two leaders and a mission wasted for no gain).
+      if (ss?.loyalty !== 'rebel') return false;
+      return !(ss?.units ?? []).some(
+        (u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.health.color !== null);
+    }
     case 'superlaser-online': {
       // Fires at the Death Star's OWN system, destroying everything there —
       // including the Empire's own escorts. Worth it only when there's Rebel
