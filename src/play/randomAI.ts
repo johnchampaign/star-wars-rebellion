@@ -2700,10 +2700,15 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   // safe and hidden, just reinforce it (move-units). Previously always chose
   // establish-base, which relocated even a safe base for no reason.
   if (G.pendingChoice && G.pendingChoice.kind === 'RapidMobilizationBranch' && G.pendingChoice.side === side) {
-    const threatened = G.rebelBaseRevealed || empireProximityToBase(G) > 0;
-    // move-units is only legal while the base is unrevealed; when revealed
-    // (always "threatened") we fall to establish-base anyway.
-    const branch = threatened ? 'establish-base' : 'move-units';
+    // ABANDON the base (establish-base = relocate) ONLY when it's REVEALED —
+    // capture is imminent and escaping is the whole point. Relocating merely
+    // because an Empire ground force is NEAR a still-HIDDEN base is a trap
+    // (#551/#579): RM's relocate moves only the base marker, so the starting
+    // fleet is STRANDED at the old site and never used again, and you've thrown
+    // away a hidden position the Empire hadn't even found. When hidden, always
+    // take move-units instead — pull ships INTO the base to defend/consolidate
+    // (which never strands anything) and keep hiding.
+    const branch = G.rebelBaseRevealed ? 'establish-base' : 'move-units';
     return phases.resolveRapidMobilizationBranch(G, branch).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'RapidMobilizationMovePick' && G.pendingChoice.side === side) {
