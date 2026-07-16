@@ -11,7 +11,7 @@ import { stepOnce as aiStepOnce, setCommandPolicyOverride } from './randomAI';
 import { buildV2GameLog, buildId } from './logFormat';
 import { PLANNER_ENABLED, HUNT_OCCUPY_ENABLED } from './empirePlanner';
 import { evalCommandStepDeep } from './boardEval';
-import { mctsCommandStep, MCTS_ENABLED } from './mctsAI';
+import { mctsCommandStep, commitMctsCommand, MCTS_ENABLED, type MctsSearchResult } from './mctsAI';
 import { recordPlay } from 'digital-boardgame-framework';
 import { TERRITORIES, territoryFill } from '../data/territories';
 import {
@@ -366,6 +366,9 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // the setTimeout batch chain in a backgrounded/inactive tab, freezing the game
   // on the AI's turn with no way to resume).
   const lastAiProgressRef = useRef(0);
+  /** True while an MCTS worker search is in flight — runAILoop pauses instead
+   *  of spinning; the worker reply clears it and re-kicks the loop. */
+  const aiWaitingRef = useRef(false);
   // Point the module-level engine handles at the online shim (mutators submit
   // RebellionActions to the server) or the real modules (single-player). See
   // the `let phases/combat` declaration above and onlineEngine.ts.
@@ -643,6 +646,8 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         if (now - batchStart > 40) break; // yield to browser
         if (totalSteps >= 2000) break;     // hard safety cap
         if (stepsThisBatch >= 200) break;  // per-batch safety
+        // An MCTS worker search is in flight — pause; its reply re-kicks us.
+        if (aiWaitingRef.current) break;
         const Gn = gameRef.current;
         if (!Gn || Gn.isGameOver) break;
         // Pause the AI while ANY report is waiting to be shown, so the human
@@ -691,6 +696,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         console.warn('[ai] runAILoop hit hard safety cap (2000 steps)');
         return;
       }
+      if (aiWaitingRef.current) return; // worker reply re-kicks via refresh()
       const owes2 = aiOwesChoice(Gn2, ai);
       if (Gn2.currentPlayer === ai || owes2) {
         setTimeout(runBatch, 0);
@@ -991,11 +997,87 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // decision (same order as the depth-2 Rebel); falls back to the heuristic
   // if it declines or throws. The ONLINE server AI is untouched (Cloudflare
   // CPU budget — same reasoning as the Rebel depth-2 gate above).
+  // WORKER BRIDGE (#539 item 4): the search runs in a web worker on an ENCODED
+  // COPY of the state, so the 1-2s think no longer freezes the UI. Protocol:
+  // the override is called from the synchronous AI loop; on a fresh decision it
+  // posts {codec, side} to the worker, marks the loop "waiting" and returns
+  // true (= handled, nothing advanced). runAILoop pauses while waiting; the
+  // worker reply stores the result and re-kicks the loop, whose next override
+  // call commits it on the real state via commitMctsCommand. Falls back to the
+  // SYNCHRONOUS search when Workers are unavailable, the state isn't cleanly
+  // encodable, the worker errors, or a search exceeds the watchdog.
+  const mctsWorkerRef = useRef<Worker | null>(null);
+  const mctsPendingRef = useRef<{ key: string; done: boolean; result: MctsSearchResult | null; t0: number } | null>(null);
   useEffect(() => {
     if (online || !MCTS_ENABLED) return;
-    setCommandPolicyOverride('Empire', (g, s) => mctsCommandStep(g, s));
-    return () => setCommandPolicyOverride('Empire', null);
-  }, [online]);
+    const canWorker = typeof Worker !== 'undefined';
+    const getWorker = (): Worker | null => {
+      if (!canWorker) return null;
+      if (!mctsWorkerRef.current) {
+        try {
+          const w = new Worker(new URL('./mctsWorker.ts', import.meta.url), { type: 'module' });
+          w.onmessage = (ev: MessageEvent<{ id: number; ok: boolean; result?: MctsSearchResult | null; error?: string }>) => {
+            console.log('[mcts-bridge] worker reply', ev.data.ok, ev.data.error ?? '');
+            const p = mctsPendingRef.current;
+            if (!p || p.done) return;
+            p.done = true;
+            p.result = ev.data.ok ? (ev.data.result ?? null) : null;
+            aiWaitingRef.current = false;
+            refresh(); // re-enter runAILoop; the override commits the result
+          };
+          w.onerror = (e) => {
+            console.warn('[mcts-bridge] worker error', e.message ?? e);
+            const p = mctsPendingRef.current;
+            if (p && !p.done) { p.done = true; p.result = null; }
+            aiWaitingRef.current = false;
+            refresh();
+          };
+          mctsWorkerRef.current = w;
+        } catch { return null; }
+      }
+      return mctsWorkerRef.current;
+    };
+    setCommandPolicyOverride('Empire', (g, s) => {
+      // Decision identity: timeMarker + log length is unique per decision
+      // point (every committed action appends log entries).
+      const key = `${g.timeMarker}:${g.turnLog.length}`;
+      const p = mctsPendingRef.current;
+      if (p && p.key === key && p.done) {
+        mctsPendingRef.current = null;
+        console.log('[mcts-bridge] commit', key, p.result ? 'result' : 'null');
+        if (!p.result) return false; // search declined/failed → heuristic
+        return commitMctsCommand(g, s, p.result);
+      }
+      if (p && p.key === key && !p.done) {
+        // In flight. Watchdog: a lost worker reply must not strand the game.
+        if (Date.now() - p.t0 > 20_000) {
+          console.warn('[mcts-bridge] watchdog — sync fallback', key);
+          mctsPendingRef.current = null;
+          aiWaitingRef.current = false;
+          return mctsCommandStep(g, s); // synchronous fallback
+        }
+        aiWaitingRef.current = true;
+        return true;
+      }
+      const w = getWorker();
+      if (!w || !canEncode(g)) {
+        console.log('[mcts-bridge] sync path', key, { worker: !!w, encodable: canEncode(g) });
+        return mctsCommandStep(g, s); // sync path
+      }
+      console.log('[mcts-bridge] search start', key);
+      mctsPendingRef.current = { key, done: false, result: null, t0: Date.now() };
+      w.postMessage({ id: Date.now(), codec: encode(g), side: s });
+      aiWaitingRef.current = true;
+      return true; // "thinking" — loop pauses until the worker replies
+    });
+    return () => {
+      setCommandPolicyOverride('Empire', null);
+      mctsWorkerRef.current?.terminate();
+      mctsWorkerRef.current = null;
+      mctsPendingRef.current = null;
+      aiWaitingRef.current = false;
+    };
+  }, [online, refresh]);
 
   // Self-heal a stalled AI driver (#409). The driver advances in setTimeout-
   // chained batches and is otherwise only re-kicked by refresh()/onAckReport().

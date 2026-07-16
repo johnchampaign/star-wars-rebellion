@@ -820,7 +820,9 @@ function planAssignment(G: GameState, side: Side): Array<{ missionId: string; le
 // Command-phase action scorer
 // ============================================================================
 
-type CommandAction =
+// Exported for the MCTS worker bridge: actions are plain JSON data, so a
+// search result computed off-thread can be posted back and committed here.
+export type CommandAction =
   | { kind: 'reveal'; missionId: string; targetSystemId: SystemId; targetLeaderId?: LeaderId; score: number }
   | { kind: 'activate'; leaderId: LeaderId; targetSystemId: SystemId; score: number }
   | { kind: 'pass'; score: number };
