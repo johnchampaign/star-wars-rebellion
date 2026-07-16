@@ -3294,14 +3294,13 @@ function handleOpposeMission(G: GameState, side: Side): boolean {
   // Auto-decline if we already have enough to win without burning a card,
   // or if no pool candidate exists.
   let sentLeader: LeaderId | null = null;
-  // GERRY STRATEGY: Empire skips opposition in the early game (T1-T4)
-  // unless the mission is genuinely high-impact. Every leader NOT spent
-  // opposing is a leader free to activate, spread, and subjugate —
-  // which is the Empire's real win condition. Late game (T5+) we
-  // resume the normal "always defend" math.
+  // GERRY STRATEGY, extended whole-game (forum: jocke01, 2026-07-16): Empire
+  // opposes ONLY genuinely high-impact missions. Every leader spent opposing
+  // is an activation foregone — and reporters kept watching the Empire burn
+  // its pool on low-impact Rebel missions (sabotage/infiltration) while its
+  // fleets sat idle (#516). Was T1-4 only; A/B'd whole-game before shipping.
   const empireEarlyGameSkip =
     side === 'Empire' &&
-    G.timeMarker <= 4 &&
     !isHighImpactMissionForOpposer(c.missionId, side);
   if (best && !empireEarlyGameSkip) {
     const withBestExpected = (existingSkill + best.m) * 0.5;
