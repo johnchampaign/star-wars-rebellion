@@ -459,6 +459,30 @@ function empireProximityToBase(G: GameState): number {
   return count;
 }
 
+/** Best Rapid Mobilization move-units source: the leaderless system holding
+ *  the most SELF-MOBILE Rebel ships (RM can't move out of systems with a
+ *  friendly leader; ground needs carriers, structures can't move — ships are
+ *  the always-legal cargo). Count capped at 5 = the card's move limit.
+ *  NOTE (2026-07-16): gating the RM mission SCORE on this ("only reveal when
+ *  a 2+ ship consolidation exists") A/B'd NEGATIVE across 3 seeds (-5pt mean,
+ *  120 games/arm) — in self-play the frequent RM reveal-and-consolidate loop
+ *  genuinely protects the base. Don't re-add the gate; this helper only
+ *  improves WHICH pocket gets consolidated. */
+function bestRmConsolidationSource(G: GameState): { systemId: SystemId | null; count: number; unitIds: string[] } {
+  let best: { systemId: SystemId | null; count: number; unitIds: string[] } = { systemId: null, count: 0, unitIds: [] };
+  for (const sysId of Object.keys(G.map.systems)) {
+    if ((G.rebel.leadersOnBoard[sysId] ?? []).length > 0) continue;
+    const ships = G.map.systems[sysId].units.filter((u) => {
+      const t = G.catalog.unitTypes[u.typeId];
+      return u.side === 'Rebel' && t?.theater === 'space' && !t.transport.immobile;
+    });
+    if (ships.length > best.count) {
+      best = { systemId: sysId as SystemId, count: Math.min(ships.length, 5), unitIds: ships.slice(0, 5).map((u) => u.instanceId) };
+    }
+  }
+  return best;
+}
+
 /** Score a target system for an Empire mission, with situational bias. */
 /** Opposition term shared by both sides' target scoring.
  *
@@ -2718,20 +2742,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     // NOT transport: ground units need carrier capacity and structures are
     // immobile, so picking them is rejected and stalled the AI (self-play). Ships
     // carry themselves, so they're always a legal move; if none, move nothing.
-    let srcSys: string | null = null;
-    let picks: string[] = [];
-    for (const sysId of Object.keys(G.map.systems)) {
-      // Skip systems with a friendly leader — RM can't move units out of them.
-      if ((G.rebel.leadersOnBoard[sysId] ?? []).length > 0) continue;
-      const ships = G.map.systems[sysId].units.filter((u) => {
-        const t = G.catalog.unitTypes[u.typeId];
-        return u.side === 'Rebel' && t?.theater === 'space' && !t.transport.immobile;
-      });
-      if (ships.length > 0) { srcSys = sysId; picks = ships.slice(0, 5).map((u) => u.instanceId); break; }
-    }
+    // Consolidate the BIGGEST leaderless pocket (was: first-found, which often
+    // moved 0-1 ships while a real scattered fleet sat elsewhere — playtest
+    // log 514ac76b showed movedCount:0 reveals).
+    const src = bestRmConsolidationSource(G);
     // No movable ships → keep the base, move nothing (always a legal resolve).
-    if (!srcSys) return phases.resolveRapidMobilizationMove(G, Object.keys(G.map.systems)[0], []).ok;
-    return phases.resolveRapidMobilizationMove(G, srcSys, picks).ok;
+    if (!src.systemId) return phases.resolveRapidMobilizationMove(G, Object.keys(G.map.systems)[0], []).ok;
+    return phases.resolveRapidMobilizationMove(G, src.systemId, src.unitIds).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'RapidMobilizationBasePick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
