@@ -193,27 +193,66 @@ export function baseCandidates(G: GameState): SystemId[] {
 // average candidate). Weights use FEATURES only — no system identities — so
 // the model generalizes beyond the one recorded player.
 //
-// STATUS: OFF by default (opt-in SWR_MCTS_BELIEF=1). A 3-seed replay A/B under
-// the production config (2026-07-14) measured NO gain — uniform 13/5/8 finds
-// of 25 vs weighted 5/7/7 (neutral-to-negative, tighter spread). Post-mortem:
-// the weights were fitted on SETUP placements (free choice → informative
-// features), but mid-game bases have usually RELOCATED via RM, whose
-// destination is the best of 4 RANDOM probe draws — that flattens the true
-// posterior toward uniform, so setup-fitted concentration over-commits. A
-// future version should CONDITION on relocation (peaked pre-RM, near-flat
-// post-RM). Side lesson baked into the bench: single-run replay counts swing
-// 5-13 on seed alone — always compare multi-seed (--ai-seed).
+// STATUS: SHIPPED DEFAULT-ON in the browser (2026-07-16) after the RM
+// conditioning fixed the parked version's failure. History:
+// - UNCONDITIONED (2026-07-14): 3-seed replay A/B measured NO gain — the
+//   setup-fitted peaked weights over-committed after the base relocated,
+//   because an RM destination is the best of 4 RANDOM probe draws (near-flat
+//   posterior), not a free feature-biased choice.
+// - CONDITIONED (2026-07-16): peaked pre-RM / uniform post-RM (see
+//   beliefWeights). 3-seed replay A/B vs uniform: finds 6/9/8 vs 5/5/5,
+//   captures 8/11/10 vs 7/7/9 — better on every seed, both metrics.
+// `?belief=0` opts out (sticky), `?belief=1` clears the opt-out. In node the
+// default stays OFF so benches A/B explicitly via SWR_MCTS_BELIEF=1/0.
+// Side lesson baked into the bench: single-run replay counts swing 5-13 on
+// seed alone — always compare multi-seed (--ai-seed).
 // ---------------------------------------------------------------------------
 const BELIEF_ENABLED: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
     if (proc?.env?.SWR_MCTS_BELIEF === '1') return true;
+    if (proc?.env?.SWR_MCTS_BELIEF === '0') return false;
   } catch { /* browser */ }
-  return false;
+  try {
+    const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
+    const q = g.location?.search ? new URLSearchParams(g.location.search).get('belief') : null;
+    if (q === '0') g.localStorage?.setItem('swr-belief-off', '1');
+    if (q === '1') g.localStorage?.removeItem('swr-belief-off');
+    if (g.localStorage?.getItem('swr-belief-off') === '1') return false;
+    if (typeof g.location !== 'undefined') return true; // browser: default ON
+  } catch { /* no localStorage */ }
+  return false; // node without SWR_MCTS_BELIEF: benches opt in explicitly
 })();
 
+/** Has the base publicly relocated? Rapid Mobilization resolves in the open —
+ *  the Empire watches the mission and the "new base established" moment even
+ *  though the destination stays hidden — so conditioning the belief on this
+ *  uses only public knowledge. Scanned from the tail (relocations are recent
+ *  events; the tail hit exits fast). */
+function baseHasRelocated(G: GameState): boolean {
+  for (let i = G.turnLog.length - 1; i >= 0; i--) {
+    if (G.turnLog[i].kind === 'rapid-mobilization-base-established') return true;
+  }
+  return false;
+}
+
 /** Per-candidate belief weights (unnormalized). One BFS from the Empire's
- *  ground presence, shared across all candidates. */
+ *  ground presence, shared across all candidates.
+ *
+ *  CONDITIONED ON RELOCATION (the parked A/B's post-mortem, now confirmed by
+ *  the grown corpus — 30 initial placements vs 6 relocations):
+ *  - PRE-RM the base sits where the human freely placed it at setup, and setup
+ *    choices are strongly feature-biased (rebel-loyal 37% vs 13% pool, dist
+ *    2.2 vs 1.3) → the peaked feature weights fit.
+ *  - POST-RM the destination was the best of 4 UNIFORM probe draws, and the
+ *    corpus shows the choices sitting AT the pool average on our features
+ *    (dist 1.5 vs 1.4, remote below pool, loyal only mildly up) — i.e. the
+ *    human's in-draw pick criterion is not predictable by our feature score.
+ *    A draw-pick posterior ranked by our features was tried here and came out
+ *    MORE peaked than setup (rank-1 wins 33% of draws under a perfect proxy)
+ *    — the opposite of what the data supports — so post-RM is simply UNIFORM.
+ *    Revisit the draw-pick model only when the relocation corpus is big
+ *    enough to fit the human's actual pick criterion (>6 events). */
 export function beliefWeights(G: GameState, candidates: SystemId[]): Map<SystemId, number> {
   const out = new Map<SystemId, number>();
   if (!BELIEF_ENABLED) { for (const sid of candidates) out.set(sid, 1); return out; }
@@ -233,13 +272,15 @@ export function beliefWeights(G: GameState, candidates: SystemId[]): Map<SystemI
     }
     frontier = next;
   }
-  for (const sid of candidates) {
+  const feature = (sid: SystemId): number => {
     const far = Math.min(dist[sid] ?? 6, 6); // unreachable/no-Empire-ground = max
     const loyal = G.map.systems[sid]?.loyalty === 'rebel' ? 2 : 1;
     // (1+far)^1.5: corpus shows chosen bases ~1 hop beyond the candidate mean;
     // a superlinear ramp reproduces that shift without zeroing near systems.
-    out.set(sid, Math.pow(1 + far, 1.5) * loyal);
-  }
+    return Math.pow(1 + far, 1.5) * loyal;
+  };
+  const relocated = baseHasRelocated(G);
+  for (const sid of candidates) out.set(sid, relocated ? 1 : feature(sid));
   return out;
 }
 
