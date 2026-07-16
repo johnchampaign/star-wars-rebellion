@@ -11,7 +11,7 @@ import { stepOnce as aiStepOnce, setCommandPolicyOverride } from './randomAI';
 import { buildV2GameLog, buildId } from './logFormat';
 import { PLANNER_ENABLED, HUNT_OCCUPY_ENABLED } from './empirePlanner';
 import { evalCommandStepDeep } from './boardEval';
-import { mctsCommandStep, commitMctsCommand, MCTS_ENABLED, type MctsSearchResult } from './mctsAI';
+import { mctsCommandStep, commitMctsCommand, MCTS_ENABLED, MCTS_REBEL_ENABLED, type MctsSearchResult } from './mctsAI';
 import { recordPlay } from 'digital-boardgame-framework';
 import { TERRITORIES, territoryFill } from '../data/territories';
 import {
@@ -985,7 +985,15 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // online gate here. Falls back to the heuristic automatically if it throws.
   useEffect(() => {
     if (online) return;
-    setCommandPolicyOverride('Rebel', (g, s) => evalCommandStepDeep(g, s, 2));
+    // EXPERIMENTAL MCTS-Rebel (?mctsrebel=1, sticky): same determinized search
+    // as the Empire but with NO determinization — the Rebel knows its own
+    // base, so it searches reality. Default remains the depth-2 eval until
+    // the bench + a live playtest say otherwise (Empire-policy protocol).
+    // Runs synchronously for now (same 1-2s the depth-2 costs today); joins
+    // the worker bridge when it earns default-on.
+    setCommandPolicyOverride('Rebel', MCTS_REBEL_ENABLED
+      ? (g, s) => mctsCommandStep(g, s)
+      : (g, s) => evalCommandStepDeep(g, s, 2));
     return () => setCommandPolicyOverride('Rebel', null);
   }, [online]);
 
@@ -12167,7 +12175,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
   const allGames = (() => {
     try {
       const raw = localStorage.getItem(LS_HISTORY);
-      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; mctsPolicy?: boolean; build?: string }>) : [];
+      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; mctsPolicy?: boolean; mctsRebel?: boolean; build?: string }>) : [];
     } catch { return []; }
   })();
   const games = allGames.filter((g) => !uploadedIds.has(g.encodedAt));
@@ -12218,11 +12226,12 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
           ai: aiSide ? {
             side: aiSide,
             policy: aiSide === 'Rebel'
-              ? 'depth2-eval'
+              ? (g.mctsRebel === true ? 'mcts-rebel' : 'depth2-eval')
               : g.mctsPolicy === true ? 'mcts' : g.mctsPolicy === false ? 'heuristic' : 'unknown',
             empirePlanner: g.empirePlanner,
             huntOccupy: g.huntOccupy,
             mctsPolicy: g.mctsPolicy,
+            mctsRebel: g.mctsRebel,
           } : undefined,
         });
       } catch {
@@ -15705,7 +15714,7 @@ function RetrieveThePlansPickModal({
 function archiveCompletedGame(G: GameState): void {
   try {
     const raw = localStorage.getItem(LS_HISTORY);
-    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; mctsPolicy?: boolean; build?: string }> =
+    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; mctsPolicy?: boolean; mctsRebel?: boolean; build?: string }> =
       raw ? JSON.parse(raw) : [];
     const codec = canEncode(G) ? encode(G) : null;
     if (!codec) return;
@@ -15743,6 +15752,7 @@ function archiveCompletedGame(G: GameState): void {
       empirePlanner: PLANNER_ENABLED,
       huntOccupy: HUNT_OCCUPY_ENABLED,
       mctsPolicy: MCTS_ENABLED,
+      mctsRebel: MCTS_REBEL_ENABLED,
       // Same rule for the BUILD: the bundle loaded at page load is the code
       // the whole game ran under, and it survives mid-session deploys — so
       // stamping at upload time lies about games finished after a deploy. A

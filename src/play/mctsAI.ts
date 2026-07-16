@@ -63,6 +63,30 @@ export const MCTS_ENABLED: boolean = (() => {
 })();
 
 // ---------------------------------------------------------------------------
+// MCTS-Rebel flag. EXPERIMENTAL, default OFF everywhere: `?mctsrebel=1` opts
+// in for a browser playtest (sticky; `?mctsrebel=0` clears), SWR_MCTS_REBEL=1
+// in node for benches. The Rebel search is the same searchMctsCommand with no
+// determinization (the Rebel knows its own base — worlds = reality). Flip
+// default only after the self-play bench AND a live playtest, same protocol
+// as the Empire policy above.
+// ---------------------------------------------------------------------------
+export const MCTS_REBEL_ENABLED: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_MCTS_REBEL === '1') return true;
+    if (proc?.env?.SWR_MCTS_REBEL === '0') return false;
+  } catch { /* browser */ }
+  try {
+    const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
+    const q = g.location?.search ? new URLSearchParams(g.location.search).get('mctsrebel') : null;
+    if (q === '1') g.localStorage?.setItem('swr-mcts-rebel-on', '1');
+    if (q === '0') g.localStorage?.removeItem('swr-mcts-rebel-on');
+    if (g.localStorage?.getItem('swr-mcts-rebel-on') === '1') return true;
+  } catch { /* no localStorage */ }
+  return false; // default OFF: experimental
+})();
+
+// ---------------------------------------------------------------------------
 // Tunables (env-overridable so benches can sweep without code edits).
 // ---------------------------------------------------------------------------
 /** SWR_MCTS_DEBUG=1 (node only): per-arm rollout outcome dump after each
@@ -431,8 +455,21 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
   }
   let worlds: SystemId[];
   let refWeight = 1; // root mean belief weight — the leaf info term's scale
-  if (G.rebelBaseRevealed) {
+  if (G.rebelBaseRevealed || side === 'Rebel') {
+    // Post-reveal everyone knows the base; the REBEL always does — its search
+    // needs no determinization at all (MCTS-Rebel), just reality.
     worlds = [G.rebelBaseSystemId];
+    if (side === 'Rebel' && !G.rebelBaseRevealed) {
+      // Still normalize the leaf info term (surviving candidates are GOOD for
+      // the Rebel) by the same root-mean scale the Empire search uses, so the
+      // term's magnitude matches the belief weights computed at each leaf.
+      const pool = baseCandidates(G);
+      if (pool.length > 0) {
+        const rootW = beliefWeights(G, pool);
+        let wSum = 0; for (const sid of pool) wSum += rootW.get(sid) ?? 1;
+        refWeight = wSum / pool.length;
+      }
+    }
   } else {
     const pool = baseCandidates(G);
     if (pool.length === 0) worlds = [G.rebelBaseSystemId];
