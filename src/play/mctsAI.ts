@@ -65,6 +65,17 @@ export const MCTS_ENABLED: boolean = (() => {
 // ---------------------------------------------------------------------------
 // Tunables (env-overridable so benches can sweep without code edits).
 // ---------------------------------------------------------------------------
+/** SWR_MCTS_DEBUG=1 (node only): per-arm rollout outcome dump after each
+ *  decision — how many rollouts ended in a terminal win/loss vs. horizon cut,
+ *  and each arm's mean. Built to diagnose the pass-over-attack reports
+ *  (#580/#581: pass mc=1.0 beating score-43 reveals). */
+function envDebug(): boolean {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    return proc?.env?.SWR_MCTS_DEBUG === '1';
+  } catch { return false; }
+}
+
 function envInt(name: string, dflt: number): number {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
@@ -319,24 +330,57 @@ function leafValue(c: GameState, side: Side, refWeight = 1): number {
 
 let searching = false; // re-entrancy guard: rollouts use the plain heuristic
 
+/** A completed search, decoupled from the commit so the search can run on a
+ *  DECODED COPY in a web worker while the real G stays on the main thread.
+ *  Everything here is plain JSON (postMessage-safe). */
+export interface MctsSearchResult {
+  chosen: ReturnType<typeof bestCommandAction>[number];
+  /** Ready-to-log 'ai-decision' payload; null for the single-candidate
+   *  shortcut (which never logged a trace). */
+  trace: Record<string, unknown> | null;
+}
+
 /** Determinized flat-MC Command decision for `side` (built for the Empire; the
  *  math is side-symmetric). Returns true if it committed an action on G; false
  *  to fall through to the heuristic (not a clean Command decision, or search
  *  found nothing legal). Safe as a setCommandPolicyOverride policy. */
 export function mctsCommandStep(G: GameState, side: Side, cfg?: Partial<MctsConfig>): boolean {
-  if (searching) return false;
-  if (G.isGameOver || G.phase !== 'Command' || G.currentPlayer !== side) return false;
-  if (G.pendingChoice || G.pendingMission || G.pendingCombat) return false;
+  const res = searchMctsCommand(G, side, cfg);
+  if (!res) return false;
+  return commitMctsCommand(G, side, res);
+}
+
+/** Commit a search result on the REAL state. Kept separate so the worker
+ *  bridge can post a result across threads and apply it here. Returns false
+ *  if the executor rejects it (caller falls back to the heuristic). */
+export function commitMctsCommand(G: GameState, side: Side, res: MctsSearchResult): boolean {
+  const committed = res.chosen.kind === 'pass'
+    ? phases.pass(G, side).ok
+    : tryCommandAction(G, side, res.chosen);
+  if (committed && res.trace) {
+    // Same 'ai-decision' trace the heuristic writes (no new registry kind) —
+    // logged after commit, like the heuristic's (we only know the choice
+    // stuck once the engine accepts it).
+    logEvent(G, { kind: 'ai-decision', side, payload: res.trace });
+  }
+  return committed;
+}
+
+/** SEARCH ONLY — no mutation of G beyond none (rollouts run on clones).
+ *  Returns null when this isn't a searchable spot / nothing legal. */
+export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsConfig>): MctsSearchResult | null {
+  if (searching) return null;
+  if (G.isGameOver || G.phase !== 'Command' || G.currentPlayer !== side) return null;
+  if (G.pendingChoice || G.pendingMission || G.pendingCombat) return null;
 
   const conf = { ...defaultConfig(), ...cfg };
   const t0 = Date.now();
 
   const candidates = bestCommandAction(G, side).slice(0, conf.topK);
-  if (candidates.length === 0) return false; // heuristic will pass
-  // Nothing to search over — commit the only option without burning rollouts.
+  if (candidates.length === 0) return null; // heuristic will pass
+  // Nothing to search over — return the only option without burning rollouts.
   if (candidates.length === 1) {
-    const a = candidates[0];
-    return a.kind === 'pass' ? phases.pass(G, side).ok : tryCommandAction(G, side, a);
+    return { chosen: candidates[0], trace: null };
   }
 
   // Determinization pool: sampled base worlds (pre-reveal) or reality (post).
@@ -364,6 +408,8 @@ export function mctsCommandStep(G: GameState, side: Side, cfg?: Partial<MctsConf
   // UCB1 across root actions; each pull rolls one world (cycled round-robin so
   // every action's mean averages over the same belief distribution).
   const arms = candidates.map((a) => ({ a, n: 0, sum: 0, dead: false }));
+  const dbg = envDebug();
+  const dbgOutcomes = new Map<(typeof arms)[number], { win: number; loss: number; cut: number; endTM: number }>();
   const totalBudget = Math.max(arms.length, conf.budget);
   let pulls = 0;
   for (let t = 0; t < totalBudget; t++) {
@@ -398,46 +444,81 @@ export function mctsCommandStep(G: GameState, side: Side, cfg?: Partial<MctsConf
     arm.n++;
     arm.sum += leafValue(c, side, refWeight);
     pulls++;
+    if (dbg) {
+      const d = (dbgOutcomes.get(arm) ?? { win: 0, loss: 0, cut: 0, endTM: 0 });
+      if (c.winner === side) d.win++; else if (c.winner) d.loss++; else d.cut++;
+      d.endTM += c.timeMarker;
+      dbgOutcomes.set(arm, d);
+    }
+  }
+
+  if (dbg) {
+    const rows = arms.filter((x) => x.n > 0).map((x) => {
+      const d = dbgOutcomes.get(x) ?? { win: 0, loss: 0, cut: 0, endTM: 0 };
+      const a = x.a as { kind: string; missionId?: string; leaderId?: string; targetSystemId?: string; score: number };
+      return {
+        action: a.kind + (a.missionId ? `:${a.missionId}` : '') + (a.leaderId ? `:${a.leaderId}` : '') + (a.targetSystemId ? `@${a.targetSystemId}` : ''),
+        score: Math.round(a.score * 10) / 10,
+        n: x.n, mean: Math.round((x.sum / x.n) * 1000) / 1000,
+        win: d.win, loss: d.loss, cut: d.cut,
+        avgEndTM: Math.round((d.endTM / Math.max(1, x.n)) * 10) / 10,
+      };
+    }).sort((p, q) => q.mean - p.mean);
+    // eslint-disable-next-line no-console
+    console.log('[mcts-debug] tm=%d decision arms:', G.timeMarker);
+    // eslint-disable-next-line no-console
+    for (const r of rows) console.log('  ', JSON.stringify(r));
   }
 
   const alive = arms.filter((x) => !x.dead && x.n > 0);
-  if (alive.length === 0) return false; // heuristic takes over
+  if (alive.length === 0) return null; // heuristic takes over
   alive.sort((x, y) => y.sum / y.n - x.sum / x.n);
-  const chosen = alive[0].a;
+  let chosen = alive[0].a;
+  // PASS-MARGIN (#580/#581/#516): with ~5-15 pulls per arm and near-binary
+  // rollout outcomes (terminal win 1.0 vs horizon-cut ~0.7-0.8), one lucky
+  // rollout swings an arm's mean by more than the whole field's spread —
+  // which is how 'pass' kept topping the list against score-40 attacks
+  // (reporters watched the Empire pass with fleets next to targets; traces
+  // showed pass mc=1.0 over tiny n). Passing forfeits the rest of the
+  // Empire's round, so a statistical tie must NOT go to pass: it wins only
+  // by beating the best actionable arm by a real margin. When the
+  // alternatives are genuinely bad their means sit clearly lower and pass
+  // still goes through.
+  if (chosen.kind === 'pass' && alive.length > 1) {
+    const bestAct = alive.find((x) => x.a.kind !== 'pass');
+    if (bestAct) {
+      const margin = envInt('SWR_MCTS_PASS_MARGIN', 5) / 100;
+      const passMean = alive[0].sum / alive[0].n;
+      const actMean = bestAct.sum / bestAct.n;
+      if (passMean - actMean < margin) chosen = bestAct.a;
+    }
+  }
 
   mctsStats.decisions++;
   mctsStats.pulls += pulls;
   mctsStats.ms += Date.now() - t0;
   if (chosen !== candidates[0]) mctsStats.disagreements++;
 
-  const committed = chosen.kind === 'pass'
-    ? phases.pass(G, side).ok
-    : tryCommandAction(G, side, chosen);
-  if (committed) {
-    // Same 'ai-decision' trace the heuristic writes (no new registry kind),
-    // with policy:'mcts' + search stats — John's first ?mcts=1 playtest could
-    // only be attributed by the ABSENCE of traces, which is exactly the
-    // forensics the trace exists to avoid. Logged after commit, like the
-    // heuristic's (we only know the choice stuck once the engine accepts it).
-    const r2 = (x: number) => Math.round(x * 100) / 100;
-    const brief = (a: (typeof candidates)[number]): Record<string, unknown> => {
-      const arm = arms.find((x) => x.a === a);
-      const mean = arm && arm.n > 0 ? r2(arm.sum / arm.n) : null;
-      return a.kind === 'reveal'
-        ? { kind: a.kind, missionId: a.missionId, target: a.targetSystemId, score: r2(a.score), mc: mean }
-        : a.kind === 'activate'
-          ? { kind: a.kind, leaderId: a.leaderId, target: a.targetSystemId, score: r2(a.score), mc: mean }
-          : { kind: a.kind, score: r2(a.score), mc: mean };
-    };
-    logEvent(G, {
-      kind: 'ai-decision', side,
-      payload: {
-        policy: 'mcts',
-        chose: brief(chosen),
-        alts: alive.slice(1, 6).map((x) => brief(x.a)),
-        search: { pulls, worlds: worlds.length, ms: Date.now() - t0, heuristicRank: candidates.indexOf(chosen) },
-      },
-    });
-  }
-  return committed; // false → executor rejected on the real state — heuristic fallback
+  // Trace payload with policy:'mcts' + search stats — John's first ?mcts=1
+  // playtest could only be attributed by the ABSENCE of traces, which is
+  // exactly the forensics the trace exists to avoid.
+  const r2 = (x: number) => Math.round(x * 100) / 100;
+  const brief = (a: (typeof candidates)[number]): Record<string, unknown> => {
+    const arm = arms.find((x) => x.a === a);
+    const mean = arm && arm.n > 0 ? r2(arm.sum / arm.n) : null;
+    return a.kind === 'reveal'
+      ? { kind: a.kind, missionId: a.missionId, target: a.targetSystemId, score: r2(a.score), mc: mean }
+      : a.kind === 'activate'
+        ? { kind: a.kind, leaderId: a.leaderId, target: a.targetSystemId, score: r2(a.score), mc: mean }
+        : { kind: a.kind, score: r2(a.score), mc: mean };
+  };
+  return {
+    chosen,
+    trace: {
+      policy: 'mcts',
+      chose: brief(chosen),
+      alts: alive.filter((x) => x.a !== chosen).slice(0, 5).map((x) => brief(x.a)),
+      search: { pulls, worlds: worlds.length, ms: Date.now() - t0, heuristicRank: candidates.indexOf(chosen) },
+    },
+  };
 }
