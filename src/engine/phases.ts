@@ -3166,6 +3166,23 @@ export function resolveRapidMobilizationMove(
   log(G, { kind: 'rapid-mobilization-move-applied', side: 'Rebel', payload: {
     sourceSystemId, movedCount: picks.length, movedIds: picks,
   }});
+  // Tell the EMPIRE what just happened. Physically this is public: the Empire
+  // watches units leave the source system for the "Rebel Base" space. But in
+  // the app the units simply vanish, which reads as "the Rebel base was at
+  // <source> and just relocated" — and then the probe overlay (correctly)
+  // still lists <source> as a live candidate, which looks like a missing
+  // old-base-probe handoff (#587). The handoff rule only applies to the
+  // ESTABLISH-A-NEW-BASE branch; this branch never moves the base.
+  pushNotice(
+    G,
+    `rm-move-units-t${G.timeMarker}-${sourceSystemId}`,
+    'Rapid Mobilization — units moved to base',
+    `The Rebel player moved ${picks.length} unit${picks.length === 1 ? '' : 's'} from ` +
+      `${G.catalog.systems[sourceSystemId]?.name ?? sourceSystemId} into the hidden Rebel Base. ` +
+      `The base itself did NOT move — Rapid Mobilization's other option (establish a new base) was not used, ` +
+      `so no probe card changes hands and ${G.catalog.systems[sourceSystemId]?.name ?? sourceSystemId} remains a possible base location.`,
+    'Empire', // the Rebel player made this choice; only the Empire needs the explainer.
+  );
   G.pendingChoice = undefined;
   finishRapidMobilization(G);
   return { ok: true };
