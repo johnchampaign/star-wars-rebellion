@@ -12167,7 +12167,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
   const allGames = (() => {
     try {
       const raw = localStorage.getItem(LS_HISTORY);
-      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; mctsPolicy?: boolean }>) : [];
+      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; mctsPolicy?: boolean; build?: string }>) : [];
     } catch { return []; }
   })();
   const games = allGames.filter((g) => !uploadedIds.has(g.encodedAt));
@@ -12202,15 +12202,19 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
           humanSide: g.humanSide,
           source: 'browser-game-archive',
           encodedAt: g.encodedAt,
-          build: buildId(),
+          // Play-time build from the archive record (stamped at game end —
+          // the loaded bundle survives mid-session deploys, so upload-time
+          // buildId() lies about games finished after a deploy; log a34dc0f6
+          // carried a post-fix SHA for a pre-fix game and triggered a hunt
+          // for a nonexistent "bypass"). Legacy records without the stamp
+          // report undefined rather than a wrong-but-plausible SHA.
+          build: g.build,
           // AI flags come ONLY from the archived record (stamped at game end).
           // NEVER fall back to the current flag: `?? MCTS_ENABLED` misattributed
           // a whole legacy archive as policy:'mcts' the day the default flipped
           // on (logs 9bc2e781/7657960d/cb8187cb — pre-v2 games, zero traces,
-          // stamped mcts at upload). The `build` field above has the same
-          // limitation by construction (upload-time client, not play-time) —
-          // trust ai.* stamps and traces for attribution, not build. Records
-          // without a stamp report 'unknown'/undefined and stay unattributed.
+          // stamped mcts at upload). Records without a stamp report
+          // 'unknown'/undefined and stay unattributed.
           ai: aiSide ? {
             side: aiSide,
             policy: aiSide === 'Rebel'
@@ -15701,7 +15705,7 @@ function RetrieveThePlansPickModal({
 function archiveCompletedGame(G: GameState): void {
   try {
     const raw = localStorage.getItem(LS_HISTORY);
-    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; mctsPolicy?: boolean }> =
+    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; mctsPolicy?: boolean; build?: string }> =
       raw ? JSON.parse(raw) : [];
     const codec = canEncode(G) ? encode(G) : null;
     if (!codec) return;
@@ -15739,6 +15743,12 @@ function archiveCompletedGame(G: GameState): void {
       empirePlanner: PLANNER_ENABLED,
       huntOccupy: HUNT_OCCUPY_ENABLED,
       mctsPolicy: MCTS_ENABLED,
+      // Same rule for the BUILD: the bundle loaded at page load is the code
+      // the whole game ran under, and it survives mid-session deploys — so
+      // stamping at upload time lies about games finished after a deploy. A
+      // pre-fix game uploaded post-deploy carried the post-fix SHA and sent
+      // us hunting a "bypass" of a fix the game never ran (log a34dc0f6).
+      build: buildId(),
     });
     while (history.length > HISTORY_CAP) history.pop();
     // Per-turn snapshots (log-format v2) roughly doubled codec size, so a full
