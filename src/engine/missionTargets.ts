@@ -458,6 +458,14 @@ export function missionRevealIsPointless(
       }
       return ships + Math.min(ground, capacity) === 0;
     }
+    case 'safe-haven': {
+      // "Take up to 2 units from the build queue and deploy them here." The
+      // ENTIRE effect is deploying queued units — a total no-op when the Rebel
+      // build queue is empty (the handler just logs an empty deploy and the
+      // mission is wasted). (#594: AI Rebel ran Safe Haven with 0 units queued.)
+      const anyQueued = ([1, 2, 3] as const).some((s) => (G.rebel.buildQueue[s]?.length ?? 0) > 0);
+      return !anyQueued;
+    }
     case 'hunt-them-down':
     case 'hit-and-run':
     case 'rogue-squadron-raid': {

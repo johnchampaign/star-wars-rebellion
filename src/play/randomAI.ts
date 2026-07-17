@@ -2693,22 +2693,30 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'HiddenFleetUnitPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
     const baseUnits = G.map.rebelBaseSpace.units.filter((u) => c.candidateUnitIds.includes(u.instanceId));
-    const capShipIds: string[] = [];
-    const fighterIds: string[] = [];
-    const groundIds: string[] = [];
+    // Hidden Fleet obeys transport capacity (RR: "he must obey transport
+    // capacity and cannot move immobile units"). Split candidates into units
+    // that move on their OWN — every space ship without a transport-restriction
+    // icon: capital ships AND restriction-free fighters like the Rebel X-/Y-wing
+    // (capacity 0, restriction false) — and RIDERS (restriction fighters +
+    // ground) that need a co-moving carrier's capacity. The old split keyed
+    // self-movers off capacity > 0, so restriction-free fighters fell through
+    // all three buckets and were never picked — the AI ran Hidden Fleet on a
+    // base of X-wings and moved nothing (#589/#590).
+    const selfMovingIds: string[] = [];
+    const riderIds: string[] = [];
+    let capacity = 0;
     for (const u of baseUnits) {
       const t = G.catalog.unitTypes[u.typeId];
-      if (!t) continue;
-      if (t.transport.capacity > 0) capShipIds.push(u.instanceId);
-      else if (t.transport.restriction) fighterIds.push(u.instanceId);
-      else if (t.theater === 'ground' && t.class !== 'structure') groundIds.push(u.instanceId);
+      if (!t || t.transport.immobile || t.class === 'structure') continue;
+      if (t.theater === 'space' && !t.transport.restriction) {
+        selfMovingIds.push(u.instanceId);
+        capacity += t.transport.capacity;
+      } else {
+        riderIds.push(u.instanceId);
+      }
     }
-    let capacity = capShipIds.reduce((s, uid) => {
-      const u = baseUnits.find((x) => x.instanceId === uid);
-      return s + (u ? (G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0) : 0);
-    }, 0);
-    const picks = [...capShipIds];
-    for (const uid of [...fighterIds, ...groundIds]) {
+    const picks = [...selfMovingIds];
+    for (const uid of riderIds) {
       if (capacity <= 0) break;
       picks.push(uid); capacity--;
     }

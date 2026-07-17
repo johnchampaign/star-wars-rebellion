@@ -936,9 +936,12 @@ export type MoveOrder = { fromSystemId: SystemId; unitInstanceIds: string[] };
  *   - Each ground unit consumes 1 transport capacity
  *   - Transport-capacity ships consume nothing themselves
  *   - Total capacity available (from moving capacity-ships) ≥ total required
- *   "Ignore transport restrictions" abilities (Hidden Fleet, Plan The Assault,
+ *   "Ignore transport restrictions" abilities (Plan The Assault,
  *   Planetary Conquest, Scouting Mission) bypass this; those handlers move
- *   units via M.moveUnit directly and don't go through activateSystem. */
+ *   units via M.moveUnit directly and don't go through activateSystem.
+ *   NOTE: Hidden Fleet is NOT in that set — RR names it as the example that
+ *   "must obey transport capacity and cannot move immobile units", so its
+ *   resolver (resolveHiddenFleetUnitPick) calls this validator. */
 export function validateMoveOrderTransport(
   G: GameState, side: Side, order: MoveOrder
 ): { ok: true } | { ok: false; reason: string } {
