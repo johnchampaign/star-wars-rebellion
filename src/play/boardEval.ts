@@ -112,6 +112,31 @@ function unitWorth(G: GameState, typeId: string): number {
   return t.buildResource + (t.health?.value ?? 0) / 2 + dice / 2;
 }
 
+/** Aggression term weight (#539 passivity). The search rated 'keep the fleet
+ *  home' as safe-and-equal to pressing forward because evaluate() only counted
+ *  unit preservation — so it passed with a strong fleet (#516/#538/#580) and
+ *  the learned-eval corpus independently down-weighted raw unit strength. This
+ *  adds value for PRESSING A LOCAL ADVANTAGE — my surplus strength in a system
+ *  where I've made contact (both sides present) — which rewards aggression
+ *  that PAYS without rewarding doomed pushes (no bonus when I'm the weaker side
+ *  there; the unit-loss term still bites). Tunable to A/B; default 0 until a
+ *  win. SWR_AGGRO=0.4 (node) / ?aggro=0.4 (browser, sticky). */
+const AGGRO_WEIGHT: number = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    const v = proc?.env?.SWR_AGGRO;
+    if (v !== undefined) { const n = parseFloat(v); if (Number.isFinite(n)) return n; }
+  } catch { /* browser */ }
+  try {
+    const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
+    const q = g.location?.search ? new URLSearchParams(g.location.search).get('aggro') : null;
+    if (q !== null) { const n = parseFloat(q); if (Number.isFinite(n)) g.localStorage?.setItem('swr-aggro', String(n)); }
+    const stored = g.localStorage?.getItem('swr-aggro');
+    if (stored != null) { const n = parseFloat(stored); if (Number.isFinite(n)) return n; }
+  } catch { /* no localStorage */ }
+  return 0;
+})();
+
 /** Static value of the position from `side`'s perspective (positive = good). */
 export function evaluate(G: GameState, side: Side): number {
   const enemy = other(side);
@@ -149,6 +174,33 @@ export function evaluate(G: GameState, side: Side): number {
   };
   for (const ss of Object.values(G.map.systems)) scan(ss);
   if (G.map.rebelBaseSpace) scan(G.map.rebelBaseSpace);
+
+  // --- Aggression: reward FORWARD PROJECTION that persists at a leaf. Combats
+  // resolve within a turn, so "contact" is gone by the round-boundary leaf; the
+  // signal that survives is my attack-capable units sitting in territory that
+  // isn't mine — the Empire pressing ground toward the base (neutral/rebel
+  // systems it's hunting/subjugating), the Rebel striking into Imperial space.
+  // This lifts "advance the fleet" above "idle at home" (the #516/#538/#582
+  // passivity), and a unit still forward at a leaf survived its combats, so it
+  // isn't rewarding a doomed push. Capped per system; modest weight.
+  // Gated to PRE-REVEAL: the self-play A/B showed an ungated term left the hunt
+  // intact (13/14 revealed either way) but cut conversion (92%→85%) — rewarding
+  // forward projection everywhere dilutes the force CONCENTRATION the base
+  // assault needs. So it applies only while the base is hidden (press the hunt),
+  // and lets concentration dominate once it's found.
+  if (AGGRO_WEIGHT !== 0 && !G.rebelBaseRevealed) {
+    for (const [sid, ss] of Object.entries(G.map.systems)) {
+      if (ss.destroyed) continue;
+      if (ss.loyalty === myLoyalty && !ss.subjugated) continue; // home turf: not "forward"
+      let myAtk = 0;
+      for (const u of ss.units) {
+        if (u.side !== side) continue;
+        const t = G.catalog.unitTypes[u.typeId];
+        myAtk += t ? (t.attack.red ?? 0) + (t.attack.black ?? 0) + (t.attack.green ?? 0) : 0;
+      }
+      if (myAtk > 0) v += AGGRO_WEIGHT * Math.min(myAtk, 6);
+    }
+  }
 
   // --- Leaders (alive = yours; captured swing double) ---
   const countLeaders = (s: Side): number => {
