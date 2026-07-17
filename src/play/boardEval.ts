@@ -211,8 +211,15 @@ export function evalCommandStepDeep(G: GameState, side: Side, depth = 2): boolea
   scored.sort((x, y) => y.v1 - x.v1);
 
   // Deep pass: extend the beam lines with greedy moves by whoever is to act.
+  const dbg = (() => {
+    try {
+      const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+      return proc?.env?.SWR_EVAL_DEBUG === '1';
+    } catch { return false; }
+  })();
   let bestAction = scored[0].a;
   let bestVal = -Infinity;
+  const deepVals: { a: (typeof candidates)[number]; v: number }[] = [];
   for (const s of scored.slice(0, ROOT_BEAM)) {
     const c = s.c; // already settled post-root state
     for (let d = 1; d < depth && !c.isGameOver; d++) {
@@ -222,9 +229,39 @@ export function evalCommandStepDeep(G: GameState, side: Side, depth = 2): boolea
     const v = c.isGameOver
       ? (c.winner === side ? 1e6 : c.winner ? -1e6 : evaluate(c, side))
       : evaluate(c, side);
+    deepVals.push({ a: s.a, v });
+    if (dbg) {
+      const a = s.a as { kind: string; missionId?: string; targetSystemId?: string; score?: number };
+      // eslint-disable-next-line no-console
+      console.log('[eval-debug]', side, a.kind + (a.missionId ? ':' + a.missionId : '') + (a.targetSystemId ? '@' + a.targetSystemId : ''),
+        'heur', Math.round((a.score ?? 0) * 10) / 10, 'v1', Math.round(s.v1 * 100) / 100, 'deep', Math.round(v * 100) / 100);
+    }
     if (v > bestVal) { bestVal = v; bestAction = s.a; }
   }
 
+  // PASS-MARGIN (the depth-2 analog of mctsAI's rule; reporters watched the
+  // Rebel pass with 1-3 leaders still on missions): settle() samples ONE
+  // stochastic resolution of each reveal, so a single bad sampled roll drops
+  // a reveal a point or two below pass — and passing forfeits every assigned
+  // mission for the round. A near-tie must not go to pass: it wins only by
+  // beating the best actionable line by a real margin on the eval scale
+  // (SWR_EVAL_PASS_MARGIN in eval points, default 3; =0 restores old
+  // behavior). When every actionable line is genuinely much worse, pass
+  // still goes through.
+  if (bestAction.kind === 'pass') {
+    const bestAct = deepVals.filter((x) => x.a.kind !== 'pass').sort((p, q) => q.v - p.v)[0];
+    if (bestAct) {
+      const margin = (() => {
+        try {
+          const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+          const v = proc?.env?.SWR_EVAL_PASS_MARGIN;
+          if (v !== undefined) { const n = parseInt(v, 10); if (Number.isFinite(n)) return n; }
+        } catch { /* browser */ }
+        return 3;
+      })();
+      if (bestVal - bestAct.v < margin) bestAction = bestAct.a;
+    }
+  }
   if (bestAction.kind === 'pass') return phases.pass(G, side).ok;
   if (tryCommandAction(G, side, bestAction)) return true;
   return phases.pass(G, side).ok;
