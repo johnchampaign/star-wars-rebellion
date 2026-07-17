@@ -61,10 +61,38 @@ export function evaluateLearned(G: GameState, side: Side): number {
   return (p - 0.5) * 120; // same signed scale as evaluate()
 }
 
-/** The leaf evaluator the search policies use: learned when enabled, else the
- *  hand-tuned evaluate(). One switch so MCTS and depth-2 stay consistent. */
+/** Blend weight in [0,1]: 0 = pure hand-tuned evaluate(), 1 = pure learned.
+ *  A SMALL weight is the point — the pure learned leaf A/B'd negative because
+ *  its dominant features barely move in one turn, flattening the search's
+ *  per-move gradient. A convex blend keeps most of evaluate()'s gradient while
+ *  adding the learned tempo/calibration signal. Both evals sit on ~the same
+ *  ±60 scale (evaluateLearned by construction), so the mix needs no rescale.
+ *  SWR_LEARNED_BLEND=0.3 (node) / ?learnedblend=0.3 (browser, sticky). The old
+ *  SWR_LEARNED_EVAL / LEARNED_EVAL_ENABLED forces weight 1 (pure) for
+ *  back-compat with the earlier bench runs. */
+const BLEND_WEIGHT: number = (() => {
+  if (LEARNED_EVAL_ENABLED) return 1;
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    const v = proc?.env?.SWR_LEARNED_BLEND;
+    if (v !== undefined) { const n = parseFloat(v); if (Number.isFinite(n)) return Math.max(0, Math.min(1, n)); }
+  } catch { /* browser */ }
+  try {
+    const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
+    const q = g.location?.search ? new URLSearchParams(g.location.search).get('learnedblend') : null;
+    if (q !== null) { const n = parseFloat(q); if (Number.isFinite(n)) { g.localStorage?.setItem('swr-learned-blend', String(n)); } }
+    const stored = g.localStorage?.getItem('swr-learned-blend');
+    if (stored != null) { const n = parseFloat(stored); if (Number.isFinite(n)) return Math.max(0, Math.min(1, n)); }
+  } catch { /* no localStorage */ }
+  return 0;
+})();
+
+/** The leaf evaluator the search policies use. One switch so MCTS and depth-2
+ *  stay consistent. Blends the learned and hand-tuned evals per BLEND_WEIGHT. */
 export function leafEvaluate(G: GameState, side: Side): number {
-  return LEARNED_EVAL_ENABLED ? evaluateLearned(G, side) : evaluate(G, side);
+  if (BLEND_WEIGHT <= 0) return evaluate(G, side);
+  if (BLEND_WEIGHT >= 1) return evaluateLearned(G, side);
+  return BLEND_WEIGHT * evaluateLearned(G, side) + (1 - BLEND_WEIGHT) * evaluate(G, side);
 }
 
 const other = (s: Side): Side => (s === 'Rebel' ? 'Empire' : 'Rebel');
