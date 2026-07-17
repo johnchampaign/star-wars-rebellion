@@ -1464,6 +1464,26 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
               if (has('raid-imperial-factory-3') && hasSquareResource) ts += 8;
               if (has('seize-control-2') && sys.sabotage) ts += 8;
               if (has('decisive-victory-1') && hasImpShips && hasImpGround) ts += 8;
+              // DEATH STAR OPPORTUNISM (jocke01: an unsupported Death Star sat
+              // next to 6 Rebel fighters while the plans were in hand — no
+              // attack). With Death Star Plans held, fighters vs a lightly
+              // escorted DS is close to a freeroll: the DS rolls 4 RED dice,
+              // which cannot damage black-health fighters, and every combat
+              // round with a surviving fighter is another 3-dice shot at the
+              // direct hit that destroys it (the in-combat attempt is already
+              // automatic — this fixes never STARTING the fight). Weight by
+              // bringable fighters; the surrounding strength gate already
+              // filters genuinely suicidal escorts.
+              if (rebelObjHand.some((id) => id.startsWith('death-star-plans'))
+                  && impUnits.some((u) => u.typeId === 'death-star')) {
+                const fightersBringable =
+                  sys.units.filter((u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.class === 'fighter').length
+                  + (G.catalog.adjacency[sysId] ?? []).reduce((acc, a) =>
+                    (G.rebel.leadersOnBoard[a] ?? []).length > 0 ? acc
+                      : acc + (G.map.systems[a]?.units ?? []).filter((u) =>
+                          u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.class === 'fighter').length, 0);
+                if (fightersBringable >= 2) ts += 18;
+              }
             }
           }
         } else if (!hasEnemyUnits && sys.loyalty !== 'rebel' && !def?.isRemote
