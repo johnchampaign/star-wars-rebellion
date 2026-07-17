@@ -771,6 +771,20 @@ function rebelMissionTargetScore(
     if (imp === 0) s -= 20;
     else if (reb < 5 || reb < imp * 1.2) s -= 40;
     else s += 8;
+    // DEATH STAR OPPORTUNISM via Plan the Assault (#591): the reporter watched
+    // the AI route 6 base fighters to a system with a single TIE while a LONE
+    // Death Star sat elsewhere with the plans in hand. Plan the Assault commits
+    // fighters into the target's space battle, and a lightly-escorted DS can't
+    // damage black-health fighters (it rolls 4 RED) — so each surviving-fighter
+    // round is another plans attempt. Both targets otherwise score the same +8;
+    // this steers the strike at the DS. Mirrors the activation-side rule (which
+    // couldn't fire here — the fighters route via the mission, not a move).
+    const impShipUnits = (sysState?.units ?? []).filter((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'space');
+    const hasLoneDS = impShipUnits.some((u) => u.typeId === 'death-star')
+      && impShipUnits.filter((u) => u.typeId !== 'death-star').length <= 1;
+    if (hasLoneDS && (G.rebel.objectiveHand ?? []).some((id) => id.startsWith('death-star-plans')) && reb >= 5) {
+      s += 30;
+    }
   }
   // Prefer an undefended target so the attempt auto-succeeds (see helper).
   s += oppositionTargetTerm(G, 'Rebel', missionId, targetSysId);
