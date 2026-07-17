@@ -513,8 +513,13 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
   if (opts.forcedBaseSystem) {
     rebelBaseSystemId = opts.forcedBaseSystem;
     pendingRebelBasePick = undefined;
-  } else if (opts.autoSetupUnits) {
+  } else if (opts.autoSetupUnits ?? true) {
     // Pre-pick path (e.g. tests, auto-fill): finalise random base now.
+    // NOTE the `?? true`: this must match autoSetup's default (line ~403).
+    // Reading the raw option here meant an OMITTED autoSetupUnits auto-placed
+    // units but left pendingRebelBasePick dangling — the game advanced to
+    // Assignment with a pick that pickRebelBase (Setup-gated) could never
+    // legally resolve, silently running on the placeholder candidates[0] base.
     const pickIdx = nextIntForSetup(rng, candidates.length);
     rebelBaseSystemId = candidates[pickIdx];
     pendingRebelBasePick = undefined;

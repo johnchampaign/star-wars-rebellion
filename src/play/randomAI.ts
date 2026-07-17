@@ -459,6 +459,42 @@ function empireProximityToBase(G: GameState): number {
   return count;
 }
 
+/** Choose the Rebel base at setup: the SAFEST candidate, not a random one
+ *  (two reporters independently: "just choose a base more than one move away
+ *  from any Imperial starting planet"). Weights match the human corpus (30
+ *  recorded setups: ~1 hop farther from the Empire than the average
+ *  candidate, rebel-loyal at 3x the pool rate) with DISTANCE DOMINANT —
+ *  a loyal system adjacent to the Empire is still a bad base:
+ *  - +4 per hop of BFS distance from the nearest Imperial presence (imperial
+ *    loyalty or Empire units), capped at 4. Distance >= 2 also means no
+ *    turn-1 transport reach, freeing the start fleet to strike instead of
+ *    turtling behind turn-1 Rapid Mobilization.
+ *  - +2 if rebel-loyal (build synergy) — a same-distance tiebreak only.
+ *  - Remote/resources deliberately unscored (corpus: both ~pool rate).
+ *  Exported for tests. */
+export function chooseRebelBaseSystem(G: GameState, candidates: SystemId[]): SystemId {
+  const imperial = Object.keys(G.map.systems).filter((sid) =>
+    G.map.systems[sid]?.loyalty === 'imperial'
+    || G.map.systems[sid]?.units.some((u) => u.side === 'Empire'));
+  const distTo = new Map<string, number>();
+  let frontier = imperial.slice();
+  for (const s of frontier) distTo.set(s, 0);
+  let d = 0;
+  while (frontier.length && d < 8) {
+    d++; const next: string[] = [];
+    for (const s of frontier) for (const a of (G.catalog.adjacency[s] ?? [])) {
+      if (!distTo.has(a)) { distTo.set(a, d); next.push(a); }
+    }
+    frontier = next;
+  }
+  const score = (sid: string): number => {
+    const far = Math.min(distTo.get(sid) ?? 8, 4); // unreached in 8 hops = max
+    const loyal = G.map.systems[sid]?.loyalty === 'rebel' ? 2 : 0;
+    return far * 4 + loyal;
+  };
+  return [...candidates].sort((a, b) => score(b) - score(a))[0];
+}
+
 /** Best Rapid Mobilization move-units source: the leaderless system holding
  *  the most SELF-MOBILE Rebel ships (RM can't move out of systems with a
  *  friendly leader; ground needs carriers, structures can't move — ships are
@@ -3021,14 +3057,17 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   // handlers that may fire even when it's the other side's turn.
   if (G.currentPlayer !== side) return false;
 
+  // Rebel base pick — handled BEFORE the phase switch because the pick can
+  // outlive Setup (RoE preset-unit configs advance to Assignment with the
+  // pick still pending; the phase-gated handler never fired there and the
+  // game silently ran on the placeholder candidates[0] base).
+  if (side === 'Rebel' && G.pendingRebelBasePick && G.pendingRebelBasePick.length > 0) {
+    const r = phases.pickRebelBase(G, chooseRebelBaseSystem(G, G.pendingRebelBasePick));
+    if (r.ok) return true;
+  }
+
   switch (G.phase) {
     case 'Setup': {
-      // If we're the Rebel and a base pick is pending, pick first.
-      if (side === 'Rebel' && G.pendingRebelBasePick && G.pendingRebelBasePick.length > 0) {
-        const picked = pick(G.pendingRebelBasePick)!;
-        const r = phases.pickRebelBase(G, picked);
-        if (r.ok) return true;
-      }
       // Rebel: thin the base to cut Gather-Intel yield (places overflow at a
       // decoy system); Empire: plain auto-fill.
       if (side === 'Rebel') return aiRebelSetupDeploy(G);
