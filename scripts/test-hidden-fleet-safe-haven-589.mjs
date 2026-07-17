@@ -55,6 +55,28 @@ function newGame(seed) {
   check('pendingChoice cleared', !G.pendingChoice);
 }
 
+// ---- Fix 1b: Start The Evacuation resolver also moves self-moving fighters ---
+{
+  const G = newGame(13);
+  ai.seedAI(13);
+  const catalog = G.catalog.unitTypes;
+  let n = 6000;
+  const mk = (typeId) => ({ instanceId: `test-e${n++}`, typeId, side: 'Rebel' });
+  G.map.rebelBaseSpace.units = [mk('x-wing'), mk('y-wing')];
+  const target = 'dagobah';
+  const candidateUnitIds = G.map.rebelBaseSpace.units.map((u) => u.instanceId);
+  G.pendingChoice = {
+    kind: 'StartEvacuationPick', side: 'Rebel',
+    candidateSystemIds: [target], candidateUnitIds,
+  };
+  const before = (G.map.systems[target]?.units ?? []).length;
+  const ok = ai.stepOnce(G, 'Rebel');
+  const moved = (G.map.systems[target]?.units ?? []).length - before;
+  ai.unseedAI();
+  check('AI resolved the Start Evacuation pick', ok);
+  check('Start Evacuation moved both self-moving fighters (was 0 before)', moved === 2, `moved=${moved}`);
+}
+
 // ---- Fix 2: Safe Haven is pointless with an empty build queue ----------------
 {
   const G = newGame(22);

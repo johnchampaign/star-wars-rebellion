@@ -2660,24 +2660,27 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const c = G.pendingChoice;
     const target = c.candidateSystemIds[0];
     if (!target) return phases.resolveStartEvacuationPick(G, '', []).ok;
-    // Greedy pack like Hidden Fleet.
+    // Greedy pack like Hidden Fleet: self-moving ships (every space ship without
+    // a transport-restriction icon — capital ships AND restriction-free fighters
+    // like the Rebel X-/Y-wing) always move; restriction fighters + ground ride
+    // along up to carrier capacity. Bucketing self-movers off capacity>0 alone
+    // stranded X-/Y-wings (same defect as #589/#590's Hidden Fleet resolver).
     const baseUnits = G.map.rebelBaseSpace.units.filter((u) => c.candidateUnitIds.includes(u.instanceId));
-    const capShipIds: string[] = [];
-    const fighterIds: string[] = [];
-    const groundIds: string[] = [];
+    const selfMovingIds: string[] = [];
+    const riderIds: string[] = [];
+    let cap = 0;
     for (const u of baseUnits) {
       const t = G.catalog.unitTypes[u.typeId];
-      if (!t) continue;
-      if (t.transport.capacity > 0) capShipIds.push(u.instanceId);
-      else if (t.transport.restriction) fighterIds.push(u.instanceId);
-      else if (t.theater === 'ground' && t.class !== 'structure') groundIds.push(u.instanceId);
+      if (!t || t.transport.immobile || t.class === 'structure') continue;
+      if (t.theater === 'space' && !t.transport.restriction) {
+        selfMovingIds.push(u.instanceId);
+        cap += t.transport.capacity;
+      } else {
+        riderIds.push(u.instanceId);
+      }
     }
-    let cap = capShipIds.reduce((s, uid) => {
-      const u = baseUnits.find((x) => x.instanceId === uid);
-      return s + (u ? (G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0) : 0);
-    }, 0);
-    const picks = [...capShipIds];
-    for (const uid of [...fighterIds, ...groundIds]) {
+    const picks = [...selfMovingIds];
+    for (const uid of riderIds) {
       if (cap <= 0) break;
       picks.push(uid); cap--;
     }
