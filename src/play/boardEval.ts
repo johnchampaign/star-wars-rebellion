@@ -24,6 +24,48 @@
 import type { GameState, Side, SystemId } from '../engine/types';
 import * as phases from '../engine/phases';
 import { bestCommandAction, tryCommandAction } from './randomAI';
+import { boardFeatures } from './evalFeatures';
+import { LEAF_EVAL } from './leafEvalWeights';
+
+// LEARNED leaf evaluator (#539 Phase 2). Logistic P(side wins) fit on the human
+// corpus (scripts/train-leaf-eval.mjs), returned on the SAME signed scale as
+// evaluate() — (P - 0.5) * 120 spans ~±60 — so it drops into leafValue's squash
+// and the depth-2 beam unchanged. EXPERIMENTAL, default OFF: `?learnedeval=1`
+// (sticky) / SWR_LEARNED_EVAL=1 for benches. The point is the corpus down-
+// weights raw unit strength (the passivity culprit) and surfaces tempo/economy
+// signals (build queue, sabotage, objectives) evaluate() lacks.
+export const LEARNED_EVAL_ENABLED: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_LEARNED_EVAL === '1') return true;
+    if (proc?.env?.SWR_LEARNED_EVAL === '0') return false;
+  } catch { /* browser */ }
+  try {
+    const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
+    const q = g.location?.search ? new URLSearchParams(g.location.search).get('learnedeval') : null;
+    if (q === '1') g.localStorage?.setItem('swr-learned-eval-on', '1');
+    if (q === '0') g.localStorage?.removeItem('swr-learned-eval-on');
+    if (g.localStorage?.getItem('swr-learned-eval-on') === '1') return true;
+  } catch { /* no localStorage */ }
+  return false;
+})();
+
+export function evaluateLearned(G: GameState, side: Side): number {
+  const x = boardFeatures(G, side);
+  let t = 0;
+  for (let d = 0; d < x.length; d++) {
+    const z = d === 0 ? 1 : (x[d] - LEAF_EVAL.mean[d]) / (LEAF_EVAL.std[d] || 1);
+    t += LEAF_EVAL.w[d] * z;
+  }
+  const p = 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, t))));
+  return (p - 0.5) * 120; // same signed scale as evaluate()
+}
+
+/** The leaf evaluator the search policies use: learned when enabled, else the
+ *  hand-tuned evaluate(). One switch so MCTS and depth-2 stay consistent. */
+export function leafEvaluate(G: GameState, side: Side): number {
+  return LEARNED_EVAL_ENABLED ? evaluateLearned(G, side) : evaluate(G, side);
+}
 
 const other = (s: Side): Side => (s === 'Rebel' ? 'Empire' : 'Rebel');
 
@@ -205,7 +247,7 @@ export function evalCommandStepDeep(G: GameState, side: Side, depth = 2): boolea
     const ok = a.kind === 'pass' ? phases.pass(c, side).ok : tryCommandAction(c, side, a);
     if (!ok) continue;
     settle(c);
-    scored.push({ a, c, v1: evaluate(c, side) });
+    scored.push({ a, c, v1: leafEvaluate(c, side) });
   }
   if (scored.length === 0) return phases.pass(G, side).ok;
   scored.sort((x, y) => y.v1 - x.v1);
@@ -227,8 +269,8 @@ export function evalCommandStepDeep(G: GameState, side: Side, depth = 2): boolea
       settle(c);
     }
     const v = c.isGameOver
-      ? (c.winner === side ? 1e6 : c.winner ? -1e6 : evaluate(c, side))
-      : evaluate(c, side);
+      ? (c.winner === side ? 1e6 : c.winner ? -1e6 : leafEvaluate(c, side))
+      : leafEvaluate(c, side);
     deepVals.push({ a: s.a, v });
     if (dbg) {
       const a = s.a as { kind: string; missionId?: string; targetSystemId?: string; score?: number };
@@ -283,7 +325,7 @@ export function evalCommandStep(G: GameState, side: Side): boolean {
     const c = cloneState(G);
     const ok = a.kind === 'pass' ? phases.pass(c, side).ok : tryCommandAction(c, side, a);
     if (!ok) continue;
-    const val = evaluate(c, side);
+    const val = leafEvaluate(c, side);
     if (val > bestVal) { bestVal = val; bestAction = a; }
   }
   if (!bestAction) return phases.pass(G, side).ok;

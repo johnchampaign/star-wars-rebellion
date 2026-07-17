@@ -36,7 +36,7 @@ import type { GameState, Side, SystemId } from '../engine/types';
 import * as phases from '../engine/phases';
 import { log as logEvent } from '../engine/log';
 import { bestCommandAction, tryCommandAction, stepOnce } from './randomAI';
-import { evaluate } from './boardEval';
+import { evaluate, leafEvaluate } from './boardEval';
 
 // ---------------------------------------------------------------------------
 // Enablement flag. SHIPPED DEFAULT-ON in the browser (John's call after the
@@ -371,7 +371,7 @@ function rollout(c: GameState, horizonRounds: number): void {
 function leafValue(c: GameState, side: Side, refWeight = 1): number {
   if (c.winner === side) return 1;
   if (c.winner && c.winner !== side) return 0;
-  let v = evaluate(c, side);
+  let v = leafEvaluate(c, side);
   if (!c.rebelBaseRevealed) {
     // Information term as BELIEF MASS, not raw count: ruling out a system a
     // human would actually pick (far, rebel-loyal) is worth more than ruling
