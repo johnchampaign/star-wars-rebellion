@@ -115,6 +115,28 @@ export function boardFeatures(G: GameState, side: Side): number[] {
     return n;
   })();
 
+  // Base-hunt progress from PUBLIC knowledge (no probe hand — that's private
+  // to the Empire; using it would leak into the Rebel-side eval). Systems the
+  // base could still be at = probe universe minus searched rule-outs, minus
+  // systems that would already have revealed (Imperial-loyal-unsubjugated or
+  // Empire ground), minus destroyed. Fewer candidates = the Empire is closing
+  // in = bad for the Rebel. Post-reveal collapses to 0 (base is known).
+  const baseCandidates = (() => {
+    if (G.rebelBaseRevealed) return 0;
+    const ruledOut = new Set<string>(G.empireSearchedRuledOut ?? []);
+    let n = 0;
+    for (const p of Object.values(G.catalog.probes)) {
+      const sid = p?.systemId;
+      if (!sid || ruledOut.has(sid)) continue;
+      const ss = G.map.systems[sid as SystemId];
+      if (!ss || ss.destroyed) continue;
+      if (ss.loyalty === 'imperial' && !ss.subjugated) continue;
+      if (ss.units.some((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground')) continue;
+      n++;
+    }
+    return n;
+  })();
+
   const myPool = (side === 'Rebel' ? G.rebel : G.empire).leaderPool.length;
   const leaderCommitment = myLeaders > 0 ? 1 - myPool / myLeaders : 0;
   const objHand = (G.rebel.objectiveHand ?? []).length;
@@ -141,7 +163,7 @@ export function boardFeatures(G: GameState, side: Side): number[] {
     G.trackLength - G.timeMarker,
     sign < 0 ? (G.rebelBaseRevealed ? 1 : 0) : (G.rebelBaseRevealed ? -1 : 0),
     sign < 0 ? empGroundAtBase : -empGroundAtBase,
-    0, // baseCandidates — filled by caller when available (needs mctsAI.baseCandidates); 0 here
+    sign * baseCandidates, // Rebel-good (more = better hidden); Empire-good when fewer
     contested,
     forward,
     leaderCommitment,
