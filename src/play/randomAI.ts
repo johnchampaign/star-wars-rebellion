@@ -495,6 +495,30 @@ export function chooseRebelBaseSystem(G: GameState, candidates: SystemId[]): Sys
   return [...candidates].sort((a, b) => score(b) - score(a))[0];
 }
 
+/** How much the Rebel wants to KEEP a drawn objective (Infiltration / Covert
+ *  Operation both offer "keep one, bury the other"). Was raw printed
+ *  reputation, which reviewers flagged as the wrong axis: Ehlijen observed the
+ *  Rebel's best games came when it drew objectives it was ALREADY working
+ *  toward, and its worst when it drew ones the Empire had spent the game
+ *  preventing — i.e. keep what's ACHIEVABLE, not what's worth most on paper.
+ *  Reputation stays as the tiebreak, outweighed by:
+ *   - Death Star Plans: jocke01's explicit turn-1 dig target, and the Rebel can
+ *     now actually cash it (the DS-opportunism rule attacks a weakly-escorted
+ *     Death Star when the plans are held).
+ *   - Family synergy: another copy/tier of something already in hand means the
+ *     board work is already underway.
+ *  Deliberately NOT a full per-objective progress model — that needs the
+ *  objective-requirement machinery; this is the cheap, directionally-right fix. */
+function objectiveKeepValue(G: GameState, oid: string): number {
+  const rep = G.catalog.objectives[oid]?.reputation ?? 0;
+  let v = rep;
+  if (oid.startsWith('death-star-plans')) v += 6;
+  const family = (id: string) => id.replace(/-\d+$/, '');
+  const fam = family(oid);
+  if ((G.rebel.objectiveHand ?? []).some((h) => h !== oid && family(h) === fam)) v += 4;
+  return v;
+}
+
 /** Best Rapid Mobilization move-units source: the leaderless system holding
  *  the most SELF-MOBILE Rebel ships (RM can't move out of systems with a
  *  friendly leader; ground needs carriers, structures can't move — ships are
@@ -670,6 +694,18 @@ function rebelMissionTargetScore(
   ]);
   if (loyaltyGainMissions.has(missionId)) {
     s += (sysDef.resources?.length ?? 0) * 2;
+    // OPENING BOOK (jocke01): "pick a system the Empire can't subjugate turn 1".
+    // A loyalty flip on a system the Empire already occupies — or can reach in
+    // one move — gets subjugated straight back, so the mission buys nothing.
+    // Penalise reachable targets so the AI flips somewhere the gain STICKS.
+    // (Distinct from the already-loyal check below, which is about the flip
+    // being a no-op; this is about the flip being immediately undone.)
+    if (sysState?.units.some((u) => u.side === 'Empire')) s -= 12;
+    else if ((G.catalog.adjacency[targetSysId] ?? []).some((a) =>
+      (G.map.systems[a]?.units ?? []).some((u) => {
+        const t = G.catalog.unitTypes[u.typeId];
+        return u.side === 'Empire' && t?.theater === 'ground' && !t.transport.immobile;
+      }))) s -= 6;
     // Underlying loyalty already Rebel → no loyalty to gain (a successful
     // mission just logs "loyalty-already" and wastes the leader). Strongly avoid
     // so the AI targets a neutral/Imperial system instead. NOTE: this must fire
@@ -3096,20 +3132,16 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     return phases.resolveHomingBeaconPlace(G, best, c.systemCandidates[0]).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'CovertOperationPick' && side === 'Rebel') {
-    // AI: keep the higher-rep card.
     const c = G.pendingChoice;
     const [a, b] = c.drawnIds;
-    const repA = G.catalog.objectives[a]?.reputation ?? 0;
-    const repB = G.catalog.objectives[b]?.reputation ?? 0;
-    const keep = repA >= repB ? a : b;
+    const keep = objectiveKeepValue(G, a) >= objectiveKeepValue(G, b) ? a : b;
     const r = phases.resolveCovertOperationPick(G, keep);
     return r.ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'InfiltrationPick' && side === 'Rebel') {
     const c = G.pendingChoice;
-    const repTop = G.catalog.objectives[c.topId]?.reputation ?? 0;
-    const repBottom = G.catalog.objectives[c.bottomId]?.reputation ?? 0;
-    const keep = repTop >= repBottom ? c.topId : c.bottomId;
+    const keep = objectiveKeepValue(G, c.topId) >= objectiveKeepValue(G, c.bottomId)
+      ? c.topId : c.bottomId;
     const r = phases.resolveInfiltrationPick(G, keep);
     return r.ok;
   }
