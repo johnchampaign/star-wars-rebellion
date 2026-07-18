@@ -2490,7 +2490,7 @@ function CombatAddLeaderPanel({ G, choice, onPersist }: {
       <div style={{ fontSize: 13, marginBottom: 6 }}>
         <b>{choice.side} — add a leader to this combat?</b>{' '}
         You have no leader with tactic values here. You <i>may</i> place one leader
-        from your pool — they roll tactic dice but are at risk of capture / elimination.
+        from your pool — they draw tactic cards but are at risk of capture / elimination.
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {choice.candidates.map((lid) => {
@@ -2505,7 +2505,7 @@ function CombatAddLeaderPanel({ G, choice, onPersist }: {
           );
         })}
         <button onClick={() => submit(null)} style={btn('#ffd54a')}>
-          Don't add (no tactic dice this combat)
+          Don't add (no tactic cards this combat)
         </button>
       </div>
     </div>
