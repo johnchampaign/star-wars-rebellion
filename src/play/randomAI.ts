@@ -869,6 +869,46 @@ function rebelMissionTargetScore(
  *  previous bug had the planner committing top leaders to high-value
  *  missions they could never reveal (cost not met), starving the actually-
  *  attemptable missions of leaders. */
+/** Is there an attack the Rebel could actually launch this turn IF it kept a
+ *  leader free to activate? Mirrors the Command-phase winnable-attack gate
+ *  (own force >= 1.2x theirs AND can clear the ground), counting units already
+ *  present plus those pullable from adjacent leader-unblocked systems and the
+ *  base space. Used to decide whether reserving a leader is worth it. */
+function rebelStrikeTargetExists(G: GameState): boolean {
+  const str = (u: { typeId: string }) => {
+    const t = G.catalog.unitTypes[u.typeId];
+    return t ? (t.attack.red ?? 0) + (t.attack.black ?? 0) + (t.attack.green ?? 0) + (t.health?.value ?? 0) : 0;
+  };
+  const gnd = (u: { typeId: string }) => G.catalog.unitTypes[u.typeId]?.theater === 'ground';
+  for (const [sysId, ss] of Object.entries(G.map.systems)) {
+    if (ss.destroyed) continue;
+    let impAll = 0, impGround = 0, rebAll = 0, rebGround = 0;
+    for (const u of ss.units) {
+      if (u.side === 'Empire') { impAll += str(u); if (gnd(u)) impGround += str(u); }
+      else if (u.side === 'Rebel') { rebAll += str(u); if (gnd(u)) rebGround += str(u); }
+    }
+    if (impAll <= 0) continue;
+    for (const a of (G.catalog.adjacency[sysId] ?? [])) {
+      if ((G.rebel.leadersOnBoard[a] ?? []).length > 0) continue; // leader-blocked source
+      for (const u of (G.map.systems[a]?.units ?? [])) {
+        if (u.side !== 'Rebel') continue;
+        rebAll += str(u); if (gnd(u)) rebGround += str(u);
+      }
+    }
+    // Base-space fleet counts when this target neighbours the base system.
+    if (G.rebelBaseSystemId
+        && (G.catalog.adjacency[sysId] ?? []).includes(G.rebelBaseSystemId)
+        && (G.rebel.leadersOnBoard[G.rebelBaseSystemId] ?? []).length === 0) {
+      for (const u of (G.map.rebelBaseSpace?.units ?? [])) {
+        if (u.side !== 'Rebel') continue;
+        rebAll += str(u); if (gnd(u)) rebGround += str(u);
+      }
+    }
+    if (rebAll >= impAll * 1.2 && rebGround >= impGround) return true;
+  }
+  return false;
+}
+
 function planAssignment(G: GameState, side: Side): Array<{ missionId: string; leaderIds: LeaderId[] }> {
   const f = side === 'Rebel' ? G.rebel : G.empire;
   const hand = [...f.missionHand];
@@ -934,11 +974,22 @@ function planAssignment(G: GameState, side: Side): Array<{ missionId: string; le
   const usedLeaders = new Set<string>();
   const planMap: Array<{ missionId: string; leaderIds: LeaderId[] }> = [];
   const usedMissions = new Set<string>();
+  // Computed once: board-derived and unchanged by which missions we assign.
+  const rebelStrikeReserveWanted = side === 'Rebel' && rebelStrikeTargetExists(G);
   while (true) {
     const available = (f.leaderPool as LeaderId[]).filter((lid) => !usedLeaders.has(lid));
     if (available.length === 0) break;
     // Empire reserve: stop if we'd leave fewer than EMPIRE_RESERVE_LEADERS in pool.
     if (side === 'Empire' && f.leaderPool.length - usedLeaders.size <= EMPIRE_RESERVE_LEADERS) break;
+    // REBEL STRIKE RESERVE (the alpha-strike prerequisite). Activating a system
+    // needs a leader from the POOL, but the planner happily committed all 4 to
+    // missions — measured leaderPool=0 / activate-actions=0 at Command, which
+    // made the turn-1 alpha strike structurally impossible no matter where the
+    // base sat or how favourable the matchup (see #539). jocke01's opening book
+    // deliberately holds a leader back for the strike as the turn's FIRST
+    // action. So keep 1 leader free — but only when a genuinely winnable target
+    // is in reach, so we never idle a leader for nothing.
+    if (side === 'Rebel' && rebelStrikeReserveWanted && f.leaderPool.length - usedLeaders.size <= 1) break;
     let best: Plan | null = null;
     for (const missionId of hand) {
       if (usedMissions.has(missionId)) continue;
