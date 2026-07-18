@@ -1587,6 +1587,17 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
           // Winnable attack (overall edge AND can clear the ground to hold it).
           if (rebAll >= impAll * 1.2 && rebGround >= impGround) {
             ts += 12;
+            // ALPHA STRIKE (jocke01's opening book, #539). On the opening turns
+            // the Rebel acts FIRST and the Empire cannot respond before the blow
+            // lands: it kills a fleet, disrupts their build AND deployment for
+            // the round, can complete tier-1 objectives, and may force a leader
+            // in response. Measured: the strike activation scored ~12-20 against
+            // sabotage/build-alliance reveals at 33-35, so the Rebel always took
+            // a mission and struck in 0/20 games. Lift it above the reveals for
+            // the opening window only — this sits INSIDE the winnable-strength
+            // gate, so it can never buy a losing attack, and it decays after the
+            // tempo advantage is gone.
+            if (G.timeMarker <= 2) ts += 26;
             // OBJECTIVE PURSUIT: a win here that satisfies a held combat
             // objective scores reputation now — the fastest path to the
             // reputation-time win. Steer the attack toward objective-relevant
