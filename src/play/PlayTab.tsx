@@ -369,6 +369,11 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   /** True while an MCTS worker search is in flight — runAILoop pauses instead
    *  of spinning; the worker reply clears it and re-kicks the loop. */
   const aiWaitingRef = useRef(false);
+  /** performance.now() when the current MCTS worker search started. The
+   *  watchdog that rescues a lost worker reply lives in runAILoop (see #603) —
+   *  it CANNOT live in the policy override, because a stuck aiWaitingRef stops
+   *  the loop before the override is ever called. */
+  const aiWaitingSinceRef = useRef(0);
   // Point the module-level engine handles at the online shim (mutators submit
   // RebellionActions to the server) or the real modules (single-player). See
   // the `let phases/combat` declaration above and onlineEngine.ts.
@@ -647,7 +652,22 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         if (totalSteps >= 2000) break;     // hard safety cap
         if (stepsThisBatch >= 200) break;  // per-batch safety
         // An MCTS worker search is in flight — pause; its reply re-kicks us.
-        if (aiWaitingRef.current) break;
+        // WATCHDOG (#603 "AI Empire is not taking its turn"): if that reply
+        // never arrives (worker died, message dropped, tab throttled mid-post),
+        // this flag would stay true forever, this loop would break on every
+        // pass, the policy override would never run — so the watchdog INSIDE
+        // the override could never fire — and the game hung until the player
+        // exported and re-imported into a fresh tab. Recover here instead:
+        // clear the wait and fall through, so the next step takes the
+        // synchronous path.
+        if (aiWaitingRef.current) {
+          const waitedMs = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+            - aiWaitingSinceRef.current;
+          if (waitedMs < 20_000) break;
+          console.warn('[mcts-bridge] worker reply lost after', Math.round(waitedMs), 'ms — recovering synchronously');
+          aiWaitingRef.current = false;
+          mctsPendingRef.current = null;
+        }
         const Gn = gameRef.current;
         if (!Gn || Gn.isGameOver) break;
         // Pause the AI while ANY report is waiting to be shown, so the human
@@ -1065,6 +1085,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           return mctsCommandStep(g, s); // synchronous fallback
         }
         aiWaitingRef.current = true;
+      aiWaitingSinceRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
         return true;
       }
       const w = getWorker();
@@ -1076,6 +1097,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       mctsPendingRef.current = { key, done: false, result: null, t0: Date.now() };
       w.postMessage({ id: Date.now(), codec: encode(g), side: s });
       aiWaitingRef.current = true;
+      aiWaitingSinceRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
       return true; // "thinking" — loop pauses until the worker replies
     });
     return () => {
