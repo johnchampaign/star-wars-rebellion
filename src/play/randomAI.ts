@@ -487,9 +487,37 @@ export function chooseRebelBaseSystem(G: GameState, candidates: SystemId[]): Sys
     }
     frontier = next;
   }
+  // DOCTRINE SWITCH (SWR_BASE_PLACEMENT / ?baseplacement=): 'safe' (default,
+  // shipped d109be6, +7pt) maximises distance from the Empire — the base is
+  // never threatened early, but there is then NO turn-1 alpha-strike target in
+  // reach (measured 0/20 games with an Empire-occupied adjacent system).
+  // 'aggressive' is jocke01's doctrine: sit next to an Empire system so the
+  // Rebel's starting fleet can strike on turn 1 before the Empire acts at all,
+  // accepting base risk for tempo. These are competing strategies, not a fix
+  // and a bug — hence the A/B switch rather than a replacement.
+  const aggressive = (() => {
+    try {
+      const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+      if (proc?.env?.SWR_BASE_PLACEMENT === 'aggressive') return true;
+    } catch { /* browser */ }
+    try {
+      const g = globalThis as { location?: { search?: string } };
+      return g.location?.search
+        ? new URLSearchParams(g.location.search).get('baseplacement') === 'aggressive'
+        : false;
+    } catch { return false; }
+  })();
+  const hasStrikeTarget = (sid: string): boolean =>
+    (G.catalog.adjacency[sid] ?? []).some((a) =>
+      (G.map.systems[a]?.units ?? []).some((u) => u.side === 'Empire'));
   const score = (sid: string): number => {
     const far = Math.min(distTo.get(sid) ?? 8, 4); // unreached in 8 hops = max
     const loyal = G.map.systems[sid]?.loyalty === 'rebel' ? 2 : 0;
+    if (aggressive) {
+      // Strike target dominates; mild distance term still breaks ties toward
+      // the less-swarmable of two adjacent-to-Empire candidates.
+      return (hasStrikeTarget(sid) ? 12 : 0) + far + loyal;
+    }
     return far * 4 + loyal;
   };
   return [...candidates].sort((a, b) => score(b) - score(a))[0];
