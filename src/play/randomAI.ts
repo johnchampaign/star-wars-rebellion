@@ -3425,22 +3425,8 @@ export function tryCommandAction(G: GameState, side: Side, action: CommandAction
           const ss = G.map.systems[sysId];
           return ss && ss.units.some((u) => u.side === side);
         });
-        // The HIDDEN base's fleet lives in G.map.rebelBaseSpace, which is not a
-        // map system — so the adjacency filter above could never offer it as a
-        // source and the Rebel's starting fleet was unmovable by activation.
-        // That's why the turn-1 alpha strike never fired even once every other
-        // blocker was cleared (#539): the strike was chosen, then moved nothing.
-        // Base-space units sit AT the base system, so they may move to its
-        // neighbours. Only while HIDDEN — once revealed, baseDrainGuard's
-        // reasoning applies and the garrison must stay put.
-        if (side === 'Rebel' && !G.rebelBaseRevealed && G.rebelBaseSystemId
-            && adj.includes(G.rebelBaseSystemId)
-            && (f.leadersOnBoard[G.rebelBaseSystemId] ?? []).length === 0
-            && (G.map.rebelBaseSpace?.units ?? []).some((u) => u.side === side)) {
-          sources.push('rebel-base-space');
-        }
         for (const fromId of sources) {
-          const ss = fromId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[fromId];
+          const ss = G.map.systems[fromId];
           if (!ss) continue;
           const mine = ss.units.filter((u) => u.side === side);
           // Classify units at this source.
