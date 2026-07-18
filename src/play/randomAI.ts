@@ -1451,6 +1451,22 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
             if (isGround(u)) rebGround += strengthOf(u);
           }
         }
+        // The Rebel's own fleet was INVISIBLE here: starting units live in
+        // G.map.rebelBaseSpace, which is not a map system, so the adjacency scan
+        // above never saw them — rebAll stayed ~0 for any system next to the
+        // base and the winnable-attack gate below could never pass. Measured
+        // effect: the AI Rebel alpha-struck in 0/20 turn-1 games. Base-space
+        // units sit AT the base system, so they can move to its neighbours;
+        // count them when this target is adjacent to the base.
+        if (G.rebelBaseSystemId
+            && (G.catalog.adjacency[sysId] ?? []).includes(G.rebelBaseSystemId)
+            && (G.rebel.leadersOnBoard[G.rebelBaseSystemId] ?? []).length === 0) {
+          for (const u of (G.map.rebelBaseSpace?.units ?? [])) {
+            if (u.side !== 'Rebel') continue;
+            rebAll += strengthOf(u); bringable++;
+            if (isGround(u)) rebGround += strengthOf(u);
+          }
+        }
         const dFromBase = baseDist ? distFrom(baseDist, sysId) : Infinity;
         if (hasEnemyUnits && impAll > 0) {
           // Winnable attack (overall edge AND can clear the ground to hold it).
