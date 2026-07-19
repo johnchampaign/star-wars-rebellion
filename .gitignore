@@ -88,3 +88,4 @@ issue*-body.txt
 
 # wrangler pages functions build output (local bundle check)
 .fnbuild*
+analytics-out/

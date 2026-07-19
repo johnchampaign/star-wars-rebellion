@@ -1,0 +1,1 @@
+{"at":"2026-07-19T18:13:23.502Z","seed":1,"games":200,"policies":{"rebel":"heuristic","empire":"heuristic"},"rebel":{"wins":92,"n":100,"p":0.92,"lo":0.8500173312059693,"hi":0.9589070305141891},"empire":{"wins":40,"n":100,"p":0.4,"lo":0.3093997461136028,"hi":0.4979992153815976},"minWinrate":{"rebel":0.7,"empire":0.22},"pass":true}
