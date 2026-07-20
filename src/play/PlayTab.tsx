@@ -957,7 +957,19 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       alert('Can\'t export mid-action — finish the current step (or wait for the AI) and try again.');
       return;
     }
-    const code = btoa(JSON.stringify({ v: 1, codec: encode(Gx), humanSide }));
+    let code: string;
+    try {
+      // btoa THROWS on any char outside Latin-1, and game state carries
+      // typographic text (notices like "did NOT move — …", ★ in card refs).
+      // #608: the #587 notice's em-dash silently killed export — the throw
+      // escaped the click handler, so the clipboard stayed empty with no
+      // message. escape() maps every codepoint into Latin-1 escapes first
+      // (and its inverse round-trips legacy pure-ASCII codes unchanged).
+      code = btoa(unescape(encodeURIComponent(JSON.stringify({ v: 1, codec: encode(Gx), humanSide }))));
+    } catch (e) {
+      alert(`Export failed: ${String(e)}\n\nPlease use "Report a problem" so we can fix this.`);
+      return;
+    }
     if (navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(code).then(
         () => alert('Game code copied to your clipboard.\n\nOn the other device, open the game and use "import game", then paste this code.'),
@@ -972,7 +984,11 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     const raw = window.prompt('Paste a game code (from "export game" on another device):');
     if (!raw) return;
     try {
-      const obj = JSON.parse(atob(raw.trim())) as { codec?: string; humanSide?: string };
+      // Inverse of the Unicode-safe export. escape() percent-escapes every
+      // non-alphanumeric byte (including '%' itself), so this also round-trips
+      // LEGACY codes (plain btoa of ASCII JSON) unchanged — old exports still
+      // import fine.
+      const obj = JSON.parse(decodeURIComponent(escape(atob(raw.trim())))) as { codec?: string; humanSide?: string };
       if (!obj?.codec) throw new Error('not a game code');
       const human: Side = obj.humanSide === 'Empire' ? 'Empire' : 'Rebel';
       localStorage.setItem(LS_HUMAN_SIDE, human);
