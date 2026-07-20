@@ -42,7 +42,10 @@ export function computeDims(game) {
     ? count((e) => e.kind === 'combat-begin' && e.payload?.attackerSide === 'Empire'
         && e.payload?.systemId === baseSystemId && e.turn >= revealEvent.turn)
     : 0;
-  const findTurn = revealEvent ? revealEvent.turn : 0; // 0 = never found
+  // Never-found must read WORSE than any real find on a lower-is-better dim.
+  // (First cut used 0 = never, which reads as "found instantly" and made
+  // losers — who mostly never find it — look FASTER than winners.)
+  const findTurn = revealEvent ? revealEvent.turn : rounds + 1;
   // Hunt progress from the snapshot feature (Rebel-signed, so positive).
   const firstCand = snapshots[0]?.rebel?.[F_BASE_CANDIDATES] ?? 0;
   const lastCand = snapshots[snapshots.length - 1]?.rebel?.[F_BASE_CANDIDATES] ?? firstCand;
