@@ -11222,6 +11222,12 @@ const ONSCREEN_HIDDEN_KINDS = new Set<string>([
   // Reading the Rebel AI's traces reveals its plans (and can point straight at
   // the hidden base). Analysis-only — belongs in uploaded logs, never on screen.
   'ai-decision',
+  // Unscored-objective checks (#602): these name objectives the Rebel HOLDS
+  // but has NOT scored — hidden-hand information (a scored objective is public
+  // via play-objective/objective-played, which still render). Even the
+  // occurrence leaks ("they hold a combat objective relevant to this fight"),
+  // so hide entirely rather than payload-redact.
+  'objective-check-not-met', 'objective-immediate-no-target', 'objective-declined',
   // Internal/debug.
   'not-implemented', 'note', 'state', 'setup-warning',
 ]);

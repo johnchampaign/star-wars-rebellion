@@ -86,12 +86,23 @@ export function recomputeSubjugation(G: GameState, affected?: SystemId[]): void 
       }
       continue;
     }
-    if (empireGround) {
+    // CONTESTED systems don't gain the marker (#612): RAW's subjugate step
+    // runs AFTER combat resolution (LTP activation steps: move → combat →
+    // subjugate), so Imperial ground arriving where REBEL ground stands does
+    // not subjugate until the battle settles — recompute runs again post-
+    // combat, and by then the loser's ground is gone. Placing the marker on
+    // entry let the Rebel "win a ground battle in a subjugated system"
+    // (Liberation) at a system that RAW-wise was never subjugated. An
+    // ALREADY-subjugated system stays subjugated while contested (Rebels
+    // landing doesn't lift occupation — only removing the Empire's ground
+    // does); Liberation there is legitimately scorable.
+    const rebelGround = hasGroundOf(G, 'Rebel', id);
+    if (empireGround && !rebelGround) {
       if (!ss.subjugated) {
         ss.subjugated = true;
         log(G, { kind: 'subjugated', payload: { systemId: id } });
       }
-    } else if (ss.subjugated) {
+    } else if (!empireGround && ss.subjugated) {
       ss.subjugated = false;
       log(G, { kind: 'liberated', payload: { systemId: id } });
     }

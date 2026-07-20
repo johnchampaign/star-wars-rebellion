@@ -721,6 +721,13 @@ function rebelMissionTargetScore(
     'regional-aid',
   ]);
   if (loyaltyGainMissions.has(missionId)) {
+    // REMOTE systems cannot hold loyalty at all — the engine no-ops the gain
+    // (mechanics.gainLoyalty logs loyalty-blocked:remote). Reports #598/#610/
+    // #611/#613: the AI burned loyalty missions on Endor/Dantooine. This was a
+    // REGRESSION from the reach-check below (b78d2ba): its -12/-6 penalties
+    // suppress every populous system near the Empire, and remotes — far from
+    // everything, penalty-free — floated to the top. Hard-exclude them first.
+    if (sysDef.isRemote) return s - 50;
     s += (sysDef.resources?.length ?? 0) * 2;
     // OPENING BOOK (jocke01): "pick a system the Empire can't subjugate turn 1".
     // A loyalty flip on a system the Empire already occupies — or can reach in
