@@ -4439,20 +4439,59 @@ function HandTip({ count, cards }: {
   count: number;
   cards: { name: string; image?: string; rulesText?: string; hint?: string }[];
 }) {
-  const [open, setOpen] = useState(false);
-  if (count === 0) return <>0 cards</>;
+  const [hover, setHover] = useState(false);
+  // CLICK-TO-PIN: hovering alone made a wide hand unreadable — the popup could
+  // extend past the right edge and moving the mouse toward the scrollbar killed
+  // the hover, so the clipped part was unreachable (#616). Clicking the count
+  // pins the popup open (scrollable, dismiss with another click or Esc).
+  const [pinned, setPinned] = useState(false);
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const [box, setBox] = useState<{ left: number; top: number; width: number; maxH: number } | null>(null);
+  const open = hover || pinned;
   // Width of each card tile in the popup. 130px keeps long hands on
   // one row without running off the screen; the embedded card-art text
   // becomes a thumbnail at this size, so the typeset rulesText below
   // is the primary readable copy.
   const TILE_W = 130;
+
+  // Measure on open: the popup is position:fixed at viewport coordinates and
+  // hard-clamped to the window, so it can never render partly off-screen the
+  // way the old absolute left:'100%' anchor could.
+  const place = () => {
+    const el = anchorRef.current;
+    if (!el || typeof window === 'undefined') return;
+    const r = el.getBoundingClientRect();
+    const want = count * TILE_W + Math.max(0, count - 1) * 6 + 16;
+    const width = Math.min(want, Math.max(200, window.innerWidth - 16));
+    const left = Math.max(8, Math.min(r.right + 12, window.innerWidth - width - 8));
+    // These rows sit low in the faction panel, so "always below" would leave a
+    // sliver of height. Grow downward when there's room, otherwise upward.
+    const below = window.innerHeight - r.bottom - 8;
+    const above = r.top - 8;
+    const down = below >= 300 || below >= above;
+    const top = down ? Math.max(8, r.bottom) : 8;
+    const maxH = Math.max(160, down ? below : above);
+    setBox({ left, top, width, maxH });
+  };
+
+  useEffect(() => {
+    if (!pinned) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPinned(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [pinned]);
+
+  if (count === 0) return <>0 cards</>;
   return (
     <span
-      style={{ borderBottom: '1px dotted #888', cursor: 'help', position: 'relative' }}
-      onMouseEnter={() => setOpen(true)}
-      onMouseLeave={() => setOpen(false)}
+      ref={anchorRef}
+      style={{ borderBottom: '1px dotted #888', cursor: 'pointer', position: 'relative' }}
+      onMouseEnter={() => { place(); setHover(true); }}
+      onMouseLeave={() => setHover(false)}
+      onClick={() => { place(); setPinned((p) => !p); }}
+      title={pinned ? 'Click to unpin (or press Esc)' : 'Click to pin this open'}
     >
-      {count} cards
+      {count} cards{pinned ? ' 📌' : ''}
       {open && (
         <div
           // Float a strip of card images to the right of the row. Force
@@ -4462,27 +4501,25 @@ function HandTip({ count, cards }: {
           // containing block can't crush the popup into a column.
           // Pointer events disabled so leaving the source still closes
           // the popup cleanly.
+          onClick={(e) => e.stopPropagation()}
           style={{
-            // Anchor the popup's BOTTOM to the row and grow UPWARD — the
-            // hand links live in the faction panel low on the page, so a
-            // centered/downward popup ran off the bottom and clipped the
-            // rules text under tall card images (player report: objective
-            // hover showed the image but not the text). maxHeight + scroll
-            // guarantees the text is always reachable.
-            position: 'absolute', left: '100%', bottom: 0,
-            marginLeft: 12, zIndex: 2000,
+            // Fixed + viewport-clamped (see place()) so the strip is always
+            // fully on-screen. It grows DOWN from the row and is capped to the
+            // remaining height, with both axes scrollable — earlier versions
+            // clipped the rules text under tall card images, or ran off the
+            // right edge with no way to reach the hidden part (#616).
+            position: 'fixed',
+            left: box?.left ?? 8, top: box?.top ?? 8,
+            width: box?.width ?? 'auto',
+            maxHeight: box ? box.maxH : '92dvh',
+            zIndex: 2000,
             display: 'flex', flexDirection: 'row', gap: 6, flexWrap: 'nowrap',
             background: 'rgba(0,0,0,0.94)', border: '1px solid #555',
             padding: 8, borderRadius: 4,
-            maxHeight: '92dvh', overflowY: 'auto',
-            // Explicit width = N * tile + (N-1) * gap + 16 padding. Stops
-            // a narrow ancestor's containing block from forcing column.
-            width: cards.length > 0
-              ? `${cards.length * TILE_W + (cards.length - 1) * 6 + 16}px`
-              : 'auto',
-            maxWidth: 'min(95vw, 1400px)',
-            overflowX: 'auto',
-            pointerEvents: 'none',
+            overflowY: 'auto', overflowX: 'auto',
+            // Pinned popups accept the mouse so you can scroll them; hover-only
+            // popups stay click-through so leaving the source closes them.
+            pointerEvents: pinned ? 'auto' : 'none',
             boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
           }}
         >
@@ -9195,7 +9232,16 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
           </span>
         )}
         {G.passedThisCommand.includes(side) && (
-          <span style={{ color: '#888', fontSize: 11 }}>passed</span>
+          // Spell out what "passed" still allows — a passed side keeps every
+          // leader in its pool available to oppose missions and to join combat
+          // (RR p.6); only revealing missions and activating systems stop.
+          // Player report #619 asked exactly this.
+          <span
+            style={{ color: '#888', fontSize: 11, borderBottom: '1px dotted #666', cursor: 'help' }}
+            title={`${side} has passed: no more system activations or mission reveals this Command phase. Leaders still in the pool CAN still oppose missions and be added to combat.`}
+          >
+            passed (can still oppose)
+          </span>
         )}
       </div>
       <div style={{ fontSize: 12, color: '#aaa' }}>

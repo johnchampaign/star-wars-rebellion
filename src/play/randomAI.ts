@@ -3001,9 +3001,40 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     return phases.resolveRapidMobilizationBasePick(G, best).ok;
   }
   // Interrogation Droid: Rebel picks 2 decoy systems that AREN'T the base.
+  // The old pick was `.slice(0, count)` off raw map order, which routinely
+  // named systems the Empire could dismiss on sight — most often ones holding
+  // Imperial units, where the base would already have been found (#601). A
+  // decoy is only worth naming if the Empire cannot rule it out for free, and
+  // the best ones are far from Imperial forces so verifying them costs turns.
   if (G.pendingChoice && G.pendingChoice.kind === 'InterrogationDroidDecoyPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
-    const decoys = c.candidates.filter((sid) => sid !== G.rebelBaseSystemId).slice(0, c.count);
+    const ruledOut = new Set(G.empireSearchedRuledOut ?? []);
+    const empireSystems = Object.keys(G.map.systems).filter((sid) =>
+      G.map.systems[sid]?.units.some((u) => u.side === 'Empire'));
+    const empireDists = empireSystems.map((es) => bfsDistances(G, es, 8));
+    const bluffScore = (sid: SystemId): number => {
+      const ss = G.map.systems[sid];
+      let s = 0;
+      // Dead giveaways: the Empire is standing there (no hidden base), or its
+      // probe map already crossed the system off.
+      if (ss?.units.some((u) => u.side === 'Empire')) s -= 100;
+      if (ruledOut.has(sid)) s -= 100;
+      // A base needs somewhere to hide: Rebel/neutral loyalty reads plausible.
+      if (ss?.loyalty === 'rebel') s += 3;
+      else if (ss?.loyalty !== 'imperial') s += 1;
+      // Farther from every Imperial force = more expensive to go check.
+      let minDist = Infinity;
+      for (const m of empireDists) {
+        const d = m.get(sid);
+        if (d != null && d < minDist) minDist = d;
+      }
+      s += minDist === Infinity ? 8 : Math.min(minDist, 8);
+      return s;
+    };
+    const decoys = c.candidates
+      .filter((sid) => sid !== G.rebelBaseSystemId)
+      .sort((a, b) => bluffScore(b) - bluffScore(a))
+      .slice(0, c.count);
     return phases.resolveInterrogationDroidDecoyPick(G, decoys).ok;
   }
 

@@ -159,16 +159,26 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
     let leaderName: string | null = null;
     const fromCounts = new Map<string, number>();
     let missionName: string | null = null;
+    // Which cause we hit FIRST scanning backwards, i.e. the most recent one.
+    // Player report #604: the Rebel ran a mission in the system, the Empire
+    // then activated it and moved in, and the note still blamed the (earlier,
+    // opposing-side) mission. Two guards: only the ATTACKER's own events can
+    // be the cause, and the nearest cause to combat-begin wins.
+    let firstCause: 'mission' | 'activation' | null = null;
     // Scan the entries leading up to combat-begin (same turn) for the cause.
     for (let i = beginIdx - 1; i >= 0 && i >= beginIdx - 40; i--) {
       const e = tl[i];
       const p = (e.payload ?? {}) as Record<string, unknown>;
       if (e.kind === 'combat-begin' || e.kind === 'combat-end') break; // previous combat
-      if (e.kind === 'activate-system' && p.targetSystemId === c.systemId && !leaderName) {
+      if (e.kind === 'activate-system' && e.side === attacker
+          && p.targetSystemId === c.systemId && !leaderName) {
         leaderName = G.catalog.leaders[p.leaderId as string]?.name ?? (p.leaderId as string);
+        firstCause ??= 'activation';
       }
-      if (e.kind === 'reveal-mission' && p.targetSystemId === c.systemId && !missionName) {
+      if (e.kind === 'reveal-mission' && e.side === attacker
+          && p.targetSystemId === c.systemId && !missionName) {
         missionName = G.catalog.missions[p.missionId as string]?.name ?? (p.missionId as string);
+        firstCause ??= 'mission';
       }
       if (e.kind === 'move-unit' && p.to === c.systemId && p.from) {
         const from = p.from as string;
@@ -177,7 +187,7 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
     }
     const sysName = (sid: string) => sid === 'rebel-base-space' ? 'the Rebel Base' : (G.catalog.systems[sid]?.name ?? sid);
     const froms = [...fromCounts.entries()].map(([s, n]) => `${n} from ${sysName(s)}`).join(', ');
-    if (missionName) return `Triggered by the ${attacker} mission “${missionName}”.`;
+    if (missionName && firstCause === 'mission') return `Triggered by the ${attacker} mission “${missionName}”.`;
     if (leaderName && froms) return `${attacker} activated ${leaderName} into ${systemName}, moving ${froms}.`;
     if (leaderName) return `${attacker} activated ${leaderName} into ${systemName}.`;
     if (froms) return `${attacker} moved in: ${froms}.`;
@@ -1229,18 +1239,24 @@ function AttackerTacticsPanel({ G, choice, onPersist }: {
   const noEscape = choice.hand.find((cid) => cid.includes('no-escape')) ?? null;
   const [useCF, setUseCF] = useState(false);
   const [useNE, setUseNE] = useState(false);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
+  // Selection is by POSITION in `damageBoosts`, not by card id: a hand can hold
+  // two copies of the same card (Critical Hit is copies:2), and keying the set
+  // by id made one checkbox toggle both — and only ever played one (#618).
+  const [picked, setPicked] = useState<Set<number>>(new Set());
   const label = (cid: string) => G.catalog.tactics[cid]?.name ?? cid;
   const bonus = (cid: string) =>
     cid.includes('take-it-down') ? '+2 same target' :
     cid.includes('onslaught') ? '+1 × 2 different' :
     cid.includes('critical-hit') ? '+1' : '';
 
-  const submit = () => {
+  // `skip` forces an empty play — the Skip button can't rely on setState-then-
+  // submit, because submit would still close over the pre-reset selection.
+  const submit = (skip = false) => {
     const r = combat.resolveCombatAttackerTactics(G, {
-      concentrateFireCardId: useCF ? cf : null,
-      damageBoostCardIds: Array.from(picked),
-      noEscapeCardId: useNE ? noEscape : null,
+      concentrateFireCardId: !skip && useCF ? cf : null,
+      damageBoostCardIds: skip ? []
+        : Array.from(picked).sort((a, b) => a - b).map((i) => damageBoosts[i]),
+      noEscapeCardId: !skip && useNE ? noEscape : null,
     });
     if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
     onPersist();
@@ -1259,20 +1275,26 @@ function AttackerTacticsPanel({ G, choice, onPersist }: {
             <CardHover G={G} cardId={cf}>{label(cf)}</CardHover> (reroll ≤2 blanks)
           </label>
         )}
-        {damageBoosts.map((cid) => (
-          <label key={cid} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+        {damageBoosts.map((cid, i) => (
+          <label key={`${cid}#${i}`} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
             <input
               type="checkbox"
-              checked={picked.has(cid)}
+              checked={picked.has(i)}
               onChange={(e) => {
                 setPicked((prev) => {
                   const next = new Set(prev);
-                  if (e.target.checked) next.add(cid); else next.delete(cid);
+                  if (e.target.checked) next.add(i); else next.delete(i);
                   return next;
                 });
               }}
             />
             <CardHover G={G} cardId={cid}>{label(cid)}</CardHover> ({bonus(cid)} damage)
+            {/* Disambiguate duplicate copies so the two rows aren't identical. */}
+            {damageBoosts.filter((o) => o === cid).length > 1 && (
+              <span style={{ fontSize: 10, opacity: 0.65 }}>
+                copy {damageBoosts.slice(0, i + 1).filter((o) => o === cid).length}
+              </span>
+            )}
           </label>
         ))}
         {noEscape && (
@@ -1287,9 +1309,9 @@ function AttackerTacticsPanel({ G, choice, onPersist }: {
           </span>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          <button onClick={() => { setUseCF(false); setUseNE(false); setPicked(new Set()); submit(); }}
+          <button onClick={() => { setUseCF(false); setUseNE(false); setPicked(new Set<number>()); submit(true); }}
             style={btn('#2a2c33')}>Skip</button>
-          <button onClick={submit} style={btn(SIDE_COLOR[choice.side])}>Apply</button>
+          <button onClick={() => submit()} style={btn(SIDE_COLOR[choice.side])}>Apply</button>
         </div>
       </div>
     </div>
@@ -1726,12 +1748,15 @@ function SpecialDieSpendPanel({ G, choice, onPersist }: {
 }) {
   const max = choice.specialCount;
   const [draws, setDraws] = useState(0);
-  const [picked, setPicked] = useState<Set<string>>(new Set());
+  // Keyed by POSITION, not card id — two copies of the same ★ card (Take It
+  // Down / Outmaneuver are copies:2) are separately playable for 1 ◈ each,
+  // and an id-keyed set toggled both rows at once (#618).
+  const [picked, setPicked] = useState<Set<number>>(new Set());
   const spent = draws + picked.size;
   const submit = () => {
     const r = combat.resolveSpecialDieSpend(G, {
       draws,
-      playCardIds: Array.from(picked),
+      playCardIds: Array.from(picked).sort((a, b) => a - b).map((i) => choice.specialCards[i]),
     });
     if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
     onPersist();
@@ -1762,21 +1787,26 @@ function SpecialDieSpendPanel({ G, choice, onPersist }: {
               <div style={{ fontSize: 12, color: '#cbd2da', marginBottom: 2 }}>
                 …or spend a ◈ to play a card from your hand that needs one:
               </div>
-              {choice.specialCards.map((cid) => (
-                <label key={cid} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+              {choice.specialCards.map((cid, i) => (
+                <label key={`${cid}#${i}`} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
                   <input
                     type="checkbox"
-                    checked={picked.has(cid)}
-                    disabled={!picked.has(cid) && spent >= max}
+                    checked={picked.has(i)}
+                    disabled={!picked.has(i) && spent >= max}
                     onChange={(e) => {
                       setPicked((prev) => {
                         const next = new Set(prev);
-                        if (e.target.checked) next.add(cid); else next.delete(cid);
+                        if (e.target.checked) next.add(i); else next.delete(i);
                         return next;
                       });
                     }}
                   />
                   <CardHover G={G} cardId={cid}>{cardName(cid)}</CardHover>
+                  {choice.specialCards.filter((o) => o === cid).length > 1 && (
+                    <span style={{ fontSize: 10, opacity: 0.65 }}>
+                      copy {choice.specialCards.slice(0, i + 1).filter((o) => o === cid).length}
+                    </span>
+                  )}
                 </label>
               ))}
             </>
