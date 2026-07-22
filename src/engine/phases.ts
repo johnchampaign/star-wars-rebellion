@@ -3323,7 +3323,7 @@ export function resolveRapidMobilizationBasePick(
  *  resolver will continue the mission flow). C-3PO and Falcon are mutually
  *  exclusive in that the stage gates them: C-3PO only on 'failed' diplomacy,
  *  Falcon only on 'effect' (success). */
-function maybePostMissionRingTrigger(G: GameState, pm: MissionResolution): boolean {
+export function maybePostMissionRingTrigger(G: GameState, pm: MissionResolution): boolean {
   if (pm.resolverSide !== 'Rebel') return false;
   // C-3PO: failed diplomacy.
   if (pm.stage === 'failed') {
@@ -3345,12 +3345,16 @@ function maybePostMissionRingTrigger(G: GameState, pm: MissionResolution): boole
   // Falcon: success at a system with captured leaders, Han or Chewie among
   // the resolvers, and the Falcon card in hand.
   if (pm.stage === 'effect') {
-    const hasFalcon = G.rebel.actionHand.includes('the-milleninium-falcon');
-    const hanOrChewie = (pm.leaderIds as LeaderId[]).some((l) => l === 'han-solo' || l === 'chewbacca');
+    // "After you succeed at a mission in the Millennium Falcon's SYSTEM" — the
+    // trigger is the ring's location, not the mission roster, so the bearer has
+    // to actually be standing in the target system (#626).
+    const falconBearer = falconRingHolder(G);
+    const bearerHere = !!falconBearer
+      && (G.rebel.leadersOnBoard[pm.targetSystemId] ?? []).includes(falconBearer);
     const falconCandidates = (G.empire.capturedLeaders ?? [])
       .filter((c) => c.systemId === pm.targetSystemId)
       .map((c) => c.leaderId);
-    if (hasFalcon && hanOrChewie && falconCandidates.length > 0) {
+    if (bearerHere && falconCandidates.length > 0) {
       G.pendingChoice = {
         kind: 'FalconOffer',
         side: 'Rebel',
@@ -3359,7 +3363,8 @@ function maybePostMissionRingTrigger(G: GameState, pm: MissionResolution): boole
         candidates: falconCandidates,
       };
       log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-        kind: 'FalconOffer', missionId: pm.missionId, candidates: falconCandidates.length,
+        kind: 'FalconOffer', missionId: pm.missionId, bearer: falconBearer,
+        candidates: falconCandidates.length,
       }});
       return true;
     }
@@ -4060,9 +4065,13 @@ export function resolveFalconOffer(G: GameState, leaderId: LeaderId | null): { o
     if (i < 0) return { ok: false, reason: 'card-not-in-hand' };
     G.rebel.actionHand.splice(i, 1);
     G.rebel.actionDiscard.push('the-milleninium-falcon');
+    // "…discard this ring to rescue 1 captured leader" — the ring is spent, so
+    // the ability is once-per-game and the bearer is free of it afterwards.
+    const bearer = M.findRingHolder(G, 'falcon');
+    if (bearer) M.removeAttachment(G, bearer, 'falcon');
     M.rescueLeader(G, leaderId, 'millennium-falcon');
     log(G, { kind: 'falcon-applied', side: 'Rebel', payload: {
-      missionId: pm.missionId, targetSystemId: pm.targetSystemId, leaderId,
+      missionId: pm.missionId, targetSystemId: pm.targetSystemId, leaderId, bearer,
       explanation: `Millennium Falcon ring discarded — rescued ${leaderId} from ${pm.targetSystemId}.`,
     }});
     noteIntervention(G, pm,
@@ -5623,6 +5632,7 @@ function applyRecruitedActionCard(G: GameState, side: Side, cardId: string): voi
     log(G, { kind: 'recruit-action-only', side, payload: { cardId } });
   }
   f.actionHand.push(cardId);
+  attachFalconRing(G, side, cardId, eligible[0] ?? null);
 }
 
 /** Add the kept recruit card to hand and recruit a leader from it. A card may
@@ -5638,16 +5648,52 @@ function recruitLeaderFromCard(G: GameState, side: Side, cardId: string): boolea
   const eligible = (card?.leaderRequirement ?? []).filter((lid) => leaderRecruitable(G, side, lid));
   if (eligible.length === 0) {
     log(G, { kind: 'recruit-action-only', side, payload: { cardId } });
+    attachFalconRing(G, side, cardId, null);
     return false;
   }
   if (eligible.length === 1) {
     f.leaderPool.push(eligible[0]);
     log(G, { kind: 'recruit-leader', side, payload: { leaderId: eligible[0], cardId } });
+    attachFalconRing(G, side, cardId, eligible[0]);
     return false;
   }
   G.pendingChoice = { kind: 'RecruitLeaderPick', side, cardId, candidates: eligible };
   log(G, { kind: 'choice-request', side, payload: { kind: 'RecruitLeaderPick', cardId, candidates: eligible } });
   return true;
+}
+
+/** The Millennium Falcon card reads "Attach the Millennium Falcon ring to THIS
+ *  leader. After you succeed at a mission in the Millennium Falcon's system,
+ *  discard this ring to rescue 1 captured leader in this system." So the
+ *  ability belongs to one specific bearer — the leader recruited off the card —
+ *  not to "Han or Chewie" collectively, and it keys off where the RING is, not
+ *  who ran the mission. We used to fire it for either leader whenever either
+ *  one resolved a mission, so a Chewbacca mission triggered a ring the player
+ *  had put on Han, in a system Han wasn't even in (#626).
+ *
+ *  Attaches at recruit time. Per RR p.3 the card stays in hand as the reminder
+ *  of the ring's ability; the rescue discards both. */
+function attachFalconRing(G: GameState, side: Side, cardId: string, leaderId: LeaderId | null): void {
+  if (cardId !== 'the-milleninium-falcon' || side !== 'Rebel') return;
+  if (M.findRingHolder(G, 'falcon')) return; // one ring, already placed
+  // Normally the leader just recruited off this card. If both were already in
+  // play (so the card recruited nobody) the ring still has to land somewhere —
+  // use the first leader the card names who is actually in play.
+  const bearer = leaderId
+    ?? (['han-solo', 'chewbacca'] as LeaderId[]).find((l) => leaderInPlay(G, 'Rebel', l))
+    ?? null;
+  if (bearer) M.attachRing(G, bearer, 'falcon');
+}
+
+/** Bearer of the Falcon ring, lazily placing it for games that were saved
+ *  before the ring was modelled (the card sat in hand and triggered off either
+ *  leader). Returns null when the Rebel doesn't hold the card at all. */
+function falconRingHolder(G: GameState): LeaderId | null {
+  if (!G.rebel.actionHand.includes('the-milleninium-falcon')) return null;
+  const held = M.findRingHolder(G, 'falcon');
+  if (held) return held;
+  attachFalconRing(G, 'Rebel', 'the-milleninium-falcon', null);
+  return M.findRingHolder(G, 'falcon');
 }
 
 /** Issue #221: a droid-ring recruit card ("He Means Well" → K-2SO, the base
@@ -5819,6 +5865,8 @@ export function resolveRecruitLeaderPick(G: GameState, leaderId: LeaderId): { ok
   f.leaderPool.push(leaderId);
   log(G, { kind: 'recruit-leader', side: c.side, payload: { leaderId, cardId: c.cardId } });
   G.pendingChoice = undefined;
+  // "Attach the Millennium Falcon ring to this leader" — the one just picked.
+  attachFalconRing(G, c.side, c.cardId, leaderId);
   if (maybeOfferRecruitRing(G, c.side, c.cardId)) return { ok: true };
   if (maybeFireRecruitImmediate(G, c.side, c.cardId)) return { ok: true };
   return continueRecruitFlow(G);

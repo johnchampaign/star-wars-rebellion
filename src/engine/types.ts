@@ -1508,6 +1508,10 @@ export type ChoiceRequest =
       // for color matching and "not already staged for destruction"). Same
       // length as `hits`.
       targetsByHit: UnitInstanceId[][];
+      // Blocks the defender already played. RR p.5 blocks AFTER assignment,
+      // so the attacker still assigns every hit and this many of the assigned
+      // damages are then removed by the defender. Display-only.
+      blocksApplied?: number;
     }
   | {
       // Cinematic targeted-deal pick (RoE p.9). Cards like Tow Cables ("Deal 4
@@ -2178,7 +2182,7 @@ export type GameState = {
   // rulebook, a leader can have only one ring at a time — a new ring replaces
   // the old. The capture / carbonite rings live in capturedLeaders.ring;
   // these are the *other* rings (Yoda, dark-side, R2D2, etc).
-  leaderAttachments?: Record<string, ('yoda' | 'dark-side' | 'r2d2' | 'c3po' | 'bounty' | 'k2so')[]>;
+  leaderAttachments?: Record<string, ('yoda' | 'dark-side' | 'r2d2' | 'c3po' | 'bounty' | 'k2so' | 'falcon')[]>;
 
   // Leaders who can't be opposed by pool leaders this round (Misdirection).
   // Cleared at end of Command phase. The protection only blocks pool

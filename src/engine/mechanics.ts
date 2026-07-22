@@ -1140,7 +1140,7 @@ export function rescueLeader(G: GameState, leaderId: LeaderId, reason: string = 
 // are tracked separately in G.empire.capturedLeaders[].ring (a leader can
 // have both an attachment ring AND a captured/carbonite status).
 
-export type AttachmentKind = 'yoda' | 'dark-side' | 'r2d2' | 'c3po' | 'bounty' | 'k2so';
+export type AttachmentKind = 'yoda' | 'dark-side' | 'r2d2' | 'c3po' | 'bounty' | 'k2so' | 'falcon';
 
 export function attachRing(G: GameState, leaderId: LeaderId, ring: AttachmentKind): void {
   if (!G.leaderAttachments) G.leaderAttachments = {};

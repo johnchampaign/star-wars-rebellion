@@ -9306,6 +9306,9 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
           const RING_LABELS: Record<string, string> = {
             r2d2: 'R2-D2', c3po: 'C-3PO', k2so: 'K-2SO',
             yoda: 'Yoda', bounty: 'Bounty', 'dark-side': 'Dark Side',
+            // #626: the Falcon ring decides WHO can trigger the rescue and
+            // WHERE, so the player has to be able to see where it landed.
+            falcon: 'Millennium Falcon',
           };
           const att = G.leaderAttachments ?? {};
           const entries: string[] = [];
@@ -11272,8 +11275,6 @@ const ONSCREEN_HIDDEN_KINDS = new Set<string>([
   'combat-draw-tactics', 'combat-special-draw',
   // Probe operations that would reveal eliminated systems / base location.
   'rapid-mobilization-probe-draw',
-  // Interrogation mission reveal of Rebel objective hand.
-  'interrogation-reveal',
   // Rebel base initial pick (base location is hidden until reveal).
   'pick-rebel-base',
   // Hand trims (which card discarded is private to the holder).
@@ -11323,6 +11324,16 @@ const ONSCREEN_REDACTED_KINDS = new Set<string>([
  *  revealed. Your OWN show normally; the opponent's render as "(private)" so
  *  the log can't be used to peek at their plans (player report #90 — follow-up
  *  to the assignment info-leak fix #87). */
+/** Intel a side PAID for: the entry is private to the side that earned it, but
+ *  that side must be able to re-read it. Hiding these outright meant the one
+ *  reveal-modal was the only chance to see the result, and dismissing it lost
+ *  the intel for good (#620 — Interrogation). Shown in full to the owner,
+ *  hidden entirely from the opponent. */
+const OWNER_ONLY_KINDS = new Set<string>([
+  // Interrogation: the Rebel's objective hand, revealed to the Empire.
+  'interrogation-reveal',
+]);
+
 const OPPONENT_SECRET_KINDS = new Set<string>([
   'assign-leader', 'unassign-leader',
   // Rapid Mobilization relocation (#583): the payload names BOTH the old and
@@ -11340,7 +11351,9 @@ const COUNT_ONLY_KINDS = new Set<string>(['draw-action', 'draw-mission', 'draw-o
 function LogPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
   // Pre-filter to count what's actually visible (so the header count
   // matches what the player sees).
-  const visible = G.turnLog.filter((e) => !ONSCREEN_HIDDEN_KINDS.has(e.kind));
+  const visible = G.turnLog.filter((e) => (
+    OWNER_ONLY_KINDS.has(e.kind) ? e.side === humanSide : !ONSCREEN_HIDDEN_KINDS.has(e.kind)
+  ));
   return (
     <div style={{
       background: '#15171c', borderRadius: 4, padding: 12, marginTop: 12,
@@ -11372,6 +11385,11 @@ function LogPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
                 <MissionRollEntry payload={entry.payload as MissionRollPayload} side={entry.side} />
               ) : entry.kind === 'combat-attack' && entry.payload ? (
                 <CombatAttackEntry payload={entry.payload as CombatAttackPayload} />
+              ) : entry.kind === 'interrogation-reveal' && entry.payload ? (
+                // Card names, not ids — this is intel the player reads (#620).
+                <span style={{ color: '#ffd54a', marginLeft: 4 }}>
+                  {((entry.payload as { names?: string[] }).names ?? []).join(', ') || '(empty hand)'}
+                </span>
               ) : entry.payload ? (
                 <span style={{ color: '#888', marginLeft: 4 }}>{JSON.stringify(entry.payload)}</span>
               ) : null}

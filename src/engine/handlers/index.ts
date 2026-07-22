@@ -626,17 +626,22 @@ const planetaryConquest: EffectHandler = (G, ctx) => {
  *  model the hands aren't truly hidden — we just log them. */
 const interrogation: EffectHandler = (G, _ctx) => {
   const hand = G.rebel.objectiveHand ?? [];
-  log(G, { kind: 'interrogation-reveal', side: 'Empire', payload: { objectives: [...hand] } });
-  // The Empire EARNED this reveal, but the log line above is filtered as
-  // private info, so the Empire never saw the result (player #285). Surface the
-  // revealed objective names to the Empire as a notice they can read.
-  const names = hand.map((id) => G.catalog.objectives[id]?.name ?? id);
+  const objectiveNames = hand.map((id) => G.catalog.objectives[id]?.name ?? id);
+  // Card names, not ids: this entry is rendered in the Empire's on-screen log
+  // (#620) so the reveal survives the one-shot notice modal being dismissed.
+  log(G, { kind: 'interrogation-reveal', side: 'Empire', payload: {
+    objectives: [...hand], names: objectiveNames,
+  }});
+  // The Empire EARNED this reveal, so it also pops as a notice (player #285).
+  // The notice is one-shot though — dismiss it and the intel is gone, which is
+  // exactly what #620 hit. The log entry above is the durable copy.
   pushNotice(
     G,
     `interrogation-t${G.timeMarker}-${G.turnLog.length}`,
     'Interrogation — Rebel objectives revealed',
-    names.length > 0
-      ? `The Rebel reveals their objective hand: ${names.join(', ')}.`
+    objectiveNames.length > 0
+      ? `The Rebel reveals their objective hand: ${objectiveNames.join(', ')}.`
+        + ' (Also kept in your game log.)'
       : 'The Rebel has no objective cards in hand right now.',
     'Empire',
   );

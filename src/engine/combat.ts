@@ -1045,9 +1045,7 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
   //     hand, at least 1 die. Lets the Rebel set up to 2 dice faces.
   if (!pa.oneInAMillionResolved && pa.side === 'Rebel'
       && G.rebel.actionHand.includes('one-in-a-million')) {
-    const here = G.rebel.leadersOnBoard[c.systemId] ?? [];
-    const lukeOrWedge = here.some((l) => l === 'luke-skywalker' || l === 'luke-skywalker-jedi' || l === 'wedge-antilles');
-    if (lukeOrWedge && pa.dice.length > 0) {
+    if (oimLeaderAt(G, c.systemId) && pa.dice.length > 0) {
       pa.phase = 'awaitingOneInAMillion';
       G.pendingChoice = {
         kind: 'OneInAMillionOffer',
@@ -1657,8 +1655,16 @@ function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): vo
     }
   }
 
-  // Defender's blocks knock off the first N hits.
-  const applicableHits = rawHits.slice(blocksApplied);
+  // RR p.5 puts blocks AFTER assignment: step 3 is "Assign Damage" ("Players
+  // must assign all dice that they are able to assign"), step 4 is "Block
+  // Damage" — "for each damage blocked, remove one damage that was assigned to
+  // one of his units." We used to pre-slice the first N hits off the roll,
+  // which both hid hits the attacker was entitled to assign (#622) and ate
+  // whichever hit happened to be first in the list — usually a Take It Down
+  // bonus hit, making the card look like it only dealt 1 damage (#623).
+  // So: offer every hit for assignment, and cancel `blocksApplied` of the
+  // ASSIGNED damage afterwards (see resolveCombatAssignDamage).
+  const applicableHits = rawHits;
 
   // Compute eligible targets (color-matched, skip Death Star which has
   // health.color === null).
@@ -1708,8 +1714,11 @@ function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): vo
     (h) => liveTargets.filter((u) => isLegalTarget(h, u)).map((u) => u.instanceId)
   );
 
-  // No work to do → record report and finish.
-  if (applicableHits.length === 0 || targetsByHit.every((t) => t.length === 0)) {
+  // No work to do → record report and finish. Blocks that meet or exceed the
+  // whole hit list wipe it out however the attacker assigns, so skip the
+  // pointless prompt rather than making them assign damage that all evaporates.
+  if (applicableHits.length === 0 || targetsByHit.every((t) => t.length === 0)
+      || blocksApplied >= applicableHits.length) {
     pushAttackReport(G, c, blocksApplied, 0);
     c.theaterAttackersDone!.push(pa.side);
     c.pendingAttack = undefined;
@@ -1726,9 +1735,10 @@ function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): vo
     systemId: c.systemId,
     hits: applicableHits,
     targetsByHit,
+    blocksApplied,
   };
   log(G, { kind: 'choice-request', side: pa.side, payload: {
-    kind: 'CombatAssignDamage', theater: pa.theater, hits: applicableHits.length,
+    kind: 'CombatAssignDamage', theater: pa.theater, hits: applicableHits.length, blocksApplied,
   }});
 }
 
@@ -1780,13 +1790,74 @@ export function resolveCombatAssignDamage(
     // critical-hit / bombardment: no constraint (single hit or generic)
   }
 
-  let damageApplied = 0;
-  const stagedSet = new Set(c.theaterStaged ?? []);
+  // Validate every pick before anything is cancelled or applied.
   for (let i = 0; i < assignments.length; i++) {
     const target = assignments[i];
     if (target === null) continue;
     if (!choice.targetsByHit[i].includes(target)) {
       return { ok: false, reason: `illegal-target-at-hit-${i}:${target}` };
+    }
+  }
+
+  // RR p.5 step 4 (Block Damage): the DEFENDER now removes one assigned damage
+  // per block from his own units. He'd obviously spend them where they save a
+  // unit, so cancel greedily: cheapest rescue first, tie-broken toward the
+  // beefier unit, then dump any leftover blocks on the most-damaged survivors.
+  const cancelsLeft = new Map<string, number>();
+  const blocks = pa.pendingAssignment.blocksApplied;
+  if (blocks > 0) {
+    const assignedCount = new Map<string, number>();
+    for (const t of assignments) {
+      if (t !== null) assignedCount.set(t, (assignedCount.get(t) ?? 0) + 1);
+    }
+    const ss = G.map.systems[c.systemId] ?? G.map.rebelBaseSpace;
+    type Cand = { id: string; cost: number; value: number; assigned: number };
+    const rescues: Cand[] = [];
+    const others: Cand[] = [];
+    for (const [id, assigned] of assignedCount) {
+      const u = ss.units.find((x) => x.instanceId === id);
+      const hp = u ? G.catalog.unitTypes[u.typeId]?.health.value : undefined;
+      if (!u || hp === undefined) continue;
+      const value = G.catalog.unitTypes[u.typeId]?.buildResource ?? 1;
+      // Damage needed to remove so the unit ends below lethal.
+      const cost = u.damage + assigned - hp + 1;
+      if (cost > 0 && cost <= assigned) rescues.push({ id, cost, value, assigned });
+      else others.push({ id, cost: 0, value, assigned });
+    }
+    rescues.sort((a, b) => a.cost - b.cost || b.value - a.value || (a.id < b.id ? -1 : 1));
+    let budget = blocks;
+    for (const r of rescues) {
+      if (r.cost > budget) continue;
+      budget -= r.cost;
+      cancelsLeft.set(r.id, r.cost);
+    }
+    // Leftover blocks still remove real damage markers — spend them on the
+    // units that will survive, biggest first.
+    others.sort((a, b) => b.value - a.value || (a.id < b.id ? -1 : 1));
+    for (const o of [...rescues, ...others]) {
+      if (budget <= 0) break;
+      const already = cancelsLeft.get(o.id) ?? 0;
+      const room = Math.min(o.assigned - already, budget);
+      if (room <= 0) continue;
+      cancelsLeft.set(o.id, already + room);
+      budget -= room;
+    }
+    log(G, { kind: 'combat-blocks-removed', side: other(pa.side), payload: {
+      theater: pa.theater, blocks, removed: blocks - budget,
+      perUnit: Object.fromEntries(cancelsLeft),
+    }});
+  }
+
+  let damageApplied = 0;
+  const stagedSet = new Set(c.theaterStaged ?? []);
+  for (let i = 0; i < assignments.length; i++) {
+    const target = assignments[i];
+    if (target === null) continue;
+    const cancels = cancelsLeft.get(target) ?? 0;
+    if (cancels > 0) {
+      // Blocked: this assigned damage is removed before it lands.
+      cancelsLeft.set(target, cancels - 1);
+      continue;
     }
     if (!c.cinematic && stagedSet.has(target)) {
       // BASE combat: target is already dead from an earlier hit this same
@@ -2034,19 +2105,21 @@ function applyStartOfCombatActionCardEffect(G: GameState, c: CombatState, side: 
       return;
     }
     case 'good-intel': {
-      // RAW base clause ("Rebel player must keep tactic cards faceup") is a no-op
-      // here — the engine already has perfect info, so there's no hidden hand to
-      // reveal. The RoE clause ("you do not choose a tactic card until after the
-      // Rebel's card has been revealed each round") DOES have teeth in cinematic
-      // combat: set a whole-combat flag so the cinematic SELECT step forces the
-      // Rebel to choose first and shows the Empire the Rebel's card (#352).
+      // RAW base clause: "Rebel player must keep tactic cards faceup." The
+      // engine has perfect info, but the COMBAT BOARD doesn't — it hides the
+      // opponent's hand, so the Empire used to pay for this card and see
+      // nothing change (#621). The flag now also un-hides the Rebel hand in
+      // TacticHandsBar. The RoE clause ("you do not choose a tactic card until
+      // after the Rebel's card has been revealed each round") keeps its teeth
+      // in cinematic combat: the SELECT step forces the Rebel to choose first
+      // and shows the Empire the Rebel's card (#352).
       c.flags = c.flags ?? {};
       c.flags.goodIntelActive = true;
       log(G, { kind: 'combat-action-card-effect', side, payload: {
         card: cardId,
         applied: c.cinematic
-          ? 'empire-chooses-tactic-after-rebel-reveals'
-          : 'no-op (engine has perfect info; no advanced tactics in play)',
+          ? 'rebel-tactics-faceup + empire-chooses-tactic-after-rebel-reveals'
+          : 'rebel-tactics-faceup',
       } });
       return;
     }
@@ -3600,6 +3673,15 @@ export function resolveDeathStarPlansAttempt(
   return dsPlansOfferRerollsOrFinalize(G);
 }
 
+/** One In A Million names Luke and Wedge (either printing of Luke counts).
+ *  RR p.2: the card can only be used if one of them is already in the system
+ *  where the mission/combat is happening. */
+export function oimLeaderAt(G: GameState, systemId: SystemId): boolean {
+  const here = G.rebel.leadersOnBoard[systemId] ?? [];
+  return here.some((l) =>
+    l === 'luke-skywalker' || l === 'luke-skywalker-jedi' || l === 'wedge-antilles');
+}
+
 /** Whether the Yoda ring may reroll a die on the current DSP roll. */
 function canQueueDsPlansYoda(G: GameState, d: NonNullable<GameState['dsPlansAttempt']>): boolean {
   if (G.yodaRerollUsedThisRound) return false;
@@ -3620,7 +3702,14 @@ function dsPlansOfferRerollsOrFinalize(G: GameState): { ok: boolean; reason?: st
   const d = G.dsPlansAttempt;
   if (!d) return { ok: false, reason: 'no-dsplans-attempt' };
   // One-in-a-Million first — it can set a die straight to direct-hit.
-  if (!d.oimOffered && G.rebel.actionHand.includes('one-in-a-million') && d.faces.length > 0) {
+  // RR p.2 (Action Cards): "Action cards used during a mission or combat can
+  // only be used if one of the leaders shown on the card is already in the
+  // system in which the mission or combat is occurring." The Death Star Plans
+  // attempt happens inside a combat at d.systemId, so Luke or Wedge must be
+  // there — the combat and mission OIAM paths already gate on this, but the
+  // DSP path never did and fired off the card alone (#624).
+  if (!d.oimOffered && G.rebel.actionHand.includes('one-in-a-million')
+      && d.faces.length > 0 && oimLeaderAt(G, d.systemId)) {
     d.oimOffered = true;
     G.pendingChoice = {
       kind: 'OneInAMillionOffer', side: 'Rebel', context: 'dsplans',

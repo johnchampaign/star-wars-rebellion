@@ -520,6 +520,7 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
         defender={defender}
         attackerHand={c.attackerHand}
         defenderHand={c.defenderHand}
+        faceupSide={c.flags?.goodIntelActive ? 'Rebel' : null}
       />
 
       {playedTactics.length > 0 && (
@@ -724,9 +725,13 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
 
 /** Strip showing each side's combat tactic-card hand. The human side sees
  *  their cards (with hover-preview of art + rules text). The AI side sees
- *  only the count — opponent's hand is private per RAW. */
+ *  only the count — opponent's hand is private per RAW.
+ *
+ *  `faceupSide` overrides that privacy for one side: Good Intel's base-game
+ *  clause is "Rebel player must keep tactic cards faceup", which used to be
+ *  logged as a no-op, so the Empire paid for the card and saw nothing (#621). */
 function TacticHandsBar({
-  G, humanSide, attacker, defender, attackerHand, defenderHand,
+  G, humanSide, attacker, defender, attackerHand, defenderHand, faceupSide,
 }: {
   G: GameState;
   humanSide: Side;
@@ -734,11 +739,13 @@ function TacticHandsBar({
   defender: Side;
   attackerHand: string[];
   defenderHand: string[];
+  faceupSide?: Side | null;
 }) {
   const handFor = (side: Side) => (side === attacker ? attackerHand : defenderHand);
   const renderSide = (side: Side) => {
     const hand = handFor(side);
-    const isHuman = side === humanSide;
+    const faceup = side === faceupSide;
+    const isHuman = side === humanSide || faceup;
     const color = SIDE_COLOR[side];
     if (isHuman) {
       return (
@@ -746,6 +753,11 @@ function TacticHandsBar({
           <span style={{ color, fontWeight: 700, fontSize: 12 }}>
             {side} tactic cards ({hand.length}):
           </span>
+          {faceup && side !== humanSide && (
+            <span style={{ color: '#8fd0ff', fontSize: 11, fontStyle: 'italic' }}>
+              (faceup — Good Intel)
+            </span>
+          )}
           {hand.length === 0 && (
             <span style={{ color: '#666', fontStyle: 'italic', fontSize: 11 }}>(none)</span>
           )}
@@ -1482,6 +1494,16 @@ function AssignDamagePanel({ G, choice, c, assignments, selectedHitIdx, setSelec
           </span>
         )}
       </div>
+      {/* RR p.5: blocks are spent AFTER assignment, so every hit is still
+          assignable — the defender then pulls this many damages back off his
+          units. Say so, or the extra dice look like a bug (#622). */}
+      {!!choice.blocksApplied && choice.blocksApplied > 0 && (
+        <div style={{ fontSize: 11, color: '#8fd0ff', marginBottom: 6 }}>
+          🛡 The defender blocked <b>{choice.blocksApplied}</b> damage. Assign all your
+          hits anyway — blocks come off <i>after</i> you assign, and the defender chooses
+          which assigned damage they cancel.
+        </div>
+      )}
       {/* Per-source constraint hints. RAW: Take It Down forces both hits to
           one target; Onslaught forces hits to different targets. */}
       {(() => {
