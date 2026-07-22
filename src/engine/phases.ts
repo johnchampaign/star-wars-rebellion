@@ -702,6 +702,10 @@ function maybeAdvanceFromSetup(G: GameState): void {
       return;
     }
     G.pendingDeployment = undefined;
+    // The 2 bonus mission draws are the LAST setup step (#627, RAW: RR p.15 /
+    // RoE step 26) — after all deployment and the base pick, so the drawn
+    // cards can't inform placement. Idempotent (hand-size guard).
+    M.drawSetupBonusMissions(G);
     G.phase = 'Assignment';
     G.currentPlayer = 'Rebel';
     log(G, { kind: 'phase', payload: { phase: 'Assignment', via: 'setup-complete' } });

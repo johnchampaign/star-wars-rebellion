@@ -1280,6 +1280,24 @@ export function drawAction(G: GameState, side: Side, n: number = 1): string[] {
   return drawn;
 }
 
+/** The 2 bonus mission draws that complete setup (#627). RAW (RR p.15; RoE
+ *  Advanced step 26 of 27) draws these LAST — after all deployment and the
+ *  base choice — so the drawn missions can't inform placement. Guarded by
+ *  hand size so it's idempotent AND backward-compatible: a mid-setup save
+ *  from the old engine (which dealt these at createGame) already holds
+ *  starting+2 cards and must not draw again on resume. Draw order (shift from
+ *  pre-shuffled decks) consumes no RNG, so the SAME cards arrive, just at the
+ *  RAW-correct moment. */
+export function drawSetupBonusMissions(G: GameState): void {
+  for (const side of ['Rebel', 'Empire'] as Side[]) {
+    const f = faction(G, side);
+    const startingCount = Object.values(G.catalog.missions)
+      .filter((m) => m.side === side && m.isStarting && !m.isProject
+        && f.missionHand.includes(m.id)).length;
+    if (f.missionHand.length <= startingCount) drawMission(G, side, 2);
+  }
+}
+
 export function drawMission(G: GameState, side: Side, n: number = 1): string[] {
   const f = faction(G, side);
   const drawn: string[] = [];

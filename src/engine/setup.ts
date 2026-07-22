@@ -10,6 +10,7 @@ import type {
   Phase, BuildQueue, UnitInstance, LeaderId, SystemDef, Side, SystemId,
 } from './types';
 import { createRng, shuffle, nextInt } from './rng';
+import { drawSetupBonusMissions } from './mechanics';
 
 // Re-export for use in this module; keeps the import line readable.
 const nextIntForSetup = nextInt;
@@ -677,11 +678,12 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
     .filter((m) => m.side === 'Empire' && m.isProject && missionInDeck(m))
     .flatMap((m) => Array.from({ length: m.projectCopies ?? 1 }, () => m.id)));
 
-  // Draw 2 more missions each for starting hand (on top of the 4 starting missions).
-  for (let i = 0; i < 2; i++) {
-    const r = rebel.missionDeck.shift(); if (r) rebel.missionHand.push(r);
-    const e = empire.missionDeck.shift(); if (e) empire.missionHand.push(e);
-  }
+  // NOTE (#627): the 2 bonus mission draws happen at SETUP COMPLETION, not
+  // here — RAW (RR p.15; RoE Advanced step 26 of 27) draws them as the LAST
+  // setup step, AFTER all deployment and the base choice, so that knowledge
+  // of the drawn missions cannot inform placement. See
+  // mechanics.drawSetupBonusMissions, called from the setup->Assignment
+  // transition (and below for the auto-setup path).
 
   // Objective deck: stages 1, 2, 3 stacked (3 on bottom, 1 on top per rr p.15).
   //
@@ -768,6 +770,11 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
     baseSystem: rebelBaseSystemId,
     probesRemovedForSetup,
   }});
+
+  // Auto-setup path skips the interactive Setup phase entirely, so the
+  // setup->Assignment transition in phases.ts never runs — perform the final
+  // setup step (the 2 bonus mission draws, #627) here instead.
+  if (initialPhase === 'Assignment') drawSetupBonusMissions(G);
 
   return G;
 }
