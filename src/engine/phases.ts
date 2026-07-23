@@ -1001,7 +1001,12 @@ export function validateMoveOrderTransport(
  *     providing ship also moving from the same source
  *   - No moving unit has the immobile icon */
 export function activateSystem(
-  G: GameState, side: Side, leaderId: LeaderId, targetSystemId: SystemId, moveOrders: MoveOrder[] = []
+  G: GameState, side: Side, leaderId: LeaderId, targetSystemId: SystemId, moveOrders: MoveOrder[] = [],
+  // RAW (RR "Captured Leaders", #595): Imperial units moving out of a system
+  // holding a captured leader MAY bring the captive with them. Optional and
+  // Empire-only; each listed captive must sit in one of this activation's
+  // source systems that is actually moving at least one unit.
+  bringCapturedLeaderIds: LeaderId[] = [],
 ): { ok: boolean; reason?: string } {
   if (G.phase !== 'Command') return { ok: false, reason: 'wrong-phase' };
   if (G.currentPlayer !== side) return { ok: false, reason: 'not-your-turn' };
@@ -1015,6 +1020,18 @@ export function activateSystem(
 
   const f = faction(G, side);
   if (!f.leaderPool.includes(leaderId)) return { ok: false, reason: 'leader-not-in-pool' };
+  // Captive-escort validation (#595) — must precede ALL state mutation.
+  if (bringCapturedLeaderIds.length > 0) {
+    if (side !== 'Empire') return { ok: false, reason: 'captive-escort-empire-only' };
+    for (const lid of bringCapturedLeaderIds) {
+      const cap = (G.empire.capturedLeaders ?? []).find((c) => c.leaderId === lid);
+      if (!cap) return { ok: false, reason: 'not-a-captured-leader' };
+      const order = moveOrders.find((o) => o.fromSystemId === cap.systemId);
+      if (!order || order.unitInstanceIds.length === 0) {
+        return { ok: false, reason: 'captive-escort-needs-moving-units' };
+      }
+    }
+  }
   const leader = G.catalog.leaders[leaderId];
   if (!leader) return { ok: false, reason: 'unknown-leader' };
   if (leader.tacticValues.space + leader.tacticValues.ground === 0) {
@@ -1094,6 +1111,19 @@ export function activateSystem(
   // and the ground it is carrying can leave a destroyed system together without
   // the cargo being culled the moment the carrier moves (#532). Only genuinely
   // stranded ground (left behind with no remaining capacity) is culled, once.
+  // Escorted captured leaders (#595) — RELOCATE here, before the unit moves
+  // execute: moveUnit's invariant sweep auto-rescues a captive the instant
+  // its prison empties, so the captive must already be gone when the last
+  // Imperial unit leaves. (Validation happened up top with the other
+  // pre-mutation checks — a rejected escort must not strand a half-executed
+  // activation.)
+  for (const lid of bringCapturedLeaderIds) {
+    const cap = (G.empire.capturedLeaders ?? []).find((c) => c.leaderId === lid)!;
+    log(G, { kind: 'captured-leader-moved', side: 'Empire', payload: {
+      leaderId: lid, fromSystemId: cap.systemId, toSystemId: targetSystemId,
+    }});
+    cap.systemId = targetSystemId;
+  }
   const cullAffected = [...new Set([...moveOrders.map((o) => o.fromSystemId), targetSystemId])];
   M.withDeferredDestroyedCull(G, cullAffected, () => {
     for (const order of moveOrders) {

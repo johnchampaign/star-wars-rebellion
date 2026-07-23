@@ -1368,7 +1368,23 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     leaderId: string, targetSystemId: string, moveOrders: MoveOrder[],
   ) => {
     if (!G) return;
-    const r = phases.activateSystem(G, G.currentPlayer, leaderId, targetSystemId, moveOrders);
+    // Captive escort (#595, RAW RR "Captured Leaders"): Imperial units moving
+    // out of a captive's system may bring the captive along. Offer it per
+    // captive when the HUMAN Empire's move sources hold any — otherwise the
+    // move auto-frees them the moment the prison empties.
+    const bringCaptives: string[] = [];
+    if (G.currentPlayer === 'Empire' && humanSide === 'Empire') {
+      const sources = new Set(moveOrders.filter((o) => o.unitInstanceIds.length > 0).map((o) => o.fromSystemId));
+      for (const cap of G.empire.capturedLeaders ?? []) {
+        if (!sources.has(cap.systemId)) continue;
+        const name = G.catalog.leaders[cap.leaderId]?.name ?? cap.leaderId;
+        const dest = G.catalog.systems[targetSystemId]?.name ?? targetSystemId;
+        if (window.confirm(`Bring the captured ${name} along to ${dest}?\n\n(If all your units leave and the captive stays, they are rescued.)`)) {
+          bringCaptives.push(cap.leaderId);
+        }
+      }
+    }
+    const r = phases.activateSystem(G, G.currentPlayer, leaderId, targetSystemId, moveOrders, bringCaptives);
     if (!r.ok) {
       // Diagnostic dump: build a human-readable per-unit dump inline in the
       // alert so the user doesn't have to dig into DevTools. Console.group
