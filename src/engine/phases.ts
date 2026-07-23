@@ -6339,13 +6339,17 @@ export function promoteNextDeployPick(G: GameState): boolean {
       r.pendingDeployPicks.shift();
       continue;
     }
-    if (candidates.length === 1) {
-      M.deployUnit(G, next.side, next.typeId, candidates[0]);
-      trackDeploy(G, next.side, candidates[0]);
-      r.pendingDeployPicks.shift();
-      continue;
-    }
-    // Multiple legal targets — player picks. Also surface every type still
+    // NOTE: we intentionally do NOT auto-deploy when there is exactly one
+    // legal target. RAW (RR "Deploy Units"): "If a player cannot (or does not
+    // wish to) deploy some of his units, he places these units back on the '1'
+    // space of his build queue." The decline right is unconditional — it
+    // applies even when a legal system exists — so a pick must always be posted
+    // whenever candidates.length >= 1, exposing the "Leave on build queue"
+    // option via declineDeployUnit(). (Auto-deploying single-candidate units
+    // silently stripped that choice — player report #631.) The AI's
+    // DeployUnitPick resolver always picks a system and never declines, so this
+    // adds one AI step per single-candidate deploy but changes no AI outcome.
+    // (candidates.length >= 1 here.) Also surface every type still
     // queued for this side so the player can switch which one to place next.
     const counts = new Map<UnitTypeId, number>();
     for (const e of r.pendingDeployPicks) if (e.side === next.side) counts.set(e.typeId, (counts.get(e.typeId) ?? 0) + 1);
