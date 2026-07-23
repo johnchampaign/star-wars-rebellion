@@ -800,9 +800,16 @@ function rebelMissionTargetScore(
     } else if (sysState?.loyalty === 'rebel' && !sysState.subjugated) {
       s -= 50; // never sabotage our own system
     } else if (sysState?.subjugated) {
-      s += 10; // subjugated produces only 1 resource → denies 1
+      // DURABILITY (Dymond Kyng, twice): R&D resolves only in systems with
+      // IMPERIAL LOYALTY, so a marker on a subjugated (non-loyal) system can
+      // never be cleansed by it — permanent denial of the system's 1
+      // producing icon, every build, forever. A marker on an Imperial-loyal
+      // system denies more per build but the Empire clears it with one R&D
+      // (which returns to hand — reusable every round). Rate the permanent
+      // marker above the clearable 2-res one.
+      s += 16;
     } else if (sysState?.loyalty === 'imperial') {
-      s += 6 + Math.min(resCount, 3) * 4; // 1-res:10, 2-res:14, 3-res:18
+      s += 6 + Math.min(resCount, 3) * 4; // 1-res:10, 2-res:14, 3-res:18 — but clearable
     } else {
       s -= 10; // neutral, non-producing for the Empire — low value
     }
