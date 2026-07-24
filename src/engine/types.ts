@@ -792,6 +792,11 @@ export type ChoiceRequest =
       side: Side; // 'Rebel'
       systemId: SystemId;
       leaderIds: LeaderId[]; // the assigned leaders currently in the system
+      // Set when the rescue was triggered by the Millennium Falcon ring rather
+      // than by a rescue mission's own effect. The mission's effect still has to
+      // run afterwards, so resolveRescuerReturn resumes via the ring-trigger
+      // continuation instead of the normal post-effect cleanup. Player report #633.
+      viaRing?: boolean;
     }
   | {
       // Under the Radar — second step (RoE): "replace the others at the top or

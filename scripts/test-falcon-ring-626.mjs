@@ -109,5 +109,47 @@ console.log('\n[ #626 recruiting off the card places the ring on that leader ]')
     !(G.leaderAttachments?.['han-solo'] ?? []).includes('falcon'));
 }
 
+console.log('\n[ #633 Falcon rescue offers the mission leader the RescuerReturn move ]');
+{
+  // RR p.12: after rescuing with a mission, the assigned leaders may also move
+  // to the Rebel Base. The Falcon rescue fires off a mission success, so the
+  // ring bearer (here Chewie, who ran the mission) must get that offer.
+  const G = scenario({ bearer: 'chewbacca', resolver: 'chewbacca', bearerAt: SYS });
+  check('offer posted', offered(G));
+  const r = phases.resolveFalconOffer(G, 'general-madine');
+  check('rescue accepted', r.ok, r.reason);
+  check('the captured leader was rescued',
+    !(G.empire.capturedLeaders ?? []).some((c) => c.leaderId === 'general-madine'));
+  check('a RescuerReturn is now offered to the mission leaders',
+    G.pendingChoice?.kind === 'RescuerReturn', `pendingChoice=${G.pendingChoice?.kind}`);
+  check('the ring bearer is among the leaders offered the move',
+    (G.pendingChoice?.leaderIds ?? []).includes('chewbacca'),
+    JSON.stringify(G.pendingChoice?.leaderIds));
+  // Send Chewie home; he should leave SYS for the base and the flow should finish.
+  const r2 = phases.resolveRescuerReturn(G, ['chewbacca']);
+  check('rescuer-return resolved', r2.ok, r2.reason);
+  check('Chewie left the mission system',
+    !(G.rebel.leadersOnBoard[SYS] ?? []).includes('chewbacca'));
+  check('Chewie arrived at the Rebel Base space',
+    (G.rebel.leadersOnBoard['rebel-base-space'] ?? []).includes('chewbacca'),
+    JSON.stringify(G.rebel.leadersOnBoard['rebel-base-space']));
+  check('the mission flow continued (no leftover pending choice)',
+    !G.pendingChoice, `pendingChoice=${G.pendingChoice?.kind}`);
+}
+{
+  // "Stay" branch: passing an empty array keeps the bearer in the system and
+  // still finishes the mission flow.
+  const G = scenario({ bearer: 'chewbacca', resolver: 'chewbacca', bearerAt: SYS });
+  offered(G);
+  phases.resolveFalconOffer(G, 'general-madine');
+  check('RescuerReturn offered before the stay choice',
+    G.pendingChoice?.kind === 'RescuerReturn');
+  const r = phases.resolveRescuerReturn(G, []);
+  check('stay resolved', r.ok, r.reason);
+  check('Chewie stayed in the mission system',
+    (G.rebel.leadersOnBoard[SYS] ?? []).includes('chewbacca'));
+  check('no leftover pending choice after staying', !G.pendingChoice);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

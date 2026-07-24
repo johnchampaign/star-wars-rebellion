@@ -2503,8 +2503,17 @@ export function resolveRescuerReturn(
   log(G, { kind: 'rescuer-return', side: 'Rebel', payload: {
     systemId: sysId, returned: moved, stayed: pc.leaderIds.filter((l) => !moved.includes(l)),
   }});
+  const viaRing = pc.viaRing === true;
   G.pendingChoice = undefined;
-  resumeMissionAfterChoice(G);
+  // Millennium Falcon rescue (#633): the ring fires BEFORE the mission's own
+  // effect, so resume that effect via continueAfterRingTrigger rather than the
+  // normal post-effect cleanup (which would skip the mission effect entirely).
+  if (viaRing) {
+    const pm = G.pendingMission;
+    if (pm) continueAfterRingTrigger(G, pm);
+  } else {
+    resumeMissionAfterChoice(G);
+  }
   return { ok: true };
 }
 
@@ -4111,6 +4120,23 @@ export function resolveFalconOffer(G: GameState, leaderId: LeaderId | null): { o
     noteIntervention(G, pm,
       `Rebel played Millennium Falcon: rescued ${G.catalog.leaders[leaderId]?.name ?? leaderId} from ${G.catalog.systems[pm.targetSystemId]?.name ?? pm.targetSystemId}.`,
     );
+    // RR p.12: "After rescuing a leader with a mission, any leaders assigned to
+    // the mission may also move to the 'Rebel Base' space." The Falcon rescue
+    // fires off a successful mission, so the mission's assigned leaders (the ring
+    // bearer, e.g. Chewbacca) get that same offer before the mission effect runs.
+    // Player report #633.
+    const here = G.rebel.leadersOnBoard[pm.targetSystemId] ?? [];
+    const assigned = (pm.leaderIds as LeaderId[]).filter((lid) => here.includes(lid));
+    if (assigned.length > 0) {
+      G.pendingChoice = {
+        kind: 'RescuerReturn', side: 'Rebel', systemId: pm.targetSystemId,
+        leaderIds: assigned, viaRing: true,
+      };
+      log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+        kind: 'RescuerReturn', systemId: pm.targetSystemId, leaders: assigned.length,
+      }});
+      return { ok: true };
+    }
   } else {
     log(G, { kind: 'falcon-skipped', side: 'Rebel', payload: { missionId: pm.missionId } });
   }

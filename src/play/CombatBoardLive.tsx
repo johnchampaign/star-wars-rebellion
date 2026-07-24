@@ -1653,8 +1653,17 @@ function OneInAMillionPanel({ G, choice, onPersist }: {
         <button onClick={() => submit(false)} disabled={picks.size === 0} style={btn(SIDE_COLOR.Rebel)}>
           Apply ({picks.size})
         </button>
-        <button onClick={() => submit(true)} style={btn('#2a2c33')} title="Keep One In A Million in hand">
-          Skip
+        {/* Light fill + border so "Skip" reads as an obviously-clickable choice,
+            not a disabled button (dark-grey-on-black looked dead — player #635,
+            same issue as the Yoda-reroll skip in #282 and retreat "Stay" in #66). */}
+        <button
+          onClick={() => submit(true)}
+          title="Keep One In A Million in hand"
+          style={{ padding: '6px 14px', background: '#d7dae0', color: '#000',
+            border: '2px solid #9aa0ad', borderRadius: 3, cursor: 'pointer',
+            fontWeight: 700, fontSize: 12 }}
+        >
+          Skip (keep card)
         </button>
       </div>
     </div>
