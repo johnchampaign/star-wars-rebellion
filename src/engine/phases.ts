@@ -3129,9 +3129,16 @@ export function resolveRapidMobilizationBranch(
     // Tell the player why nothing happened — otherwise this silently jumps
     // from "establish a new base" to the Refresh discard and looks like a
     // skipped step (#436).
+    // Name every drawn system and why it was blocked — RAW has the Rebel look at
+    // all the cards they drew, so the summary shouldn't be a bare count (#641).
+    const drawnDetail = drawnProbeIds
+      .map((pid) => G.catalog.probes[pid]?.systemId)
+      .filter((s): s is SystemId => !!s)
+      .map((sid) => `${G.catalog.systems[sid]?.name ?? sid} (${rebelBaseCandidateBlockReason(G, sid) ?? 'blocked'})`)
+      .join(', ');
     pushNotice(G, `rm-no-base-t${G.timeMarker}`, 'Rapid Mobilization',
-      `None of the ${drawnProbeIds.length} probe ${drawnProbeIds.length === 1 ? 'system' : 'systems'} drawn was a legal base location ` +
-      `(all were Imperial-controlled, Imperial-occupied, or destroyed), so the Rebel base stays where it is.`,
+      `None of the ${drawnProbeIds.length} probe ${drawnProbeIds.length === 1 ? 'system' : 'systems'} drawn was a legal base location, ` +
+      `so the Rebel base stays where it is. You drew: ${drawnDetail}.`,
       'Rebel');
     if (drawnProbeIds.length > 0) {
       G.probeDeck.push(...shuffle(G.rng, [...drawnProbeIds]));
@@ -3237,12 +3244,24 @@ export function resolveRapidMobilizationMove(
 /** A system may NOT become the new Rebel Base if it has Imperial loyalty,
  *  Imperial units, or a destroyed-system marker (RR "Establishing a New Base"). */
 function rebelBaseCandidateLegal(G: GameState, systemId: SystemId): boolean {
+  return rebelBaseCandidateBlockReason(G, systemId) === null;
+}
+
+/** Why `systemId` can't be a new Rebel Base, or null if it can. RR p.11: "The
+ *  Rebel player cannot establish a base in a system that has Imperial loyalty,
+ *  Imperial units, or a destroyed system marker."
+ *
+ *  Exported so the base-pick UI can list EVERY drawn probe card with the reason
+ *  the ineligible ones are greyed out — RAW has the Rebel look at all 4 (or 8)
+ *  drawn cards, so hiding the ineligible ones withheld information the player is
+ *  entitled to (player report #641). */
+export function rebelBaseCandidateBlockReason(G: GameState, systemId: SystemId): string | null {
   const ss = G.map.systems[systemId];
-  if (!ss) return false;
-  if (ss.destroyed) return false;
-  if (ss.loyalty === 'imperial') return false;
-  if (ss.units.some((u) => u.side === 'Empire')) return false;
-  return true;
+  if (!ss) return 'unknown system';
+  if (ss.destroyed) return 'destroyed system';
+  if (ss.loyalty === 'imperial') return 'Imperial loyalty';
+  if (ss.units.some((u) => u.side === 'Empire')) return 'Imperial units present';
+  return null;
 }
 
 /** Rapid Mobilization establish-base sub-pick: relocate the Rebel Base to the
@@ -7508,11 +7527,15 @@ function applyAssignmentActionCardEffect(
         log(G, { kind: 'action-card-noop', side, payload: { cardId, reason: 'no-build-icons' } });
         break;
       }
-      // Sabotage blocks all building at this system (RAW).
-      if (G.map.systems[systemId]?.sabotage) {
-        log(G, { kind: 'action-card-noop', side, payload: { cardId, reason: 'sabotage-blocks-build' } });
-        break;
-      }
+      // Sabotage does NOT block this (#640). RR "Build Units": "When an ability
+      // allows a player to place units on the build queue, these units are taken
+      // from the supply. > If the ability is resolved in a system, it can be
+      // performed even if there is a sabotage marker in the system." The sabotage
+      // entry's "abilities cannot build or deploy" line is about using the
+      // system's icons during the Refresh Phase build step, not about a card
+      // ability that places onto the queue. Matches the queueBuildFromIcons path
+      // (Construct Factory / Address Delays / Establish Trade Relations), which
+      // has never gated on sabotage.
       G.pendingChoice = {
         kind: 'TemporaryAllianceBuildPick',
         side: 'Rebel',
@@ -7637,11 +7660,9 @@ function applyAssignmentActionCardEffect(
         log(G, { kind: 'action-card-noop', side: 'Empire', payload: { cardId, reason: 'no-build-icons' } });
         break;
       }
-      // Sabotage blocks all building at this system (RAW).
-      if (G.map.systems[systemId]?.sabotage) {
-        log(G, { kind: 'action-card-noop', side: 'Empire', payload: { cardId, reason: 'sabotage-blocks-build' } });
-        break;
-      }
+      // Sabotage does NOT block this — same RR "Build Units" clause as Temporary
+      // Alliance above (#640). Sabotage markers affect both factions equally, so
+      // the Empire's place-on-queue card gets the same treatment as the Rebel's.
       G.pendingChoice = {
         kind: 'BrilliantAdministratorBuildPick',
         side: 'Empire',

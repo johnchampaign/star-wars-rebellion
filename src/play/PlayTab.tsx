@@ -15745,12 +15745,29 @@ function RapidMobilizationBasePickModal({
   G, choice, onPick,
 }: {
   G: GameState;
-  choice: { kind: 'RapidMobilizationBasePick'; side: Side; baseRevealed: boolean; probeSystemIds?: string[] };
+  choice: {
+    kind: 'RapidMobilizationBasePick'; side: Side; baseRevealed: boolean;
+    probeSystemIds?: string[]; drawnProbeIds?: string[];
+  };
   onPick: (systemId: string | null) => void;
 }) {
   // RR: establishing a new base always picks from the drawn probe cards (4 or
   // 8), whether or not the old base was revealed. The new base is hidden.
   const candidates = choice.probeSystemIds ?? [];
+  // RR p.11 has the Rebel DRAW the cards and look at all of them — only the
+  // *choice* is restricted to systems without Imperial loyalty/units and without
+  // a destroyed marker. Listing only the eligible ones hid probe cards the
+  // player had legitimately drawn and seen (player report #641), so show every
+  // drawn system and grey out the ineligible ones with the reason.
+  const drawn = (choice.drawnProbeIds ?? [])
+    .map((pid) => G.catalog.probes[pid]?.systemId)
+    .filter((sid): sid is string => !!sid);
+  // Fall back to the eligible-only list if the choice predates drawnProbeIds
+  // (a game saved mid-resolution before this fix shipped).
+  const rows = (drawn.length > 0 ? drawn : candidates).map((sid) => ({
+    sid,
+    blockedReason: phases.rebelBaseCandidateBlockReason(G, sid),
+  }));
   return (
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.78)',
@@ -15763,14 +15780,27 @@ function RapidMobilizationBasePickModal({
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Rapid Mobilization — establish new base</h3>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
+          {`You drew ${rows.length} probe ${rows.length === 1 ? 'card' : 'cards'}. `}
           {candidates.length === 0
-            ? 'None of the drawn probe systems are legal (all have Imperial loyalty, Imperial units, or are destroyed). You cannot establish a new base this round.'
-            : `Pick one of the ${candidates.length} systems drawn from probes as the new hidden Rebel Base — or look and decline (your base stays put; the drawn probes go to the bottom of the deck).`}
+            ? 'None of them are legal base locations (each has Imperial loyalty, Imperial units, or is destroyed), so you cannot establish a new base this round.'
+            : `Pick one of the ${candidates.length} eligible ${candidates.length === 1 ? 'system' : 'systems'} as the new hidden Rebel Base — or look and decline (your base stays put; the drawn probes go to the bottom of the deck).`}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-          {candidates.map((sid) => (
-            <button key={sid} className="tab-button" onClick={() => onPick(sid)} style={{ textAlign: 'left' }}>
+          {rows.map(({ sid, blockedReason }) => (
+            <button key={sid} className="tab-button" disabled={!!blockedReason}
+              onClick={() => { if (!blockedReason) onPick(sid); }}
+              title={blockedReason ? `Not a legal base location: ${blockedReason}` : undefined}
+              style={{
+                textAlign: 'left',
+                opacity: blockedReason ? 0.45 : 1,
+                cursor: blockedReason ? 'not-allowed' : 'pointer',
+              }}>
               {G.catalog.systems[sid]?.name ?? sid}
+              {blockedReason && (
+                <span style={{ color: '#e08c8c', fontSize: 11, marginLeft: 8 }}>
+                  — ineligible: {blockedReason}
+                </span>
+              )}
             </button>
           ))}
           <button className="tab-button" onClick={() => onPick(null)}
