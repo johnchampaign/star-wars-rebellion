@@ -1303,9 +1303,13 @@ export function drawMission(G: GameState, side: Side, n: number = 1): string[] {
   const drawn: string[] = [];
   for (let i = 0; i < n; i++) {
     if (f.missionDeck.length === 0 && f.missionDiscard.length > 0) {
-      // Reshuffle discard into deck (rr p.6 component limitations)
+      // Reshuffle discard into deck (rr p.6 component limitations). Logged so
+      // the UI's public-discard view (#636) knows the pile reset — that view
+      // is derived from mission-discard events, which would otherwise keep
+      // listing cards that are back in the deck.
       f.missionDeck = shuffle(G.rng, [...f.missionDiscard]);
       f.missionDiscard = [];
+      log(G, { kind: 'mission-deck-reshuffled', side, payload: { count: f.missionDeck.length } });
     }
     const c = f.missionDeck.shift();
     if (!c) break;

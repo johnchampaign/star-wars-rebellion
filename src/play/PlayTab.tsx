@@ -11049,6 +11049,29 @@ function TurnTrack({ G }: { G: GameState }) {
 // Decks Panel
 // ============================================================================
 
+/** Missions each side has PUBLICLY discarded (#636). Derived from the log,
+ *  NOT from faction.missionDiscard — that array mixes two visibilities:
+ *    - 'mission-discard'   a REVEALED mission that resolved: both players saw
+ *                          it, so it is public information;
+ *    - 'mission-hand-trim' a hand-limit discard straight from hand: private to
+ *                          the holder (the log panel already hides this kind).
+ *  Rendering the raw array would leak every trimmed card — the same class of
+ *  bug as the assignment (#583) and objective-check (#602) leaks. Entries
+ *  before a 'mission-deck-reshuffled' are dropped: that pile went back into
+ *  the deck. */
+function publicMissionDiscards(G: GameState, side: Side): string[] {
+  const out: string[] = [];
+  for (const e of G.turnLog) {
+    if (e.side !== side) continue;
+    if (e.kind === 'mission-deck-reshuffled') { out.length = 0; continue; }
+    if (e.kind === 'mission-discard') {
+      const id = (e.payload as { missionId?: string } | undefined)?.missionId;
+      if (id) out.push(id);
+    }
+  }
+  return out;
+}
+
 function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active: boolean) => void }) {
   // Cinematic Combat (RoE) replaces the shared 15-card Space/Ground tactic decks
   // entirely with four faction-specific decks of 8 advanced cards each (combat.ts
@@ -11125,6 +11148,52 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
           )}
         </div>
       ))}
+      <MissionDiscardPiles G={G} />
+    </div>
+  );
+}
+
+/** Public mission-discard piles (#636). Shows only missions that were REVEALED
+ *  and resolved — see publicMissionDiscards for why hand-limit trims are
+ *  excluded. Useful for tracking what the Empire has burned and what
+ *  Reconnaissance could bring back. */
+function MissionDiscardPiles({ G }: { G: GameState }) {
+  const [open, setOpen] = useState(false);
+  const rebel = publicMissionDiscards(G, 'Rebel');
+  const empire = publicMissionDiscards(G, 'Empire');
+  if (rebel.length === 0 && empire.length === 0) return null;
+  const name = (id: string) => G.catalog.missions[id]?.name ?? id;
+  const pile = (label: string, ids: string[], color: string) => {
+    const counts = new Map<string, number>();
+    for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+    return (
+      <div style={{ marginTop: 6 }}>
+        <div style={{ fontSize: 10, color, marginBottom: 2 }}>{label} ({ids.length})</div>
+        <div style={{ fontSize: 11, color: '#bbb', lineHeight: 1.5 }}>
+          {ids.length === 0 ? <span style={{ color: '#666' }}>—</span>
+            : [...counts.entries()].map(([id, n]) => `${name(id)}${n > 1 ? ` ×${n}` : ''}`).join(', ')}
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div style={{ width: '100%', marginTop: 6 }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{ background: 'none', border: 'none', color: '#8ab4f8', fontSize: 11, cursor: 'pointer', padding: 0 }}
+      >
+        {open ? '▾' : '▸'} mission discards ({rebel.length + empire.length})
+      </button>
+      {open && (
+        <div style={{ background: '#15171c', borderRadius: 4, padding: 8, marginTop: 4 }}>
+          {pile('Rebel discards', rebel, '#4fc3f7')}
+          {pile('Empire discards', empire, '#ff8a80')}
+          <div style={{ fontSize: 9, color: '#666', marginTop: 6, lineHeight: 1.4 }}>
+            Revealed missions that resolved. Cards discarded from hand at the
+            hand limit stay secret, so they are not listed.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
