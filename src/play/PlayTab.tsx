@@ -1175,6 +1175,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // "Arm it now" action so the player can turn it on without hunting for the
   // toggle. The arm-toggle DESIGN (#340) is unchanged.
   const [oiamSkipHint, setOiamSkipHint] = useState(false);
+  /** Set when the One-In-A-Million auto-skip (toggle OFF) fails to resolve.
+   *  Forces the offer panel to render even while disarmed, so an unresolvable
+   *  choice can never leave the player stuck with no UI (#614). */
+  const [oiamSkipFailed, setOiamSkipFailed] = useState(false);
   useEffect(() => {
     if (online || oiamArmed) { setOiamSkipHint(false); return; }
     const Gn = gameRef.current;
@@ -1186,9 +1190,19 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     // Only advance on a clean skip — never re-run a failing resolve (would loop).
     if (r.ok) {
       setOiamSkipHint(true); // re-show on every skip (#543/#544)
+      setOiamSkipFailed(false);
       persist(); refresh();
+    } else {
+      // ESCAPE HATCH (#614 "One In A Million locks game"): with the toggle
+      // OFF the offer panel is deliberately hidden, so a failed auto-skip
+      // left an unresolvable pendingChoice with NO UI to clear it — the
+      // player saw a blank box and the game was stuck for good (the report
+      // button is blocked mid-choice too). Same shape as the #603 watchdog
+      // bug: a guard that gives up silently. Surface the panel so the choice
+      // can always be resolved by hand.
+      console.warn('[oiam] auto-skip failed:', r.reason, '— surfacing the panel');
+      setOiamSkipFailed(true);
     }
-    else console.warn('[oiam] auto-skip failed:', r.reason);
   }, [tick, oiamArmed, humanSide, online, persist, refresh]);
 
   // #193 instrumentation: report-ordering diagnostics. When the player reports
@@ -2669,7 +2683,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'OneInAMillionOffer'
         && (G.pendingChoice.context === 'mission' || G.pendingChoice.context === 'dsplans')
-        && G.pendingChoice.side === humanSide && oiamArmed && (
+        && G.pendingChoice.side === humanSide && (oiamArmed || oiamSkipFailed || !!online) && (
         <OneInAMillionMissionModal choice={G.pendingChoice}
           onSubmit={(picks) => {
             // DSP context routes to the Death Star Plans resolver (#186).
@@ -3507,7 +3521,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <CombatBoardLive
           G={G}
           humanSide={humanSide}
-          oiamArmed={oiamArmed}
+          oiamArmed={oiamArmed || oiamSkipFailed || !!online}
           online={online ? { submit: online.submit, yourTurn: online.yourTurn } : undefined}
           onPersist={() => { persist(); refresh(); }}
           onShowDiceKey={() => setShowDiceKey(true)}
