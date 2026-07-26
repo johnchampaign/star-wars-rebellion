@@ -923,10 +923,82 @@ function rebelStrikeTargetExists(G: GameState): boolean {
   return false;
 }
 
+/** Score the Command phase gives the 'pass' action. Anything scoring at or
+ *  below this loses to passing, so a mission whose best reveal lands here will
+ *  never actually be played. */
+const PASS_ACTION_SCORE = 0.5;
+
+/** Opt-out for the assignment/command consistency gate below
+ *  (SWR_ASSIGN_GATE=0). Default ON. Exists so the gate can be A/B'd against the
+ *  old stranding behavior without a rebuild, matching the ?planner=0 / ?mcts=0 /
+ *  ?hunt=0 escape hatches. Guarded so the browser build (no `process`) is safe. */
+const ASSIGN_GATE_ENABLED: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_ASSIGN_GATE === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
+/** The reveal the COMMAND phase would make for `missionId` — its chosen target
+ *  and the score it would attach — or null if the Command phase would generate
+ *  no reveal at all.
+ *
+ *  Shared by planAssignment and bestCommandAction so the two phases cannot
+ *  disagree about whether a mission is worth playing. They used to judge it by
+ *  different rules, which is the main way the AI stranded leaders and then
+ *  passed early (#581 "passed with 4 leaders on missions", #617 "five facedown
+ *  missions", #600 the Rebel doing the same). Two concrete mismatches, both
+ *  measured with scripts/diag-facedown-missions.mjs:
+ *
+ *   - Assignment mirrored the Command phase's "has a legal target" check but
+ *     NOT its missionRevealIsPointless filter, which was added later. So the
+ *     Empire kept assigning Superlaser Online (69% of its stranded missions),
+ *     whose every target the Command phase then rejected as a no-op.
+ *   - Assignment scored a mission by missionBaseValue + situational only, while
+ *     the Command phase ALSO adds the per-target score, which carries decisive
+ *     penalties (-50 remote, -30 already-loyal, -12 Empire-occupied). A
+ *     "value 12" loyalty mission could therefore be assigned and then score
+ *     below pass at every legal target — 68% of the Rebel's stranded missions
+ *     were Support of Mon Calamari doing exactly this.
+ *
+ *  Because MCTS searches only over bestCommandAction's output, a mission
+ *  suppressed here is invisible to the search too — which is why tuning the
+ *  leaf evaluator never fixed the passivity reports. */
+function bestRevealTarget(
+  G: GameState,
+  side: Side,
+  missionId: string,
+  baseDist: Map<SystemId, number> | null,
+): { targetSystemId: SystemId; targetScore: number; revealScore: number } | null {
+  const card = G.catalog.missions[missionId];
+  if (!card || !card.skill) return null;
+  const targets = missionTargets(G, side, missionId);
+  const candidates = (targets.permissive ? Object.keys(G.map.systems) : targets.systemIds)
+    .filter((sid) => !missionRevealIsPointless(G, side, missionId, sid));
+  if (candidates.length === 0) return null;
+  let targetSystemId: SystemId | null = null;
+  let targetScore = -Infinity;
+  for (const sysId of candidates) {
+    const t = side === 'Empire'
+      ? empireMissionTargetScore(G, missionId, sysId)
+      : rebelMissionTargetScore(G, missionId, sysId, baseDist);
+    if (t > targetScore) { targetScore = t; targetSystemId = sysId; }
+  }
+  if (!targetSystemId) return null;
+  const baseValue = missionBaseValue(missionId, side) + missionSituationalAdjust(G, missionId, side);
+  return { targetSystemId, targetScore, revealScore: baseValue + targetScore + 6 };
+}
+
 function planAssignment(G: GameState, side: Side): Array<{ missionId: string; leaderIds: LeaderId[] }> {
   const f = side === 'Rebel' ? G.rebel : G.empire;
   const hand = [...f.missionHand];
   if (f.leaderPool.length === 0 || hand.length === 0) return [];
+  // Same base-distance map bestCommandAction builds, so the reveal scores we
+  // predict here match the ones the Command phase will compute.
+  const baseDist = (side === 'Rebel' && G.rebelBaseSystemId && !G.rebelBaseRevealed)
+    ? bfsDistances(G, G.rebelBaseSystemId, 3)
+    : null;
 
   // Score every mission's best feasible leader-set.
   type Plan = { missionId: string; leaderIds: LeaderId[]; score: number; leaderSkillSum: number };
@@ -950,14 +1022,21 @@ function planAssignment(G: GameState, side: Side): Array<{ missionId: string; le
       sum += r.fit;
     }
     if (sum < cost) return null; // infeasible — skip
-    // Skip missions with NO legal target on the board right now. Assigning one
-    // just leaves a face-down mission the AI can't reveal in the Command phase,
-    // so it ends up passing while holding unplayable missions (player reports
-    // #102/#118/#123). The Command phase already gates reveals on this same
-    // check; mirror it at assignment time so we don't commit a leader to a
-    // dead mission in the first place.
-    const tgt = missionTargets(G, side, missionId);
-    if (!tgt.permissive && tgt.systemIds.length === 0) {
+    // Skip missions the Command phase would refuse to play. Assigning one just
+    // leaves a face-down mission the AI can't reveal, so it ends up passing
+    // while holding unplayable missions (player reports #102/#118/#123, and the
+    // whole #581/#617/#600 passivity cluster). bestRevealTarget IS the Command
+    // phase's own decision, so the two can't drift apart: it applies the
+    // pointless-target filter and returns the score the reveal would actually
+    // get. A mission whose best reveal can't even beat passing is not worth a
+    // leader — leaving that leader in the pool at least lets it activate.
+    const reveal = bestRevealTarget(G, side, missionId, baseDist);
+    const wouldStrand = ASSIGN_GATE_ENABLED
+      ? (!reveal || reveal.revealScore <= PASS_ACTION_SCORE)
+      // Legacy behavior: only the "no legal target at all" half of the check,
+      // ignoring both the pointless filter and the reveal's actual score.
+      : (() => { const t = missionTargets(G, side, missionId); return !t.permissive && t.systemIds.length === 0; })();
+    if (wouldStrand) {
       // EXCEPTION: fresh-capture missions (Detained / Collect Bounty) target an
       // enemy leader "in any system". At ASSIGNMENT time those leaders are still
       // in the pool — they only land in systems as the opponent reveals missions
@@ -1107,33 +1186,23 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
     let skillSum = 0;
     for (const lid of am.leaderIds) skillSum += leaderSkillFit(G, lid as LeaderId, am.missionId);
     if (skillSum < card.skillCost) continue;
-    const targets = missionTargets(G, side, am.missionId);
-    // If the encoder couldn't narrow targets (permissive), allow all systems;
-    // otherwise restrict to the engine-legal list.
-    let candidateSystems = targets.permissive ? allSystemIds : targets.systemIds;
-    // Drop targets where the mission would do nothing (e.g. Draw Them Out with
+    // Which target to reveal at, and what the reveal is worth. Shared with
+    // planAssignment via bestRevealTarget so assignment can't commit leaders to
+    // a mission this phase would then refuse to play — the stranding that drove
+    // the passivity reports. It applies the permissive/legal target split and
+    // drops targets where the mission would do nothing (e.g. Draw Them Out with
     // an empty Rebel pool, Single Reactor Ignition with no Rebel ground or
     // markers) so the AI doesn't waste it (#276/#277).
-    candidateSystems = candidateSystems.filter((sid) => !missionRevealIsPointless(G, side, am.missionId, sid));
-    if (candidateSystems.length === 0) continue;
-    const baseValue = missionBaseValue(am.missionId, side) + missionSituationalAdjust(G, am.missionId, side);
-    let bestTarget: SystemId | null = null;
-    let bestTargetScore = -Infinity;
-    for (const sysId of candidateSystems) {
-      const t = side === 'Empire'
-        ? empireMissionTargetScore(G, am.missionId, sysId)
-        : rebelMissionTargetScore(G, am.missionId, sysId, baseDist);
-      if (t > bestTargetScore) { bestTargetScore = t; bestTarget = sysId; }
-    }
-    if (!bestTarget) continue;
+    const reveal = bestRevealTarget(G, side, am.missionId, baseDist);
+    if (!reveal) continue;
     actions.push({
       kind: 'reveal',
       missionId: am.missionId,
-      targetSystemId: bestTarget,
+      targetSystemId: reveal.targetSystemId,
       // Lock the specific leader NOW for capture-style missions, so the target
       // can't drift to whoever opposes (RAW: target chosen at perform time).
-      targetLeaderId: captureTargetLeaderId(G, side, am.missionId, bestTarget),
-      score: baseValue + bestTargetScore + 6,
+      targetLeaderId: captureTargetLeaderId(G, side, am.missionId, reveal.targetSystemId),
+      score: reveal.revealScore,
     });
   }
 
@@ -1741,7 +1810,7 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
     });
   }
 
-  actions.push({ kind: 'pass', score: 0.5 });
+  actions.push({ kind: 'pass', score: PASS_ACTION_SCORE });
   actions.sort((a, b) => b.score - a.score);
   // Return the full sorted list (pass is in there with score 0.5). The executor
   // tries them in order and skips any that the engine rejects, so a high-score
