@@ -940,6 +940,38 @@ const ASSIGN_GATE_ENABLED: boolean = (() => {
   return true;
 })();
 
+/** A unit that moves BETWEEN systems under its own power while carrying
+ *  nothing: a SPACE unit with no transport capacity that also lacks the
+ *  transport-RESTRICTION icon. Per the printed reference mats only the TIE
+ *  Fighter carries that icon among fighters — TIEs have no hyperdrive and must
+ *  be ferried, while X-/Y-Wings move themselves (see the note on x-wing in
+ *  units.ts). Self-movers need NO carrier and consume NO capacity.
+ *
+ *  This exists because the activation scorer and the activation move-packer
+ *  each classified units independently and BOTH missed this case: the packer
+ *  bucketed capacity>0 / ground / restricted-fighter and let anything else fall
+ *  through unmoved, and the scorer split capacity>0 vs "needs a carrier". The
+ *  only two unit types in the whole catalog that land in the gap are the X-Wing
+ *  and the Y-Wing — both Rebel — which is why 80% of Rebel activations moved
+ *  nothing against the Empire's 25% (#647 measurements). One predicate, used by
+ *  both, so they cannot disagree again. */
+function isSelfMovingUnit(t: { theater?: string; transport?: { capacity: number; restriction: boolean; immobile: boolean } } | undefined): boolean {
+  if (!t || !t.transport || t.transport.immobile) return false;
+  return t.theater === 'space' && t.transport.capacity === 0 && !t.transport.restriction;
+}
+
+/** Opt-out for the self-moving-fighter fix (SWR_SELF_MOVER=0), task_a3b11e85.
+ *  Default ON. Off restores the old behavior where X-/Y-Wings were invisible to
+ *  both the activation scorer and the move-packer. Flagged because the note
+ *  carrying this task said it "needs an A/B before ship". */
+const SELF_MOVER_FIX: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_SELF_MOVER === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
 /** Opt-out for the tightened no-op activation guard (SWR_NOOP_GUARD=0), #647.
  *  Default ON. Off restores the older rule, which exempted ANY enemy-occupied
  *  target from the bring-nothing sink even when we had no units there to fight
@@ -1788,6 +1820,11 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
           const t = G.catalog.unitTypes[u.typeId];
           if (!t || t.transport.immobile) continue;
           if (t.transport.capacity > 0) { selfMoving++; capacity += t.transport.capacity; }
+          // X-/Y-Wings move themselves and need no carrier. The old two-way
+          // split counted them as needCarry, so a source holding ONLY Rebel
+          // fighters read as "nothing movable" and the activation was sunk to
+          // -50 — the Rebel AI declined to move its own fighters at all.
+          else if (SELF_MOVER_FIX && isSelfMovingUnit(t)) selfMoving++;
           else needCarry++;
         }
         movable += selfMoving + Math.min(capacity, needCarry);
@@ -3623,12 +3660,20 @@ export function tryCommandAction(G: GameState, side: Side, action: CommandAction
           const capitalShips: typeof mine = [];
           const fighters: typeof mine = []; // restriction-icon, need transport
           const ground: typeof mine = [];   // need transport
+          const selfMovers: typeof mine = []; // X-/Y-Wings: own hyperdrive, no carrier
           for (const u of mine) {
             const t = G.catalog.unitTypes[u.typeId];
             if (!t || t.transport.immobile) continue;
             if (t.transport.capacity > 0) capitalShips.push(u);
             else if (t.theater === 'ground' && t.class !== 'structure') ground.push(u);
             else if (t.transport.restriction) fighters.push(u);
+            // Previously there was NO final branch, so a space unit with no
+            // capacity and no restriction icon matched nothing and was silently
+            // dropped from the move. The X-Wing and the Y-Wing are the only two
+            // types in the catalog with that shape — both Rebel — so the Rebel
+            // AI activated systems and then left its fighters standing there
+            // (task_a3b11e85; 80% of Rebel activations moved nothing).
+            else selfMovers.push(u);
           }
           // Empire subjugation reserve: keep 1 ground at subjugated systems
           // so the subjugation marker stays — EXCEPT once the Rebel base is
@@ -3668,6 +3713,10 @@ export function tryCommandAction(G: GameState, side: Side, action: CommandAction
           // only moves (useful for moving SDs alone).
           const pickIds: string[] = [
             ...capitalShips.map((u) => u.instanceId),
+            // Self-movers ride along unconditionally: they need no carrier and
+            // consume no capacity, so they never compete with ground/fighters
+            // for transport space.
+            ...(SELF_MOVER_FIX ? selfMovers.map((u) => u.instanceId) : []),
             ...fightersToBring.map((u) => u.instanceId),
             ...groundToBring.map((u) => u.instanceId),
           ];
