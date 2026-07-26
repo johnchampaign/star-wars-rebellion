@@ -32,9 +32,10 @@ const data = { systems: j('systems.json'), adjacency: j('adjacency.json'), leade
 const GAMES = Number(process.argv[2] ?? 40);
 const gateOn = (() => { try { return process.env.SWR_ASSIGN_GATE !== '0'; } catch { return true; } })();
 const divOn = (() => { try { return process.env.SWR_ACTIVATE_DIVERSITY !== '0'; } catch { return true; } })();
+const noopOn = (() => { try { return process.env.SWR_NOOP_GUARD !== '0'; } catch { return true; } })();
 
 const stat = { Empire: mk(), Rebel: mk() };
-function mk() { return { assigned: 0, reveals: 0, activations: 0, passes: 0, stranded: 0, wins: 0 }; }
+function mk() { return { assigned: 0, reveals: 0, activations: 0, passes: 0, stranded: 0, wins: 0, noopActivations: 0, unitsMoved: 0 }; }
 let finished = 0;
 
 for (let seed = 1; seed <= GAMES; seed++) {
@@ -63,14 +64,21 @@ for (let seed = 1; seed <= GAMES; seed++) {
     const s = e.side; if (s !== 'Empire' && s !== 'Rebel') continue;
     if (e.kind === 'assign-leader') stat[s].assigned++;
     else if (e.kind === 'reveal-mission') stat[s].reveals++;
-    else if (e.kind === 'activate-system') stat[s].activations++;
+    else if (e.kind === 'activate-system') {
+      stat[s].activations++;
+      // #647: an activation that moves nothing and starts no fight is the
+      // player-visible "sent a leader somewhere and did nothing" complaint.
+      const moved = e.payload?.unitsMoved ?? 0;
+      stat[s].unitsMoved += moved;
+      if (moved === 0) stat[s].noopActivations++;
+    }
     else if (e.kind === 'pass') stat[s].passes++;
   }
   if (G.winner === 'Empire' || G.winner === 'Rebel') stat[G.winner].wins++;
 }
 
 const f2 = (x) => x.toFixed(2);
-console.log(`arm: assign-gate ${gateOn ? 'ON' : 'OFF'} / activate-diversity ${divOn ? 'ON' : 'OFF'}` +
+console.log(`arm: assign-gate ${gateOn ? 'ON' : 'OFF'} / diversity ${divOn ? 'ON' : 'OFF'} / noop-guard ${noopOn ? 'ON' : 'OFF'}` +
   `   games: ${GAMES}   finished: ${finished}`);
 for (const side of ['Empire', 'Rebel']) {
   const s = stat[side];
@@ -79,7 +87,9 @@ for (const side of ['Empire', 'Rebel']) {
     `  activations/game ${f2(s.activations / GAMES).padStart(6)}` +
     `  passes/game ${f2(s.passes / GAMES).padStart(5)}` +
     `  STRANDED/game ${f2(s.stranded / GAMES).padStart(6)}` +
-    `  actions/pass ${f2((s.reveals + s.activations) / Math.max(1, s.passes)).padStart(5)}`);
+    `  actions/pass ${f2((s.reveals + s.activations) / Math.max(1, s.passes)).padStart(5)}` +
+    `  NO-OP activations ${f2(s.noopActivations / GAMES).padStart(6)}/game (${(100 * s.noopActivations / Math.max(1, s.activations)).toFixed(0)}%)` +
+    `  units moved ${f2(s.unitsMoved / GAMES).padStart(6)}/game`);
 }
 console.log(`  win rate — Empire ${(100 * stat.Empire.wins / GAMES).toFixed(1)}%` +
   `  Rebel ${(100 * stat.Rebel.wins / GAMES).toFixed(1)}%`);

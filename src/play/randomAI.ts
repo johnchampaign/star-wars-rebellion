@@ -940,6 +940,21 @@ const ASSIGN_GATE_ENABLED: boolean = (() => {
   return true;
 })();
 
+/** Opt-out for the tightened no-op activation guard (SWR_NOOP_GUARD=0), #647.
+ *  Default ON. Off restores the older rule, which exempted ANY enemy-occupied
+ *  target from the bring-nothing sink even when we had no units there to fight
+ *  with. Flagged because the record warns that blocking "wasted" bring-nothing
+ *  activations wholesale once cost the Empire 43% -> 30% — this is a much
+ *  narrower cut (it only sinks activations that provably cannot move OR fight),
+ *  but it needs the same A/B before it can be trusted. */
+const NOOP_ACTIVATION_GUARD: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_NOOP_GUARD === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
 /** Opt-out for distinct-target activation candidates (SWR_ACTIVATE_DIVERSITY=0).
  *  Default ON. Off restores the old behavior where every pool leader proposed
  *  the SAME argmax system — kept so the change can be A/B'd without a rebuild. */
@@ -1779,7 +1794,20 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
       }
       const ownHere = sys.units.filter((u) => u.side === side).length;
       const enemyHere = sys.units.some((u) => u.side !== side);
-      if (movable === 0 && !enemyHere) {
+      // An activation is worth something only if it BRINGS units (movable > 0)
+      // or joins a fight already available at the target. phases.activateSystem
+      // computes `willFight = oppHere && myHere`, so a fight needs units of OURS
+      // already there — a leader arriving alone never triggers combat no matter
+      // how many enemies are present.
+      //
+      // The guard used to exempt every enemy-occupied target (`!enemyHere`),
+      // assuming an enemy meant a fight. #647: the Empire sent Vader alone to
+      // Kessel, which held one Rebel trooper and zero Imperial units, with
+      // nothing movable in range — logged as orders:0, unitsMoved:0. No combat,
+      // no movement, top-scored at 32. Requiring own units present for the
+      // enemy exemption closes that without touching the join-a-fight case.
+      const canFightHere = enemyHere && ownHere > 0;
+      if (movable === 0 && (NOOP_ACTIVATION_GUARD ? !canFightHere : !enemyHere)) {
         // Activating this system moves nothing and starts no fight, so it's a
         // wasted action — and the executor (tryCommandAction) rejects it, so a
         // high score here just makes the AI reject-then-pass while a real move
