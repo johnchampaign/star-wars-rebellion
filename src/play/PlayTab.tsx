@@ -11093,6 +11093,9 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
   // in play, not the dead base ones (reporter: "it always shows 15 cards per
   // space/ground deck rather than separate tactics decks per side of 8 cards").
   const cinematic = !!G.expansion?.cinematicCombat;
+  // Which tactic deck's card list is expanded (#643), keyed 'Rebel:space' etc.
+  // for cinematic decks and 'base:space'/'base:ground' for the shared decks.
+  const [openTactics, setOpenTactics] = useState<string | null>(null);
   const cinCount = (side: 'Rebel' | 'Empire', theater: 'space' | 'ground') => {
     const f = side === 'Rebel' ? G.rebel : G.empire;
     const discard = new Set(f.cinematicTacticDiscard ?? []);
@@ -11105,7 +11108,7 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
     }
     return { avail, used: total - avail };
   };
-  const tacticDecks: Array<{ label: string; count: number; color: string; subtle?: string }> = cinematic
+  const tacticDecks: Array<{ label: string; count: number; color: string; subtle?: string; tacticKey?: string }> = cinematic
     ? ([
         ['Rebel space tactics',  'Rebel',  'space',  '#4fc3f7'],
         ['Rebel ground tactics', 'Rebel',  'ground', '#4fc3f7'],
@@ -11113,13 +11116,13 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
         ['Empire ground tactics','Empire', 'ground', '#ff8a80'],
       ] as const).map(([label, side, theater, color]) => {
         const { avail, used } = cinCount(side, theater);
-        return { label, count: avail, color, subtle: used ? `(${used} used)` : undefined };
+        return { label, count: avail, color, subtle: used ? `(${used} used)` : undefined, tacticKey: `${side}:${theater}` };
       })
     : [
-        { label: 'Space tactic deck',  count: G.spaceTacticDeck.length,  color: '#80dc78', subtle: G.spaceTacticDiscard.length ? `(${G.spaceTacticDiscard.length} disc.)` : undefined },
-        { label: 'Ground tactic deck', count: G.groundTacticDeck.length, color: '#80dc78', subtle: G.groundTacticDiscard.length ? `(${G.groundTacticDiscard.length} disc.)` : undefined },
+        { label: 'Space tactic deck',  count: G.spaceTacticDeck.length,  color: '#80dc78', subtle: G.spaceTacticDiscard.length ? `(${G.spaceTacticDiscard.length} disc.)` : undefined, tacticKey: 'base:space' },
+        { label: 'Ground tactic deck', count: G.groundTacticDeck.length, color: '#80dc78', subtle: G.groundTacticDiscard.length ? `(${G.groundTacticDiscard.length} disc.)` : undefined, tacticKey: 'base:ground' },
       ];
-  const decks: Array<{ label: string; count: number; color: string; subtle?: string; isProbe?: boolean }> = [
+  const decks: Array<{ label: string; count: number; color: string; subtle?: string; isProbe?: boolean; tacticKey?: string }> = [
     { label: 'Probe deck',           count: G.probeDeck.length,                color: '#7986cb', subtle: G.empire.probeHand?.length ? `+${G.empire.probeHand.length} drawn` : undefined, isProbe: true },
     { label: 'Objective deck',       count: G.rebel.objectiveDeck?.length ?? 0, color: '#aed581', subtle: G.rebel.objectiveHand?.length ? `+${G.rebel.objectiveHand.length} in hand` : undefined },
     { label: 'Rebel mission deck',   count: G.rebel.missionDeck.length,         color: '#4fc3f7' },
@@ -11139,15 +11142,20 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
         <div
           key={d.label}
           style={{
-            background: '#0c0d10', border: `1px solid ${d.color}55`, borderRadius: 3,
+            background: d.tacticKey && openTactics === d.tacticKey ? '#1c1f26' : '#0c0d10',
+            border: `1px solid ${d.color}${d.tacticKey && openTactics === d.tacticKey ? 'cc' : '55'}`,
+            borderRadius: 3,
             padding: '6px 8px', textAlign: 'center',
-            cursor: d.isProbe && onProbeHover ? 'help' : 'default',
+            cursor: d.isProbe && onProbeHover ? 'help' : d.tacticKey ? 'pointer' : 'default',
           }}
           title={
             d.isProbe && onProbeHover
               ? `${d.label} — hover to highlight systems ruled out by drawn probes`
-              : d.label
+              : d.tacticKey
+                ? `${d.label} — click to see the cards and which are discarded`
+                : d.label
           }
+          onClick={d.tacticKey ? () => setOpenTactics((v) => (v === d.tacticKey ? null : d.tacticKey!)) : undefined}
           onMouseEnter={d.isProbe && onProbeHover ? () => onProbeHover(true) : undefined}
           onMouseLeave={d.isProbe && onProbeHover ? () => onProbeHover(false) : undefined}
         >
@@ -11162,7 +11170,134 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
           )}
         </div>
       ))}
+      {openTactics && <TacticDeckReference G={G} deckKey={openTactics} />}
       <MissionDiscardPiles G={G} />
+    </div>
+  );
+}
+
+/** Where a cinematic advanced tactic card currently is (#643).
+ *  RoE p.8-9: a resolved card is discarded faceup and does NOT reshuffle at end
+ *  of combat; once the deck runs out the discard returns to the deck (minus the
+ *  card just resolved) — see recycleCinematicDeck. A card whose text says
+ *  "eliminate this card" (Confrontation) is gone for the GAME and never
+ *  recycles, which is why the reporter asked for a distinct label. Note
+ *  `cinematicTacticEliminated` is a SUBSET of `cinematicTacticDiscard`, so test
+ *  eliminated first. */
+type TacticSlot = 'deck' | 'discard' | 'removed';
+
+/** Public card list for one tactic deck (#643). RoE, Advanced Tactic Cards:
+ *  "Any player can examine tactic cards in a discard pile at any time" — so
+ *  this leaks nothing for the cinematic decks, where there is no hand at all
+ *  (a side picks from its whole available set when the choice is posted).
+ *
+ *  The BASE decks are different and are handled separately below: those are
+ *  drawn into private per-combat hands, so a full roster with per-card status
+ *  would expose the opponent's hand by elimination — the same info-leak class
+ *  as the mission hand-trims in #636. For those we list the DISCARD only. */
+function cinematicTacticRoster(G: GameState, side: Side, theater: 'space' | 'ground') {
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  const discard = new Set(f.cinematicTacticDiscard ?? []);
+  const eliminated = new Set(f.cinematicTacticEliminated ?? []);
+  return Object.values(G.catalog.tactics)
+    .filter((t) => t.cinematic && t.side === side && t.theater === theater)
+    .map((t) => ({
+      card: t,
+      slot: (eliminated.has(t.id) ? 'removed' : discard.has(t.id) ? 'discard' : 'deck') as TacticSlot,
+    }));
+}
+
+const TACTIC_SLOT_STYLE: Record<TacticSlot, { label: string; color: string; bg: string }> = {
+  deck:    { label: 'in deck',   color: '#80dc78', bg: '#0c0d10' },
+  discard: { label: 'discarded', color: '#ffb74d', bg: '#17140e' },
+  removed: { label: 'removed',   color: '#ff8a80', bg: '#1a0f0f' },
+};
+
+/** Tactic-deck card reference + discard viewer (#643). Reporter wanted the
+ *  tactic tile to open a list of every card with enough reference text to skip
+ *  the printed guide — in particular which unit triggers each primary — plus a
+ *  clear discarded/removed indicator. */
+function TacticDeckReference({ G, deckKey }: { G: GameState; deckKey: string }) {
+  const [side, theater] = deckKey.split(':') as [string, 'space' | 'ground'];
+  const unitName = (id?: string) => (id ? G.catalog.unitTypes[id]?.name ?? id : null);
+
+  // Base (non-cinematic) shared decks: discard pile only — see the note on
+  // cinematicTacticRoster for why a full roster would leak the combat hands.
+  if (side === 'base') {
+    const ids = theater === 'space' ? G.spaceTacticDiscard : G.groundTacticDiscard;
+    const counts = new Map<string, number>();
+    for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
+    return (
+      <div style={{ gridColumn: '1 / -1', marginTop: 6, background: '#15171c', borderRadius: 4, padding: 10 }}>
+        <div style={{ fontSize: 11, color: '#80dc78', marginBottom: 6 }}>
+          {theater === 'space' ? 'Space' : 'Ground'} tactic discard ({ids.length})
+        </div>
+        {ids.length === 0 ? (
+          <div style={{ fontSize: 11, color: '#666' }}>Nothing discarded yet.</div>
+        ) : (
+          <div style={{ display: 'grid', gap: 4 }}>
+            {[...counts.entries()].map(([id, n]) => {
+              const t = G.catalog.tactics[id];
+              return (
+                <div key={id} style={{ background: '#0c0d10', borderRadius: 3, padding: '5px 8px' }}>
+                  <div style={{ fontSize: 11, color: '#e8e8ea' }}>
+                    {t?.name ?? id}{n > 1 ? ` ×${n}` : ''}
+                    {t?.requiresSpecial && <span style={{ color: '#ffd54f', marginLeft: 6 }}>★ special</span>}
+                  </div>
+                  {t?.rulesText && (
+                    <div style={{ fontSize: 10, color: '#999', marginTop: 2, lineHeight: 1.4 }}>{t.rulesText}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ fontSize: 9, color: '#666', marginTop: 8, lineHeight: 1.4 }}>
+          Discard piles are public. Cards held in hand during a combat are not listed.
+        </div>
+      </div>
+    );
+  }
+
+  const roster = cinematicTacticRoster(G, side as Side, theater);
+  const n = (s: TacticSlot) => roster.filter((r) => r.slot === s).length;
+  return (
+    <div style={{ gridColumn: '1 / -1', marginTop: 6, background: '#15171c', borderRadius: 4, padding: 10 }}>
+      <div style={{ fontSize: 11, color: side === 'Rebel' ? '#4fc3f7' : '#ff8a80', marginBottom: 6 }}>
+        {side} {theater} advanced tactics — {n('deck')} in deck, {n('discard')} discarded
+        {n('removed') > 0 ? `, ${n('removed')} removed` : ''}
+      </div>
+      <div style={{ display: 'grid', gap: 4 }}>
+        {roster.map(({ card, slot }) => {
+          const s = TACTIC_SLOT_STYLE[slot];
+          const prim = unitName(card.primaryUnit);
+          return (
+            <div key={card.id} style={{ background: s.bg, border: `1px solid ${s.color}33`, borderRadius: 3, padding: '5px 8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                <span style={{ fontSize: 11, color: slot === 'deck' ? '#e8e8ea' : '#9a9a9e' }}>
+                  {card.name}
+                </span>
+                <span style={{ fontSize: 9, color: s.color, whiteSpace: 'nowrap' }}>{s.label}</span>
+              </div>
+              {card.primaryText && (
+                <div style={{ fontSize: 10, color: '#bbb', marginTop: 3, lineHeight: 1.4 }}>
+                  <span style={{ color: '#ffd54f' }}>{prim ? `${prim}:` : 'Primary:'}</span> {card.primaryText}
+                </div>
+              )}
+              {card.secondaryText && (
+                <div style={{ fontSize: 10, color: '#999', marginTop: 2, lineHeight: 1.4 }}>
+                  <span style={{ color: '#8ab4f8' }}>Secondary:</span> {card.secondaryText}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div style={{ fontSize: 9, color: '#666', marginTop: 8, lineHeight: 1.4 }}>
+        The highlighted unit must be in the system to use a card's primary ability;
+        the secondary is always available. Discarded cards return to the deck once
+        it empties — removed cards are gone for the rest of the game.
+      </div>
     </div>
   );
 }

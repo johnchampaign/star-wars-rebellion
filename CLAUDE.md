@@ -254,19 +254,37 @@ behavior.
 
 ## Audit / task list
 
-The Claude Code TaskList is the canonical "what's left." Open items as of
-the most recent session are #85 (verify unit stats) and #94 (combat-board UX).
+The Claude Code TaskList is the canonical "what's left."
 Don't add new tasks without checking the list first to avoid duplicates.
 
-Completed: #99 (action card play paths) — audited all 48 action cards; every one
-has a wired play path (Assignment/StartOfCombat/Immediate switches, droid-ring &
-passive Immediate triggers, and the Special *Offer hooks). Guarded by
-test-action-card-coverage-99 (a tripwire so a new card can't ship unwired).
-#97 (Collect Bounty relocate) — capture + relocate both leaders to the nearest
-Imperial-unit system, with the distance-0 and no-Imperial-unit auto-rescue edges;
-verified by test-collect-bounty-97. #98 (Empire base-hover probe overlay) — done,
-including the pin/unpin follow-up. The whole `from-game` GitHub queue is also
-cleared.
+**The list was rebuilt from scratch on 2026-07-26** after a Claude Code
+reinstall wiped it, so task IDs RESTART AT #1 and no longer match the old
+numbering. Old references (#85 verify unit stats, #94 combat-board UX,
+task_a3b11e85 generic activation mover) survive as new tasks #17, #18, and
+#19 respectively. Old #97/#98/#99 were already complete — see below.
+
+The rebuilt list maps the open `from-game` GitHub backlog onto 19 tasks,
+grouped so that duplicate reports share one task:
+- #1–7 discrete bugs (tactic discards, Yoda online freeze, Ready for
+  Action, Lure to the Dark Side, DSUC slowdown, deploy undo, One In A Million)
+- #8–12 AI behavior clusters. Note #8 (*passes when plays exist*) and #9
+  (*acts, but the action is a no-op*) are DIFFERENT failures sharing a
+  symptom — 15 reports collapse into those two.
+- #13–16 large features (Empire delivery executor #539, Rebel DSAA
+  planner #642, attack splitting, personality sliders)
+- #17–19 carried over from the wiped list
+
+Completed before the wipe: old #99 (action card play paths) — audited all 48
+action cards; every one has a wired play path (Assignment/StartOfCombat/Immediate
+switches, droid-ring & passive Immediate triggers, and the Special *Offer hooks).
+Guarded by test-action-card-coverage-99 (a tripwire so a new card can't ship
+unwired). Old #97 (Collect Bounty relocate) — capture + relocate both leaders to
+the nearest Imperial-unit system, with the distance-0 and no-Imperial-unit
+auto-rescue edges; verified by test-collect-bounty-97. Old #98 (Empire base-hover
+probe overlay) — done, including the pin/unpin follow-up.
+
+The `from-game` queue is NO LONGER clear — it stood at 31 open issues on
+2026-07-26. Keep running the `gh issue list` check at session start.
 
 ## Things NOT to do
 
