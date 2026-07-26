@@ -940,6 +940,17 @@ const ASSIGN_GATE_ENABLED: boolean = (() => {
   return true;
 })();
 
+/** Opt-out for distinct-target activation candidates (SWR_ACTIVATE_DIVERSITY=0).
+ *  Default ON. Off restores the old behavior where every pool leader proposed
+ *  the SAME argmax system — kept so the change can be A/B'd without a rebuild. */
+const ACTIVATE_DIVERSITY_ENABLED: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_ACTIVATE_DIVERSITY === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
 /** The reveal the COMMAND phase would make for `missionId` — its chosen target
  *  and the score it would attach — or null if the Command phase would generate
  *  no reveal at all.
@@ -1787,27 +1798,75 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
     }
     systemScore.set(sysId, ts);
   }
-  // For each pool leader, pick their best target.
-  for (const leaderId of f.leaderPool as LeaderId[]) {
-    const l = G.catalog.leaders[leaderId];
-    if (!l) continue;
+  // Pair leaders with targets. This used to loop over leaders and give EVERY
+  // one the argmax of a leader-independent systemScore — so N pool leaders
+  // produced N candidates that all named the SAME system, and the AI never
+  // compared two destinations in a single decision. Measured at 2.33 activate
+  // candidates from 2.34 eligible leaders but only 1.00 DISTINCT target
+  // (scripts/diag-idle-activations.mjs). That is player report #599
+  // ("activating all leaders to one system") verbatim, and it also starved
+  // MCTS: searchMctsCommand searches bestCommandAction(...).slice(0, topK), so
+  // ~1.3 of the top-12 slots per decision were duplicate targets and genuine
+  // alternatives never entered the search at all.
+  //
+  // Now: walk DISTINCT positive-scoring systems best-first and give each one
+  // the best-suited leader still free, so the candidate list offers real
+  // choices between destinations. Leader fit uses tactic values in the theatre
+  // the fight would actually happen in — the old code took whichever leader
+  // came first in pool order, which is how a low-tactic leader ended up leading
+  // an activation while a better one idled (#605).
+  {
     // RR: "A leader that does not have tactic values cannot activate a system."
-    // Skip the three no-tactic leaders (Boba Fett, Greejatus, Mon Mothma) —
-    // they can still run missions / block enemy move-outs, just not lead a move.
-    if (l.tacticValues.space + l.tacticValues.ground === 0) continue;
-    let bestT: SystemId | null = null;
-    let bestTS = -Infinity;
-    for (const sysId of allSystemIds) {
-      const ts = systemScore.get(sysId) ?? 0;
-      if (ts > bestTS) { bestTS = ts; bestT = sysId; }
-    }
-    if (!bestT || bestTS <= 0) continue;
-    actions.push({
-      kind: 'activate',
-      leaderId,
-      targetSystemId: bestT,
-      score: bestTS,
+    // Skips the no-tactic leaders (Boba Fett, Greejatus, Mon Mothma) — they can
+    // still run missions / block enemy move-outs, just not lead a move.
+    const eligible = (f.leaderPool as LeaderId[]).filter((lid) => {
+      const l = G.catalog.leaders[lid];
+      return !!l && (l.tacticValues.space + l.tacticValues.ground) > 0;
     });
+    const ranked = allSystemIds
+      .map((sid) => ({ sid, ts: systemScore.get(sid) ?? 0 }))
+      .filter((x) => x.ts > 0)
+      .sort((a, b) => b.ts - a.ts);
+    // How well `lid` leads a fight at `sid`: weight each theatre's tactic value
+    // by whether an enemy is actually there to fight in it. With no enemy
+    // present (a reposition) both theatres stay in play, so fall back to the
+    // leader's overall tactic strength rather than guessing a theatre.
+    const leaderFit = (lid: LeaderId, sid: SystemId): number => {
+      const l = G.catalog.leaders[lid];
+      if (!l) return 0;
+      const units = G.map.systems[sid]?.units ?? [];
+      let enemySpace = false, enemyGround = false;
+      for (const u of units) {
+        if (u.side === side) continue;
+        const t = G.catalog.unitTypes[u.typeId];
+        if (!t || t.class === 'structure') continue;
+        if (t.theater === 'ground') enemyGround = true; else enemySpace = true;
+      }
+      if (!enemySpace && !enemyGround) return l.tacticValues.space + l.tacticValues.ground;
+      return (enemySpace ? l.tacticValues.space : 0) + (enemyGround ? l.tacticValues.ground : 0);
+    };
+    if (!ACTIVATE_DIVERSITY_ENABLED) {
+      // Legacy: every eligible leader proposes the single best system.
+      const top = ranked[0];
+      if (top) for (const lid of eligible) {
+        actions.push({ kind: 'activate', leaderId: lid, targetSystemId: top.sid, score: top.ts });
+      }
+    } else {
+      const taken = new Set<LeaderId>();
+      for (const { sid, ts } of ranked) {
+        if (taken.size >= eligible.length) break;
+        let pick: LeaderId | null = null;
+        let pickFit = -Infinity;
+        for (const lid of eligible) {
+          if (taken.has(lid)) continue;
+          const fit = leaderFit(lid, sid);
+          if (fit > pickFit) { pickFit = fit; pick = lid; }
+        }
+        if (!pick) break;
+        taken.add(pick);
+        actions.push({ kind: 'activate', leaderId: pick, targetSystemId: sid, score: ts });
+      }
+    }
   }
 
   actions.push({ kind: 'pass', score: PASS_ACTION_SCORE });

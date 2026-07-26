@@ -31,6 +31,7 @@ const data = { systems: j('systems.json'), adjacency: j('adjacency.json'), leade
 
 const GAMES = Number(process.argv[2] ?? 40);
 const gateOn = (() => { try { return process.env.SWR_ASSIGN_GATE !== '0'; } catch { return true; } })();
+const divOn = (() => { try { return process.env.SWR_ACTIVATE_DIVERSITY !== '0'; } catch { return true; } })();
 
 const stat = { Empire: mk(), Rebel: mk() };
 function mk() { return { assigned: 0, reveals: 0, activations: 0, passes: 0, stranded: 0, wins: 0 }; }
@@ -69,7 +70,8 @@ for (let seed = 1; seed <= GAMES; seed++) {
 }
 
 const f2 = (x) => x.toFixed(2);
-console.log(`arm: assignment gate ${gateOn ? 'ON (default)' : 'OFF (legacy)'}   games: ${GAMES}   finished: ${finished}`);
+console.log(`arm: assign-gate ${gateOn ? 'ON' : 'OFF'} / activate-diversity ${divOn ? 'ON' : 'OFF'}` +
+  `   games: ${GAMES}   finished: ${finished}`);
 for (const side of ['Empire', 'Rebel']) {
   const s = stat[side];
   console.log(`  ${side.padEnd(6)}  assigned/game ${f2(s.assigned / GAMES).padStart(6)}` +
