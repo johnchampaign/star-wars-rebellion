@@ -26,6 +26,11 @@ const READ_ONLY = new Set([
   'playableAssignmentActionCards',
   'playableImmediateActionCards',
   'totalSkill',
+  // Validation query for the Rebel base-relocation picker: reads the target
+  // system and returns a human-readable reason string (or null when the system
+  // is legal). Touches nothing on G, so the online client is right to run it
+  // locally rather than round-trip it.
+  'rebelBaseCandidateBlockReason',
 ]);
 
 // Engine functions actually exported (so we don't flag a local helper that just

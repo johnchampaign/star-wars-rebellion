@@ -2115,6 +2115,13 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           'StartingCardBranch', 'OurMostDesperateHourPick',
           'FearWillKeepThemInLinePick', 'HandLimitDiscard',
           'RescuerReturn',
+          // Every generic (choices.ts) prompt, in one entry. Most are raised
+          // from inside a mission effect — Stolen Intel, Homing Beacon's
+          // Empire-side target pick (#637) — so a mission report is queued at
+          // the same instant and would sit on top of the choice. Covering the
+          // whole 'Choice' kind means a new requestChoice tag can never
+          // reintroduce this soft-lock class one card at a time.
+          'Choice',
         ];
         if (oc && REPORT_DEFERRING_CHOICES.includes(oc.kind)
           && (oc as { side?: Side }).side === humanSide) return null;

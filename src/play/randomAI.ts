@@ -3778,6 +3778,20 @@ const AI_CHOICE_HEURISTICS: Record<string, (G: GameState, choice: GenericChoiceR
       (a.met === b.met ? 0 : a.met ? 1 : -1) || (a.rep - b.rep));
     return scored.slice(0, choice.min).map((s) => s.id);
   },
+  // Homing Beacon target (#637): the Empire releases ONE captive so the Rebel's
+  // forced placement betrays the base region. Give up the least valuable one —
+  // and hold on to anyone in carbonite, since releasing them also discards the
+  // ring (the Rebel doesn't get the Carbon Freezing reputation back either way,
+  // but the freeze keeps that leader out of play harder).
+  'homing-beacon-target': (G, choice) => {
+    const ids = choice.candidates.filter((c) => !c.disabled).map((c) => c.id);
+    const frozen = (id: string) =>
+      (G.empire.capturedLeaders ?? []).find((c) => c.leaderId === id)?.ring === 'carbonite';
+    const scored = ids.map((id) => ({ id, frozen: frozen(id), value: leaderValue(G, id) }));
+    // Non-frozen first, then cheapest — that leader is the one we can spare.
+    scored.sort((a, b) => (a.frozen === b.frozen ? 0 : a.frozen ? 1 : -1) || (a.value - b.value));
+    return scored.slice(0, Math.max(1, choice.min)).map((s) => s.id);
+  },
 };
 
 /** Run an engine query that might throw / be undefined, returning a fallback. */

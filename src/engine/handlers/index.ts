@@ -2,14 +2,14 @@
 // Each handler is small; complex multi-stage cards live in their own files
 // under handlers/ as the scope grows.
 
-import type { GameState, Side, LeaderId } from '../types';
+import type { GameState, Side, LeaderId, SystemId } from '../types';
 import * as M from '../mechanics';
 import { register, type EffectHandler, type EffectContext } from './registry';
 import { beginCombat, runCombat } from '../combat';
 import { notImplemented, log, pushNotice } from '../log';
 import { shuffle, nextInt, rollDie } from '../rng';
 import { leaderRecruitable, postDestroyedSystemCull, superlaserAftermath } from '../phases';
-import { requestChoice } from '../choices';
+import { requestChoice, registerChoice } from '../choices';
 
 /** Resolve a combat at `sysId` initiated by `attackerSide`. Used by mission
  *  effects that spawn units and then "resolve a combat" (Ignite Rebellion,
@@ -891,11 +891,41 @@ const interceptTransmissions: EffectHandler = (G, _ctx) => {
   return true;
 };
 
-/** RAW: "Rescue 1 captured leader. The Rebel player must place this leader
- *  in any system in the Rebel base's region." Empire picks WHICH leader to
- *  rescue (counter-intuitive but the card is an Empire mission — Empire
- *  benefits because the placement reveals the base's region) AND picks the
- *  system. Both stages handled in one HomingBeaconPlace choice. */
+/** Raise the Rebel's placement prompt for an already-CHOSEN Homing Beacon
+ *  rescuee. Split out because the leader is picked first (by the Empire, see
+ *  homingBeacon) and that pick can land either inline — when only one captive
+ *  is eligible — or through the 'homing-beacon-target' choice resolver. */
+function raiseHomingBeaconPlacement(
+  G: GameState, leaderId: LeaderId, systemCandidates: SystemId[],
+): void {
+  G.pendingChoice = {
+    kind: 'HomingBeaconPlace',
+    side: 'Rebel',
+    leaderCandidates: [leaderId],
+    systemCandidates,
+  };
+  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+    kind: 'HomingBeaconPlace', leaders: 1, systems: systemCandidates.length,
+  }});
+}
+
+/** RAW: "Attempt against a captured leader. If successful, this leader is
+ *  rescued. The Rebel player must place this leader in any system in the Rebel
+ *  base's region."
+ *
+ *  TWO separate decisions, owned by DIFFERENT players (#637):
+ *    1. WHICH captive is released — the EMPIRE's, because Homing Beacon is an
+ *       Imperial mission attempted against a captured leader. Same ownership as
+ *       Carbon Freezing, which is worded identically and already does this.
+ *       (Counter-intuitive but deliberate: the Empire wants them released so the
+ *       placement betrays the base's region.)
+ *    2. WHERE they are placed — the REBEL's, stated outright on the card.
+ *
+ *  These used to be bundled into ONE Rebel-owned HomingBeaconPlace choice, so an
+ *  Empire player with two captives in the same system had the pick taken away
+ *  from them — the reporter of #637 was forced to release the carbonite-frozen
+ *  leader instead of the one they wanted. A fix that correctly moved the SYSTEM
+ *  choice to the Rebel had swept the LEADER choice along with it. */
 const homingBeacon: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!G.empire.capturedLeaders || G.empire.capturedLeaders.length === 0) return true;
@@ -909,20 +939,39 @@ const homingBeacon: EffectHandler = (G, ctx) => {
     .filter((s) => s.region === baseDef.region && !s.isCoruscant)
     .map((s) => s.id);
   if (systemCandidates.length === 0) return true;
-  // RAW: "the Rebel player must place this leader in any system in the Rebel
-  // base's region." The Empire benefits from the region reveal, but the REBEL
-  // chooses the system. (Was wrongly assigned to Empire.)
-  G.pendingChoice = {
-    kind: 'HomingBeaconPlace',
-    side: 'Rebel',
-    leaderCandidates,
-    systemCandidates,
-  };
-  log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-    kind: 'HomingBeaconPlace', leaders: leaderCandidates.length, systems: systemCandidates.length,
-  }});
+  // Only one eligible captive — nothing to choose, go straight to placement.
+  if (leaderCandidates.length === 1) {
+    raiseHomingBeaconPlacement(G, leaderCandidates[0], systemCandidates);
+    return true;
+  }
+  requestChoice(G, {
+    tag: 'homing-beacon-target',
+    side: 'Empire',
+    domain: 'leader',
+    prompt: 'Homing Beacon — choose which captured leader to release',
+    detail: 'The Rebel then places them somewhere in the base\'s region, which reveals that region to you.',
+    candidates: leaderCandidates.map((id) => ({
+      id,
+      label: G.catalog.leaders[id]?.name ?? id,
+      // Flag the frozen one: releasing them also discards the carbonite ring,
+      // and the Rebel never gets the Carbon Freezing reputation back either way.
+      sublabel: G.empire.capturedLeaders?.find((c) => c.leaderId === id)?.ring === 'carbonite'
+        ? 'in carbonite — releasing discards the ring' : undefined,
+    })),
+    min: 1,
+    max: 1,
+    submitLabel: 'Release',
+    context: { systemCandidates },
+  });
+  log(G, { kind: 'choice-request', side: 'Empire', payload: { kind: 'Choice', tag: 'homing-beacon-target' } });
   return true;
 };
+
+// The Empire picked the captive to release; hand the Rebel the placement.
+registerChoice('homing-beacon-target', (G, selection, context) => {
+  const systemCandidates = (context.systemCandidates as SystemId[] | undefined) ?? [];
+  raiseHomingBeaconPlacement(G, selection[0] as LeaderId, systemCandidates);
+});
 
 /** "Take 4 random probe cards. Place on top and/or bottom of the deck." Auto:
  *  take 4 random, all to the bottom (worst for Empire). */
