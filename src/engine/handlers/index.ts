@@ -382,6 +382,17 @@ const overseeProject: EffectHandler = (G, ctx) => {
   // it in this system." Player picks; pause for OverseeProjectPick.
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
+  // RR p.13 "Sabotage Markers": "Abilities cannot 'build' or 'deploy' units in a
+  // system that contains a sabotage marker," and the FAQ is explicit that the
+  // test is the word used — "If an ability does not use the word 'Build' or
+  // 'Deploy,' then it is unaffected." Oversee Project says DEPLOY, so a sabotage
+  // marker stops it dead; the units stay on the queue (#646). This is the
+  // opposite of the place-on-the-queue abilities (Temporary Alliance, Construct
+  // Factory), which sabotage does NOT touch — see the #640 note in phases.ts.
+  if (G.map.systems[sysId]?.sabotage) {
+    log(G, { kind: 'oversee-project-blocked-by-sabotage', side: 'Empire', payload: { systemId: sysId } });
+    return true;
+  }
   const q = G.empire.buildQueue;
   const candidates: { slot: 1 | 2; queueIndex: number; unitTypeId: string }[] = [];
   for (const slot of [1, 2] as const) {
@@ -1979,6 +1990,13 @@ const assault: EffectHandler = (G, ctx) => {
 const safeHaven: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
+  // RR p.13: sabotage markers "affect both factions equally" and block any
+  // ability that DEPLOYS units there. Safe Haven deploys, so the Rebel is
+  // blocked by their own sabotage marker just as the Empire is (#646).
+  if (G.map.systems[sysId]?.sabotage) {
+    log(G, { kind: 'safe-haven-blocked-by-sabotage', side: 'Rebel', payload: { systemId: sysId } });
+    return true;
+  }
   // Build the pickable list of every unit currently in the Rebel build queue.
   // The PLAYER chooses up to 2 (#182 — was auto-taking the first 2). If the
   // queue is empty there's nothing to choose, so the mission just succeeds.

@@ -463,8 +463,20 @@ export function missionRevealIsPointless(
       // ENTIRE effect is deploying queued units — a total no-op when the Rebel
       // build queue is empty (the handler just logs an empty deploy and the
       // mission is wasted). (#594: AI Rebel ran Safe Haven with 0 units queued.)
+      // Equally a no-op on a sabotaged system: RR p.13 blocks any ability that
+      // DEPLOYS units there, and markers "affect both factions equally" (#646).
+      if (ss?.sabotage) return true;
       const anyQueued = ([1, 2, 3] as const).some((s) => (G.rebel.buildQueue[s]?.length ?? 0) > 0);
       return !anyQueued;
+    }
+    case 'oversee-project': {
+      // "Choose 1 Imperial unit on space 1 or 2 of the build queue and deploy it
+      // in this system." Nothing but a deploy, so it accomplishes nothing on a
+      // sabotaged system (RR p.13) or with build spaces 1 and 2 both empty
+      // (#646 — the AI ran it on a sabotaged Alderaan and the units landed
+      // anyway; the deploy is now blocked, which would leave a wasted mission).
+      if (ss?.sabotage) return true;
+      return ([1, 2] as const).every((s) => (G.empire.buildQueue[s]?.length ?? 0) === 0);
     }
     case 'hunt-them-down':
     case 'hit-and-run':

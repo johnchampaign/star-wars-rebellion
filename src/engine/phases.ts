@@ -7105,6 +7105,34 @@ function offerArmedRevealsAtCommandEnd(G: GameState): boolean {
   return !!G.pendingChoice; // posted an offer → paused
 }
 
+/** Is this the same armed card? Compared BY VALUE, never by object identity.
+ *  `pendingArmedReveals.remaining` and `armedActionCards` hold what used to be
+ *  the same objects, but both survive the codec — one JSON round-trip (save /
+ *  resume, an online snapshot, an AI-search clone) turns them into equal-but-
+ *  distinct objects and every `includes`/`indexOf` silently returns -1. That is
+ *  what let Secret Facility fire twice at Ilum (#644): the reveal never disarmed
+ *  the card, so the Empire's next Command turn revealed the same card again —
+ *  two Shield Bunkers, two Stormtroopers, and the one-of-a-kind card sitting in
+ *  the discard twice while still armed. An armed card is uniquely identified by
+ *  (cardId, probeSystemId, armedAt): each is armed by consuming a distinct probe
+ *  pointing at a distinct system. */
+function sameArmedCard(a: ArmedActionCard, b: ArmedActionCard): boolean {
+  return a === b
+    || (a.cardId === b.cardId && a.probeSystemId === b.probeSystemId && a.armedAt === b.armedAt);
+}
+
+/** Remove an armed card from the Empire's armed list. Returns false if it was
+ *  already gone — the caller MUST treat that as "already revealed" and stop, so
+ *  a stale queue entry can't resolve the same card a second time (#644). */
+function disarmActionCard(G: GameState, armed: ArmedActionCard): boolean {
+  const list = G.empire.armedActionCards;
+  if (!list) return false;
+  const idx = list.findIndex((a) => sameArmedCard(a, armed));
+  if (idx < 0) return false;
+  list.splice(idx, 1);
+  return true;
+}
+
 /** Post the next pending reveal offer. When the queue drains, run the phase's
  *  continuation: command-end resumes the Rapid Mobilization / Refresh transition;
  *  command-start just lets the Empire's turn proceed. */
@@ -7115,7 +7143,7 @@ function postNextArmedRevealOffer(G: GameState): void {
   while (p.remaining.length > 0) {
     const next = p.remaining[0];
     // Skip any card that's no longer armed (already revealed).
-    if (!armed.includes(next)) { p.remaining.shift(); continue; }
+    if (!armed.some((a) => sameArmedCard(a, next))) { p.remaining.shift(); continue; }
     G.pendingChoice = { kind: 'ArmedCardRevealOffer', side: 'Empire', cardId: next.cardId, systemId: next.probeSystemId };
     log(G, { kind: 'choice-request', side: 'Empire', payload: {
       kind: 'ArmedCardRevealOffer', cardId: next.cardId, systemId: next.probeSystemId,
@@ -7139,9 +7167,8 @@ export function resolveArmedCardRevealOffer(G: GameState, reveal: boolean): { ok
   const cur = p.remaining.shift()!;
   G.pendingChoice = undefined;
   if (reveal) {
-    const f = G.empire;
-    const idx = (f.armedActionCards ?? []).indexOf(cur);
-    if (idx >= 0) f.armedActionCards!.splice(idx, 1);
+    // revealArmedActionCard disarms first and no-ops if the card is already
+    // gone, so a duplicated/stale offer can't resolve it twice (#644).
     revealArmedActionCard(G, cur); // may post SecretFacilityUnitPick or start combat
   } else {
     log(G, { kind: 'armed-reveal-declined', side: 'Empire', payload: { cardId: cur.cardId, systemId: cur.probeSystemId } });
@@ -7190,6 +7217,16 @@ export function resolveSecretFacilityUnitPick(
 }
 
 function revealArmedActionCard(G: GameState, armed: ArmedActionCard): void {
+  // Disarm FIRST, and bail if it was already disarmed. This is the one place
+  // that spends an armed card, so making it idempotent here means no caller can
+  // double-spend one — the failure behind #644, where the same Secret Facility
+  // was revealed on two consecutive Empire Command turns.
+  if (!disarmActionCard(G, armed)) {
+    log(G, { kind: 'armed-reveal-already-spent', side: 'Empire', payload: {
+      cardId: armed.cardId, systemId: armed.probeSystemId, armedAt: armed.armedAt,
+    }});
+    return;
+  }
   const sys = armed.probeSystemId;
   // The action card discards at reveal.
   G.empire.actionDiscard.push(armed.cardId);

@@ -45,7 +45,7 @@ formats to `{ meta, humanSide, winner, events, snapshots, final }`.
 2. Run `node scripts/gen-log-registry.mjs`, then edit your kind's Description.
 3. `node scripts/test-log-registry.mjs` must pass.
 
-## Kinds (260)
+## Kinds (261)
 
 | Kind | Description | Sample payload | Emitted from |
 |---|---|---|---|
@@ -61,6 +61,7 @@ formats to `{ meta, humanSide, winner, events, snapshots, final }`.
 | `ambitions-of-power-skipped` | — | `{}` | src/engine/phases.ts |
 | `arm-card` | — | `{"cardId":"secret-facility","probeSystemId":"tatooine","probeId":"probe-tatooine"}` | src/engine/phases.ts |
 | `arm-card-noop` | — | `(not seen in corpus or sample game)` | src/engine/phases.ts |
+| `armed-reveal-already-spent` | Safety net (#644): a reveal was requested for an armed card that is no longer armed, so nothing happened. Should never appear in a healthy game — if it does, a stale reveal offer survived past the card being spent. | `(not seen in corpus or sample game)` | src/engine/phases.ts |
 | `armed-reveal-declined` | — | `{"cardId":"secret-facility","systemId":"endor"}` | src/engine/phases.ts |
 | `assign-leader` | — | `{"missionId":"rapid-mobilization","leaderIds":["mon-mothma"]}` | src/engine/phases.ts |
 | `auto-rescue` | — | `{"leaderId":"jan-dodonna","systemId":"dantooine","reason":"no-imperial-units"}` | src/engine/mechanics.ts |
