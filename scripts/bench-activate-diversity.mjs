@@ -33,13 +33,17 @@ const flag = (n, d) => { const i = argv.indexOf(n); return i >= 0 && argv[i + 1]
 const MAX_REPLAYS = parseInt(flag('--max-replays', '12'), 10);
 const N_ROUNDS = parseInt(flag('--rounds', '6'), 10);
 const AI_SEED = parseInt(flag('--ai-seed', '424242'), 10);
+// Which env flag to A/B. Defaults to the distinct-target change this bench was
+// written for, but any 1/0 search flag works — e.g.
+//   --flag SWR_MCTS_KEEP_PLAYING   (the #630 lost-position fallback)
+const FLAG = flag('--flag', 'SWR_ACTIVATE_DIVERSITY');
 
 // ---------------------------------------------------------------------------
 // Driver: run both arms, compare.
 // ---------------------------------------------------------------------------
 if (!IS_ARM) {
   const run = (diversity) => {
-    const env = { ...process.env, SWR_MCTS: '1', SWR_ACTIVATE_DIVERSITY: diversity };
+    const env = { ...process.env, SWR_MCTS: '1', [FLAG]: diversity };
     const pass = ['--arm', '--max-replays', String(MAX_REPLAYS), '--rounds', String(N_ROUNDS), '--ai-seed', String(AI_SEED)];
     const t0 = Date.now();
     const r = spawnSync(process.execPath, [SELF, ...pass], { env, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
@@ -50,11 +54,11 @@ if (!IS_ARM) {
     out.minutes = (Date.now() - t0) / 60000;
     return out;
   };
-  console.log(`activation-diversity A/B — <=${MAX_REPLAYS} replays, ${N_ROUNDS} rounds, ai-seed ${AI_SEED}, MCTS ON`);
-  console.log('running OFF arm (legacy: every leader proposes the same system)...');
+  console.log(`${FLAG} A/B — <=${MAX_REPLAYS} replays, ${N_ROUNDS} rounds, ai-seed ${AI_SEED}, MCTS ON`);
+  console.log(`running OFF arm (${FLAG}=0)...`);
   const off = run('0');
   console.log(`  ${off.minutes.toFixed(1)} min`);
-  console.log('running ON arm (distinct targets)...');
+  console.log(`running ON arm (${FLAG}=1)...`);
   const on = run('1');
   console.log(`  ${on.minutes.toFixed(1)} min`);
 
@@ -77,9 +81,12 @@ if (!IS_ARM) {
   console.log(`  total peak ground delivered:            OFF ${tot(off, (x) => x.maxDelivered)}   ON ${tot(on, (x) => x.maxDelivered)}`);
   for (const [k, r] of [['OFF', off], ['ON', on]]) {
     if (r.mcts) {
+      const d = Math.max(1, r.mcts.decisions);
       console.log(`  ${k} search: ${r.mcts.decisions} decisions, ` +
-        `${(r.mcts.pulls / Math.max(1, r.mcts.decisions)).toFixed(1)} rollouts/decision, ` +
-        `disagreed with heuristic on ${(100 * r.mcts.disagreements / Math.max(1, r.mcts.decisions)).toFixed(0)}%`);
+        `${(r.mcts.pulls / d).toFixed(1)} rollouts/decision, ` +
+        `disagreed ${(100 * r.mcts.disagreements / d).toFixed(0)}%, ` +
+        `pass-margin fired ${(100 * (r.mcts.passRescues ?? 0) / d).toFixed(1)}%, ` +
+        `keep-playing fired ${(100 * (r.mcts.keepPlaying ?? 0) / d).toFixed(1)}%`);
     }
   }
   console.log('\n  NOTE: one seed = one deterministic sample. Re-run with --ai-seed to put');

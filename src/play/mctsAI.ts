@@ -155,9 +155,13 @@ export function seedMCTS(seed: number): void {
 function rand(): number { return _rng ? _rng() : Math.random(); }
 
 // Decision telemetry for benches (reset per run if desired).
-export const mctsStats = { decisions: 0, pulls: 0, ms: 0, disagreements: 0 };
+// `passRescues` counts pass-margin overrides; `keepPlaying` counts the
+// lost-position fallback (#630). Both are narrow guards, so a high firing rate
+// is itself a signal that something is wrong — watch them in benches.
+export const mctsStats = { decisions: 0, pulls: 0, ms: 0, disagreements: 0, passRescues: 0, keepPlaying: 0 };
 export function resetMctsStats(): void {
   mctsStats.decisions = 0; mctsStats.pulls = 0; mctsStats.ms = 0; mctsStats.disagreements = 0;
+  mctsStats.passRescues = 0; mctsStats.keepPlaying = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -563,12 +567,40 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
   // alternatives are genuinely bad their means sit clearly lower and pass
   // still goes through.
   if (chosen.kind === 'pass' && alive.length > 1) {
-    const bestAct = alive.find((x) => x.a.kind !== 'pass');
+    const acts = alive.filter((x) => x.a.kind !== 'pass');
+    const bestAct = acts[0];
     if (bestAct) {
       const margin = envInt('SWR_MCTS_PASS_MARGIN', 5) / 100;
       const passMean = alive[0].sum / alive[0].n;
       const actMean = bestAct.sum / bestAct.n;
-      if (passMean - actMean < margin) chosen = bestAct.a;
+      if (passMean - actMean < margin) {
+        chosen = bestAct.a;
+        mctsStats.passRescues++;
+      } else if (
+        envInt('SWR_MCTS_KEEP_PLAYING', 1) === 1
+        && acts.every((x) => x.sum / x.n <= envInt('SWR_MCTS_LOST_FLOOR', 1) / 100)
+      ) {
+        // KEEP-PLAYING (#630). The margin rule above assumes the means carry
+        // information. In a position the search rates as LOST they carry none:
+        // every action arm rolls out at exactly 0 while pass picks up a couple
+        // of stray wins purely because ending the round early lands the rollout
+        // in a different part of the tree. #630's own trace is pass 2/17 = 0.118
+        // against five action arms at 0/9..0/10 = 0.000 — a gap of 0.118 that
+        // sails past the 0.05 margin on no evidence at all.
+        //
+        // With no gradient there is nothing to defer TO, and passing makes the
+        // AI visibly down tools with legal moves on the table (the reporter:
+        // "the empire gave up on turn 6 and passed after one action despite
+        // having several leaders and missions"). So when NO action arm ever won
+        // a rollout, fall back to the heuristic's own ranking, which is the only
+        // signal left. Deliberately narrow: one action arm above the floor and
+        // the search has a real preference again, so this stops firing.
+        //
+        // Picked by heuristic SCORE rather than by arm order: with every mean
+        // tied at 0 the sort above is arbitrary among them.
+        chosen = acts.reduce((best, x) => (x.a.score > best.a.score ? x : best), bestAct).a;
+        mctsStats.keepPlaying++;
+      }
     }
   }
 
