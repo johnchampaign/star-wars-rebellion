@@ -673,9 +673,10 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
           c.cinematicTacticDoneThisRound.push(key);
           G.pendingChoice = {
             kind: 'CinematicDestroyPick', side, theater, systemId: c.systemId, candidates: dcands,
+            cardId: sel.cardId, useTop: sel.useTop,
           };
           log(G, { kind: 'choice-request', side, payload: {
-            kind: 'CinematicDestroyPick', theater, candidates: dcands.length,
+            kind: 'CinematicDestroyPick', theater, candidates: dcands.length, cardId: sel.cardId,
           }});
           return; // paused — resolveCinematicDestroyPick removes the chosen unit
         }
@@ -2806,7 +2807,11 @@ export function resolveCinematicDestroyPick(
   if (!c) return { ok: false, reason: 'no-pending-combat' };
   if (!pc.candidates.includes(instanceId as UnitInstanceId)) return { ok: false, reason: 'not-a-candidate' };
   applyChosenDestroy(G, c, instanceId);
+  // Name the card, matching the auto-resolve path's logPlay. Without cardId a
+  // reader (or a problem report) sees only "a unit was destroyed" with no way
+  // to tell which card did it.
   log(G, { kind: 'cinematic-tactic-play', side: pc.side, payload: {
+    cardId: pc.cardId, ability: pc.useTop ? 'primary' : 'secondary',
     theater: pc.theater, destroyed: instanceId,
   }});
   G.pendingChoice = undefined;

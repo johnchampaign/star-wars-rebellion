@@ -1561,6 +1561,13 @@ export type ChoiceRequest =
       theater: Theater;
       systemId: SystemId;
       candidates: UnitInstanceId[];
+      // Which card (and which half of it) is doing the destroying. Carried on
+      // the choice purely so the resolver can name it in the log: the
+      // auto-resolve path logs cardId/ability, and without these the
+      // interactive path logged an anonymous "something destroyed a unit",
+      // which is useless when reading a play log or a problem report.
+      cardId: string;
+      useTop: boolean;
     }
   // ---------------------------------------------------------------------------
   // Generic, data-driven choice (the unified choice framework — see
