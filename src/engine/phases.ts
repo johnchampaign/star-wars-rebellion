@@ -7073,6 +7073,35 @@ export function resolveArmCardProbePick(G: GameState, probeId: string): { ok: bo
   if (pi < 0) return { ok: false, reason: 'probe-not-in-hand' };
   const probe = G.catalog.probes[probeId];
   if (!probe) return { ok: false, reason: 'unknown-probe' };
+  // #656: a one-of-a-kind card must not end up armed twice. A report arrived
+  // with Secret Facility present THREE times at once — twice in the action
+  // discard and once still armed at Ilum — which then re-offered its reveal at
+  // the start of every Empire turn forever, because the reveal queue is rebuilt
+  // each turn from whatever is still armed. The sequence that duplicated it is
+  // still unknown (a problem report carries the board but not the move history,
+  // and no archived game reproduces it), so this blocks the duplication at the
+  // one choke point where a card BECOMES armed.
+  //
+  // Deliberately diagnostic: it logs when it fires, so the next occurrence
+  // identifies the entry path instead of silently papering over it.
+  //
+  // Still correct if #657 adds deck reshuffling — a reshuffle moves cards OUT
+  // of the discard, so a legitimately recycled card is no longer in
+  // actionDiscard by the time it is re-armed.
+  const alreadyArmed = (e.armedActionCards ?? []).some((a) => a.cardId === pc.cardId);
+  const alreadySpent = e.actionDiscard.includes(pc.cardId);
+  if (alreadyArmed || alreadySpent) {
+    G.pendingChoice = undefined;
+    log(G, { kind: 'arm-card-blocked', side: 'Empire', payload: {
+      cardId: pc.cardId,
+      reason: alreadyArmed ? 'already-armed' : 'already-discarded',
+      armed: (e.armedActionCards ?? []).map((a) => `${a.cardId}@${a.probeSystemId}`),
+      copiesInDiscard: e.actionDiscard.filter((c) => c === pc.cardId).length,
+    }});
+    // Fizzle rather than fail: the probe is NOT consumed and the turn carries
+    // on, mirroring the existing no-probes-in-hand wasted-play path.
+    return { ok: true };
+  }
   e.probeHand!.splice(pi, 1);
   if (!e.armedActionCards) e.armedActionCards = [];
   e.armedActionCards.push({

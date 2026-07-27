@@ -60,6 +60,7 @@ formats to `{ meta, humanSide, winner, events, snapshots, final }`.
 | `ambitions-of-power-applied` | — | `{"newCap":9}` | src/engine/phases.ts |
 | `ambitions-of-power-skipped` | — | `{}` | src/engine/phases.ts |
 | `arm-card` | — | `{"cardId":"secret-facility","probeSystemId":"tatooine","probeId":"probe-tatooine"}` | src/engine/phases.ts |
+| `arm-card-blocked` | — | `{"cardId":"secret-facility","reason":"already-discarded","armed":["sweep-the-area@mon-calamari"],"copiesInDiscard":1}` | src/engine/phases.ts |
 | `arm-card-noop` | — | `(not seen in corpus or sample game)` | src/engine/phases.ts |
 | `armed-reveal-already-spent` | Safety net (#644): a reveal was requested for an armed card that is no longer armed, so nothing happened. Should never appear in a healthy game — if it does, a stale reveal offer survived past the card being spent. | `(not seen in corpus or sample game)` | src/engine/phases.ts |
 | `armed-reveal-declined` | — | `{"cardId":"secret-facility","systemId":"endor"}` | src/engine/phases.ts |
