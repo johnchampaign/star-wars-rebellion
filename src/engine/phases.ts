@@ -5637,13 +5637,23 @@ function refreshRecruitIfApplicable(G: GameState, logStart: number): boolean {
   const pending: { side: Side; drawnIds: string[] }[] = [];
   for (const side of ['Rebel', 'Empire'] as const) {
     const f = faction(G, side);
+    // A depleted deck recycles its discard first (#657). This is THE draw site
+    // that matters — mechanics.drawAction is not on this path.
+    M.refillActionDeckFromDiscard(G, side);
     if (f.actionDeck.length === 0) continue;
     if (f.actionDeck.length === 1) {
       const cardId = f.actionDeck.shift()!;
+      // Drawing the 2nd of 2 can itself empty the deck, so try once more before
+      // falling back to the single-card (no choice) branch.
+      if (M.refillActionDeckFromDiscard(G, side) && f.actionDeck.length > 0) {
+        pending.push({ side, drawnIds: [cardId, f.actionDeck.shift()!] });
+        continue;
+      }
       applyRecruitedActionCard(G, side, cardId);
       continue;
     }
     const a = f.actionDeck.shift()!;
+    M.refillActionDeckFromDiscard(G, side);
     const b = f.actionDeck.shift()!;
     pending.push({ side, drawnIds: [a, b] });
   }
@@ -5903,6 +5913,9 @@ export function recruitDrawAnother(G: GameState): { ok: boolean; reason?: string
   if (cur.side !== choice.side) return { ok: false, reason: 'side-mismatch' };
   const f = faction(G, cur.side);
   // Guard: only legal while no drawn card is recruitable and the deck has cards.
+  // A depleted deck recycles its discard first (#657), so "keep drawing until a
+  // recruitable leader appears" isn't cut short by an exhausted deck.
+  M.refillActionDeckFromDiscard(G, cur.side);
   if (f.actionDeck.length === 0) return { ok: false, reason: 'deck-empty' };
   if (!noRecruitableAmongDrawn(G, cur.side, cur.drawnIds)) return { ok: false, reason: 'recruitable-available' };
   const drawn = f.actionDeck.shift()!;

@@ -11,6 +11,12 @@
 // discards with cards that already paid out reputation. Recycling it would let
 // the Rebel re-score the same objective.
 //
+// NOTE: the action-deck assertions here go through mechanics.drawAction, which
+// has NO callers in src/ — it delegates to refillActionDeckFromDiscard, so they
+// cover the helper, not the running game. The real recruit path is covered by
+// test-action-deck-reshuffle-657. Keep both: this one pins the objective
+// exclusion, which is the part that would be dangerous to get wrong.
+//
 // Run: node scripts/test-deck-reshuffle-657.mjs
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';

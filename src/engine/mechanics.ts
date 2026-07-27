@@ -1281,20 +1281,31 @@ export function removeProbeForSystem(G: GameState, sysId: SystemId): void {
 // Decks (basic draw/discard)
 // ============================================================================
 
+/** RR "Discarding": "If a deck is depleted, shuffle the discard pile and place
+ *  it facedown to create a new deck" (#657). Action cards carry no reuse
+ *  prohibition — unlike objectives, which is why the objective deck is
+ *  deliberately NOT recycled; see the note on drawObjective.
+ *
+ *  Exported because the REAL draw sites are the recruit paths in phases.ts,
+ *  which shift `actionDeck` directly rather than going through drawAction.
+ *  Call this before any such shift. Returns true if a reshuffle happened. */
+export function refillActionDeckFromDiscard(G: GameState, side: Side): boolean {
+  const f = faction(G, side);
+  if (f.actionDeck.length > 0 || f.actionDiscard.length === 0) return false;
+  f.actionDeck = shuffle(G.rng, [...f.actionDiscard]);
+  f.actionDiscard = [];
+  log(G, { kind: 'action-deck-reshuffled', side, payload: { count: f.actionDeck.length } });
+  return true;
+}
+
+/** NOTE: currently has NO callers in src/ — the recruit paths in phases.ts draw
+ *  by shifting `actionDeck` directly. Kept because it mirrors drawMission and
+ *  is exercised by tests; do NOT assume changing it affects the running game. */
 export function drawAction(G: GameState, side: Side, n: number = 1): string[] {
   const f = faction(G, side);
   const drawn: string[] = [];
   for (let i = 0; i < n; i++) {
-    if (f.actionDeck.length === 0 && f.actionDiscard.length > 0) {
-      // RR "Discarding": "If a deck is depleted, shuffle the discard pile and
-      // place it facedown to create a new deck." Mirrors drawMission (#657).
-      // Action cards carry no reuse prohibition — unlike objectives, which is
-      // why the objective deck is deliberately NOT recycled here; see the note
-      // on drawObjective.
-      f.actionDeck = shuffle(G.rng, [...f.actionDiscard]);
-      f.actionDiscard = [];
-      log(G, { kind: 'action-deck-reshuffled', side, payload: { count: f.actionDeck.length } });
-    }
+    refillActionDeckFromDiscard(G, side);
     const c = f.actionDeck.shift();
     if (!c) break;
     f.actionHand.push(c);
