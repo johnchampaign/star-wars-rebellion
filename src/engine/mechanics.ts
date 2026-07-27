@@ -866,6 +866,20 @@ export function maybeDiscardDepletedImmediateObjective(G: GameState, source: str
   if (i < 0) return; // not in hand (already discarded / scored / never drawn)
   hand.splice(i, 1);
   (G.rebel.objectiveDiscard ??= []).push(source);
+  // Clear the "already placed its markers" flag as the card leaves hand. The
+  // flag exists so an in-hand Immediate objective activates exactly once, but
+  // it used to persist for the whole game, so a card that came BACK (Something
+  // To Fight For puts an objective from the discard pile on top of the deck)
+  // was redrawn as a dead card that never re-placed its markers (#655).
+  // RAW: removing a target marker "returns the marker to the supply of unused
+  // tokens" (RoE rulebook, Removing Target Markers) — the tokens are reusable,
+  // and nothing removes the card from the game. So a redrawn copy is a fresh
+  // Immediate objective and places markers again.
+  const act = G.rebel.activatedPersistentObjectives;
+  if (act) {
+    const a = act.indexOf(source);
+    if (a >= 0) act.splice(a, 1);
+  }
   log(G, { kind: 'immediate-objective-discarded', side: 'Rebel', payload: { objectiveId: source } });
 }
 
