@@ -3361,11 +3361,17 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           }} />
       )}
       {/* Generic choice framework — one render block for every data-driven
-          Choice (src/engine/choices.ts). Guarded like the other pickers so it
-          stays hidden while a report modal is up. */}
-      {(!G.missionReports || G.missionReports.length === 0)
-        && (!G.combatReports || G.combatReports.length === 0)
-        && G.pendingChoice?.kind === 'Choice'
+          Choice (src/engine/choices.ts).
+          NOT report-gated, and it must stay that way. 'Choice' is listed in
+          REPORT_DEFERRING_CHOICES above, so a queued report already steps aside
+          while this is pending. Gating this on report length as well made the
+          two guards block each other and froze the game outright (#651/#652:
+          Seize Control raises its marker choice from finishCombatTail, i.e. at
+          the exact moment the combat report is queued — the report deferred to
+          the choice, the choice hid behind the report, and nothing rendered).
+          Every other entry in REPORT_DEFERRING_CHOICES renders unconditionally
+          for the same reason; see test-report-deferring-ungated-652.mjs. */}
+      {G.pendingChoice?.kind === 'Choice'
         && G.pendingChoice.side === humanSide && (
         <GenericChoiceModal
           G={G} choice={G.pendingChoice}
