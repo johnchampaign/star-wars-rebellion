@@ -11105,6 +11105,34 @@ function publicMissionDiscards(G: GameState, side: Side): string[] {
   return out;
 }
 
+/** The Rebel's objective discard pile (#656). RR "Discarding": a discarded card
+ *  sits in a FACEUP pile and "players can look at cards in the discard piles at
+ *  any time" — the same rule that governs the mission piles (#654).
+ *
+ *  The pile is the UNION of two engine lists, because a SCORED objective is in
+ *  the discard pile too: RoE FAQ "all objective cards are discarded after use",
+ *  which is why Something To Fight For can retrieve one (#344). The engine keeps
+ *  scored cards in `scoredObjectives` as history and never copies them into
+ *  `objectiveDiscard`, so showing only the latter would under-report exactly
+ *  what the card can pull back. Scored entries are tagged so the reader can tell
+ *  which cards already paid out. */
+function objectiveDiscardPile(G: GameState): { id: string; scored: boolean }[] {
+  const scored = new Set((G.rebel.scoredObjectives ?? []).map((s) => s.objectiveId));
+  const out: { id: string; scored: boolean }[] = [];
+  const seen = new Set<string>();
+  for (const s of G.rebel.scoredObjectives ?? []) {
+    if (seen.has(s.objectiveId)) continue;
+    seen.add(s.objectiveId);
+    out.push({ id: s.objectiveId, scored: true });
+  }
+  for (const id of G.rebel.objectiveDiscard ?? []) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push({ id, scored: scored.has(id) });
+  }
+  return out;
+}
+
 function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active: boolean) => void }) {
   // Cinematic Combat (RoE) replaces the shared 15-card Space/Ground tactic decks
   // entirely with four faction-specific decks of 8 advanced cards each (combat.ts
@@ -11147,9 +11175,10 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
   // chips advertise their discard pile (#636 follow-up).
   const rebelDisc = publicMissionDiscards(G, 'Rebel').length;
   const empireDisc = publicMissionDiscards(G, 'Empire').length;
+  const objDisc = objectiveDiscardPile(G).length;
   const decks: Array<{ label: string; count: number; color: string; subtle?: string; isProbe?: boolean; panelKey?: string }> = [
     { label: 'Probe deck',           count: G.probeDeck.length,                color: '#7986cb', subtle: G.empire.probeHand?.length ? `+${G.empire.probeHand.length} drawn` : undefined, isProbe: true },
-    { label: 'Objective deck',       count: G.rebel.objectiveDeck?.length ?? 0, color: '#aed581', subtle: G.rebel.objectiveHand?.length ? `+${G.rebel.objectiveHand.length} in hand` : undefined },
+    { label: 'Objective deck',       count: G.rebel.objectiveDeck?.length ?? 0, color: '#aed581', subtle: objDisc ? `(${objDisc} disc.)` : (G.rebel.objectiveHand?.length ? `+${G.rebel.objectiveHand.length} in hand` : undefined), panelKey: 'objectives' },
     { label: 'Rebel mission deck',   count: G.rebel.missionDeck.length,         color: '#4fc3f7', subtle: rebelDisc ? `(${rebelDisc} disc.)` : undefined,  panelKey: 'missions:Rebel' },
     { label: 'Empire mission deck',  count: G.empire.missionDeck.length,        color: '#ff8a80', subtle: empireDisc ? `(${empireDisc} disc.)` : undefined, panelKey: 'missions:Empire' },
     { label: 'Empire project deck',  count: G.empire.projectDeck?.length ?? 0,  color: '#ff8a80', subtle: 'projects' },
@@ -11178,9 +11207,11 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
               ? `${d.label} — hover to highlight systems ruled out by drawn probes`
               : d.panelKey?.startsWith('missions:')
                 ? `${d.label} — click to see both sides' discard piles`
-                : d.panelKey
-                  ? `${d.label} — click to see the cards and which are discarded`
-                  : d.label
+                : d.panelKey === 'objectives'
+                  ? `${d.label} — click to see the discard pile`
+                  : d.panelKey
+                    ? `${d.label} — click to see the cards and which are discarded`
+                    : d.label
           }
           onClick={d.panelKey ? () => setOpenDeck((v) => (v === d.panelKey ? null : d.panelKey!)) : undefined}
           onMouseEnter={d.isProbe && onProbeHover ? () => onProbeHover(true) : undefined}
@@ -11199,7 +11230,9 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
       ))}
       {openDeck?.startsWith('missions:')
         ? <MissionDiscardPanel G={G} focus={openDeck.slice('missions:'.length) as Side} />
-        : openDeck && <TacticDeckReference G={G} deckKey={openDeck} />}
+        : openDeck === 'objectives'
+          ? <ObjectiveDiscardPanel G={G} />
+          : openDeck && <TacticDeckReference G={G} deckKey={openDeck} />}
     </div>
   );
 }
@@ -11371,6 +11404,49 @@ function MissionDiscardPanel({ G, focus }: { G: GameState; focus: Side }) {
         Discard piles are public and include cards discarded at the Refresh hand
         limit. A mission a leader was assigned to but never attempted is not a
         discard — it returns to its owner's hand unrevealed.
+      </div>
+    </div>
+  );
+}
+
+/** The Rebel objective discard pile (#656), opened from the objective deck chip.
+ *  Shows each card's reputation value so the Empire can read what the Rebel has
+ *  already banked, and tags the ones that scored (both kinds are retrievable by
+ *  Something To Fight For — see objectiveDiscardPile). */
+function ObjectiveDiscardPanel({ G }: { G: GameState }) {
+  const pile = objectiveDiscardPile(G);
+  return (
+    <div style={{ gridColumn: '1 / -1', marginTop: 6, background: '#15171c', borderRadius: 4, padding: 10 }}>
+      <div style={{ fontSize: 11, color: '#aed581', marginBottom: 6 }}>
+        Objective discards ({pile.length})
+      </div>
+      {pile.length === 0 ? (
+        <div style={{ fontSize: 11, color: '#666' }}>Nothing discarded yet.</div>
+      ) : (
+        <div style={{ display: 'grid', gap: 4, maxHeight: 190, overflowY: 'auto' }}>
+          {pile.map(({ id, scored }) => {
+            const o = G.catalog.objectives[id];
+            return (
+              <div key={id} style={{
+                background: '#0c0d10', borderRadius: 3, padding: '5px 8px',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8,
+              }}>
+                <span style={{ fontSize: 11, color: scored ? '#9a9a9e' : '#e8e8ea' }}>
+                  {o?.name ?? id}
+                  {o?.reputation ? <span style={{ color: '#aed581', marginLeft: 6 }}>{o.reputation} rep</span> : null}
+                </span>
+                <span style={{ fontSize: 9, color: scored ? '#80dc78' : '#888', whiteSpace: 'nowrap' }}>
+                  {scored ? 'scored' : 'discarded'}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <div style={{ fontSize: 9, color: '#666', marginTop: 8, lineHeight: 1.4 }}>
+        Discard piles are public. Scored objectives sit in this pile too, so
+        "Something To Fight For" can pull either kind back onto the deck.
+        Objectives still in the Rebel's hand are not listed.
       </div>
     </div>
   );
