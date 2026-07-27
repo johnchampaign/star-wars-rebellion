@@ -11076,22 +11076,28 @@ function TurnTrack({ G }: { G: GameState }) {
 // Decks Panel
 // ============================================================================
 
-/** Missions each side has PUBLICLY discarded (#636). Derived from the log,
- *  NOT from faction.missionDiscard — that array mixes two visibilities:
- *    - 'mission-discard'   a REVEALED mission that resolved: both players saw
- *                          it, so it is public information;
- *    - 'mission-hand-trim' a hand-limit discard straight from hand: private to
- *                          the holder (the log panel already hides this kind).
- *  Rendering the raw array would leak every trimmed card — the same class of
- *  bug as the assignment (#583) and objective-check (#602) leaks. Entries
- *  before a 'mission-deck-reshuffled' are dropped: that pile went back into
- *  the deck. */
+/** Missions each side has discarded (#636). Every discard is public: RR
+ *  "Discarding" — a discarded card goes to a FACEUP pile beside its deck, and
+ *  "players can look at cards in the discard piles at any time". There is no
+ *  carve-out in the May 2019 FAQ, so BOTH discard routes belong here:
+ *    - 'mission-discard'   a REVEALED mission that resolved;
+ *    - 'mission-hand-trim' a Refresh-phase hand-limit discard (RR Refresh step
+ *                          2). This was previously withheld as "private to the
+ *                          holder", which is not RAW — it made the viewer
+ *                          under-report the pile and mis-state what
+ *                          Reconnaissance could recover.
+ *  What genuinely stays secret is the mission a player never attempted: it
+ *  returns to hand at Refresh unrevealed, and is logged as
+ *  'mission-return-to-hand' rather than a discard, so it never reaches here.
+ *  Derived from the log rather than faction.missionDiscard so that entries
+ *  before a 'mission-deck-reshuffled' drop out — that pile went back into the
+ *  deck. */
 function publicMissionDiscards(G: GameState, side: Side): string[] {
   const out: string[] = [];
   for (const e of G.turnLog) {
     if (e.side !== side) continue;
     if (e.kind === 'mission-deck-reshuffled') { out.length = 0; continue; }
-    if (e.kind === 'mission-discard') {
+    if (e.kind === 'mission-discard' || e.kind === 'mission-hand-trim') {
       const id = (e.payload as { missionId?: string } | undefined)?.missionId;
       if (id) out.push(id);
     }
@@ -11106,9 +11112,11 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
   // in play, not the dead base ones (reporter: "it always shows 15 cards per
   // space/ground deck rather than separate tactics decks per side of 8 cards").
   const cinematic = !!G.expansion?.cinematicCombat;
-  // Which tactic deck's card list is expanded (#643), keyed 'Rebel:space' etc.
-  // for cinematic decks and 'base:space'/'base:ground' for the shared decks.
-  const [openTactics, setOpenTactics] = useState<string | null>(null);
+  // Which deck chip's panel is expanded. One panel at a time, shared by every
+  // clickable chip: 'Rebel:space' etc. for cinematic tactic decks,
+  // 'base:space'/'base:ground' for the shared tactic decks (#643), and
+  // 'missions:Rebel'/'missions:Empire' for the mission discard piles (#636).
+  const [openDeck, setOpenDeck] = useState<string | null>(null);
   const cinCount = (side: 'Rebel' | 'Empire', theater: 'space' | 'ground') => {
     const f = side === 'Rebel' ? G.rebel : G.empire;
     const discard = new Set(f.cinematicTacticDiscard ?? []);
@@ -11121,7 +11129,7 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
     }
     return { avail, used: total - avail };
   };
-  const tacticDecks: Array<{ label: string; count: number; color: string; subtle?: string; tacticKey?: string }> = cinematic
+  const tacticDecks: Array<{ label: string; count: number; color: string; subtle?: string; panelKey?: string }> = cinematic
     ? ([
         ['Rebel space tactics',  'Rebel',  'space',  '#4fc3f7'],
         ['Rebel ground tactics', 'Rebel',  'ground', '#4fc3f7'],
@@ -11129,17 +11137,21 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
         ['Empire ground tactics','Empire', 'ground', '#ff8a80'],
       ] as const).map(([label, side, theater, color]) => {
         const { avail, used } = cinCount(side, theater);
-        return { label, count: avail, color, subtle: used ? `(${used} used)` : undefined, tacticKey: `${side}:${theater}` };
+        return { label, count: avail, color, subtle: used ? `(${used} used)` : undefined, panelKey: `${side}:${theater}` };
       })
     : [
-        { label: 'Space tactic deck',  count: G.spaceTacticDeck.length,  color: '#80dc78', subtle: G.spaceTacticDiscard.length ? `(${G.spaceTacticDiscard.length} disc.)` : undefined, tacticKey: 'base:space' },
-        { label: 'Ground tactic deck', count: G.groundTacticDeck.length, color: '#80dc78', subtle: G.groundTacticDiscard.length ? `(${G.groundTacticDiscard.length} disc.)` : undefined, tacticKey: 'base:ground' },
+        { label: 'Space tactic deck',  count: G.spaceTacticDeck.length,  color: '#80dc78', subtle: G.spaceTacticDiscard.length ? `(${G.spaceTacticDiscard.length} disc.)` : undefined, panelKey: 'base:space' },
+        { label: 'Ground tactic deck', count: G.groundTacticDeck.length, color: '#80dc78', subtle: G.groundTacticDiscard.length ? `(${G.groundTacticDiscard.length} disc.)` : undefined, panelKey: 'base:ground' },
       ];
-  const decks: Array<{ label: string; count: number; color: string; subtle?: string; isProbe?: boolean; tacticKey?: string }> = [
+  // Mission discard counts drive the chip subtitles, mirroring how the tactic
+  // chips advertise their discard pile (#636 follow-up).
+  const rebelDisc = publicMissionDiscards(G, 'Rebel').length;
+  const empireDisc = publicMissionDiscards(G, 'Empire').length;
+  const decks: Array<{ label: string; count: number; color: string; subtle?: string; isProbe?: boolean; panelKey?: string }> = [
     { label: 'Probe deck',           count: G.probeDeck.length,                color: '#7986cb', subtle: G.empire.probeHand?.length ? `+${G.empire.probeHand.length} drawn` : undefined, isProbe: true },
     { label: 'Objective deck',       count: G.rebel.objectiveDeck?.length ?? 0, color: '#aed581', subtle: G.rebel.objectiveHand?.length ? `+${G.rebel.objectiveHand.length} in hand` : undefined },
-    { label: 'Rebel mission deck',   count: G.rebel.missionDeck.length,         color: '#4fc3f7' },
-    { label: 'Empire mission deck',  count: G.empire.missionDeck.length,        color: '#ff8a80' },
+    { label: 'Rebel mission deck',   count: G.rebel.missionDeck.length,         color: '#4fc3f7', subtle: rebelDisc ? `(${rebelDisc} disc.)` : undefined,  panelKey: 'missions:Rebel' },
+    { label: 'Empire mission deck',  count: G.empire.missionDeck.length,        color: '#ff8a80', subtle: empireDisc ? `(${empireDisc} disc.)` : undefined, panelKey: 'missions:Empire' },
     { label: 'Empire project deck',  count: G.empire.projectDeck?.length ?? 0,  color: '#ff8a80', subtle: 'projects' },
     { label: 'Rebel action deck',    count: G.rebel.actionDeck.length,          color: '#4fc3f7', subtle: 'recruit' },
     { label: 'Empire action deck',   count: G.empire.actionDeck.length,         color: '#ff8a80', subtle: 'recruit' },
@@ -11155,20 +11167,22 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
         <div
           key={d.label}
           style={{
-            background: d.tacticKey && openTactics === d.tacticKey ? '#1c1f26' : '#0c0d10',
-            border: `1px solid ${d.color}${d.tacticKey && openTactics === d.tacticKey ? 'cc' : '55'}`,
+            background: d.panelKey && openDeck === d.panelKey ? '#1c1f26' : '#0c0d10',
+            border: `1px solid ${d.color}${d.panelKey && openDeck === d.panelKey ? 'cc' : '55'}`,
             borderRadius: 3,
             padding: '6px 8px', textAlign: 'center',
-            cursor: d.isProbe && onProbeHover ? 'help' : d.tacticKey ? 'pointer' : 'default',
+            cursor: d.isProbe && onProbeHover ? 'help' : d.panelKey ? 'pointer' : 'default',
           }}
           title={
             d.isProbe && onProbeHover
               ? `${d.label} — hover to highlight systems ruled out by drawn probes`
-              : d.tacticKey
-                ? `${d.label} — click to see the cards and which are discarded`
-                : d.label
+              : d.panelKey?.startsWith('missions:')
+                ? `${d.label} — click to see both sides' discard piles`
+                : d.panelKey
+                  ? `${d.label} — click to see the cards and which are discarded`
+                  : d.label
           }
-          onClick={d.tacticKey ? () => setOpenTactics((v) => (v === d.tacticKey ? null : d.tacticKey!)) : undefined}
+          onClick={d.panelKey ? () => setOpenDeck((v) => (v === d.panelKey ? null : d.panelKey!)) : undefined}
           onMouseEnter={d.isProbe && onProbeHover ? () => onProbeHover(true) : undefined}
           onMouseLeave={d.isProbe && onProbeHover ? () => onProbeHover(false) : undefined}
         >
@@ -11183,8 +11197,9 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
           )}
         </div>
       ))}
-      {openTactics && <TacticDeckReference G={G} deckKey={openTactics} />}
-      <MissionDiscardPiles G={G} />
+      {openDeck?.startsWith('missions:')
+        ? <MissionDiscardPanel G={G} focus={openDeck.slice('missions:'.length) as Side} />
+        : openDeck && <TacticDeckReference G={G} deckKey={openDeck} />}
     </div>
   );
 }
@@ -11315,47 +11330,48 @@ function TacticDeckReference({ G, deckKey }: { G: GameState; deckKey: string }) 
   );
 }
 
-/** Public mission-discard piles (#636). Shows only missions that were REVEALED
- *  and resolved — see publicMissionDiscards for why hand-limit trims are
- *  excluded. Useful for tracking what the Empire has burned and what
- *  Reconnaissance could bring back. */
-function MissionDiscardPiles({ G }: { G: GameState }) {
-  const [open, setOpen] = useState(false);
-  const rebel = publicMissionDiscards(G, 'Rebel');
-  const empire = publicMissionDiscards(G, 'Empire');
-  if (rebel.length === 0 && empire.length === 0) return null;
+/** Mission discard piles (#636), opened from either mission-deck chip. Both
+ *  sides are always shown — the piles are read comparatively (what the Empire
+ *  has burned vs. what Reconnaissance could pull back), and splitting them
+ *  behind two separate clicks would lose that. The chip you clicked is
+ *  rendered first and highlighted so the click still feels targeted. */
+function MissionDiscardPanel({ G, focus }: { G: GameState; focus: Side }) {
   const name = (id: string) => G.catalog.missions[id]?.name ?? id;
-  const pile = (label: string, ids: string[], color: string) => {
+  const pile = (side: Side) => {
+    const ids = publicMissionDiscards(G, side);
+    const color = side === 'Rebel' ? '#4fc3f7' : '#ff8a80';
     const counts = new Map<string, number>();
     for (const id of ids) counts.set(id, (counts.get(id) ?? 0) + 1);
     return (
-      <div style={{ marginTop: 6 }}>
-        <div style={{ fontSize: 10, color, marginBottom: 2 }}>{label} ({ids.length})</div>
-        <div style={{ fontSize: 11, color: '#bbb', lineHeight: 1.5 }}>
-          {ids.length === 0 ? <span style={{ color: '#666' }}>—</span>
-            : [...counts.entries()].map(([id, n]) => `${name(id)}${n > 1 ? ` ×${n}` : ''}`).join(', ')}
+      <div key={side} style={{
+        background: '#0c0d10', borderRadius: 3, padding: '6px 8px',
+        border: `1px solid ${color}${side === focus ? '55' : '22'}`,
+      }}>
+        <div style={{ fontSize: 10, color, marginBottom: 3 }}>
+          {side} discards ({ids.length})
         </div>
+        {ids.length === 0 ? (
+          <div style={{ fontSize: 11, color: '#666' }}>Nothing discarded yet.</div>
+        ) : (
+          <div style={{ fontSize: 11, color: '#bbb', lineHeight: 1.5, maxHeight: 150, overflowY: 'auto' }}>
+            {[...counts.entries()]
+              .map(([id, n]) => `${name(id)}${n > 1 ? ` ×${n}` : ''}`)
+              .join(', ')}
+          </div>
+        )}
       </div>
     );
   };
+  // Clicked side first, opponent second.
+  const order: Side[] = focus === 'Rebel' ? ['Rebel', 'Empire'] : ['Empire', 'Rebel'];
   return (
-    <div style={{ width: '100%', marginTop: 6 }}>
-      <button
-        onClick={() => setOpen((v) => !v)}
-        style={{ background: 'none', border: 'none', color: '#8ab4f8', fontSize: 11, cursor: 'pointer', padding: 0 }}
-      >
-        {open ? '▾' : '▸'} mission discards ({rebel.length + empire.length})
-      </button>
-      {open && (
-        <div style={{ background: '#15171c', borderRadius: 4, padding: 8, marginTop: 4 }}>
-          {pile('Rebel discards', rebel, '#4fc3f7')}
-          {pile('Empire discards', empire, '#ff8a80')}
-          <div style={{ fontSize: 9, color: '#666', marginTop: 6, lineHeight: 1.4 }}>
-            Revealed missions that resolved. Cards discarded from hand at the
-            hand limit stay secret, so they are not listed.
-          </div>
-        </div>
-      )}
+    <div style={{ gridColumn: '1 / -1', marginTop: 6, background: '#15171c', borderRadius: 4, padding: 10 }}>
+      <div style={{ display: 'grid', gap: 6 }}>{order.map(pile)}</div>
+      <div style={{ fontSize: 9, color: '#666', marginTop: 8, lineHeight: 1.4 }}>
+        Discard piles are public and include cards discarded at the Refresh hand
+        limit. A mission a leader was assigned to but never attempted is not a
+        discard — it returns to its owner's hand unrevealed.
+      </div>
     </div>
   );
 }
@@ -11524,8 +11540,9 @@ const ONSCREEN_HIDDEN_KINDS = new Set<string>([
   'rapid-mobilization-probe-draw',
   // Rebel base initial pick (base location is hidden until reveal).
   'pick-rebel-base',
-  // Hand trims (which card discarded is private to the holder).
-  'mission-hand-trim',
+  // NOTE: 'mission-hand-trim' is deliberately NOT hidden — a hand-limit
+  // discard goes to the same faceup, publicly-inspectable pile as any other
+  // discard (RR "Discarding"), so hiding it disagreed with the discard viewer.
   // UI noise + would expose candidate lists in payload.
   'choice-request',
   // AI decision traces (#583): full reasoning incl. chosen/alternative targets.
