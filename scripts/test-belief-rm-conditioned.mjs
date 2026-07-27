@@ -11,6 +11,15 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// The belief model is deliberately OFF by default under node so benches can A/B
+// it explicitly (see BELIEF_ENABLED in mctsAI). This test used to hard-exit(1)
+// when the flag was missing, which made a plain `node scripts/test-*.mjs` sweep
+// report a FAILURE for a test that passes perfectly well — so it was never
+// actually run. Turn the flag on for THIS process instead. It must happen
+// before mctsAI is imported, because BELIEF_ENABLED is evaluated once at module
+// load. An explicit SWR_MCTS_BELIEF=0 is still honoured, so the A/B direction
+// remains available; that case skips cleanly below rather than failing.
+process.env.SWR_MCTS_BELIEF ??= '1';
 const { register } = await import('tsx/esm/api'); register();
 const { createGame } = await import('../src/engine/setup.ts');
 const M = await import('../src/engine/mechanics.ts');
@@ -20,7 +29,13 @@ const data = { systems: j('systems.json'), adjacency: j('adjacency.json'), leade
 let pass = 0, fail = 0;
 const check = (n, ok, e = '') => { console.log(`  ${ok ? '✓' : '✗'} ${n}${ok ? '' : ' — ' + e}`); ok ? pass++ : fail++; };
 
-if (process.env.SWR_MCTS_BELIEF !== '1') { console.error('run with SWR_MCTS_BELIEF=1'); process.exit(1); }
+if (process.env.SWR_MCTS_BELIEF !== '1') {
+  // Only reachable when the caller explicitly passed SWR_MCTS_BELIEF=0 to A/B
+  // the belief model off. There is nothing to assert about a disabled model, so
+  // skip — exit 0, not a failure.
+  console.log('SKIP: SWR_MCTS_BELIEF=0 — belief model disabled for A/B, nothing to assert.');
+  process.exit(0);
+}
 
 const G = createGame(data, { seed: 12, autoSetupUnits: true });
 // Empire ground presence so distances differentiate.
