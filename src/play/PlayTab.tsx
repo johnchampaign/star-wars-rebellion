@@ -15412,7 +15412,8 @@ function StartEvacuationPickModal({
       }}>
         <h3 style={{ color: '#aae0ff', marginTop: 0 }}>Start The Evacuation — pick destination + units</h3>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 8 }}>
-          Move Rebel Base units to any system without Imperial units. Transport rules still apply.
+          General Rieekan is placed in the system you pick. You may also move any
+          Rebel Base units there — transport rules still apply, and moving none is fine.
         </div>
         <div style={{ marginBottom: 10 }}>
           <select value={sysId ?? ''}

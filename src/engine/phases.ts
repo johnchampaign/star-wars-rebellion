@@ -4428,6 +4428,13 @@ export function resolveStartEvacuationPick(
     });
     if (!v.ok) return { ok: false, reason: v.reason };
   }
+  // RAW (card): "Place this leader in any system that does not contain
+  // Imperial units. Then move any of your units..." — Rieekan is placed in
+  // the chosen system, not left in the pool (#648). He's still in the pool
+  // here because the play step deferred placement until the system was known.
+  if (G.rebel.leaderPool.includes('general-rieekan')) {
+    M.placeLeader(G, 'Rebel', 'general-rieekan', targetSystemId);
+  }
   for (const uid of unitInstanceIds) M.moveUnit(G, uid, 'rebel-base-space', targetSystemId);
   log(G, { kind: 'start-evacuation-applied', side: 'Rebel', payload: {
     targetSystemId, moved: unitInstanceIds.length, movedIds: unitInstanceIds,
@@ -6540,7 +6547,7 @@ export function switchDeployType(G: GameState, typeId: UnitTypeId): { ok: boolea
 //   ‡ scouting-mission        (place + log; TIE relocate + auto-combat is complex)
 //   ‡ independent-operation   (place at subjugated system + log; forced Imperial ground evacuation manual)
 //   ‡ our-most-desperate-hour (place Leia on a mission card in hand — already handled by player at assign step; log notice)
-//   ‡ start-the-evacuation    (no leader to place in pool; Rieekan + base-units move — manual)
+//   * start-the-evacuation    (StartEvacuationPick → place Rieekan at target + move base units)
 
 /** Droid "ring" action cards the Rebel may ATTACH during their Assignment
  *  phase: in hand and not already attached to a leader. */
@@ -7379,7 +7386,7 @@ function legalSystemsForAssignmentCard(G: GameState, side: Side, cardId: string)
     case 'rebel-planning':           return null; // Rebel Base
     case 'proceeding-as-planned':    return null; // attached to project, not a system
     case 'our-most-desperate-hour':  return null; // attached to a mission card in hand
-    case 'start-the-evacuation':     return null; // moves units; no leader-placement
+    case 'start-the-evacuation':     return null; // system chosen via StartEvacuationPick; Rieekan placed there at resolve (#648)
     // RoE Wave-D — no system pick:
     case 'lord-vader-s-orders':      return null; // peeks Rebel objective deck
     case 'false-orders':             return null; // operates on Empire's assigned missions
@@ -7661,7 +7668,10 @@ function applyAssignmentActionCardEffect(
           return !!t && !t.transport.immobile;
         })
         .map((u) => u.instanceId);
-      if (candidateUnitIds.length === 0 || candidateSystemIds.length === 0) {
+      // RAW: the unit move is optional ("move ANY of your units"), so an empty
+      // base space still lets the card place Rieekan. Only a board with no
+      // Imperial-free system makes the card unplayable (#648).
+      if (candidateSystemIds.length === 0) {
         log(G, { kind: 'action-card-noop', side, payload: { cardId, reason: 'no-evac-targets' } });
         break;
       }
