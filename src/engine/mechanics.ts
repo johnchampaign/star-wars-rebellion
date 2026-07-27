@@ -1285,6 +1285,16 @@ export function drawAction(G: GameState, side: Side, n: number = 1): string[] {
   const f = faction(G, side);
   const drawn: string[] = [];
   for (let i = 0; i < n; i++) {
+    if (f.actionDeck.length === 0 && f.actionDiscard.length > 0) {
+      // RR "Discarding": "If a deck is depleted, shuffle the discard pile and
+      // place it facedown to create a new deck." Mirrors drawMission (#657).
+      // Action cards carry no reuse prohibition — unlike objectives, which is
+      // why the objective deck is deliberately NOT recycled here; see the note
+      // on drawObjective.
+      f.actionDeck = shuffle(G.rng, [...f.actionDiscard]);
+      f.actionDiscard = [];
+      log(G, { kind: 'action-deck-reshuffled', side, payload: { count: f.actionDeck.length } });
+    }
     const c = f.actionDeck.shift();
     if (!c) break;
     f.actionHand.push(c);
@@ -1334,6 +1344,24 @@ export function drawMission(G: GameState, side: Side, n: number = 1): string[] {
   return drawn;
 }
 
+/** NOTE (#657): the objective deck deliberately does NOT recycle its discard,
+ *  even though drawAction/drawMission do and the generic "a depleted deck
+ *  reshuffles its discard" rule exists. Objectives carry an explicit reuse
+ *  prohibition that overrides it — RR: "After gaining reputation from an
+ *  objective card, it is returned to the game box. It cannot be used again this
+ *  game," softened by the RoE FAQ to "cannot be used again UNLESS AN ABILITY
+ *  ALLOWS" (that ability being Something To Fight For). A deck reshuffle is not
+ *  an ability.
+ *
+ *  And `objectiveDiscard` is not a safe pile to recycle even in part: it mixes
+ *  never-scored discards (The Long War's forced discard) with cards that DID
+ *  pay out — Rebel Cell is pushed there on the same line as
+ *  recordObjectiveScored, and Show No Fear / Raid Outposts land there after
+ *  awarding reputation. Since #655 makes a redrawn Immediate objective place
+ *  its markers again, recycling this pile would let the Rebel farm the same
+ *  objective repeatedly. Depleting the objective deck was never observed across
+ *  209 archived games (lowest seen: 3 cards), so this stays as-is: a rules
+ *  ambiguity in an unreachable path is not worth a reputation exploit. */
 export function drawObjective(G: GameState, n: number = 1): string[] {
   if (!G.rebel.objectiveDeck || !G.rebel.objectiveHand) return [];
   const drawn: string[] = [];
