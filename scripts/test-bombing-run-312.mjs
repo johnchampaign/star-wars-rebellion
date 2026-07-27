@@ -70,8 +70,25 @@ console.log('\n[ #312 Bombing Run posts a target pick among red enemy ships ]');
       const chosen = pc.candidates[1];
       const r = combat.resolveCinematicTargetPick(G, chosen);
       check('resolve ok', r.ok, r.reason);
-      const u = G.map.systems['felucia'].units.find((x) => x.instanceId === chosen);
-      check('chosen Star Destroyer took the 2 damage', (u?.damage ?? 0) >= 2, `dmg=${u?.damage}`);
+      // #391 superseded the original expectation here. Bombing Run's primary is
+      // a PLAIN deal ("Deal 2 red damage" — no "to 1 unit"), so the player may
+      // SPREAD it: the engine applies one point and re-prompts for each
+      // remaining point. Concentrating both on one ship is still available, by
+      // picking the same ship twice — which is what this asserts.
+      const dmgOf = (id) => G.map.systems['felucia'].units
+        .find((x) => x.instanceId === id)?.damage ?? 0;
+      check('first point landed on the chosen ship', dmgOf(chosen) === 1, `dmg=${dmgOf(chosen)}`);
+      check('re-prompted for the remaining point',
+        G.pendingChoice?.kind === 'CinematicTargetPick' && G.pendingChoice.amount === 1,
+        `kind=${G.pendingChoice?.kind} amount=${G.pendingChoice?.amount}`);
+      const other = pc.candidates.find((id) => id !== chosen);
+      check('the other Star Destroyer is still offered (damage may be split)',
+        !!G.pendingChoice?.candidates?.includes(other), 'second point is forced onto one ship');
+      const r2 = combat.resolveCinematicTargetPick(G, chosen);
+      check('second resolve ok', r2.ok, r2.reason);
+      check('both points land on one ship when it is picked twice',
+        dmgOf(chosen) >= 2, `dmg=${dmgOf(chosen)}`);
+      check('the ship not picked took nothing', dmgOf(other) === 0, `dmg=${dmgOf(other)}`);
       break;
     }
     if (!stepOnce(G, pc.side)) { check('AI did not stall', false, pc.kind); break; }

@@ -56,10 +56,25 @@ const G4 = createGame(data, { seed: 11, roeMissions: true, roeUnits: true });
 G4.map.rebelBaseSpace.units = [];
 check('hidden-fleet pointless when Rebel Base space is empty',
   ai.missionRevealIsPointless(G4, 'Rebel', 'hidden-fleet', 'alderaan'));
-// The base space isn't a map system, so push a unit onto it directly.
+// The base space isn't a map system, so push units onto it directly.
+// #553/#554 tightened this from "any units present" to "any DELIVERABLE units":
+// Hidden Fleet bypasses adjacency but NOT transport, so a lone ground unit with
+// no carrier capacity still moves nothing and the reveal is still a wasted card.
 G4.map.rebelBaseSpace.units.push({ instanceId: 'x1', typeId: 'rebel-trooper', side: 'Rebel', damage: 0 });
-check('hidden-fleet NOT pointless once the Rebel Base space has units',
+check('hidden-fleet STILL pointless with only a lone ground unit (no carrier)',
+  ai.missionRevealIsPointless(G4, 'Rebel', 'hidden-fleet', 'alderaan'));
+// A ship moves itself, so now there is genuinely something to deliver.
+G4.map.rebelBaseSpace.units.push({ instanceId: 'x2', typeId: 'x-wing', side: 'Rebel', damage: 0 });
+check('hidden-fleet NOT pointless once a ship can actually move',
   !ai.missionRevealIsPointless(G4, 'Rebel', 'hidden-fleet', 'alderaan'));
+// A carrier lifts the stranded trooper too — deliverable ground, not just ships.
+const G5 = createGame(data, { seed: 12, roeMissions: true, roeUnits: true });
+G5.map.rebelBaseSpace.units = [
+  { instanceId: 'y1', typeId: 'rebel-trooper', side: 'Rebel', damage: 0 },
+  { instanceId: 'y2', typeId: 'rebel-transport', side: 'Rebel', damage: 0 },
+];
+check('hidden-fleet NOT pointless when a transport can carry the ground unit',
+  !ai.missionRevealIsPointless(G5, 'Rebel', 'hidden-fleet', 'alderaan'));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail?1:0);
