@@ -158,10 +158,10 @@ function rand(): number { return _rng ? _rng() : Math.random(); }
 // `passRescues` counts pass-margin overrides; `keepPlaying` counts the
 // lost-position fallback (#630). Both are narrow guards, so a high firing rate
 // is itself a signal that something is wrong — watch them in benches.
-export const mctsStats = { decisions: 0, pulls: 0, ms: 0, disagreements: 0, passRescues: 0, keepPlaying: 0 };
+export const mctsStats = { decisions: 0, pulls: 0, ms: 0, disagreements: 0, passRescues: 0, keepPlaying: 0, revealRescues: 0 };
 export function resetMctsStats(): void {
   mctsStats.decisions = 0; mctsStats.pulls = 0; mctsStats.ms = 0; mctsStats.disagreements = 0;
-  mctsStats.passRescues = 0; mctsStats.keepPlaying = 0;
+  mctsStats.passRescues = 0; mctsStats.keepPlaying = 0; mctsStats.revealRescues = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -573,9 +573,30 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
       const margin = envInt('SWR_MCTS_PASS_MARGIN', 5) / 100;
       const passMean = alive[0].sum / alive[0].n;
       const actMean = bestAct.sum / bestAct.n;
-      if (passMean - actMean < margin) {
+      // REVEAL-MARGIN (#649). Forfeiting a REVEAL is not symmetric with
+      // forfeiting an activation: the leaders are ALREADY committed to that
+      // mission, so passing spends them for the round and buys nothing — the
+      // card just returns to hand. And after the assignment gate (ddaa0af) a
+      // reveal candidate only exists because assignment judged the mission
+      // worth playing and its targets aren't pointless.
+      //
+      // Meanwhile the search cannot actually tell these apart. On #649's board
+      // the two arms sat at ~0.52-0.58 with almost every rollout horizon-cut,
+      // and the pass-vs-reveal gap wandered from -0.025 to +0.063 across seeds
+      // on RNG alone. With ~30 pulls per arm near p=0.5 the sampling error on
+      // the difference is roughly +/-0.09 — WIDER than the 0.05 base margin, so
+      // the guard was calibrated tighter than the measurement it guards, and
+      // ~28% of seeds forfeited Vader's whole round to noise.
+      //
+      // So require a gap that actually clears the noise before throwing a
+      // committed mission away. Set SWR_MCTS_REVEAL_MARGIN=5 to collapse this
+      // back onto the base margin (the A/B control).
+      const revealMargin = envInt('SWR_MCTS_REVEAL_MARGIN', 15) / 100;
+      const effMargin = bestAct.a.kind === 'reveal' ? Math.max(margin, revealMargin) : margin;
+      if (passMean - actMean < effMargin) {
         chosen = bestAct.a;
         mctsStats.passRescues++;
+        if (passMean - actMean >= margin) mctsStats.revealRescues++;
       } else if (
         envInt('SWR_MCTS_KEEP_PLAYING', 1) === 1
         && acts.every((x) => x.sum / x.n <= envInt('SWR_MCTS_LOST_FLOOR', 1) / 100)

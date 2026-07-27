@@ -37,6 +37,10 @@ const AI_SEED = parseInt(flag('--ai-seed', '424242'), 10);
 // written for, but any 1/0 search flag works — e.g.
 //   --flag SWR_MCTS_KEEP_PLAYING   (the #630 lost-position fallback)
 const FLAG = flag('--flag', 'SWR_ACTIVATE_DIVERSITY');
+// Values for the OFF/ON arms. Defaults to 0/1 for boolean opt-out flags; pass
+// --values 5,15 for a NUMERIC tunable (e.g. SWR_MCTS_REVEAL_MARGIN, where the
+// control is "same as the base pass-margin" rather than zero).
+const [OFF_VAL, ON_VAL] = flag('--values', '0,1').split(',');
 
 // ---------------------------------------------------------------------------
 // Driver: run both arms, compare.
@@ -55,11 +59,11 @@ if (!IS_ARM) {
     return out;
   };
   console.log(`${FLAG} A/B — <=${MAX_REPLAYS} replays, ${N_ROUNDS} rounds, ai-seed ${AI_SEED}, MCTS ON`);
-  console.log(`running OFF arm (${FLAG}=0)...`);
-  const off = run('0');
+  console.log(`running OFF arm (${FLAG}=${OFF_VAL})...`);
+  const off = run(OFF_VAL);
   console.log(`  ${off.minutes.toFixed(1)} min`);
-  console.log(`running ON arm (${FLAG}=1)...`);
-  const on = run('1');
+  console.log(`running ON arm (${FLAG}=${ON_VAL})...`);
+  const on = run(ON_VAL);
   console.log(`  ${on.minutes.toFixed(1)} min`);
 
   const hunts = (r) => r.replays.filter((x) => x.kind === 'hunt');
@@ -86,7 +90,8 @@ if (!IS_ARM) {
         `${(r.mcts.pulls / d).toFixed(1)} rollouts/decision, ` +
         `disagreed ${(100 * r.mcts.disagreements / d).toFixed(0)}%, ` +
         `pass-margin fired ${(100 * (r.mcts.passRescues ?? 0) / d).toFixed(1)}%, ` +
-        `keep-playing fired ${(100 * (r.mcts.keepPlaying ?? 0) / d).toFixed(1)}%`);
+        `keep-playing ${(100 * (r.mcts.keepPlaying ?? 0) / d).toFixed(1)}%, ` +
+        `reveal-rescues ${(100 * (r.mcts.revealRescues ?? 0) / d).toFixed(1)}%`);
     }
   }
   console.log('\n  NOTE: one seed = one deterministic sample. Re-run with --ai-seed to put');
