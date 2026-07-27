@@ -705,7 +705,16 @@ export function applyDeferredCinematicHeals(G: GameState, c: CombatState, theate
       .filter((u) => u.typeId !== h.exceptTypeId && u.damage > 0)
       .map((u) => ({ instanceId: u.instanceId, typeId: u.typeId, damage: u.damage }));
     const totalDamage = wounded.reduce((s, u) => s + u.damage, 0);
-    if (wounded.length === 0 || h.amount <= 0 || totalDamage <= h.amount) {
+    // A prompt is only worth showing when the budget must be SPLIT between
+    // ships. With a single wounded ship there is nothing to allocate — the only
+    // remaining "choice" is to heal less than you could, which is never better
+    // (removing damage has no cost or downside). Prompting there was a modal
+    // with one button, and it also stalled the reactive save this heal exists
+    // for: a lone lethally-damaged ship sat staged waiting on an answer instead
+    // of being pulled back from destruction (#225, after #322 added the
+    // allocation prompt). Same principle as the shield-absorb branch above,
+    // which always auto-maximises.
+    if (wounded.length <= 1 || h.amount <= 0 || totalDamage <= h.amount) {
       // Forced (or empty): remove all the damage we can, no decision to make.
       const removed = resolveRemoveDamage(G, h.side, c.systemId, theater,
         { kind: 'removeDamage', amount: h.amount, exceptTypeId: h.exceptTypeId });
