@@ -940,19 +940,24 @@ function SidePanel({ G, side, units, leaderIds, align, damageAssign, isYou }: {
 }) {
   const color = SIDE_COLOR[side];
   // Attack-dice pool this side's units contribute, capped at 5 red / 5 black
-  // (rr p.4). Shown as a caption so the player can see WHERE the dice come
+  // (rr p.4) and 3 green (RoE rules p.8 — a separate cap that stacks on top of
+  // the 5+5). Shown as a caption so the player can see WHERE the dice come
   // from — RAW rolls one shared pool per side, not per-unit dice, so this is
   // the faithful way to surface "which units made these dice".
-  let poolRed = 0, poolBlack = 0;
+  // Green was missing from this tally entirely, so RoE units that roll green
+  // advertised fewer dice here than they actually rolled (#664).
+  let poolRed = 0, poolBlack = 0, poolGreen = 0;
   for (const u of units) {
     const t = G.catalog.unitTypes[u.typeId];
     if (!t) continue;
     poolRed += t.attack.red;
     poolBlack += t.attack.black;
+    poolGreen += t.attack.green;
   }
   const cappedRed = Math.min(5, poolRed);
   const cappedBlack = Math.min(5, poolBlack);
-  const capped = poolRed > 5 || poolBlack > 5;
+  const cappedGreen = Math.min(3, poolGreen);
+  const capped = poolRed > 5 || poolBlack > 5 || poolGreen > 3;
   // Find the highest single-unit HP we need to show (decides how many
   // damage lanes to render). Cap at 5 (the SSD's max HP).
   const maxHp = Math.max(1, ...units.map((u) => G.catalog.unitTypes[u.typeId]?.health.value ?? 1));
@@ -986,14 +991,15 @@ function SidePanel({ G, side, units, leaderIds, align, damageAssign, isYou }: {
       <div style={{ color, fontSize: 12, fontWeight: 700 }}>
         {side}{isYou ? ' (you)' : ''}
       </div>
-      {(cappedRed > 0 || cappedBlack > 0) && (
+      {(cappedRed > 0 || cappedBlack > 0 || cappedGreen > 0) && (
         <div
-          title={`All of ${side}'s units roll into ONE shared pool (the rules don't tie individual dice to individual ships). This side's units add ${poolRed} red + ${poolBlack} black${capped ? ', capped at 5 of each per attack' : ''}.`}
+          title={`All of ${side}'s units roll into ONE shared pool (the rules don't tie individual dice to individual ships). This side's units add ${poolRed} red + ${poolBlack} black${poolGreen > 0 ? ` + ${poolGreen} green` : ''}${capped ? ', capped at 5 red / 5 black / 3 green per attack' : ''}.`}
           style={{ fontSize: 10, color: '#bbb', display: 'flex', alignItems: 'center', gap: 4 }}
         >
           rolls
           {cappedRed > 0 && <span style={{ color: '#e0625a', fontWeight: 700 }}>{cappedRed}🔴</span>}
           {cappedBlack > 0 && <span style={{ color: '#cfcfcf', fontWeight: 700 }}>{cappedBlack}⚫</span>}
+          {cappedGreen > 0 && <span style={{ color: '#6fbf73', fontWeight: 700 }}>{cappedGreen}🟢</span>}
           {capped && <span style={{ color: '#888' }}>(cap)</span>}
         </div>
       )}
@@ -1107,7 +1113,10 @@ function UnitIcon({ G, unit, legalTarget, assignedCount, onClick }: {
     const hpMax = t.health.value ?? 1;
     const hpNow = hpMax - (unit.damage ?? 0);
     const hpColor = t.health.color ?? '—';
-    const attack = `Atk: ${t.attack.red}R + ${t.attack.black}B`;
+    // Green is the RoE third die colour; omit the term entirely for base-game
+    // units (attack.green === 0) so their tooltip is unchanged (#664).
+    const attack = `Atk: ${t.attack.red}R + ${t.attack.black}B`
+      + (t.attack.green ? ` + ${t.attack.green}G` : '');
     const tierLabel = t.tier ?? '?';
     const transport = t.transport.capacity > 0
       ? `Transport ${t.transport.capacity}${t.transport.restriction ? ' (restricted)' : ''}`

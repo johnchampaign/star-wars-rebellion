@@ -765,9 +765,23 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
 
 /** Apply a cinematic "Prevent N red/black/special" against an already-rolled
  *  set of dice. RAW (RotE rulebook, "PREVENTING HITS"): remove up to N dice
- *  that show a matching red/black HIT (or direct hit), and up to `special`
- *  dice that show a ★. Only dice that actually rolled the prevented symbol can
- *  be removed — if fewer rolled than the prevent count, only those are taken.
+ *  that show a matching red/black HIT, and up to `special` dice that show a ★.
+ *  Only dice that actually rolled the prevented symbol can be removed — if
+ *  fewer rolled than the prevent count, only those are taken.
+ *
+ *  A DIRECT HIT is NOT a hit (#671). The rulebook lists hit, direct hit and
+ *  special as three distinct results, and "prevent N [hit]" removes only the
+ *  hit icon. The rulebook's own worked example is explicit: "The Imperial
+ *  player plays a card that prevents 2 black hits. The Rebel player rolls…
+ *  3 black [hit], 1 red [hit], 1 black [direct hit]. Two of his black dice
+ *  that rolled hits are removed. The Rebel player is left with 1 black [hit],
+ *  1 red [hit], and 1 black [direct hit]." — the black direct hit survives
+ *  even though black prevention was still unspent against it.
+ *
+ *  No card in the RoE set prevents direct hits (all six read "prevent N
+ *  red/black hits"), so there is no direct-hit channel to spend; a card that
+ *  did would need its own counter here.
+ *
  *  Returns the surviving dice plus the counts actually removed. Pure. */
 export function applyCinematicPrevent(
   dice: DieResult[],
@@ -777,7 +791,7 @@ export function applyCinematicPrevent(
   const removed = { red: 0, black: 0, special: 0 };
   const kept: DieResult[] = [];
   for (const d of dice) {
-    const isHit = d.face === 'hit' || d.face === 'direct-hit';
+    const isHit = d.face === 'hit'; // NOT direct-hit — see the #671 note above.
     if (needRed > 0 && d.color === 'red' && isHit) { needRed--; removed.red++; continue; }
     if (needBlack > 0 && d.color === 'black' && isHit) { needBlack--; removed.black++; continue; }
     if (needSpecial > 0 && d.face === 'special') { needSpecial--; removed.special++; continue; }

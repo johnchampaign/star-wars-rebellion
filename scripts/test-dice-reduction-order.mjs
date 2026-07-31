@@ -30,16 +30,37 @@ console.log('[ applyCinematicPrevent: removes matching HIT/★ results, not dice
     die('red', 'hit'), die('red', 'hit'), die('red', 'blank'),
     die('black', 'direct-hit'), die('black', 'special'), die('red', 'special'),
   ];
-  // Escort: prevent 1 red, 1 black, 1 special.
+  // Escort: prevent 1 red, 1 black, 1 special. The only black HIT-icon result
+  // here is... none — the black die rolled a DIRECT hit, which "prevent 1
+  // black hit" cannot touch (#671), so the black prevention goes unspent.
   const { kept, removed } = combat.applyCinematicPrevent(dice, { red: 1, black: 1, special: 1 });
   check('removed exactly 1 red hit', removed.red === 1, JSON.stringify(removed));
-  check('removed exactly 1 black hit (the direct-hit)', removed.black === 1, JSON.stringify(removed));
+  check('removed NO black (the black die is a direct-hit)', removed.black === 0, JSON.stringify(removed));
   check('removed exactly 1 ★ special', removed.special === 1, JSON.stringify(removed));
-  check('kept = 6 − 3 = 3 dice', kept.length === 3, `got ${kept.length}`);
+  check('kept = 6 − 2 = 4 dice', kept.length === 4, `got ${kept.length}`);
   // The surviving dice should still contain a red hit, a red blank, and one ★.
   check('one red HIT survives (only 1 of 2 prevented)', kept.filter((d) => d.color === 'red' && d.face === 'hit').length === 1);
   check('the red blank is never removed', kept.some((d) => d.color === 'red' && d.face === 'blank'));
+  check('the black DIRECT HIT survives', kept.some((d) => d.color === 'black' && d.face === 'direct-hit'));
   check('one ★ survives (red ★, since black ★ taken)', kept.filter((d) => d.face === 'special').length === 1);
+}
+
+// The rulebook's own worked example (RoE "PREVENTING HITS"), verbatim (#671).
+console.log('[ applyCinematicPrevent: matches the RoE rulebook example exactly ]');
+{
+  const die = (color, face) => ({ color, face });
+  // "prevents 2 black hits"; roll = 3 black hit, 1 red hit, 1 black direct-hit.
+  const dice = [
+    die('black', 'hit'), die('black', 'hit'), die('black', 'hit'),
+    die('red', 'hit'), die('black', 'direct-hit'),
+  ];
+  const { kept, removed } = combat.applyCinematicPrevent(dice, { red: 0, black: 2, special: 0 });
+  check('removed exactly 2 black hits', removed.black === 2, JSON.stringify(removed));
+  // Expected leftovers: 1 black hit, 1 red hit, 1 black direct hit.
+  check('3 dice remain', kept.length === 3, `got ${kept.length}`);
+  check('1 black hit remains', kept.filter((d) => d.color === 'black' && d.face === 'hit').length === 1);
+  check('1 red hit remains', kept.filter((d) => d.color === 'red' && d.face === 'hit').length === 1);
+  check('1 black direct hit remains', kept.filter((d) => d.color === 'black' && d.face === 'direct-hit').length === 1);
 }
 
 console.log('[ applyCinematicPrevent: cannot remove more hits than were rolled ]');
