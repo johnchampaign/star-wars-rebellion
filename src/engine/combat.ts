@@ -2224,12 +2224,17 @@ function applyStartOfCombatActionCardEffect(G: GameState, c: CombatState, side: 
       return;
     }
     case 'ready-for-action': {
-      // RAW (Piett / Veers): "Take a leader from the leader pool, place in
-      // combat, and get him back at end of fight."
+      // RAW (card text): "Take THIS LEADER from your leader pool and place him
+      // in this system. This leader cannot retreat, and he returns to your
+      // leader pool at the end of the combat." "This leader" is the leader
+      // named on the card — Piett or Veers — NOT any leader in the pool. We
+      // used to offer the whole pool, which let the Empire parachute Vader (or
+      // anyone else) into a fight the card never covered (#659).
       const f = side === 'Rebel' ? G.rebel : G.empire;
-      const candidates = [...f.leaderPool];
+      const named = G.catalog.actions[cardId]?.leaderRequirement ?? [];
+      const candidates = f.leaderPool.filter((lid) => named.includes(lid));
       if (candidates.length === 0) {
-        log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'no-effect (empty leader pool)' } });
+        log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'no-effect (named leader not in pool)' } });
         return;
       }
       G.pendingChoice = {
@@ -2271,9 +2276,10 @@ function listStartOfCombatPlayable(G: GameState, c: CombatState, side: Side): st
     const req = card.leaderRequirement ?? [];
     // RAW (Rules Reference, "Action Cards"): a combat/mission action card needs
     // one of its named leaders already in the system — EXCEPT cards that move a
-    // leader into the system. Ready For Action places a leader from the pool
-    // into the combat, so its leaderRequirement is the card-art association, not
-    // a presence gate; offer it whenever the pool can supply a leader (#441).
+    // leader into the system. Ready For Action takes its named leader from the
+    // POOL, so the system-presence test doesn't apply to it (#441). The named
+    // leader is still required, just sourced from the pool — that half is
+    // enforced in hasStartOfCombatLegalTarget below (#659).
     const movesLeaderIn = cid === 'ready-for-action';
     if (!movesLeaderIn && req.length > 0 && !req.some((lid) => leadersHere.has(lid))) return false;
     // Some Start-of-Combat cards do nothing unless a legal target exists in the
@@ -2332,10 +2338,16 @@ function hasStartOfCombatLegalTarget(G: GameState, c: CombatState, cardId: strin
       // tactic cards." Only meaningful when there's actually a space battle —
       // otherwise it's a wasted card (player report #160).
       return bothSidesHaveTheater(G, c.systemId, 'space');
-    case 'ready-for-action':
-      // Places a leader from the pool into the combat — nothing to place when
-      // the side's leader pool is empty (#441).
-      return (side === 'Rebel' ? G.rebel : G.empire).leaderPool.length > 0;
+    case 'ready-for-action': {
+      // Places the leader NAMED ON THE CARD into the combat, taken from the
+      // pool — so the gate is "is Piett/Veers in my pool", not "is my pool
+      // non-empty" (#441 got the source right but dropped the named-leader
+      // requirement, letting the card be played with only unrelated leaders
+      // available — #659).
+      const f = side === 'Rebel' ? G.rebel : G.empire;
+      const named = G.catalog.actions[cardId]?.leaderRequirement ?? [];
+      return named.some((lid) => f.leaderPool.includes(lid));
+    }
     default:
       return true;
   }
