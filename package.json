@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "test": "node scripts/run-all-tests.mjs",
     "test:lord-vader": "node scripts/test-lord-vaders-orders.mjs",
     "test:turn-order": "node scripts/test-turn-order.mjs",
     "build": "node scripts/copy-dev-assets.mjs && vite build && node scripts/strip-images-from-dist.mjs",
