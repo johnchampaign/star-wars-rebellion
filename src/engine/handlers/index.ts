@@ -328,6 +328,23 @@ const ruleByFear: EffectHandler = (G, ctx) => {
 const constructDeathStar: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
+  // RR "Component Limitations": "Units are limited to those included in the
+  // game. A player cannot build a unit type if there are none available."
+  // There is exactly ONE Death Star Under Construction model and RoE setup
+  // already places it, so this project can only run again once that one has
+  // been destroyed or has completed into a Death Star. Without this the game
+  // happily produced a second DSUC (#669).
+  //
+  // The WHOLE project fails rather than placing only the Death Star on the
+  // queue. Skipping just the DSUC would hand the Empire the payload without
+  // the vulnerable intermediate the Rebels can destroy — a straight buff, and
+  // the opposite of what the component limit is there to do.
+  if (M.unitsAvailableInSupply(G, 'death-star-under-construction') < 1) {
+    log(G, { kind: 'construct-death-star-noop', side: 'Empire', payload: {
+      targetSystemId: sysId, reason: 'no-dsuc-in-supply',
+    }});
+    return true;
+  }
   // Place DSUC in the system, Death Star on space 3 of build queue.
   M.deployUnit(G, 'Empire', 'death-star-under-construction', sysId);
   M.buildToQueue(G, 'Empire', 'death-star', 3);
