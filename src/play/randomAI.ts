@@ -2536,11 +2536,24 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   // Retrieve The Plans: Empire bottoms the highest-rep Rebel objective.
   if (G.pendingChoice && G.pendingChoice.kind === 'RetrieveThePlansPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
-    let best = c.candidates[0];
-    let bestRep = G.catalog.objectives[best]?.reputation ?? 0;
-    for (const oid of c.candidates.slice(1)) {
-      const r = G.catalog.objectives[oid]?.reputation ?? 0;
-      if (r > bestRep) { best = oid; bestRep = r; }
+    // Death Star Plans first, whenever the Empire has something for it to blow
+    // up. Ranking purely by printed reputation missed it (#662): the Plans are
+    // worth 2, which TIES with Heart of the Empire / Return of the Jedi /
+    // Uprising, and this loop only replaced on strictly-greater — so a tie kept
+    // whichever card came first and left the Plans in the Rebel's hand.
+    // Reputation understates them anyway: they don't merely score 2, they can
+    // destroy the Death Star outright.
+    const vulnerable = Object.values(G.map.systems).some((ss) => ss.units.some(
+      (u) => u.side === 'Empire'
+        && (u.typeId === 'death-star' || u.typeId === 'death-star-under-construction')));
+    const plans = vulnerable ? c.candidates.find((oid) => oid.startsWith('death-star-plans')) : undefined;
+    let best = plans ?? c.candidates[0];
+    if (!plans) {
+      let bestRep = G.catalog.objectives[best]?.reputation ?? 0;
+      for (const oid of c.candidates.slice(1)) {
+        const r = G.catalog.objectives[oid]?.reputation ?? 0;
+        if (r > bestRep) { best = oid; bestRep = r; }
+      }
     }
     return phases.resolveRetrieveThePlansPick(G, best).ok;
   }
@@ -3682,7 +3695,23 @@ export function tryCommandAction(G: GameState, side: Side, action: CommandAction
           // (log diagnosis 2026-06-17: the Empire was leaving ~6-10 ground
           // stranded as subjugation garrisons while it failed to muster an
           // assault force at the exposed base).
-          const groundReserve = (side === 'Empire' && ss.subjugated && ground.length > 0
+          //
+          // Widened to Imperial-LOYAL systems that PRODUCE (#625/#632). The reserve
+          // covered subjugated systems only, so the AI would march every unit out of
+          // a loyal system and hand the Rebels an uncontested one: "AI Imperials
+          // moved ALL units away from an imperial loyal system... removing the
+          // ability for Imperials to deploy or generate any units."
+          //
+          // Gated on the system actually producing, for two reasons. It is the
+          // concrete reported harm — a build skips any system with opponent units
+          // present (rr p.3), so a system the Empire vacates and the Rebels walk into
+          // stops producing for it. And it bounds the cost: reserving at EVERY loyal
+          // system would strand ground across the map, which is the failure the
+          // 2026-06-17 diagnosis above found and the post-reveal exemption exists to
+          // prevent.
+          const produces = (G.catalog.systems[fromId]?.resources?.length ?? 0) > 0;
+          const worthHolding = ss.subjugated || (produces && ss.loyalty === 'imperial');
+          const groundReserve = (side === 'Empire' && worthHolding && ground.length > 0
             && !G.rebelBaseRevealed) ? 1 : 0;
           const groundCandidates = ground.slice(0, Math.max(0, ground.length - groundReserve));
           // Transport-capacity math: capital ships' total capacity must
