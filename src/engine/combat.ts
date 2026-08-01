@@ -2158,7 +2158,21 @@ function applyStartOfCombatActionCardEffect(G: GameState, c: CombatState, side: 
         for (const u of ss.units) {
           const t = G.catalog.unitTypes[u.typeId];
           const max = t?.health.value ?? 1;
-          if (max > 1) u.damage = Math.max(u.damage ?? 0, 1);
+          // ADDITIVE, not Math.max(damage, 1): the old form only ever raised
+          // damage TO 1, so any unit that had already taken a hit got no
+          // reduction at all and the card silently did nothing to it (#667).
+          //
+          // FFG FAQ: "the Rebel player uses Point Blank Assault and then
+          // proceeds to destroy an AT-AT by dealing it TWO damage" — a 3-health
+          // unit dies to 2 damage, i.e. the destruction threshold drops by one.
+          // So a unit already sitting at that reduced threshold is destroyed,
+          // which is what +1 (clamped to its printed health) produces; the
+          // normal end-of-step destruction pass then removes it.
+          //
+          // Expressing this as damage rather than editing health is deliberate:
+          // the same FAQ says Crippling Blow and Baze's Loyalty read the
+          // PRINTED health, so the catalog value must stay untouched.
+          if (max > 1) u.damage = Math.min(max, (u.damage ?? 0) + 1);
         }
       }
       log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'all-units-minus-1-hp-min-1' } });
