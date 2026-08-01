@@ -11118,15 +11118,20 @@ function publicMissionDiscards(G: GameState, side: Side): string[] {
  *  which cards already paid out. */
 function objectiveDiscardPile(G: GameState): { id: string; scored: boolean }[] {
   const scored = new Set((G.rebel.scoredObjectives ?? []).map((s) => s.objectiveId));
+  // A scored card whose own text returns it to the Rebel's HAND (Heart of the
+  // Empire) is recorded in `scoredObjectives` like any other score, but it is
+  // not in the discard pile — it's in hand. Listing it here made it look like
+  // the card never came back after scoring (player report #665).
+  const inHand = new Set(G.rebel.objectiveHand ?? []);
   const out: { id: string; scored: boolean }[] = [];
   const seen = new Set<string>();
   for (const s of G.rebel.scoredObjectives ?? []) {
-    if (seen.has(s.objectiveId)) continue;
+    if (seen.has(s.objectiveId) || inHand.has(s.objectiveId)) continue;
     seen.add(s.objectiveId);
     out.push({ id: s.objectiveId, scored: true });
   }
   for (const id of G.rebel.objectiveDiscard ?? []) {
-    if (seen.has(id)) continue;
+    if (seen.has(id) || inHand.has(id)) continue;
     seen.add(id);
     out.push({ id, scored: scored.has(id) });
   }

@@ -2957,6 +2957,31 @@ export function resolveTrackThemOffer(
   return { ok: true };
 }
 
+/** The objective cards "Something to Fight For" can pull back — i.e. the Rebel's
+ *  objective discard pile.
+ *
+ *  RoE FAQ (sw03 FAQ v2.1 p.6): in the expansion "all objective cards are
+ *  discarded after use" — a SCORED objective goes to the discard pile, not the
+ *  box, so the card can retrieve it too (player report #344). The engine keeps
+ *  `scoredObjectives` as history and never copies entries into
+ *  `objectiveDiscard`, so the two lists are unioned here.
+ *
+ *  EXCEPT a scored objective whose own text sent it back to the Rebel's HAND.
+ *  Heart of the Empire ("Then return this card to your hand") files a scored
+ *  entry like any other score but is physically still in hand, so offering it
+ *  would let the Rebel retrieve a card they already hold — putting a second copy
+ *  of a unique card on the objective deck (player report #665). Exported for
+ *  tests. */
+export function stffRetrievableObjectives(G: GameState): string[] {
+  const inHand = new Set(G.rebel.objectiveHand ?? []);
+  return [
+    ...new Set([
+      ...(G.rebel.objectiveDiscard ?? []),
+      ...(G.rebel.scoredObjectives ?? []).map((s) => s.objectiveId),
+    ]),
+  ].filter((id) => !inHand.has(id));
+}
+
 /** Something to Fight For (Rebel/Jyn/RoE Special): Rebel picks one
  *  discarded objective card to move to the top of the deck — or declines
  *  (objectiveId === null), in which case the card stays in hand. Posted
@@ -2981,6 +3006,11 @@ export function resolveSomethingToFightForOffer(
     const scored = G.rebel.scoredObjectives ?? [];
     const si = scored.findIndex((s) => s.objectiveId === objectiveId);
     if (di < 0 && si < 0) return { ok: false, reason: 'objective-not-retrievable' };
+    // A scored card that returned to hand (Heart of the Empire) is NOT in a
+    // pile — retrieving it would duplicate a unique card (#665).
+    if ((G.rebel.objectiveHand ?? []).includes(objectiveId)) {
+      return { ok: false, reason: 'objective-in-hand' };
+    }
     // Discard the action card.
     G.rebel.actionHand.splice(handIdx, 1);
     G.rebel.actionDiscard.push('something-to-fight-for');
@@ -3389,18 +3419,7 @@ function endCombat(G: GameState): void {
     foughtIn(th)
     && unitsOf(G, 'Rebel', c.systemId, th).length > 0
     && unitsOf(G, 'Empire', c.systemId, th).length === 0);
-  // RoE FAQ (sw03 FAQ v2.1 p.6): in the expansion "all objective cards are
-  // discarded after use" — a SCORED objective goes to the discard pile, not the
-  // box, so "Something to Fight For" can retrieve it too (player report #344).
-  // We keep `scoredObjectives` as the UI history and treat its entries as part
-  // of the retrievable discard pile. (The engine never adds scored objectives
-  // to `objectiveDiscard`, so we union them here.)
-  const stffCandidates = [
-    ...new Set([
-      ...(G.rebel.objectiveDiscard ?? []),
-      ...(G.rebel.scoredObjectives ?? []).map((s) => s.objectiveId),
-    ]),
-  ];
+  const stffCandidates = stffRetrievableObjectives(G);
   // RoE rulebook (p.8 exception list): an action card requires its matching
   // leader to be IN THE SYSTEM to resolve (only Sweep the Area / Secret Facility
   // are exempt). "Something to Fight For" fires off winning a battle, so Jyn
