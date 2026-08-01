@@ -1,0 +1,42 @@
+CORRECTION — this commit contains a second, unrelated change.
+
+The message above describes only the #662 work (Death Star Plans burial). The
+commit ALSO carries a hunk in src/play/randomAI.ts that belongs to #625/#632:
+
+    -  const groundReserve = (side === 'Empire' && ss.subjugated && ...
+    +  const produces = (G.catalog.systems[fromId]?.resources?.length ?? 0) > 0;
+    +  const worthHolding = ss.subjugated || (produces && ss.loyalty === 'imperial');
+    +  const groundReserve = (side === 'Empire' && worthHolding && ...
+
+That hunk was swept in from an uncommitted working tree while the #662 fix was
+being committed. It is not a mistake in the code — it is sound and measured — but
+it is not described by the message, so a bisect or blame landing here will
+attribute the Empire's garrison behaviour to the Death Star Plans work.
+
+What the garrison hunk does: the ground reserve previously covered subjugated
+systems only, so the Empire would march every unit out of an Imperial-LOYAL
+system. Reported twice — "AI Imperials are leaving Imperial loyal systems with no
+units" (#625) and "moved ALL units away from an imperial loyal system... removing
+the ability for Imperials to deploy or generate any units" (#632). It now also
+holds one ground unit at loyal systems that PRODUCE, since a build skips any
+system with opponent units present (rr p.3). The post-reveal exemption is
+deliberately untouched: committing everything to the assault once the base is
+exposed is the 2026-06-17 fix, and reserving at EVERY loyal system would re-strand
+the force that diagnosis was about.
+
+Measured, 30 self-play games, widening off vs on:
+
+    producing Imperial systems held then emptied   140 -> 32   (4.67 -> 1.07/game)
+    ...of those lost to Rebel loyalty by game end    8 ->  5
+
+Strength unchanged: eval-strength over 1000 games gives Empire 272/500 both with
+and without (harness verified deterministic across repeat runs). Expected — it
+scores each side against a RANDOM opponent, and a random Rebel does not punish a
+vacated producing system, so only the mechanism count can see the gain.
+
+Evidence and instrumentation live in the follow-up commit bb3a5ee
+(scripts/measure-imperial-vacate.mjs).
+
+History was left intact deliberately rather than rewording this commit: master is
+public and had 5 open PRs at the time, so a force-push was not worth the blast
+radius for a message correction.
