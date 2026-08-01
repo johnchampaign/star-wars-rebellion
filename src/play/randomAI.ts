@@ -682,8 +682,9 @@ function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: 
 }
 
 /** Score a target system for a Rebel mission. `baseDist` is a precomputed
- *  hop-count map from the Rebel base (or null when base is revealed/missing). */
-function rebelMissionTargetScore(
+ *  hop-count map from the Rebel base (or null when base is revealed/missing). */
+/** Exported for tests (#663): pure scorer, no side effects. */
+export function rebelMissionTargetScore(
   G: GameState, missionId: string, targetSysId: SystemId,
   baseDist: Map<string, number> | null,
 ): number {
@@ -780,6 +781,39 @@ function rebelMissionTargetScore(
   // Sabotage (Rebel mission) should target ENEMY systems, never own.
   // Issues #10, #13: the AI was sabotaging Bespin / Alderaan when those
   // were Rebel-loyal, which is strategic self-harm.
+  if (missionId === 'lead-the-strike-team') {
+    // "Move up to 4 ground units from the Rebel Base to this system, ignoring
+    // transport and adjacency; if Imperial ground units are here, resolve
+    // combat." This had NO scoring case at all, so every system tied and the
+    // strictly-greater pick kept the first candidate — alphabetical order, i.e.
+    // Alderaan, every time (#663).
+    //
+    // Deliverable troops first: with an empty Rebel Base space the mission
+    // moves nothing and is pure waste.
+    const baseGround = (G.map.rebelBaseSpace?.units ?? []).filter(
+      (u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground').length;
+    if (baseGround === 0) return s - 60;
+    const landing = Math.min(4, baseGround);
+    const enemyGround = (sysState?.units ?? []).filter(
+      (u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground').length;
+    // Remote systems hold no loyalty or production — troops there do nothing.
+    if (sysDef.isRemote) return s - 40;
+    // Liberating a subjugated system is a scoring objective in its own right,
+    // and an Imperial-loyal system is worth contesting. A Rebel system with no
+    // Imperial ground present gains nothing.
+    if (sysState?.subjugated) s += 26;
+    else if (sysState?.loyalty === 'imperial') s += 16;
+    else if (sysState?.loyalty === 'rebel' && enemyGround === 0) s -= 25;
+    // Only pick a fight we can plausibly win with what we can land.
+    if (enemyGround === 0) s += 6;
+    else if (landing > enemyGround) s += 10;
+    else if (landing === enemyGround) s += 2;
+    else s -= 8 * (enemyGround - landing);
+    // Mild tiebreak so equally-valued targets prefer the richer system rather
+    // than falling back to alphabetical order.
+    s += (sysDef.resources?.length ?? 0) * 2;
+    return s;
+  }
   if (missionId === 'sabotage') {
     // Sabotage denies a system its production (the build step skips
     // sabotaged systems). So value a target by how much Empire production
