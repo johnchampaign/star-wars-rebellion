@@ -388,6 +388,33 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // Player request: Eskil Swahn (BGG) misclicked during Rebel setup with
   // no way to take it back.
   const setupUndoStackRef = useRef<string[]>([]);
+  // Undo stack for the REFRESH deploy step (units coming off the build queue).
+  // Separate from the setup stack and deliberately NOT codec-based: encode()
+  // strips pendingChoice / refreshPaused, so a codec snapshot taken mid-
+  // DeployUnitPick would discard the queue of units still to place and restoring
+  // it would silently drop the rest of the deployment (#670). structuredClone
+  // keeps them. Safe w.r.t. issue #29: that bug was the module-level instance-id
+  // counter RESETTING on page reload while saved units kept higher ids; an
+  // in-session restore only ever leaves the counter AHEAD of the restored state,
+  // so a redeployed unit always gets a fresh id. Pinned by
+  // test-deploy-undo-snapshot-670. `catalog` is shared and immutable, so it is
+  // detached rather than cloned (it is large, and cloning it per click is waste).
+  const deployUndoStackRef = useRef<unknown[]>([]);
+  const [deployUndoDepth, setDeployUndoDepth] = useState(0);
+  const pushDeployUndo = (g: GameState) => {
+    const { catalog, ...rest } = g;
+    void catalog;
+    deployUndoStackRef.current.push(structuredClone(rest));
+    setDeployUndoDepth(deployUndoStackRef.current.length);
+  };
+  const popDeployUndo = (): GameState | null => {
+    const snap = deployUndoStackRef.current.pop();
+    setDeployUndoDepth(deployUndoStackRef.current.length);
+    if (!snap) return null;
+    const cat = gameRef.current?.catalog;
+    if (!cat) return null;
+    return { ...(structuredClone(snap) as object), catalog: cat } as GameState;
+  };
   const dataRef = useRef<Awaited<ReturnType<typeof loadAllForEngine>> | null>(null);
   const systemsRef = useRef<System[]>([]);
   const masksRef = useRef<MaskRect[]>([]);
@@ -2504,9 +2531,27 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           headerExtra={(() => {
             const pc = G.pendingChoice as { side: Side; typeId: string; remaining?: { typeId: string; count: number }[] };
             const rem = pc.remaining ?? [];
-            if (rem.length <= 1) return undefined; // only one type left → no chooser
+            // Undo the previous placement in THIS deploy step (#670: it was
+            // one-click-and-done, so a misclick was unrecoverable).
+            const undoBtn = (
+              <button className="tab-button"
+                onClick={() => {
+                  const restored = popDeployUndo();
+                  if (!restored) return;
+                  gameRef.current = restored;
+                  persist(); refresh();
+                }}
+                disabled={deployUndoDepth === 0}
+                title={deployUndoDepth === 0
+                  ? 'Nothing to undo yet'
+                  : 'Take back your last deployment and place it again'}
+                style={{ padding: '4px 8px', fontSize: 12 }}
+              >↶ Undo last placement</button>
+            );
+            if (rem.length <= 1) return <div style={{ marginBottom: 8 }}>{undoBtn}</div>;
             return (
               <div style={{ marginBottom: 8 }}>
+                <div style={{ marginBottom: 6 }}>{undoBtn}</div>
                 <div style={{ color: '#9a937f', fontSize: 11, marginBottom: 4 }}>Place which unit?</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
                   {rem.map((e) => {
@@ -2537,14 +2582,16 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           })()}
           handReference={humanSide}
           onPick={(sid) => {
+            pushDeployUndo(G);
             const r = phases.resolveDeployUnitPick(G, sid);
-            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            if (!r.ok) { popDeployUndo(); alert(`Cannot resolve: ${r.reason}`); }
             persist(); refresh();
           }}
           cancelLabel="Leave on build queue (slot 1)"
           onCancel={() => {
+            pushDeployUndo(G);
             const r = phases.declineDeployUnit(G);
-            if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
+            if (!r.ok) { popDeployUndo(); alert(`Cannot resolve: ${r.reason}`); }
             persist(); refresh();
           }} />
       )}
