@@ -1877,7 +1877,20 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
       // nothing movable in range — logged as orders:0, unitsMoved:0. No combat,
       // no movement, top-scored at 32. Requiring own units present for the
       // enemy exemption closes that without touching the join-a-fight case.
-      const canFightHere = enemyHere && ownHere > 0;
+      // Match beginCombat's ACTUAL gate, not a loose 'both sides have some
+      // unit here'. combat.ts starts a fight only when both sides share a
+      // THEATER (bothSidesPresent = bothSidesHaveTheater space || ground); its
+      // own comment notes that when they disagree — Imperial ships arriving
+      // where the Rebel has only ground units — beginCombat no-ops.
+      //
+      // Mirroring the loose form exempted such activations from the no-op sink
+      // expecting a fight the engine then declined to start, so the leader
+      // landed alone having moved nothing (#666, replayed to exactly this
+      // shape: movable 0, both sides present, no shared theater, orders 0).
+      const sharesTheater = (th: string) =>
+        sys.units.some((u) => u.side === side && G.catalog.unitTypes[u.typeId]?.theater === th)
+        && sys.units.some((u) => u.side !== side && G.catalog.unitTypes[u.typeId]?.theater === th);
+      const canFightHere = enemyHere && ownHere > 0 && (sharesTheater('space') || sharesTheater('ground'));
       if (movable === 0 && (NOOP_ACTIVATION_GUARD ? !canFightHere : !enemyHere)) {
         // Activating this system moves nothing and starts no fight, so it's a
         // wasted action — and the executor (tryCommandAction) rejects it, so a
