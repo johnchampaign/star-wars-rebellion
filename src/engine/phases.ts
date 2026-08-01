@@ -859,6 +859,18 @@ function enterCommandPhase(G: GameState): void {
   G.currentPlayer = 'Rebel'; // rr p.6
   G.passedThisCommand = [];
   log(G, { kind: 'phase', payload: { phase: 'Command' } });
+  // RoE p.8: an Immediate objective resolves WHEN DRAWN. One can be drawn during
+  // ASSIGNMENT — Rebel Planning draws an objective — and the only flush sites
+  // were advanceCommandTurn and the Refresh draw, neither of which runs on the
+  // Assignment→Command transition. So a Rebel Cell / Raid Outposts drawn by
+  // Rebel Planning silently never placed its markers and the player was given no
+  // way to place them (#660). Flush here, before the Under the Radar offer, so
+  // the placement lands before the Rebel's first Command turn rather than after
+  // their first action. Same precedence advanceCommandTurn already uses (it
+  // flushes at the top, then offers Under the Radar at the turn switch), and if
+  // this posts, its resolver re-enters advanceCommandTurn, which still makes the
+  // Under the Radar offer.
+  if (flushImmediateObjectiveActivations(G, 'command')) return;
   // RoE Under the Radar: offer to return a held probe at the start of the
   // Rebel's first Command turn.
   maybeOfferUnderTheRadarReturn(G);
