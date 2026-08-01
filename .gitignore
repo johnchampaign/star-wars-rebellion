@@ -89,3 +89,16 @@ issue*-body.txt
 # wrangler pages functions build output (local bundle check)
 .fnbuild*
 analytics-out/
+
+# --- Publisher material: never commit ---
+# The by-name list above has already been outrun once — four more rulebook/
+# reference PDFs arrived un-listed. No PDF in this repo is source, and none is
+# tracked, so catch the whole type instead of playing catch-up.
+*.pdf
+# A researched map scan. Art we generate ourselves lives under public/dev-assets
+# and stays tracked; this one is not ours.
+/alternative circular map.jpg
+
+# Per-machine Claude Code permission state — personal, not project config
+# (gitignored in every sibling project; it was tracked here by accident).
+.claude/settings.local.json

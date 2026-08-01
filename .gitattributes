@@ -1,0 +1,14 @@
+# Pin LF in both the index and the working tree. This clone currently relies on a
+# local `core.autocrlf=input` to keep its CRLF working files from showing up as a
+# tree full of phantom modifications — but that setting lives in .git/config, so it
+# protects THIS clone only. A fresh clone, or a checkout on Windows, gets no such
+# help. Committing the rule makes the fix travel with the repo.
+#
+# `text=auto` still detects binary content, so the tracked token art is untouched.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.ico binary
+*.woff2 binary
