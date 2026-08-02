@@ -16247,8 +16247,22 @@ function archiveCompletedGame(G: GameState): void {
     const raw = localStorage.getItem(LS_HISTORY);
     const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; mctsPolicy?: boolean; mctsRebel?: boolean; build?: string }> =
       raw ? JSON.parse(raw) : [];
-    const codec = canEncode(G) ? encode(G) : null;
-    if (!codec) return;
+    // A game can END mid-resolution: a reputation-time win fires on the time
+    // track while a combat choice is still queued, so G.isGameOver is true but
+    // canEncode(G) is false. This used to `return` here — dropping the finished
+    // game from the archive entirely, while persist() went on to delete the
+    // resume save. The player was left with nothing to upload and no way to
+    // tell why (#678: "I can't upload the log. I don't know why." — round 8,
+    // "Rebel wins! reason: reputation-time", "state is mid-resolution; codec
+    // not safe to capture").
+    //
+    // canEncode() is a RESUME guard — it refuses states you could not safely
+    // continue from. History records are never resumed (the uploader is their
+    // only reader), and encode() already strips pendingMission/pendingCombat/
+    // pendingChoice/refreshPaused, so a completed game encodes fine. Archive it
+    // regardless of the pending-resolution state; a final snapshot missing an
+    // unresolved combat prompt beats losing the whole game.
+    const codec = encode(G);
     // Capture which side the human played so log analysts (and the AI-
     // improvement loop) can tell at a glance whether the AI was Empire
     // or Rebel. Read from the same localStorage key the play tab uses
