@@ -743,7 +743,19 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         console.warn('[ai] runAILoop hit hard safety cap (2000 steps)');
         return;
       }
-      if (aiWaitingRef.current) return; // worker reply re-kicks via refresh()
+      if (aiWaitingRef.current) {
+        // Waiting on an MCTS worker reply. This used to `return` outright,
+        // trusting the reply to re-kick us via refresh(). When the reply never
+        // arrives (worker died, message dropped, tab throttled) nothing
+        // re-entered this loop — so the 20s watchdog ABOVE, which exists to
+        // recover exactly that case, could never run. The AI simply stopped and
+        // the only control left was the opponent's Pass button, which is #673
+        // and the #603 hang reachable again through the gap its own fix left.
+        // Keep a slow heartbeat alive so the watchdog gets its chance; it is a
+        // no-op once the reply lands and clears the flag.
+        setTimeout(runBatch, 1000);
+        return;
+      }
       const owes2 = aiOwesChoice(Gn2, ai);
       if (Gn2.currentPlayer === ai || owes2) {
         setTimeout(runBatch, 0);
