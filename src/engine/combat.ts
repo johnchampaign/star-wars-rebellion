@@ -506,6 +506,106 @@ function postRetreatChoice(G: GameState, c: CombatState, side: Side): boolean {
   return true;
 }
 
+/** Post the interactive pick a chosen cinematic tactic card needs, if any
+ *  applies with 2+ legal options. Returns true when a choice was posted — the
+ *  caller must return immediately; the pick's resolver applies the effect and
+ *  re-enters runCombat. Returns false when there's nothing to choose (0–1
+ *  options, or an ability with no pick), leaving the caller to auto-resolve via
+ *  applyCinematicAbility.
+ *
+ *  The card is discarded here, because applyCinematicAbility — which normally
+ *  does the discard — never runs on this path.
+ *
+ *  `markDoneKey` marks the side's tactic sub-step resolved; a BASE play passes
+ *  its key, an EXTRA play passes null because its sub-step was already marked
+ *  when the base card resolved. Extra plays used to skip this function entirely
+ *  and go straight to the auto-resolver, so a card played as the second card of
+ *  a "you may play an extra card" effect silently auto-assigned its damage to
+ *  the cheapest-to-kill enemy unit instead of prompting (#674). */
+function postCinematicInteractivePick(
+  G: GameState, c: CombatState, side: Side, theater: Theater,
+  cardId: string, useTop: boolean, markDoneKey: string | null,
+): boolean {
+  const discard = () => {
+    const f = side === 'Rebel' ? G.rebel : G.empire;
+    (f.cinematicTacticDiscard ??= []).push(cardId);
+    if (markDoneKey) (c.cinematicTacticDoneThisRound ??= []).push(markDoneKey);
+  };
+
+  // A targeted-deal (Tow Cables / Ion Blast) OR a plain deal (Bombing Run,
+  // Rogue Squadron Support, …) both let the playing side choose which enemy
+  // unit eats the damage when 2+ are legal (#290/#312). A conditional deal
+  // (Swarm Tactics, Bombardment) whose condition currently holds is treated
+  // exactly like a plain deal so it prompts too, instead of auto-assigning to
+  // the cheapest-to-kill enemy (#570). Compute the amount + candidates from
+  // whichever applies and post one CinematicTargetPick.
+  const td = targetDealAbilityFor(cardId, useTop);
+  const dl = td ? null : effectiveDealAbilityFor(G, c, side, theater, cardId, useTop);
+  const amount = td ? td.amount : (dl ? dl.amount : 0);
+  const cands = td ? cinematicTargetDealCandidates(G, c, side, theater, td)
+    : (dl ? cinematicDealCandidates(G, c, side, theater, dl) : []);
+  if ((td || dl) && cands.length >= 2) {
+    discard();
+    c.flags = c.flags ?? {};
+    c.flags.cinematicTargetPick = { side, theater, cardId, useTop, amount };
+    G.pendingChoice = {
+      kind: 'CinematicTargetPick', side, theater, systemId: c.systemId,
+      amount, candidates: cands,
+    };
+    log(G, { kind: 'choice-request', side, payload: {
+      kind: 'CinematicTargetPick', theater, amount, candidates: cands.length,
+    }});
+    return true; // paused — resolveCinematicTargetPick applies the damage
+  }
+
+  // Interactive destroy-without-rolling pick (#316 audit): cards like
+  // Intercept / Hold Them Back / Support of the 501st / cinematic Target the
+  // Generator ("destroy 1 triangle ground unit / 1 structure") let the playing
+  // side choose which eligible enemy unit is removed when 2+ are legal — fall
+  // through to the auto-resolver when 0–1.
+  const de = destroyAbilityFor(cardId, useTop);
+  const dcands = de ? cinematicDestroyCandidates(G, c, side, theater, de) : [];
+  if (de && dcands.length >= 2) {
+    discard();
+    G.pendingChoice = {
+      kind: 'CinematicDestroyPick', side, theater, systemId: c.systemId, candidates: dcands,
+      cardId, useTop,
+    };
+    log(G, { kind: 'choice-request', side, payload: {
+      kind: 'CinematicDestroyPick', theater, candidates: dcands.length, cardId,
+    }});
+    return true; // paused — resolveCinematicDestroyPick removes the chosen unit
+  }
+
+  // Interactive "gain a triangle ground unit" pick (Deployment, #497): the card
+  // gains 1 triangle ground unit and the player chooses the TYPE (Rebel:
+  // Trooper or Vanguard). With 2+ types, post the pick; with ≤1, fall through
+  // to the auto-resolver (which deploys the default type).
+  const ga = gainTriangleAbilityFor(cardId, useTop);
+  const gtypes = ga ? cinematicTriangleGroundGainTypes(G, side) : [];
+  if (ga && gtypes.length >= 2) {
+    discard();
+    // Deployment's gain has no prevent; its secondary (LOCKSPECIAL) is a
+    // separate ability the player didn't choose, so nothing else to apply.
+    requestChoice(G, {
+      tag: 'cinematic-gain',
+      side,
+      domain: 'unit',
+      prompt: 'Deployment — gain a triangle ground unit',
+      detail: 'Choose which triangle ground unit to deploy into the system.',
+      candidates: gtypes.map((id) => ({ id, label: G.catalog.unitTypes[id]?.name ?? id })),
+      min: 1,
+      max: 1,
+      submitLabel: 'Deploy',
+      context: { systemId: c.systemId, side, cardId, theater },
+    });
+    log(G, { kind: 'choice-request', side, payload: { kind: 'Choice', tag: 'cinematic-gain', theater } });
+    return true; // paused — the 'cinematic-gain' resolver deploys + resumes
+  }
+
+  return false;
+}
+
 /** Begin or continue the current theater step. Returns early if a player
  *  choice is queued. Idempotent re-entry via runCombat. */
 function runTheater(G: GameState, c: CombatState, theater: Theater): void {
@@ -627,86 +727,14 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
         c.flags.escapePlanCancel = undefined;
         continue;
       }
-      // Interactive targeted-deal pick (RoE p.9, #290): cards like Tow Cables
-      // ("Deal 4 to 1 AT-AT or AT-ST") let the playing side choose the target
-      // when 2+ are legal. Discard the card now, post the pick, and apply the
-      // damage in resolveCinematicTargetPick. With 0–1 candidates there's no
-      // choice — fall through to the auto-resolving applyCinematicAbility.
-      if (sel && !sel.noAbility) {
-        // A targeted-deal (Tow Cables / Ion Blast) OR a plain deal (Bombing Run,
-        // Rogue Squadron Support, …) both let the playing side choose which
-        // enemy unit eats the damage when 2+ are legal (#290/#312). A conditional
-        // deal (Swarm Tactics, Bombardment) whose condition currently holds is
-        // treated exactly like a plain deal so it prompts too, instead of
-        // auto-assigning to the cheapest-to-kill enemy (#570). Compute the
-        // amount + candidates from whichever applies and post one CinematicTargetPick.
-        const td = targetDealAbilityFor(sel.cardId, sel.useTop);
-        const dl = td ? null : effectiveDealAbilityFor(G, c, side, theater, sel.cardId, sel.useTop);
-        const amount = td ? td.amount : (dl ? dl.amount : 0);
-        const cands = td ? cinematicTargetDealCandidates(G, c, side, theater, td)
-          : (dl ? cinematicDealCandidates(G, c, side, theater, dl) : []);
-        if ((td || dl) && cands.length >= 2) {
-          const f = side === 'Rebel' ? G.rebel : G.empire;
-          (f.cinematicTacticDiscard ??= []).push(sel.cardId);
-          c.cinematicTacticDoneThisRound.push(key);
-          c.flags = c.flags ?? {};
-          c.flags.cinematicTargetPick = { side, theater, cardId: sel.cardId, useTop: sel.useTop, amount };
-          G.pendingChoice = {
-            kind: 'CinematicTargetPick', side, theater, systemId: c.systemId,
-            amount, candidates: cands,
-          };
-          log(G, { kind: 'choice-request', side, payload: {
-            kind: 'CinematicTargetPick', theater, amount, candidates: cands.length,
-          }});
-          return; // paused — resolveCinematicTargetPick applies the damage
-        }
-        // Interactive destroy-without-rolling pick (#316 audit): cards like
-        // Intercept / Hold Them Back / Support of the 501st / cinematic Target
-        // the Generator ("destroy 1 triangle ground unit / 1 structure") let the
-        // playing side choose which eligible enemy unit is removed when 2+ are
-        // legal — fall through to the auto-resolver when 0–1.
-        const de = destroyAbilityFor(sel.cardId, sel.useTop);
-        const dcands = de ? cinematicDestroyCandidates(G, c, side, theater, de) : [];
-        if (de && dcands.length >= 2) {
-          const f = side === 'Rebel' ? G.rebel : G.empire;
-          (f.cinematicTacticDiscard ??= []).push(sel.cardId);
-          c.cinematicTacticDoneThisRound.push(key);
-          G.pendingChoice = {
-            kind: 'CinematicDestroyPick', side, theater, systemId: c.systemId, candidates: dcands,
-            cardId: sel.cardId, useTop: sel.useTop,
-          };
-          log(G, { kind: 'choice-request', side, payload: {
-            kind: 'CinematicDestroyPick', theater, candidates: dcands.length, cardId: sel.cardId,
-          }});
-          return; // paused — resolveCinematicDestroyPick removes the chosen unit
-        }
-        // Interactive "gain a triangle ground unit" pick (Deployment, #497): the
-        // card gains 1 triangle ground unit and the player chooses the TYPE
-        // (Rebel: Trooper or Vanguard). With 2+ types, post the pick; with ≤1,
-        // fall through to the auto-resolver (which deploys the default type).
-        const ga = gainTriangleAbilityFor(sel.cardId, sel.useTop);
-        const gtypes = ga ? cinematicTriangleGroundGainTypes(G, side) : [];
-        if (ga && gtypes.length >= 2) {
-          const f = side === 'Rebel' ? G.rebel : G.empire;
-          (f.cinematicTacticDiscard ??= []).push(sel.cardId);
-          c.cinematicTacticDoneThisRound.push(key);
-          // Deployment's gain has no prevent; its secondary (LOCKSPECIAL) is a
-          // separate ability the player didn't choose, so nothing else to apply.
-          requestChoice(G, {
-            tag: 'cinematic-gain',
-            side,
-            domain: 'unit',
-            prompt: 'Deployment — gain a triangle ground unit',
-            detail: 'Choose which triangle ground unit to deploy into the system.',
-            candidates: gtypes.map((id) => ({ id, label: G.catalog.unitTypes[id]?.name ?? id })),
-            min: 1,
-            max: 1,
-            submitLabel: 'Deploy',
-            context: { systemId: c.systemId, side, cardId: sel.cardId, theater },
-          });
-          log(G, { kind: 'choice-request', side, payload: { kind: 'Choice', tag: 'cinematic-gain', theater } });
-          return; // paused — the 'cinematic-gain' resolver deploys + resumes
-        }
+      // Interactive target / destroy / gain pick (RoE p.9, #290/#312/#316/#497):
+      // cards like Tow Cables ("Deal 4 to 1 AT-AT or AT-ST") let the playing side
+      // choose when 2+ options are legal. The helper discards the card, marks
+      // this sub-step done and posts the choice; with 0–1 options it returns
+      // false and we fall through to the auto-resolving applyCinematicAbility.
+      if (sel && !sel.noAbility
+        && postCinematicInteractivePick(G, c, side, theater, sel.cardId, sel.useTop, key)) {
+        return; // paused — the pick's resolver applies the effect
       }
       if (sel) applyCinematicAbility(G, c, side, theater, sel.cardId, sel.useTop);
       else log(G, { kind: 'cinematic-tactic-skip', side, payload: { theater, round: c.round } });
@@ -2715,6 +2743,21 @@ export function resolveCinematicTacticSelect(
     // as a second card via an extra-card effect, so its cancel ability is void
     // and it's inherently uncancellable (it resolves now, not via the cancel
     // loop) — RoE #328.
+    //
+    // An extra card gets the SAME interactive target / destroy / gain pick a
+    // base play gets (#674): "deal 1 damage" is the player's choice of target
+    // (RoE p.9 "he places a damage token on a unit of his choice"), and it does
+    // not stop being his choice because the card was played off a "you may play
+    // an extra card" effect. This path used to go straight to the auto-resolver,
+    // which silently assigned the damage to the cheapest-to-kill enemy unit.
+    // markDoneKey is null — the sub-step was already marked done by the base
+    // play; the pick's resolver re-enters runCombat when the player answers.
+    // (Any outstanding extra is still re-offered: a card that needs a pick never
+    // also grants an extra, and grantExtraCard only ever banks one at a time.)
+    if (cardId !== null
+      && postCinematicInteractivePick(G, c, pc.side, pc.theater, cardId, useTop, null)) {
+      return { ok: true }; // paused — the pick's resolver applies the effect
+    }
     if (cardId !== null) applyCinematicAbility(G, c, pc.side, pc.theater, cardId, useTop, true);
     else log(G, { kind: 'cinematic-tactic-skip', side: pc.side, payload: { theater: pc.theater, round: pc.round } });
     const extras = c.cinematicExtraPlays?.[key] ?? 0;
