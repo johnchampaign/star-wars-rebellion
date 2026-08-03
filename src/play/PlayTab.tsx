@@ -9748,6 +9748,12 @@ function HomingBeaconMapModal({
 
 function RebelBasePickPanel({ G, onPick }: { G: GameState; onPick: (sysId: string) => void }) {
   const candidates = G.pendingRebelBasePick ?? [];
+  // Two-step: tap to select, then confirm. Choosing the base is irreversible
+  // and secret, so there is no undo to fall back on — and on a phone the
+  // candidate buttons sit close enough together that a mis-tap committed the
+  // whole game to the wrong system (#672). Selecting is now free; only Confirm
+  // commits.
+  const [selected, setSelected] = useState<string | null>(null);
   if (candidates.length === 0) return null;
   const color = sideColor('Rebel');
   // Sort alphabetically by display name for easy scanning.
@@ -9779,11 +9785,11 @@ function RebelBasePickPanel({ G, onPick }: { G: GameState; onPick: (sysId: strin
           return (
             <button
               key={sysId}
-              onClick={() => onPick(sysId)}
+              onClick={() => setSelected(sysId)}
               style={{
                 padding: '6px 10px',
-                background: '#0c0d10',
-                border: `1px solid ${color}`,
+                background: selected === sysId ? '#1c2430' : '#0c0d10',
+                border: `${selected === sysId ? 2 : 1}px solid ${color}`,
                 color: '#e8e8ea',
                 borderRadius: 3, cursor: 'pointer', fontSize: 12,
                 textAlign: 'left',
@@ -9797,6 +9803,25 @@ function RebelBasePickPanel({ G, onPick }: { G: GameState; onPick: (sysId: strin
             </button>
           );
         })}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, flexWrap: 'wrap' }}>
+        <button
+          className="tab-button active"
+          disabled={!selected}
+          onClick={() => { if (selected) onPick(selected); }}
+          style={{ padding: '8px 14px', fontSize: 13 }}
+        >
+          {selected
+            ? `Confirm ${G.catalog.systems[selected]?.name ?? selected} as your base`
+            : 'Pick a system above'}
+        </button>
+        {selected && (
+          <button className="tab-button" onClick={() => setSelected(null)}
+            style={{ padding: '8px 12px', fontSize: 13 }}>Change</button>
+        )}
+        <span style={{ fontSize: 11, color: '#888' }}>
+          This can't be undone once confirmed, so check it before you commit.
+        </span>
       </div>
     </div>
   );
