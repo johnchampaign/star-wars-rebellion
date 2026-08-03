@@ -29,7 +29,7 @@ function randomSide(): Side { return Math.random() < 0.5 ? 'Rebel' : 'Empire'; }
 function otherSide(s: Side): Side { return s === 'Rebel' ? 'Empire' : 'Rebel'; }
 
 // Context so helper components can read the current style without prop drilling.
-const UnitStyleContext = createContext<UnitImageStyle>('vmod');
+const UnitStyleContext = createContext<UnitImageStyle>('token');
 const useUnitStyle = () => useContext(UnitStyleContext);
 import { createGame, resolveExpansion } from '../engine/setup';
 import * as _phases from '../engine/phases';
@@ -2618,7 +2618,9 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             // routes to the Death Star Plans resolver (#186).
             const r = G.pendingChoice && G.pendingChoice.kind === 'YodaReroll'
               && G.pendingChoice.context === 'dsplans'
-              ? combat.resolveDsPlansYoda(G, idx)
+              // Skip is `null` from the modal; the DSP resolver spells skip as
+              // an out-of-range index (it only rerolls when 0 <= i < faces).
+              ? combat.resolveDsPlansYoda(G, idx ?? -1)
               : phases.resolveYodaMissionReroll(G, idx);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
@@ -8013,22 +8015,24 @@ function LeaderPips({ G, systemId, centerX, centerY }: {
   type Pip = {
     kind: 'active' | 'captured' | 'carbonite';
     side: Side; // owning side (captives are still Rebel/Empire leaders)
-    leader: NonNullable<ReturnType<(typeof G.catalog.leaders)['__type']>> | (typeof G.catalog.leaders)[string];
+    leader: (typeof G.catalog.leaders)[string];
   };
+  // Drop ids with no catalog entry BEFORE mapping. The catalog's index
+  // signature hands back a Leader for any key, so a post-map `x is Pip`
+  // predicate has nothing to narrow and is rejected outright.
   const rebel: Pip[] = (G.rebel.leadersOnBoard[systemId] ?? [])
-    .map((lid) => ({ kind: 'active' as const, side: 'Rebel' as Side, leader: G.catalog.leaders[lid] }))
-    .filter((x): x is Pip => !!x.leader);
+    .filter((lid) => !!G.catalog.leaders[lid])
+    .map((lid) => ({ kind: 'active' as const, side: 'Rebel' as Side, leader: G.catalog.leaders[lid] }));
   const empire: Pip[] = (G.empire.leadersOnBoard[systemId] ?? [])
-    .map((lid) => ({ kind: 'active' as const, side: 'Empire' as Side, leader: G.catalog.leaders[lid] }))
-    .filter((x): x is Pip => !!x.leader);
+    .filter((lid) => !!G.catalog.leaders[lid])
+    .map((lid) => ({ kind: 'active' as const, side: 'Empire' as Side, leader: G.catalog.leaders[lid] }));
   // Captured leaders pinned at this system. Their side is the side they
   // belong to (e.g. a captured Mon Mothma is still a Rebel leader). Visually
   // we paint them with a heavy red ring + chain glyph, or cyan for carbonite.
   const captured: Pip[] = (G.empire.capturedLeaders ?? [])
-    .filter((cl) => cl.systemId === systemId)
+    .filter((cl) => cl.systemId === systemId && !!G.catalog.leaders[cl.leaderId])
     .map((cl) => {
       const ldr = G.catalog.leaders[cl.leaderId];
-      if (!ldr) return null;
       // Captured Rebel leaders are the common case; a flipped Imperial leader
       // (e.g. Lure of the Dark Side) wouldn't show up here. Use side from the
       // catalog so we get the right value either way.
@@ -8037,8 +8041,7 @@ function LeaderPips({ G, systemId, centerX, centerY }: {
         side: ldr.side,
         leader: ldr,
       };
-    })
-    .filter((x): x is Pip => !!x);
+    });
   const all = [...rebel, ...empire, ...captured];
   if (all.length === 0) return null;
   const SIZE = 24;        // up from 14 — actually recognisable

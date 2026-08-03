@@ -8,7 +8,7 @@
 // the choice. AI moves continue to auto-resolve via randomAI.ts.
 
 import { useEffect, useRef, useState } from 'react';
-import type { GameState, Side, UnitInstance, Theater, DieResult } from '../engine/types';
+import type { GameState, Side, UnitInstance, Theater, DieResult, DieFace } from '../engine/types';
 import * as _combat from '../engine/combat';
 import { makeOnlineCombat } from '../online/onlineEngine';
 import type { RebellionAction } from '../adapter/rebellionAction';
@@ -452,7 +452,7 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
     const n = damageChoice.hits.length;
     let nextIdx: number | null = null;
     for (let off = 1; off <= n; off++) {
-      const j = (selectedHitIdx + off) % n;
+      const j: number = (selectedHitIdx + off) % n;
       if (j === selectedHitIdx) break;
       // Skip dice with no legal targets.
       if (damageChoice.targetsByHit[j].length === 0) continue;
@@ -1640,7 +1640,10 @@ function OneInAMillionPanel({ G, choice, onPersist }: {
               background: '#0c0d10', border: `2px solid ${overridden ? '#80dc78' : '#2a2d34'}`, borderRadius: 4,
               padding: '4px 6px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11,
             }}>
-              <Die d={{ color: choice.colors[i], face }} />
+              {/* choice.faces is string[] on the wire (see types.ts) but always
+                  holds DieFace values — narrow here rather than cascading a
+                  DieFace[] through the engine's face stores. */}
+              <Die d={{ color: choice.colors[i], face: face as DieFace }} />
               <span style={{ color: '#888' }}>→</span>
               <select value={overridden ?? ''} onChange={(e) => setFace(i, e.target.value || null)}
                 style={{ background: '#0c0d10', color: '#e8e8ea', border: '1px solid #555', fontSize: 11 }}

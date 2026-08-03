@@ -527,6 +527,11 @@ export type ChoiceRequest =
       rebelRoleInRoll: 'attacker' | 'opposer';
       // Dice faces + colors to choose from. Resolver returns chosen indexes
       // + target faces; engine validates and applies.
+      // Every producer feeds this from DieResult.face, so the values are always
+      // DieFace at runtime — but the upstream stores it copies from
+      // (dsPlansAttempt.faces, r2d2Pending.attFaces/oppFaces) are still
+      // string[], so tightening this to DieFace[] cascades through the engine.
+      // Left loose deliberately; renderers narrow at the point of use.
       faces: string[];
       // Die colors are DieColor ('red' | 'black' | 'green'); combat dice are
       // only red/black but the field is fed straight from DieResult.color, and
