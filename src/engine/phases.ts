@@ -1495,7 +1495,8 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
  *  discard/advance tail. Shared by BOTH failure paths — the unopposed reveal
  *  (continueRevealAfterSpecialOffer) and the opposed roll (resolveOpposition),
  *  which previously lacked the hook (#437). */
-function maybePostBountyOffer(
+/** Exported for tests (#681). */
+export function maybePostBountyOffer(
   G: GameState, resolverSide: Side, missionId: string, leaderIds: LeaderId[],
 ): boolean {
   // RAW: "Use after a leader fails a mission in THIS leader's system." Post Bounty
