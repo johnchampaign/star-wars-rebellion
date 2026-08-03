@@ -229,12 +229,26 @@ export function missionTargets(G: GameState, _side: Side, missionId: string): Ta
     // Per RAW: captured leaders stay at a system. The target is that system.
     const sysIds = new Set<SystemId>();
     for (const cap of G.empire.capturedLeaders ?? []) sysIds.add(cap.systemId);
+    // Some of these cards add a location clause. Make An Example reads
+    // "Attempt on a captured leader in a REMOTE system", but this branch used
+    // to return every system holding a captive, so it could be run on a
+    // populous one — the reporter saw it fire at Alderaan (#675). Read the
+    // clause off the card text rather than special-casing the id, so any other
+    // card phrased the same way is restricted automatically.
+    const remoteOnly = t.includes('remote');
+    const ids = remoteOnly
+      ? [...sysIds].filter((sid) => G.catalog.systems[sid]?.isRemote)
+      : [...sysIds];
     return {
-      systemIds: [...sysIds],
+      systemIds: ids,
       permissive: false,
-      note: sysIds.size === 0
-        ? 'Systems containing a captured leader (none currently).'
-        : 'Systems containing a captured leader.',
+      note: ids.length === 0
+        ? (remoteOnly
+          ? 'Remote systems containing a captured leader (none currently).'
+          : 'Systems containing a captured leader (none currently).')
+        : (remoteOnly
+          ? 'Remote systems containing a captured leader.'
+          : 'Systems containing a captured leader.'),
     };
   }
 
