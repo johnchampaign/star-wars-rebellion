@@ -592,7 +592,27 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
       // committed mission away. Set SWR_MCTS_REVEAL_MARGIN=5 to collapse this
       // back onto the base margin (the A/B control).
       const revealMargin = envInt('SWR_MCTS_REVEAL_MARGIN', 15) / 100;
-      const effMargin = bestAct.a.kind === 'reveal' ? Math.max(margin, revealMargin) : margin;
+      // SOLE REVEAL. A tuned margin only works while it stays wider than the
+      // noise it filters, and this one did not: 140 commits of engine changes
+      // after the fix above, #649's board no longer wanders around zero — the
+      // search now prefers pass by more than the base margin on EVERY seed, and
+      // by more than 0.15 on a quarter of them. Chasing that with a bigger
+      // constant just buys time until the next drift.
+      //
+      // When the reveal is the ONLY actionable arm there is nothing to defer
+      // to, so no gap justifies passing: the leaders are already committed, so
+      // pass spends their round and hands the card back for nothing. That is a
+      // structural fact about the position, not a quantity to measure, so it
+      // does not belong behind a threshold.
+      //
+      // Deliberately narrow — it requires a SINGLE actionable arm, so boards
+      // with a real choice (#630 has 5, #639 has 6) are untouched and still go
+      // through the margin path below. SWR_MCTS_REVEAL_SOLE=0 to A/B it off.
+      const soleReveal = acts.length === 1 && bestAct.a.kind === 'reveal'
+        && envInt('SWR_MCTS_REVEAL_SOLE', 1) === 1;
+      const effMargin = soleReveal
+        ? Infinity
+        : bestAct.a.kind === 'reveal' ? Math.max(margin, revealMargin) : margin;
       if (passMean - actMean < effMargin) {
         chosen = bestAct.a;
         mctsStats.passRescues++;
