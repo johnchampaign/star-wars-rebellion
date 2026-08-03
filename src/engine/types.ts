@@ -2309,6 +2309,11 @@ export type GameState = {
     // Per-side, per-system count of units deployed THIS refresh phase.
     // RR p.7 caps deployment at 2 units per system per side per Refresh.
     deployedThisPhase?: Partial<Record<Side, Record<SystemId, number>>>;
+    // RoE Shield Bunker "Local Reinforcement" cannot be used during the same
+    // deploy step the Bunker arrives in. Counts Shield Bunkers deployed into
+    // each system THIS refresh so the local-reinforcement test can subtract
+    // them and only honour Bunkers that were already there (report #680).
+    bunkersDeployedThisPhase?: Record<SystemId, number>;
   };
   // Hand-limit discard queue (Refresh step 2). After drawing missions, any side
   // over the 10-card limit must discard down — processed one side at a time as a

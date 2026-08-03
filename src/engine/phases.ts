@@ -1509,9 +1509,16 @@ function maybePostBountyOffer(
       && G.empire.actionHand.includes('post-bounty')
       && jabbaHere
       && !G.pendingChoice)) return false;
-  const candidates = leaderIds.filter(
-    (lid) => !G.leaderAttachments?.[lid]?.includes('bounty'),
-  );
+  // RAW: "Attach a bounty ring to 1 UN-RINGED leader." This used to exclude
+  // only leaders already carrying a bounty, so a leader wearing a droid ring
+  // was still offered — the reporter had R2-D2 on Leia and the Empire bountied
+  // her anyway (#681). A droid ring makes a leader ringed for exactly this kind
+  // of clause; it is the same DROID_RINGS set the droid-ring cards test against
+  // for their own "non-ringed leader" requirement, so the two now agree.
+  const candidates = leaderIds.filter((lid) => {
+    const att = G.leaderAttachments?.[lid] ?? [];
+    return !att.includes('bounty') && !DROID_RINGS.some((r) => att.includes(r));
+  });
   if (candidates.length === 0) return false;
   G.pendingChoice = {
     kind: 'PostBountyOffer',
@@ -6304,10 +6311,14 @@ export function legalDeployTargets(G: GameState, side: Side, typeId?: UnitTypeId
   //
   // 2. LOCAL REINFORCEMENT — when an Imperial Shield Bunker is already in a
   //    REMOTE system with no Rebel units, Imperial may deploy ANY unit
-  //    there as if it were a loyal system. Fires for any typeId. RAW also
-  //    notes "this cannot be used during the build step while the Shield
-  //    Bunker is being deployed" — that's the build-action restriction; the
-  //    refresh-deploy path (which this function feeds) is unaffected.
+  //    there as if it were a loyal system. Fires for any typeId.
+  //    RoE rulebook p.4: "This cannot be used during the build step in which
+  //    the Shield Bunker is deployed." So a Bunker that lands this Refresh
+  //    does NOT open its system for the rest of the same deploy step — only
+  //    Bunkers that were already on the board do (player report #680). We
+  //    subtract the count deployed this phase from the count present now, so
+  //    a pre-existing Bunker still works even if a second one lands beside it.
+  const bunkersJustDeployed = G.refreshPaused?.bunkersDeployedThisPhase ?? {};
   if (G.expansion?.enabled && side === 'Empire') {
     for (const [sysId, ss] of Object.entries(G.map.systems)) {
       if (out.has(sysId)) continue;
@@ -6319,16 +6330,18 @@ export function legalDeployTargets(G: GameState, side: Side, typeId?: UnitTypeId
       const hasImpGround = ss.units.some(
         (u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground',
       );
-      const hasImpShieldBunker = ss.units.some(
+      const bunkersHere = ss.units.filter(
         (u) => u.side === 'Empire' && u.typeId === 'shield-bunker',
-      );
+      ).length;
+      // Bunkers that arrived during this refresh's deploy step don't count.
+      const establishedBunkers = bunkersHere - (bunkersJustDeployed[sysId] ?? 0);
       // 1. Easy deployment for a Shield Bunker
       if (typeId === 'shield-bunker' && hasImpGround) {
         out.add(sysId);
         continue;
       }
       // 2. Local reinforcement at a remote Shield Bunker
-      if (isRemote && hasImpShieldBunker) {
+      if (isRemote && establishedBunkers > 0) {
         out.add(sysId);
       }
     }
@@ -6361,12 +6374,11 @@ function refreshDeployUnits(G: GameState): boolean {
       if (!byType.has(typeId)) { byType.set(typeId, 0); order.push(typeId); }
       byType.set(typeId, byType.get(typeId)! + 1);
     }
-    // Deploy Shield Bunkers FIRST (#560): a Shield Bunker enables deploying
-    // OTHER units into its remote system, so if it lands after them they get no
-    // remote target this Refresh. Stable sort (V8) keeps first-appearance order
-    // within each rank. (Rebel has no shield-bunker, so this only reorders the
-    // Empire's queue.)
-    order.sort((a, b) => (a === 'shield-bunker' ? 0 : 1) - (b === 'shield-bunker' ? 0 : 1));
+    // (#560 used to deploy Shield Bunkers FIRST so they'd open their remote
+    // system for the units behind them in the same queue. RoE p.4 explicitly
+    // forbids exactly that — "this cannot be used during the build step in
+    // which the Shield Bunker is deployed" (#680) — so the reorder bought
+    // nothing but a surprising deploy order, and is gone.)
     for (const typeId of order) {
       for (let i = 0; i < byType.get(typeId)!; i++) queue.push({ side, typeId });
     }
@@ -6378,6 +6390,7 @@ function refreshDeployUnits(G: GameState): boolean {
   G.refreshPaused.pendingDeployPicks = queue;
   // Start the deploy-cap counter fresh for this Refresh phase.
   G.refreshPaused.deployedThisPhase = {};
+  G.refreshPaused.bunkersDeployedThisPhase = {};
   return promoteNextDeployPick(G);
 }
 
@@ -6388,13 +6401,18 @@ function applyDeployCap(G: GameState, side: Side, candidates: SystemId[]): Syste
   return candidates.filter((sid) => (counts[sid] ?? 0) < 2);
 }
 
-/** Record a successful deploy for the per-Refresh per-side per-system cap. */
-function trackDeploy(G: GameState, side: Side, systemId: SystemId): void {
+/** Record a successful deploy for the per-Refresh per-side per-system cap, and
+ *  (for Shield Bunkers) for the Local-Reinforcement same-step lockout (#680). */
+function trackDeploy(G: GameState, side: Side, systemId: SystemId, typeId?: UnitTypeId): void {
   const r = G.refreshPaused;
   if (!r) return;
   r.deployedThisPhase = r.deployedThisPhase ?? {};
   const bySys = (r.deployedThisPhase[side] = r.deployedThisPhase[side] ?? {});
   bySys[systemId] = (bySys[systemId] ?? 0) + 1;
+  if (typeId === 'shield-bunker' && side === 'Empire') {
+    r.bunkersDeployedThisPhase = r.bunkersDeployedThisPhase ?? {};
+    r.bunkersDeployedThisPhase[systemId] = (r.bunkersDeployedThisPhase[systemId] ?? 0) + 1;
+  }
 }
 
 /** Take the next pending deploy entry; auto-resolve if 0 or 1 candidates,
@@ -6492,7 +6510,7 @@ export function resolveDeployUnitPick(G: GameState, systemId: SystemId): { ok: b
   const cur = G.refreshPaused?.deployedThisPhase?.[pc.side]?.[systemId] ?? 0;
   if (cur >= 2) return { ok: false, reason: `deploy-cap-reached:${systemId}` };
   M.deployUnit(G, pc.side, pc.typeId, systemId);
-  trackDeploy(G, pc.side, systemId);
+  trackDeploy(G, pc.side, systemId, pc.typeId);
   G.pendingChoice = undefined;
   const r = G.refreshPaused;
   if (r?.pendingDeployPicks) r.pendingDeployPicks.shift();
