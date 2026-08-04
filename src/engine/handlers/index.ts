@@ -916,6 +916,14 @@ const interceptTransmissions: EffectHandler = (G, _ctx) => {
   // so several probe cards vanished from play each time this resolved (player
   // report #202: "six cards not accounted for").
   (G.empire.probeHand ??= []).push(...givenToEmpire);
+  // Fold the new cards into the ruled-out set immediately. recordEmpireSearched
+  // reads the probe hand (#686), but nothing calls it on a hand-off — it rides
+  // along with applyInvariants after a unit moves. Until then the map stops
+  // short of crossing these systems off and the Rebel AI's decoy scorer can
+  // still offer one as an Interrogation Droid bluff the Empire dismisses on
+  // sight. Rapid Mobilization re-records after its hand-off for the same
+  // reason; this is the other route a probe card reaches the Empire's hand.
+  M.recordEmpireSearched(G);
   return true;
 };
 
