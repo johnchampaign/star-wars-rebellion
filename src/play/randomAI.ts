@@ -682,7 +682,7 @@ function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: 
 }
 
 /** Score a target system for a Rebel mission. `baseDist` is a precomputed
- *  hop-count map from the Rebel base (or null when base is revealed/missing). */
+ *  hop-count map from the Rebel base (or null when base is revealed/missing). */
 /** Exported for tests (#663): pure scorer, no side effects. */
 export function rebelMissionTargetScore(
   G: GameState, missionId: string, targetSysId: SystemId,
@@ -1021,6 +1021,20 @@ const NOOP_ACTIVATION_GUARD: boolean = (() => {
   return true;
 })();
 
+/** Opt-out for the transport/garrison-aware reinforcement estimate in the
+ *  strength gates (SWR_REAL_REINFORCE=0), #653. Default ON. Off restores the
+ *  old "sum every unit standing next door" count, which over-stated the
+ *  attacking force and let hopeless assaults through the gate. Flagged because
+ *  it makes the gate STRICTER, and the record warns that suppressing Empire
+ *  aggression has backfired before — so it gets the same A/B. */
+const REAL_REINFORCE_ESTIMATE: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_REAL_REINFORCE === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
 /** Opt-out for distinct-target activation candidates (SWR_ACTIVATE_DIVERSITY=0).
  *  Default ON. Off restores the old behavior where every pool leader proposed
  *  the SAME argmax system — kept so the change can be A/B'd without a rebuild. */
@@ -1230,6 +1244,86 @@ function captureTargetLeaderId(G: GameState, side: Side, missionId: string, sysI
   return [...here].sort((a, b) => leaderValue(G, b) - leaderValue(G, a))[0] as LeaderId;
 }
 
+/** Combat weight of a single unit: dice + health. The strength gates' own
+ *  measure, lifted to module scope so the reinforcement estimate below scores
+ *  units the same way the gate scores defenders. */
+function unitStrength(G: GameState, u: { typeId: string }): number {
+  const t = G.catalog.unitTypes[u.typeId];
+  if (!t) return 0;
+  return (t.attack.red ?? 0) + (t.attack.black ?? 0) + (t.attack.green ?? 0) + (t.health?.value ?? 0);
+}
+
+/** Strength this side could ACTUALLY pull into `sysId` — a mirror of the move
+ *  executor in tryCommandAction, not a count of everything standing nearby.
+ *
+ *  The strength gates used to sum every Empire unit in every non-leader-blocked
+ *  adjacent system. The executor commits far less, for two reasons the gate
+ *  modelled nowhere:
+ *
+ *   • TRANSPORT (RR p.9). Ground units and restricted fighters only move if a
+ *     capital ship at the SAME source has spare capacity. A lone AT-AT sitting
+ *     next door counts for nothing.
+ *   • THE GARRISON RESERVE. The executor keeps 1 ground unit at each subjugated
+ *     or producing Imperial-loyal system (so vacating it doesn't lose the
+ *     subjugation or the production), except once the Rebel base is revealed.
+ *
+ *  Player report #653 is what that gap looks like from the table: the Empire
+ *  activated a system holding a Mon Calamari Cruiser and a Nebulon-B Frigate,
+ *  the gate weighed a neighbouring Star Destroyer AND the AT-AT beside it and
+ *  read the attack as even, then the reserve held the AT-AT back and a single
+ *  ship arrived alone to die. Replayed from self-play at seed 28/Sullust: gate
+ *  15 vs 13 (attack looks fine), delivered 7 vs 13 (hopeless).
+ *
+ *  Returns overall and ground-only strength, matching the gate's two tests. */
+function bringableStrength(
+  G: GameState, side: Side, sysId: SystemId,
+): { all: number; ground: number } {
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  const prisonSystems = new Set<string>(
+    (f.capturedLeaders ?? []).map((c) => c.systemId).filter(Boolean) as string[],
+  );
+  const baseDrainGuard = side === 'Rebel' && G.rebelBaseRevealed ? G.rebelBaseSystemId : undefined;
+  let all = 0, ground = 0;
+  for (const a of (G.catalog.adjacency[sysId] ?? [])) {
+    if ((f.leadersOnBoard[a] ?? []).length > 0) continue; // RAW p.2: leader-blocked
+    if (prisonSystems.has(a)) continue;                   // guards a captured leader
+    if (a === baseDrainGuard) continue;                   // never drain the revealed base
+    const ss = G.map.systems[a];
+    if (!ss) continue;
+    const capitals: { typeId: string }[] = [];
+    const fighters: { typeId: string }[] = [];
+    const groundUnits: { typeId: string }[] = [];
+    const selfMovers: { typeId: string }[] = [];
+    for (const u of ss.units) {
+      if (u.side !== side) continue;
+      const t = G.catalog.unitTypes[u.typeId];
+      if (!t || t.transport.immobile) continue;
+      if (t.transport.capacity > 0) capitals.push(u);
+      else if (t.theater === 'ground' && t.class !== 'structure') groundUnits.push(u);
+      else if (t.transport.restriction) fighters.push(u);
+      else selfMovers.push(u);
+    }
+    const produces = (G.catalog.systems[a]?.resources?.length ?? 0) > 0;
+    const worthHolding = ss.subjugated || (produces && ss.loyalty === 'imperial');
+    const reserve = (side === 'Empire' && worthHolding && groundUnits.length > 0
+      && !G.rebelBaseRevealed) ? 1 : 0;
+    const groundCandidates = groundUnits.slice(0, Math.max(0, groundUnits.length - reserve));
+    let capacity = 0;
+    for (const u of capitals) capacity += G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0;
+    // Same fill order as the executor: fighters first, then ground.
+    let used = 0;
+    for (const u of capitals) all += unitStrength(G, u);
+    for (const u of selfMovers) all += unitStrength(G, u);
+    for (const u of fighters) { if (used >= capacity) break; all += unitStrength(G, u); used++; }
+    for (const u of groundCandidates) {
+      if (used >= capacity) break;
+      const s = unitStrength(G, u);
+      all += s; ground += s; used++;
+    }
+  }
+  return { all, ground };
+}
+
 export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   const f = side === 'Rebel' ? G.rebel : G.empire;
   const actions: CommandAction[] = [];
@@ -1418,6 +1512,15 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   const systemScore = new Map<string, number>();
   for (const sysId of allSystemIds) {
     let ts = 0;
+    // Set when the force we could actually deliver is not merely outmatched but
+    // routed (< 60% of the defenders). The strength gate's scaled penalty is a
+    // flat -24, which large positional bonuses can simply outrun — the #653
+    // fixture scores 38 before the gate and still comes out at +14 after it, so
+    // the attack survives the `ts > 0` filter and gets made anyway. A rout is
+    // not a trade-off to be weighed against loyalty and subjugation value, so
+    // this hard-sinks the target after all bonuses land, the same way the no-op
+    // guard sinks an activation that provably cannot move or fight.
+    let hopelessAttack = false;
     const sys = G.map.systems[sysId];
     if (!sys) continue;
     const def = G.catalog.systems[sysId];
@@ -1649,14 +1752,25 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
           if (u.side === 'Empire') { empAll += strengthOf(u); if (isGround(u)) empGround += strengthOf(u); }
           else if (u.side === 'Rebel') { rebAll += strengthOf(u); if (isGround(u)) rebGround += strengthOf(u); }
         }
-        for (const a of (G.catalog.adjacency[sysId] ?? [])) {
-          if ((G.empire.leadersOnBoard[a] ?? []).length > 0) continue; // RAW p.2: leader-blocked
-          for (const u of (G.map.systems[a]?.units ?? [])) {
-            if (u.side === 'Empire') { empAll += strengthOf(u); if (isGround(u)) empGround += strengthOf(u); }
+        // Reinforcements the executor would ACTUALLY bring, not every unit
+        // parked next door. Counting the latter is what let a lone ship attack
+        // a system it could not beat (#653) — see bringableStrength.
+        if (REAL_REINFORCE_ESTIMATE) {
+          const reinforce = bringableStrength(G, 'Empire', sysId);
+          empAll += reinforce.all;
+          empGround += reinforce.ground;
+        } else {
+          for (const a of (G.catalog.adjacency[sysId] ?? [])) {
+            if ((G.empire.leadersOnBoard[a] ?? []).length > 0) continue; // RAW p.2: leader-blocked
+            for (const u of (G.map.systems[a]?.units ?? [])) {
+              if (u.side === 'Empire') { empAll += strengthOf(u); if (isGround(u)) empGround += strengthOf(u); }
+            }
           }
         }
         // Overall outnumbered — scale the penalty by how lopsided it is.
         if (rebAll > 0 && empAll < rebAll) ts -= empAll < rebAll * 0.6 ? 24 : 12;
+        // ...and a rout is excluded outright, not just discounted (see above).
+        if (REAL_REINFORCE_ESTIMATE && rebAll > 0 && empAll < rebAll * 0.6) hopelessAttack = true;
         // Can't win the GROUND fight where the defender has ground: it doesn't
         // take the system AND lets the Rebel play Confrontation to ELIMINATE the
         // committed leader for good (#237/#479 — the AI marched Vader + ships and
@@ -1908,6 +2022,9 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         ts = -50;
       }
     }
+    // Applied last, after every bonus, so no amount of positional value can buy
+    // its way past a rout (#653).
+    if (hopelessAttack) ts = -50;
     systemScore.set(sysId, ts);
   }
   // Pair leaders with targets. This used to loop over leaders and give EVERY
