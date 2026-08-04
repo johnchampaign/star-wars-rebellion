@@ -1646,6 +1646,13 @@ export type CombatState = {
   systemId: SystemId;
   attackerSide: Side;
   attackerSourceSystemId: SystemId; // for retreat-not-to-source rule (rr p.5)
+  // EVERY system the attacker moved units from to start this combat. RR p.5
+  // bans retreating to "a system that his opponent moved units from to initiate
+  // the combat" — and one activation can pull units from several adjacent
+  // systems at once, so a single id is not enough. Optional so states encoded
+  // before this field decode fine; readers fall back to
+  // [attackerSourceSystemId]. (#683)
+  attackerSourceSystemIds?: SystemId[];
   step: 'AddLeader' | 'DrawTactics' | 'Round' | 'Ended';
   round: number;
   // RoE Cinematic Combat (rules p.9). The round structure, retreat, and end

@@ -451,7 +451,18 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
     const def = G.catalog.systems[systemId];
     const isImperialSys = ss.loyalty === 'imperial' || ss.subjugated;
     const isDsuc = typeId === 'death-star-under-construction';
-    if (G.expansion?.enabled && !G.expansion?.baseSetupUnits && def?.isRemote) {
+    // The remote deploy target exists ONLY to hold the Death Star Under
+    // Construction: RoE rulebook p.4 places Imperial starting units in "any
+    // systems that have an Imperial loyalty marker, subjugation marker, or a
+    // Death Star Under Construction". So this gate must match the one that
+    // actually hands out a DSUC — pickStartingUnits' `roeUnits &&
+    // !baseSetupUnits` (setup.ts). It used to test `!baseSetupUnits` alone, so
+    // a game with the expansion ON but RoE UNITS OFF (base roster: a real Death
+    // Star, no DSUC) still let the Empire claim a remote and deploy there — the
+    // reporter ended up with an Imperial stormtrooper on neutral Dagobah and a
+    // remote deploy target it should never have been offered (#685).
+    const roeSetupUnits = !!G.expansion?.roeUnits && !G.expansion?.baseSetupUnits;
+    if (G.expansion?.enabled && roeSetupUnits && def?.isRemote) {
       // RoE (rules p.8): the Empire chooses ONE remote system to hold its Death
       // Star Under Construction + companion units. Once chosen, that is the only
       // remote system its starting units may go to. (Mirrors rebelDeployTarget.)
@@ -1187,9 +1198,13 @@ export function activateSystem(
     console.error(`[ACTV] ${side} activate ${targetSystemId} willFight=${willFight} orders=${moveOrders.length}`);
   }
   if (willFight) {
-    // Source system: use the first move order's from, or the target itself if no moves.
-    const src = moveOrders[0]?.fromSystemId ?? targetSystemId;
-    beginCombat(G, side, src, targetSystemId);
+    // Source systems: EVERY system this activation actually moved units out of
+    // (RR p.5 bars the defender from retreating to any of them — #683), or the
+    // target itself if no units moved. Orders that moved zero units don't count
+    // as "moved units from" and are filtered out.
+    const srcs = moveOrders.filter((o) => o.unitInstanceIds.length > 0)
+      .map((o) => o.fromSystemId);
+    beginCombat(G, side, srcs.length > 0 ? srcs : targetSystemId, targetSystemId);
     // `willFight` is a loose "both sides have SOME unit here" check, but combat
     // only actually occurs when both sides share a theater (both have space
     // units, or both have ground units) — beginCombat's bothSidesPresent gate.
@@ -4249,9 +4264,11 @@ export function resolveCatchThemBySurpriseMovePick(
     }
   }
   const targetSystemId = choice.targetSystemId;
-  let firstSource: SystemId | null = null;
+  // Every system this card actually pulled units out of — the defender can't
+  // retreat into any of them (RR p.5, #683), not merely the first.
+  const usedSources: SystemId[] = [];
   for (const o of orders) {
-    if (o.unitInstanceIds.length > 0 && !firstSource) firstSource = o.fromSystemId;
+    if (o.unitInstanceIds.length > 0) usedSources.push(o.fromSystemId);
     for (const uid of o.unitInstanceIds) M.moveUnit(G, uid, o.fromSystemId, targetSystemId);
   }
   log(G, { kind: 'catch-them-by-surprise-move', side: 'Empire', payload: {
@@ -4265,7 +4282,9 @@ export function resolveCatchThemBySurpriseMovePick(
   // self-guards on both sides being present, so this is a no-op if no Rebels are
   // at the destination. Previously this resolver moved the fleet but never
   // offered battle (player report — Brad Miller / BGG).
-  beginCombat(G, 'Empire', firstSource ?? choice.candidateSourceSystemIds[0], targetSystemId);
+  beginCombat(G, 'Empire',
+    usedSources.length > 0 ? usedSources : choice.candidateSourceSystemIds[0],
+    targetSystemId);
   if (G.pendingCombat) runCombat(G);
   return { ok: true };
 }

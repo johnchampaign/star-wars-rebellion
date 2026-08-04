@@ -128,9 +128,14 @@ function leaderTacticValueIn(G: GameState, side: Side, sysId: SystemId, theater:
 // Begin / drive combat
 // ============================================================================
 
-/** Initiate combat. Called from activateSystem after movement. */
+/** Initiate combat. Called from activateSystem after movement.
+ *
+ *  `attackerSource` takes a LIST because one activation can move units in from
+ *  several adjacent systems at once, and RR p.5 bars the defender from
+ *  retreating to any of them (#683). A bare SystemId still works for the many
+ *  genuinely single-source callers (mission-triggered combats, card effects). */
 export function beginCombat(
-  G: GameState, attackerSide: Side, attackerSourceSystemId: SystemId, systemId: SystemId
+  G: GameState, attackerSide: Side, attackerSource: SystemId | SystemId[], systemId: SystemId
 ): void {
   if (G.pendingCombat) return; // already in combat
   if (!bothSidesPresent(G, systemId)) return; // nothing to fight
@@ -157,8 +162,13 @@ export function beginCombat(
     // mission that followed it" (the documented intent of #178).
     seq: G.turnLog.length,
   };
+  const sourceIds = (Array.isArray(attackerSource) ? attackerSource : [attackerSource])
+    .filter((s, i, a) => a.indexOf(s) === i);
   const state: CombatState = {
-    systemId, attackerSide, attackerSourceSystemId,
+    systemId, attackerSide,
+    // Keep the scalar as the primary/first source for existing readers.
+    attackerSourceSystemId: sourceIds[0] ?? systemId,
+    attackerSourceSystemIds: sourceIds,
     step: 'AddLeader', round: 1,
     attackerHand: [], defenderHand: [],
     retreated: [], report: initialReport,
@@ -3093,7 +3103,8 @@ export function resolveSomethingToFightForOffer(
  *    might, since attacker just left there). The RR text we have is
  *    "any adjacent system." We don't filter by attacker source for the
  *    defender (we leave that to expansion / FAQ if needed). */
-function legalRetreatDestinations(G: GameState, c: CombatState, side: Side): SystemId[] {
+/** Exported for tests (#683). */
+export function legalRetreatDestinations(G: GameState, c: CombatState, side: Side): SystemId[] {
   // RoE unit ability — Interdictor (rules p.8): "Rebel units in this system
   // cannot retreat from a system containing an Interdictor." One-directional
   // — Interdictors are Imperial, so only Rebel retreat is blocked. The
@@ -3123,9 +3134,17 @@ function legalRetreatDestinations(G: GameState, c: CombatState, side: Side): Sys
   //   (Rebel Base space is never a destination — it's not in the adjacency map.)
   const opp = other(side);
   const adj = G.catalog.adjacency[c.systemId] ?? [];
-  const oppInitiatedFrom = side !== c.attackerSide ? c.attackerSourceSystemId : undefined;
+  // Rule 2 bans EVERY system the attacker moved units from, not just the first
+  // one recorded. An activation can pull units in from several adjacent systems
+  // at once; the attacker often empties a source completely, which left it with
+  // no enemy units and so looked like a perfectly legal retreat target to the
+  // defender (player report #683). Fall back to the scalar for combat states
+  // encoded before the list field existed.
+  const oppInitiatedFrom = side !== c.attackerSide
+    ? (c.attackerSourceSystemIds ?? [c.attackerSourceSystemId])
+    : [];
   const candidates = adj.filter((sid) => {
-    if (sid === oppInitiatedFrom) return false;
+    if (oppInitiatedFrom.includes(sid)) return false;
     const ss = G.map.systems[sid];
     if (!ss || ss.destroyed) return false;
     if (ss.units.some((u) => u.side === opp)) return false;
