@@ -9,6 +9,7 @@ import { capturePageScreenshot, screenshotAutoCaptureSafe } from './screenshot';
 import { missionTargets, missionLeaderTargets, missionRevealIsPointless } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce, setCommandPolicyOverride } from './randomAI';
 import { buildV2GameLog, buildId } from './logFormat';
+import { DeployUndoStack, deployStepKey } from './deployUndoStack';
 import { PLANNER_ENABLED, HUNT_OCCUPY_ENABLED } from './empirePlanner';
 import { evalCommandStepDeep } from './boardEval';
 import { mctsCommandStep, commitMctsCommand, MCTS_ENABLED, MCTS_REBEL_ENABLED, type MctsSearchResult } from './mctsAI';
@@ -399,17 +400,23 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // so a redeployed unit always gets a fresh id. Pinned by
   // test-deploy-undo-snapshot-670. `catalog` is shared and immutable, so it is
   // detached rather than cloned (it is large, and cloning it per click is waste).
-  const deployUndoStackRef = useRef<unknown[]>([]);
-  const [deployUndoDepth, setDeployUndoDepth] = useState(0);
+  // Step-scoped (#684): the stack used to be a bare array nothing ever cleared,
+  // so leftovers from an earlier turn's deploy step stayed poppable and "Undo
+  // last placement" rewound the game to a previous turn. DeployUndoStack stamps
+  // each snapshot with its deploy step and refuses to pop across a boundary.
+  const deployUndoStackRef = useRef(new DeployUndoStack<unknown>());
+  // Depth is read live off the stack at render time rather than mirrored into
+  // state: a state copy goes stale the moment the deploy step changes, which
+  // would leave the button enabled with another step's leftovers behind it.
+  // Every push/pop is already followed by refresh(), so renders stay in step.
   const pushDeployUndo = (g: GameState) => {
     const { catalog, ...rest } = g;
     void catalog;
-    deployUndoStackRef.current.push(structuredClone(rest));
-    setDeployUndoDepth(deployUndoStackRef.current.length);
+    deployUndoStackRef.current.push(deployStepKey(g), structuredClone(rest));
   };
   const popDeployUndo = (): GameState | null => {
-    const snap = deployUndoStackRef.current.pop();
-    setDeployUndoDepth(deployUndoStackRef.current.length);
+    const g = gameRef.current;
+    const snap = deployUndoStackRef.current.pop(g ? deployStepKey(g) : '');
     if (!snap) return null;
     const cat = gameRef.current?.catalog;
     if (!cat) return null;
@@ -2544,7 +2551,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             const pc = G.pendingChoice as { side: Side; typeId: string; remaining?: { typeId: string; count: number }[] };
             const rem = pc.remaining ?? [];
             // Undo the previous placement in THIS deploy step (#670: it was
-            // one-click-and-done, so a misclick was unrecoverable).
+            // one-click-and-done, so a misclick was unrecoverable). Depth is
+            // scoped to the current step, so leftovers from an earlier turn
+            // can never light this button up (#684).
+            const deployUndoDepth = deployUndoStackRef.current.depth(deployStepKey(G));
             const undoBtn = (
               <button className="tab-button"
                 onClick={() => {
