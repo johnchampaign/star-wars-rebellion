@@ -181,6 +181,22 @@ export function recordEmpireSearched(G: GameState, affected?: SystemId[]): void 
     if (!ss) continue;
     if (ss.subjugated || ss.loyalty === 'imperial') set.add(id);
   }
+  // A probe card the Empire HOLDS names a system that cannot be the base — the
+  // base's own card sits under the "Location" space, so anything in the Empire's
+  // hand is a definitive "not here". missionTargets already reasons this way
+  // when judging whether a probe mission would be wasted, but the knowledge
+  // never reached empireSearchedRuledOut — which is what the map crosses off and
+  // what the Rebel AI's decoy scorer reads. So after a base move (which wipes
+  // the set and re-seeds it from loyalty alone) a vacated NEUTRAL system went
+  // silently "unknown" again: the Empire held its probe card, yet the AI happily
+  // offered it as an Interrogation Droid decoy the Empire could dismiss on sight
+  // (#686 — Ryloth, a previous base location).
+  for (const pid of G.empire?.probeHand ?? []) {
+    const sid = G.catalog.probes[pid]?.systemId;
+    // Never rule out the ACTUAL base: the Empire holding its card would be a bug
+    // elsewhere, and crossing it off here would mask a real reveal.
+    if (sid && sid !== G.rebelBaseSystemId && G.map.systems[sid]) set.add(sid);
+  }
   G.empireSearchedRuledOut = [...set];
 }
 

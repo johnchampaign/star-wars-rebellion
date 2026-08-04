@@ -3407,6 +3407,14 @@ export function resolveRapidMobilizationBasePick(
     }});
   }
 
+  // Re-record AFTER the old base's probe reaches the Empire's hand: the
+  // resetEmpireSearchedForBaseMove above ran before that hand-off, so it
+  // re-seeded from loyalty alone and left the vacated system looking unknown
+  // even though the Empire now holds the card proving the base isn't there
+  // (#686). recordEmpireSearched folds probe-hand knowledge in and is
+  // idempotent, so calling it again here just tops the set up.
+  M.recordEmpireSearched(G);
+
   log(G, { kind: 'rapid-mobilization-base-established', side: 'Rebel', payload: {
     fromSystemId: old, toSystemId: systemId, baseRevealed: false, wasRevealed,
   }});
