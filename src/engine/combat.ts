@@ -3255,17 +3255,30 @@ export function resolveRetreatDecision(
 
   // Move the units (carriers + any fighters/ground that fit). Nothing left
   // behind is destroyed — those units remain in the system.
-  for (const uid of toMove) {
-    // Damage is mid-combat only. endCombat clears it on units still in the
-    // system, but retreating units leave first — clear it here so they don't
-    // carry stale damage into their NEXT battle (player report #164: a Star
-    // Destroyer that retreated showed up to the rematch already at 3 damage).
-    const inst = c.systemId === 'rebel-base-space'
-      ? G.map.rebelBaseSpace?.units.find((u) => u.instanceId === uid)
-      : G.map.systems[c.systemId]?.units.find((u) => u.instanceId === uid);
-    if (inst) inst.damage = 0;
-    M.moveUnit(G, uid, c.systemId, destSystemId);
-  }
+  //
+  // Batched, for the same reason ordinary activation moves are (#532): each
+  // moveUnit re-runs the invariants, and in a DESTROYED system one of those
+  // culls ground units that exceed the transport capacity still present. The
+  // carriers are first in `toMove`, so moving them one at a time drained the
+  // capacity out from under the ground units queued to leave WITH them, and
+  // the cull killed the cargo mid-retreat (player report #691: retreated a
+  // frigate and two Airspeeders out of a Death-Star'd Saleucami and the
+  // Airspeeders were destroyed as "overflow" instead of arriving). Deferring
+  // to the end of the order means the cull sees the finished position, where
+  // the system is empty and there is nothing to cull.
+  M.withDeferredDestroyedCull(G, [c.systemId, destSystemId], () => {
+    for (const uid of toMove) {
+      // Damage is mid-combat only. endCombat clears it on units still in the
+      // system, but retreating units leave first — clear it here so they don't
+      // carry stale damage into their NEXT battle (player report #164: a Star
+      // Destroyer that retreated showed up to the rematch already at 3 damage).
+      const inst = c.systemId === 'rebel-base-space'
+        ? G.map.rebelBaseSpace?.units.find((u) => u.instanceId === uid)
+        : G.map.systems[c.systemId]?.units.find((u) => u.instanceId === uid);
+      if (inst) inst.damage = 0;
+      M.moveUnit(G, uid, c.systemId, destSystemId);
+    }
+  });
   // RAW (rr p.5): one leader leads the retreat — move it to the destination.
   // The player picks which (default: the first present); any OTHER leaders the
   // side has in the system stay behind. The retreat step is only ever posted

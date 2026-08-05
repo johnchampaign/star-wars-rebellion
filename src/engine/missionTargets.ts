@@ -483,6 +483,19 @@ export function missionRevealIsPointless(
       const anyQueued = ([1, 2, 3] as const).some((s) => (G.rebel.buildQueue[s]?.length ?? 0) > 0);
       return !anyQueued;
     }
+    case 'imperial-might': {
+      // "Take 4 Imperial units from space 1 of the build queue and place them in
+      // this system. If 2 leaders are assigned, move those leaders to
+      // Coruscant." The Empire's mirror of Safe Haven: the deploy IS the card,
+      // so an empty space 1 makes it a total no-op — the handler logs an empty
+      // deploy and the mission is spent for nothing (#689: the AI Empire ran it
+      // on its Death Star at Dagobah with ALL THREE build spaces empty). The
+      // leader clause is no reason to play it either — sending your own two
+      // leaders back to Coruscant is the card's price, not its payoff.
+      // Sabotage blocks the deploy outright (RR p.13), as for Safe Haven.
+      if (ss?.sabotage) return true;
+      return (G.empire.buildQueue[1]?.length ?? 0) === 0;
+    }
     case 'oversee-project': {
       // "Choose 1 Imperial unit on space 1 or 2 of the build queue and deploy it
       // in this system." Nothing but a deploy, so it accomplishes nothing on a

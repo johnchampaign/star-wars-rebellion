@@ -1834,6 +1834,17 @@ function imperialMightMoveLeaders(G: GameState, leaderIds: readonly LeaderId[]):
 const imperialMight: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
+  // RR p.13 "Sabotage Markers": abilities cannot deploy units into a system
+  // holding a sabotage marker. Imperial Might says PLACE-from-the-queue, which
+  // resolves as a deploy, so the marker stops it and the units stay queued —
+  // the same rule already applied to Oversee Project and Safe Haven (#646).
+  // This card was missed then; without the guard it spliced the units off the
+  // queue first and deployed them through M.deployUnit, which by contract does
+  // NOT check sabotage.
+  if (G.map.systems[sysId]?.sabotage) {
+    log(G, { kind: 'imperial-might-blocked-by-sabotage', side: 'Empire', payload: { systemId: sysId } });
+    return true;
+  }
   const q = G.empire.buildQueue[1];
   if (q.length <= 4) {
     const taken = q.splice(0, q.length);
