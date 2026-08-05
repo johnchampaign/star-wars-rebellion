@@ -1021,6 +1021,19 @@ const NOOP_ACTIVATION_GUARD: boolean = (() => {
   return true;
 })();
 
+/** Opt-out for opportunity-cost-aware leader assignment (SWR_ASSIGN_OPP=0).
+ *  Default ON. Off restores pure best-skill-first staffing, which spent the
+ *  Empire's best activator on a 1-icon intel mission every single game. Flagged
+ *  because it trades mission success odds for Command-phase capability, so it
+ *  needs the same A/B every other AI change here gets. */
+const ASSIGN_OPPORTUNITY_COST: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_ASSIGN_OPP === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
 /** Opt-out for the transport/garrison-aware reinforcement estimate in the
  *  strength gates (SWR_REAL_REINFORCE=0), #653. Default ON. Off restores the
  *  old "sum every unit standing next door" count, which over-stated the
@@ -1120,14 +1133,47 @@ function planAssignment(G: GameState, side: Side): Array<{ missionId: string; le
       .filter((x) => x.fit > 0 || cost === 0) // include zero-fit only when no cost
       .sort((a, b) => b.fit - a.fit);
     // Greedy: add leaders in fit-order until cost is met.
-    const used: LeaderId[] = [];
-    let sum = 0;
-    for (const r of ranked) {
-      if (sum >= cost) break;
-      used.push(r.lid);
-      sum += r.fit;
-    }
+    const greedy = (order: { lid: LeaderId; fit: number }[]) => {
+      const picked: LeaderId[] = [];
+      let s = 0;
+      for (const r of order) {
+        if (s >= cost) break;
+        picked.push(r.lid);
+        s += r.fit;
+      }
+      return { picked, sum: s };
+    };
+    const fitFirst = greedy(ranked);
+    let used = fitFirst.picked;
+    let sum = fitFirst.sum;
     if (sum < cost) return null; // infeasible — skip
+    // OPPORTUNITY COST (jocke01: "on the first turn it's such a waste to send
+    // palpatine on this mission"). Taking the best-skilled leader every time
+    // spends the leader the COMMAND phase wants most. Gather Intel costs 1
+    // intel; on turn 1 the Empire pool is Vader/Palpatine/Tagge/Tarkin, so
+    // Tarkin's single intel icon covers it alone — but fit-order put Palpatine
+    // (2 intel, and the best activator on the board) on it in 60 of 60 measured
+    // games, and the 3-leader reserve means that is the turn's ONLY assignment.
+    //
+    // A leader's alternative use is activating systems, which RAW gates on
+    // having tactic values at all — so tactic total is the opportunity cost.
+    // Only sets of the SAME size are considered, so this never spends an extra
+    // leader to save a good one, and the portrait/bespoke bonuses still get to
+    // outvote it (a +4 pairing beats a 2-point tactic saving).
+    if (ASSIGN_OPPORTUNITY_COST) {
+      const oppCost = (lid: LeaderId) => {
+        const l = G.catalog.leaders[lid];
+        return (l?.tacticValues.space ?? 0) + (l?.tacticValues.ground ?? 0);
+      };
+      const cheap = greedy([...ranked].sort((a, b) =>
+        oppCost(a.lid) - oppCost(b.lid) || b.fit - a.fit));
+      if (cheap.sum >= cost && cheap.picked.length <= used.length) {
+        const worth = (set: LeaderId[]) => set.reduce((s, l) =>
+          s + leaderPortraitBonus(G, l, missionId) + leaderMissionBespoke(l, missionId)
+            - oppCost(l), 0);
+        if (worth(cheap.picked) > worth(used)) { used = cheap.picked; sum = cheap.sum; }
+      }
+    }
     // Skip missions the Command phase would refuse to play. Assigning one just
     // leaves a face-down mission the AI can't reveal, so it ends up passing
     // while holding unplayable missions (player reports #102/#118/#123, and the
