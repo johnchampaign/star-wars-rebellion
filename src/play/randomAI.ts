@@ -1021,6 +1021,28 @@ const NOOP_ACTIVATION_GUARD: boolean = (() => {
   return true;
 })();
 
+/** Opt-out for playing Start-of-Combat action cards (SWR_COMBAT_CARDS).
+ *  Default ON for both sides. `0` restores the old stub, which declined the
+ *  window in every combat of every game.
+ *
+ *  Also accepts `empire` / `rebel` to enable it for ONE side only. A symmetric
+ *  self-play A/B cannot answer "is playing these cards good?" — both sides gain
+ *  the ability, so the win rate nets out and the result reads as noise no matter
+ *  how strong or weak the policy is. Enabling one side and playing it against
+ *  the other is what actually measures the policy. */
+const COMBAT_CARDS_MODE: string = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    return proc?.env?.SWR_COMBAT_CARDS ?? '1';
+  } catch { return '1'; } // browser: no process
+})();
+function combatCardsEnabled(side: Side): boolean {
+  if (COMBAT_CARDS_MODE === '0') return false;
+  if (COMBAT_CARDS_MODE === 'empire') return side === 'Empire';
+  if (COMBAT_CARDS_MODE === 'rebel') return side === 'Rebel';
+  return true;
+}
+
 /** Opt-out for opportunity-cost-aware leader assignment (SWR_ASSIGN_OPP=0).
  *  Default ON. Off restores pure best-skill-first staffing, which spent the
  *  Empire's best activator on a 1-icon intel mission every single game. Flagged
@@ -4339,9 +4361,94 @@ function handleSpecialDieSpend(G: GameState): boolean {
   return r.ok;
 }
 
-/** AI: skip Start-of-Combat action cards (effects aren't wired anyway). */
+/** Pick which Start-of-Combat action cards to play.
+ *
+ *  This used to hand back an empty array with the note "effects aren't wired
+ *  anyway". That stopped being true — processStartOfCombatBatch calls
+ *  applyStartOfCombatActionCardEffect for every card, and the audit that wired
+ *  all 48 action cards covered these — but the stub was never revisited. So the
+ *  AI declined the window in every combat of every game, which is most of why
+ *  playtesters see it finish holding a hand it never used (jocke01: "the ai sit
+ *  most games with 4-5 action cards that they never play").
+ *
+ *  Conservative on purpose: these are one-shot cards, so a card is played only
+ *  when its effect actually bites in THIS combat. `playable` has already been
+ *  filtered by the engine for timing and leader requirements, so what is left
+ *  here is board applicability and worth. */
+export function chooseStartOfCombatCards(
+  G: GameState, side: Side, systemId: SystemId, playable: string[],
+): string[] {
+  const ss = G.map.systems[systemId] ?? (systemId === 'rebel-base-space' ? G.map.rebelBaseSpace : undefined);
+  if (!ss) return [];
+  const mine = ss.units.filter((u) => u.side === side);
+  const theirs = ss.units.filter((u) => u.side !== side);
+  // No real fight, no reason to burn a card.
+  if (mine.length === 0 || theirs.length === 0) return [];
+  const tOf = (u: { typeId: string }) => G.catalog.unitTypes[u.typeId];
+  const inTheater = (us: typeof mine, th: string) =>
+    us.filter((u) => tOf(u)?.theater === th && tOf(u)?.class !== 'structure');
+  const spaceFight = inTheater(mine, 'space').length > 0 && inTheater(theirs, 'space').length > 0;
+  const groundFight = inTheater(mine, 'ground').length > 0 && inTheater(theirs, 'ground').length > 0;
+  const dice = (us: typeof mine) => us.reduce((a, u) => {
+    const t = tOf(u);
+    return a + (t?.attack.red ?? 0) + (t?.attack.black ?? 0) + (t?.attack.green ?? 0);
+  }, 0);
+  const hp = (us: typeof mine) => us.reduce((a, u) => a + (tOf(u)?.health.value ?? 0), 0);
+  const stronger = dice(mine) > dice(theirs);
+  const enemyStructure = theirs.some((u) => tOf(u)?.class === 'structure');
+  const hasDeathStar = mine.some((u) =>
+    u.typeId === 'death-star' || u.typeId === 'death-star-under-construction');
+  const enemyShips = inTheater(theirs, 'space').length > 0;
+  const myBlackHits = mine.some((u) => (tOf(u)?.attack.black ?? 0) > 0);
+
+  // Worth of each card GIVEN it applies. Only cards listed here are ever
+  // played, so a newly-added card is skipped rather than played blindly.
+  const value = (cardId: string): number => {
+    switch (cardId) {
+      // --- Empire ---
+      // Straight dice reduction on the opponent's first round; always bites.
+      case 'according-to-my-design': return 8;
+      // Free kill, but only with the station present and a ship to shoot.
+      case 'fully-operational': return hasDeathStar && enemyShips ? 10 : -1;
+      case 'target-the-generator': return enemyStructure ? 9 : -1;
+      // Denying the retreat only matters if we're winning the fight.
+      case 'keep-them-from-escaping': return stronger ? 7 : -1;
+      case 'more-dangerous-than-you-realize': return 5;
+      case 'good-intel': return 4;
+      // Ready For Action is deliberately NOT played: it has an open bug report
+      // against it, and teaching the AI to play it more often would multiply a
+      // known defect. Revisit once that is fixed.
+      case 'ready-for-action': return -1;
+      // --- Rebel ---
+      case 'baze-s-loyalty': return 9;
+      case 'target-the-star-destroyers': return spaceFight && myBlackHits ? 8 : -1;
+      case 'its-a-trap': return spaceFight ? 6 : -1;
+      // -1 health to EVERY unit including ours: it speeds up whoever is already
+      // killing faster, so only when we out-shoot them and aren't the fragile
+      // side of the exchange.
+      case 'point-blank-assault':
+        return (stronger && hp(mine) >= hp(theirs) && (spaceFight || groundFight)) ? 6 : -1;
+      default: return -1;
+    }
+  };
+
+  const ranked = playable
+    .map((cid) => ({ cid, v: value(cid) }))
+    .filter((x) => x.v > 0)
+    .sort((a, b) => b.v - a.v);
+  // Cap the spend: combats are frequent and the hand refills slowly, so dumping
+  // every applicable card into one fight trades a whole hand for one battle.
+  return ranked.slice(0, 2).map((x) => x.cid);
+}
+
+/** AI: Start-of-Combat action-card window. */
 function handleCombatStartActionCards(G: GameState): boolean {
-  const r = combat.resolveCombatStartActionCards(G, []);
+  const ch = G.pendingChoice;
+  let picks: string[] = [];
+  if (ch && ch.kind === 'CombatStartActionCards' && combatCardsEnabled(ch.side)) {
+    picks = chooseStartOfCombatCards(G, ch.side, ch.systemId, ch.playable);
+  }
+  const r = combat.resolveCombatStartActionCards(G, picks);
   return r.ok;
 }
 
