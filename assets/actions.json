@@ -206,7 +206,7 @@
         "general-veers"
       ],
       "effectKey": "",
-      "rulesText": "Take a leader from the leader pool, place in combat, and get him back at end of fight.",
+      "rulesText": "Take this leader from your leader pool and place him in this system. This leader cannot retreat, and he returns to your leader pool at the end of the combat.",
       "image": "ActionCardEmpireReadyForAction.png"
     },
     {

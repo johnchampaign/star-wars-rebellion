@@ -94,11 +94,23 @@ console.log('\n[ guards: a card whose precondition is absent is left in hand ]')
       .includes('fully-operational'));
 }
 
-console.log('\n[ Ready For Action stays unplayed — it has an open bug against it ]');
+console.log('\n[ Ready For Action: borrowed leader cannot retreat, so only when winning ]');
 {
+  // The board() fixture is Empire-favoured (3 Star Destroyers + 2 troopers vs a
+  // corvette and a trooper), so the card is worth playing.
   const { G, sys } = board(5);
-  check('Ready For Action is never chosen',
-    !choose(G, 'Empire', sys, ['ready-for-action']).includes('ready-for-action'));
+  check('played when we are winning the fight',
+    choose(G, 'Empire', sys, ['ready-for-action']).includes('ready-for-action'));
+
+  // Flip the odds: the leader it lends us cannot retreat, so losing the battle
+  // can cost the leader outright.
+  const weak = board(6);
+  weak.G.map.systems[weak.sys].units = weak.G.map.systems[weak.sys].units
+    .filter((u) => u.side !== 'Empire');
+  M.deployUnit(weak.G, 'Empire', 'tie-fighter', weak.sys);
+  for (let i = 0; i < 4; i++) M.deployUnit(weak.G, 'Rebel', 'mon-cala-cruiser', weak.sys);
+  check('NOT played when we are outgunned',
+    !choose(weak.G, 'Empire', weak.sys, ['ready-for-action']).includes('ready-for-action'));
 }
 
 console.log('\n[ it does not dump the whole hand into one fight ]');

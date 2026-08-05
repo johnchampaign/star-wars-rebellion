@@ -4415,10 +4415,14 @@ export function chooseStartOfCombatCards(
       case 'keep-them-from-escaping': return stronger ? 7 : -1;
       case 'more-dangerous-than-you-realize': return 5;
       case 'good-intel': return 4;
-      // Ready For Action is deliberately NOT played: it has an open bug report
-      // against it, and teaching the AI to play it more often would multiply a
-      // known defect. Revisit once that is fixed.
-      case 'ready-for-action': return -1;
+      // Ready For Action brings Piett or Veers in from the pool for the fight
+      // and hands him back afterwards. It was excluded while report #596 was
+      // open; that turned out to be already fixed (#659 restricted the card to
+      // the leader named on it), so it is back in.
+      //
+      // The real cost is that the borrowed leader CANNOT RETREAT — losing the
+      // battle can cost the leader outright. So only when we're winning it.
+      case 'ready-for-action': return stronger ? 7 : -1;
       // --- Rebel ---
       case 'baze-s-loyalty': return 9;
       case 'target-the-star-destroyers': return spaceFight && myBlackHits ? 8 : -1;
