@@ -67,7 +67,15 @@ for (let s = 500; s < 700 && !scenarioFound; s++) {
       // Reroll the first blank die if there is one, else skip.
       const pa = G.pendingCombat.pendingAttack;
       const blank = pa?.dice?.findIndex((d) => d.face === 'blank') ?? -1;
-      if (G.pendingCombat.round === 1) usedInR1 = true;
+      // Only an ACTUAL reroll spends the once-per-GAME-round power. Declining
+      // deliberately does not (#540: "you may reroll" — players save it for the
+      // Death Star Plans roll later in the same combat), so a round-1 offer that
+      // we SKIP leaves the power available and round 2 is then correctly offered
+      // it again. This flag used to be set on the offer rather than the use, so
+      // whether the test passed depended on whether the scanned seed happened to
+      // roll a blank in round 1 — any change upstream that shifts the RNG stream
+      // could land it on a declining seed and "fail" on correct behaviour.
+      if (G.pendingCombat.round === 1 && blank >= 0) usedInR1 = true;
       combat.resolveYodaReroll(G, blank >= 0 ? blank : null);
       continue;
     }

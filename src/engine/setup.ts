@@ -706,7 +706,17 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
     const dspId = stage === 1 ? undefined : DSP_BY_STAGE[stage];
     if (dspId && pool.includes(dspId)) {
       const others = pool.filter((id) => id !== dspId);
-      return [dspId, ...others.slice(0, STAGE_SIZE - 1)];
+      // RESHUFFLE after locking Death Star Plans in. RAW guarantees the card is
+      // one of the level's 5, not that it sits on TOP of them — the level is
+      // stacked in random order. Returning it at index 0 made it the first
+      // Level II (and Level III) objective drawn in EVERY expansion game:
+      // measured 200/200 seeds, against the correct ~1-in-5 the base game
+      // already produced. Base game was unaffected because it has exactly 5
+      // cards per level, so the pool is returned by the branch below, still in
+      // the shuffled order from above. Reported by jocke01: "I have gotten
+      // death star plans as the first tier 2 objective several games in a row
+      // ... I get the feeling the death star plans is always on top."
+      return shuffle(rng, [dspId, ...others.slice(0, STAGE_SIZE - 1)]);
     }
     return pool.slice(0, STAGE_SIZE);
   };
