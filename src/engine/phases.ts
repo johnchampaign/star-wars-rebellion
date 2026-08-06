@@ -15,7 +15,7 @@ import { log, logState, pushNotice } from './log';
 import * as Handlers from './handlers/registry';
 import { missionTargets } from './missionTargets';
 import { PROJECT_ONLY_UNIT_IDS } from './units';
-import { rollDie, shuffle } from './rng';
+import { rollDie, shuffle, nextInt } from './rng';
 import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck, objectiveReturnsToHand, postPlayObjectiveChoice, PERSISTENT_OBJECTIVES, COST_OBJECTIVES, OPT_IN_OBJECTIVES, timeForPeaceQueueTargets } from './objectives';
 import { registerChoice, requestChoice } from './choices';
 // Re-export the generic-choice resolver so all call sites (UI, online adapter,
@@ -586,8 +586,19 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
     // 1 Stormtrooper) must go on one chosen remote system. Seed that first so
     // auto-fill doesn't try to place the DSUC on an Imperial world (illegal).
     if (G.expansion?.enabled && remaining.includes('death-star-under-construction')) {
+      // RAW: "the Empire CHOOSES one remote system". This used to fall back to
+      // the first remote in map order, which is Dagobah — and since a real game
+      // creates the state with autoSetupUnits:false, empireDeployTarget is
+      // always unset here, so the AI Empire built its Death Star on Dagobah in
+      // literally every game. Playtester jocke01: "Every single game I have
+      // played the empire deploys the death star under construction on
+      // dagobah", and he was using it — a fixed site lets the Rebel settle on
+      // the far side of the map knowing where the threat will be. Pick at
+      // random instead; G.rng is seeded, so a given game is still reproducible.
+      const remotes = Object.keys(G.map.systems).filter(
+        (id) => G.catalog.systems[id]?.isRemote && !G.map.systems[id]?.destroyed);
       const remote = G.empireDeployTarget
-        ?? Object.entries(G.map.systems).find(([id]) => G.catalog.systems[id]?.isRemote)?.[0];
+        ?? (remotes.length > 0 ? remotes[nextInt(G.rng, remotes.length)] : undefined);
       if (remote) {
         G.empireDeployTarget = remote;
         M.removeProbeForSystem(G, remote); // DSUC system's probe leaves play (#372)
