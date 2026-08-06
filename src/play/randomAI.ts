@@ -4238,6 +4238,15 @@ function handleBuildPick(G: GameState): boolean {
   const enforceFloor = side === 'Empire' && G.timeMarker >= 3;
   const sdFloor = enforceFloor && countOnBoardAndQueue('star-destroyer') < 2;
   const atatFloor = enforceFloor && countOnBoardAndQueue('at-at') < 2;
+  // NO Shield Bunker priority here, deliberately. jocke01 suggested building
+  // them to garrison the Death Star site ("in case of a later deployment"), and
+  // the idea is sound on paper — a Bunker makes the station indestructible and
+  // opens a Rebel-free remote for direct deployment. Built it, deployed it to
+  // the station, A/B'd it: Empire 38.0% -> 35.5% over 1200 expansion games,
+  // and 31.4% when combined with an extra setup garrison there. Build icons
+  // spent on an immobile structure in a backwater are icons not spent on the
+  // fleet and ground that find and take the Rebel base. Measurement, not
+  // taste — re-run it before reinstating.
   // Track within-batch consumption so the AI doesn't pick the same exhausted
   // type twice (the engine hard-rejects 0-supply picks now). `available` is
   // the engine's snapshot; fall back to a live count if it's absent.

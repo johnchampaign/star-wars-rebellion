@@ -22,7 +22,7 @@ const args = (() => {
   const a = process.argv.slice(2);
   // maxRounds defaults to 16 — the real length of the time track. (It was 8,
   // which force-ended healthy games early and inflated "max-rounds-reached".)
-  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16 };
+  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16, expansion: false };
   for (let i = 0; i < a.length; i++) {
     const k = a[i];
     if (k === '--games') out.games = parseInt(a[++i], 10);
@@ -30,6 +30,12 @@ const args = (() => {
     else if (k === '--out') out.out = a[++i];
     else if (k === '--verbose' || k === '-v') out.verbose = true;
     else if (k === '--max-rounds') out.maxRounds = parseInt(a[++i], 10);
+    // Rise of the Empire. WITHOUT this the harness runs the BASE game, so no
+    // expansion content exists to measure — no DSUC, no Shield Bunkers, no RoE
+    // units or missions. Every A/B run here before this flag existed was a
+    // base-game result, which is fine for base-game behaviour but silently
+    // measures nothing when the change under test is expansion-only.
+    else if (k === '--expansion' || k === '--roe') out.expansion = true;
   }
   if (!out.out) {
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -73,7 +79,10 @@ function playOne(seed) {
   // Seed the AI's own RNG too (not just the engine) so each game is fully
   // reproducible from its seed.
   seedAI(seed);
-  const G = createGame(data, { seed, autoSetupUnits: false });
+  const G = createGame(data, { seed, autoSetupUnits: false,
+    expansion: args.expansion
+      ? { enabled: true, roeUnits: true, roeMissions: true }
+      : undefined });
   const t0 = performance.now();
 
   // Setup phase: both sides auto-fill until phase transitions away.

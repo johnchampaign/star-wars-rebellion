@@ -610,6 +610,16 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
             G.rebelBaseSystemId = G.pendingRebelBasePick[0];
           }
         }
+        // Exactly the six units RoE p.8 mandates, and nothing more. The rules
+        // DO allow reinforcing this remote, and playtester jocke01 suggested
+        // doing so ("Never ever have it deployed a carrier or any extra ground
+        // units"), but it was built and A/B'd and it LOSES: adding a carrier +
+        // AT-ST + stormtrooper here cost the Empire 38.0% -> 32.6% over 1200
+        // expansion games, with base-found 61.4% -> 55.3% and invasions 41.9%
+        // -> 36.8%. Those units come out of the Imperial worlds' allocation,
+        // and the Death Star site is a backwater — force parked there is not
+        // hunting or invading the base, which is how the Empire actually wins.
+        // Don't re-add it without a measurement that says otherwise.
         for (const typeId of ['death-star-under-construction', 'tie-fighter', 'tie-fighter',
           'tie-fighter', 'tie-fighter', 'stormtrooper']) {
           const i = remaining.indexOf(typeId);
