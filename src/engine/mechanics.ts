@@ -1207,9 +1207,21 @@ export function hasAttachment(G: GameState, leaderId: LeaderId, ring: Attachment
 }
 
 /** Convert a Rebel leader to an Imperial leader for the rest of the game
- *  (Lure of the Dark Side). Removes them from all Rebel state, places them in
- *  the Empire pool, and attaches the 'dark-side' ring as a record. The leader
- *  must currently be captured by Empire (per the card). */
+ *  (Lure of the Dark Side). Removes them from all Rebel state, leaves them
+ *  standing in the system where they were held, and attaches the 'dark-side'
+ *  ring as a record. The leader must currently be captured by Empire (per the
+ *  card).
+ *
+ *  Timing is RAW, not a shortcut (player report #609: "Leia regained the pool
+ *  immediately and is available the same turn — doesn't she stay on the planet
+ *  where she was captured?"). RR p.8 (Leaders): "The Imperial card 'Lure of the
+ *  Dark Side' gives the Imperial team control of a Rebel leader until the end
+ *  of the game. During the Refresh Phase, this leader is placed in the Imperial
+ *  leader pool." So she does NOT enter the pool mid-round — she stays on the
+ *  planet as an Imperial leader on the board, and the ordinary Refresh retrieve
+ *  sweep (which returns every leader on the board to its pool) puts her in the
+ *  Imperial pool at exactly the moment the rulebook says. Pooling her here
+ *  instead let the Empire activate a system with her the same round. */
 export function flipLeaderToImperial(G: GameState, leaderId: LeaderId): boolean {
   const ld = G.catalog.leaders[leaderId];
   if (!ld) return false;
@@ -1218,6 +1230,7 @@ export function flipLeaderToImperial(G: GameState, leaderId: LeaderId): boolean 
   const cap = G.empire.capturedLeaders ?? [];
   const i = cap.findIndex((c) => c.leaderId === leaderId);
   if (i < 0) return false;
+  const heldAt = cap[i].systemId;
   cap.splice(i, 1);
   // Belt-and-suspenders: also strip from any Rebel state if somehow present.
   const r = G.rebel;
@@ -1231,8 +1244,15 @@ export function flipLeaderToImperial(G: GameState, leaderId: LeaderId): boolean 
     const j = am.leaderIds.indexOf(leaderId);
     if (j >= 0) am.leaderIds.splice(j, 1);
   }
-  // Add to Empire pool.
-  if (!G.empire.leaderPool.includes(leaderId)) G.empire.leaderPool.push(leaderId);
+  // She stays on the planet she was held on, now as an Imperial leader; Refresh
+  // moves her to the Empire pool. Fall back to the pool only if the captured
+  // record somehow carried no system, so a flipped leader can never vanish.
+  if (heldAt) {
+    const here = G.empire.leadersOnBoard[heldAt] ?? (G.empire.leadersOnBoard[heldAt] = []);
+    if (!here.includes(leaderId)) here.push(leaderId);
+  } else if (!G.empire.leaderPool.includes(leaderId)) {
+    G.empire.leaderPool.push(leaderId);
+  }
   attachRing(G, leaderId, 'dark-side');
   log(G, { kind: 'leader-flipped', payload: { leaderId, newSide: 'Empire' } });
   return true;
