@@ -1021,6 +1021,22 @@ const NOOP_ACTIVATION_GUARD: boolean = (() => {
   return true;
 })();
 
+/** Opt-out for weighing subjugation targets by resource SHAPE rather than icon
+ *  count (SWR_RESOURCE_SHAPE=0), from playtester report #694. Default ON.
+ *
+ *  Measured over 1200 expansion games per arm: Empire win rate 38.0% -> 40.8%,
+ *  base found 61.4% -> 67.7% and a third of a round sooner, base invasions
+ *  41.9% -> 45.9% — while the NUMBER of subjugations barely moves (13.7 ->
+ *  13.8). It is not subjugating more, it is subjugating better: denying the
+ *  Rebel the systems that actually build his fleet. */
+const RESOURCE_SHAPE_WEIGHT: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_RESOURCE_SHAPE === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
 /** Opt-out for playing Start-of-Combat action cards (SWR_COMBAT_CARDS).
  *  Default ON for both sides. `0` restores the old stub, which declined the
  *  window in every combat of every game.
@@ -1611,7 +1627,17 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         // move actually serves a purpose.
         ts -= 3;
       } else if (!hasOwnUnits && !sys.subjugated) {
-        const resourceWeight = def?.resources?.length ?? 0;
+        // Count icons, or weigh them by SHAPE. A square icon builds a capital
+        // ship or an AT-AT; a triangle builds a fighter or a trooper — so two
+        // systems with "2 resources" can be worth very different amounts, both
+        // to take and to deny. jocke01 (#694): the Empire subjugated Kashyyyk
+        // (two triangle/ground) and left Mon Calamari (triangle + SQUARE space)
+        // alone, "giving the rebel player both a fighter and a cruiser ... a
+        // play that no human opponent would do". Both scored 2 here.
+        const resourceWeight = RESOURCE_SHAPE_WEIGHT
+          ? (def?.resources ?? []).reduce((a, r) =>
+              a + (r.shape === 'square' ? 3 : r.shape === 'circle' ? 2 : 1), 0)
+          : (def?.resources?.length ?? 0);
         ts += 2 + resourceWeight;
         // GERRY STRATEGY: prioritize subjugating Rebel-loyal systems —
         // strips Rebel production AND likely sits on the hidden base
