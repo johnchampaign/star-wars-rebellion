@@ -1021,6 +1021,24 @@ const NOOP_ACTIVATION_GUARD: boolean = (() => {
   return true;
 })();
 
+/** Opt-out for requiring deliverable GROUND before paying the take-the-planet
+ *  bonus (SWR_SUBJ_GROUND=0), from playtester report #696. Default ON.
+ *
+ *  Measured over 1200 expansion games per arm: win rate unchanged (40.8% vs
+ *  40.7%, one game) while ground-less "subjugation" activations fall from 30 of
+ *  595 to 9 — the same trade as the #647/#653/#666 guards, removing visibly
+ *  pointless moves for free.
+ *
+ *  Deliberately does NOT gate the Rebel-loyalty bonus: that one is also
+ *  justified by clearing a base candidate, which ships can do on their own. */
+const SUBJUGATION_NEEDS_GROUND: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_SUBJ_GROUND === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
 /** Opt-out for weighing subjugation targets by resource SHAPE rather than icon
  *  count (SWR_RESOURCE_SHAPE=0), from playtester report #694. Default ON.
  *
@@ -1638,7 +1656,20 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
           ? (def?.resources ?? []).reduce((a, r) =>
               a + (r.shape === 'square' ? 3 : r.shape === 'circle' ? 2 : 1), 0)
           : (def?.resources?.length ?? 0);
-        ts += 2 + resourceWeight;
+        // Subjugating needs a GROUND unit standing there — ships cannot plant a
+        // marker. This whole branch is the "go take that planet" bonus, so it
+        // is only earned if we can actually deliver ground. jocke01 (#696): "The
+        // empire just moved a big fleet of ships to corellia. The problem is
+        // that it has 0 ground units ... This move does nothing for the empire
+        // except make their situation worse." Measured at 30 of 595 spread
+        // activations (5.0%) arriving with units but no ground.
+        //
+        // Only the take-the-planet bonus is withheld, not the whole target:
+        // moving ships somewhere can still be right for a fight or for staging,
+        // and those bonuses are scored elsewhere on their own merits.
+        const canDeliverGround = !SUBJUGATION_NEEDS_GROUND
+          || bringableStrength(G, 'Empire', sysId).ground > 0;
+        if (canDeliverGround) ts += 2 + resourceWeight;
         // GERRY STRATEGY: prioritize subjugating Rebel-loyal systems —
         // strips Rebel production AND likely sits on the hidden base
         // (Rebels favor their loyalty for placement). Heavier early when
