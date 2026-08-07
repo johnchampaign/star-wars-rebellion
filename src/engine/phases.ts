@@ -16,6 +16,17 @@ import * as Handlers from './handlers/registry';
 import { missionTargets } from './missionTargets';
 import { PROJECT_ONLY_UNIT_IDS } from './units';
 import { rollDie, shuffle, nextInt } from './rng';
+
+/** A/B lever: optional extra garrison on the Death Star remote at setup
+ *  (SWR_DSUC_GARRISON=1). Playtester suggestion, OFF by default — REJECTED
+ *  against the heuristic Rebel (see docs/ab-levers.md), kept wired so it can
+ *  be re-measured against a stronger opponent without rebuilding it. */
+const DSUC_EXTRA_GARRISON: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    return proc?.env?.SWR_DSUC_GARRISON === '1';
+  } catch { return false; } // browser: no process
+})();
 import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck, objectiveReturnsToHand, postPlayObjectiveChoice, PERSISTENT_OBJECTIVES, COST_OBJECTIVES, OPT_IN_OBJECTIVES, timeForPeaceQueueTargets } from './objectives';
 import { registerChoice, requestChoice } from './choices';
 // Re-export the generic-choice resolver so all call sites (UI, online adapter,
@@ -613,17 +624,30 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
         // Exactly the six units RoE p.8 mandates, and nothing more. The rules
         // DO allow reinforcing this remote, and playtester jocke01 suggested
         // doing so ("Never ever have it deployed a carrier or any extra ground
-        // units"), but it was built and A/B'd and it LOSES: adding a carrier +
-        // AT-ST + stormtrooper here cost the Empire 38.0% -> 32.6% over 1200
-        // expansion games, with base-found 61.4% -> 55.3% and invasions 41.9%
-        // -> 36.8%. Those units come out of the Imperial worlds' allocation,
-        // and the Death Star site is a backwater — force parked there is not
-        // hunting or invading the base, which is how the Empire actually wins.
-        // Don't re-add it without a measurement that says otherwise.
+        // units"). Built as SWR_DSUC_GARRISON and measured — it loses:
+        //
+        //   vs heuristic Rebel (1200 games)  38.0% -> 32.6%   (-5.4pp)
+        //   vs eval-depth2 Rebel (400 games) 29.8% -> 27.5%   (-2.3pp)
+        //
+        // Those units come out of the Imperial worlds' allocation, and the
+        // Death Star site is a backwater — force parked there is not hunting or
+        // invading the base, which is how the Empire actually wins (base-found
+        // drops 61.4% -> 55.3%).
+        //
+        // Note the penalty HALVES against the stronger opponent, and at n=400
+        // that residual is inside noise. The cost is opponent-independent so
+        // the verdict is fairly safe, but it is a verdict about the opponents
+        // we can field, not a law. See docs/ab-levers.md before re-deciding.
         for (const typeId of ['death-star-under-construction', 'tie-fighter', 'tie-fighter',
           'tie-fighter', 'tie-fighter', 'stormtrooper']) {
           const i = remaining.indexOf(typeId);
           if (i >= 0) { G.map.systems[remote].units.push(mkSetupInstance(typeId, 'Empire')); remaining.splice(i, 1); }
+        }
+        if (DSUC_EXTRA_GARRISON) {
+          for (const typeId of ['assault-carrier', 'at-st', 'stormtrooper']) {
+            const i = remaining.indexOf(typeId);
+            if (i >= 0) { G.map.systems[remote].units.push(mkSetupInstance(typeId, 'Empire')); remaining.splice(i, 1); }
+          }
         }
       }
     }

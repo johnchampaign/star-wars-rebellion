@@ -1039,6 +1039,19 @@ const SUBJUGATION_NEEDS_GROUND: boolean = (() => {
   return true;
 })();
 
+/** A/B lever: build Shield Bunkers to garrison the Death Star site
+ *  (SWR_BUNKERS=1). Playtester suggestion, OFF by default — rejected against
+ *  the heuristic Rebel, but that opponent enters the Death Star's system in
+ *  3.3% of games and has never destroyed a DSUC, so the Bunker's protection
+ *  never had an opportunity to pay for itself. Kept wired so it can be
+ *  re-measured against a stronger opponent (docs/ab-levers.md). */
+const BUILD_SHIELD_BUNKERS: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    return proc?.env?.SWR_BUNKERS === '1';
+  } catch { return false; } // browser: no process
+})();
+
 /** Opt-out for weighing subjugation targets by resource SHAPE rather than icon
  *  count (SWR_RESOURCE_SHAPE=0), from playtester report #694. Default ON.
  *
@@ -2761,7 +2774,14 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       t.theater === 'ground' && t.class !== 'structure' ||
       t.transport.restriction
     );
+    // A Shield Bunker only earns its icon at the Death Star's system; anywhere
+    // else it is an immobile structure doing nothing.
+    const bunkerHome = BUILD_SHIELD_BUNKERS && c.typeId === 'shield-bunker'
+      ? Object.entries(G.map.systems).find(([, ss]) => ss.units.some((u) => u.side === side
+          && (u.typeId === 'death-star-under-construction' || u.typeId === 'death-star')))?.[0]
+      : undefined;
     const scoreSystem = (sysId: string): number => {
+      if (bunkerHome) return sysId === bunkerHome ? 1000 : -1000;
       const ss = sysId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[sysId];
       if (!ss) return -Infinity;
       let capacity = 0;
@@ -4295,15 +4315,39 @@ function handleBuildPick(G: GameState): boolean {
   const enforceFloor = side === 'Empire' && G.timeMarker >= 3;
   const sdFloor = enforceFloor && countOnBoardAndQueue('star-destroyer') < 2;
   const atatFloor = enforceFloor && countOnBoardAndQueue('at-at') < 2;
-  // NO Shield Bunker priority here, deliberately. jocke01 suggested building
-  // them to garrison the Death Star site ("in case of a later deployment"), and
-  // the idea is sound on paper — a Bunker makes the station indestructible and
-  // opens a Rebel-free remote for direct deployment. Built it, deployed it to
-  // the station, A/B'd it: Empire 38.0% -> 35.5% over 1200 expansion games,
-  // and 31.4% when combined with an extra setup garrison there. Build icons
-  // spent on an immobile structure in a backwater are icons not spent on the
-  // fleet and ground that find and take the Rebel base. Measurement, not
-  // taste — re-run it before reinstating.
+  // Shield Bunkers are OFF by default (SWR_BUNKERS), and this is the lever
+  // whose verdict deserves the least confidence in the whole ledger.
+  //
+  // jocke01 suggested building them to garrison the Death Star site ("in case
+  // of a later deployment"). Sound on paper: a Bunker makes the station
+  // indestructible and opens a Rebel-free remote for direct deployment.
+  // Measured:
+  //
+  //   vs heuristic Rebel (1200 games)  38.0% -> 35.5%   (-2.5pp)
+  //   vs eval-depth2 Rebel (400 games) 29.8% -> 28.8%   (-1.0pp)
+  //
+  // Read that second row carefully before trusting either. The Bunker's whole
+  // function is protecting the station, and the heuristic Rebel enters the
+  // Death Star's system in 3.3% of games and has NEVER destroyed a DSUC across
+  // 60 games — so the first measurement could only ever see the cost, never the
+  // benefit. Against the stronger Rebel the penalty more than halves, which is
+  // what you would expect if some defensive value is finally registering, and
+  // at n=400 it is inside noise either way.
+  //
+  // Two further caveats: the lever is weakly expressed (a Bunker actually
+  // reaches the station in a minority of games, so even a real benefit is
+  // diluted), and the opponent that matters most — a human who deliberately
+  // raids an undefended Death Star, which is exactly what the reporter says he
+  // does — is stronger than anything measured here. Kept wired for that
+  // re-test. See docs/ab-levers.md.
+  const dsucSite = side === 'Empire' && BUILD_SHIELD_BUNKERS
+    ? Object.entries(G.map.systems).find(([, ss]) => ss.units.some((u) => u.side === 'Empire'
+        && (u.typeId === 'death-star-under-construction' || u.typeId === 'death-star')))?.[0]
+    : undefined;
+  const bunkerWanted = !!dsucSite
+    && !G.map.systems[dsucSite].units.some((u) => u.side === 'Empire' && u.typeId === 'shield-bunker')
+    && countOnBoardAndQueue('shield-bunker') < 1;
+  let bunkerQueued = false; // at most one Bunker per build batch
   // Track within-batch consumption so the AI doesn't pick the same exhausted
   // type twice (the engine hard-rejects 0-supply picks now). `available` is
   // the engine's snapshot; fall back to a live count if it's absent.
@@ -4316,7 +4360,10 @@ function handleBuildPick(G: GameState): boolean {
   const choices = c.picks.map((p) => {
     const ok = (t: string) => p.legalUnitTypes.includes(t) && supplyLeft(t) > 0;
     let choice: string | undefined;
-    if (sdFloor && p.iconShape === 'square' && p.iconType === 'space' && ok('star-destroyer')) choice = 'star-destroyer';
+    if (bunkerWanted && !bunkerQueued && p.iconType === 'ground' && ok('shield-bunker')) {
+      choice = 'shield-bunker'; bunkerQueued = true;
+    }
+    else if (sdFloor && p.iconShape === 'square' && p.iconType === 'space' && ok('star-destroyer')) choice = 'star-destroyer';
     else if (atatFloor && p.iconShape === 'square' && p.iconType === 'ground' && ok('at-at')) choice = 'at-at';
     if (!choice) choice = p.legalUnitTypes.find((t) => supplyLeft(t) > 0);
     if (!choice) choice = p.legalUnitTypes[0]; // all exhausted — engine will reject; harmless

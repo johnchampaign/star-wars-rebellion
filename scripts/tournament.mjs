@@ -22,7 +22,7 @@ const args = (() => {
   const a = process.argv.slice(2);
   // maxRounds defaults to 16 — the real length of the time track. (It was 8,
   // which force-ended healthy games early and inflated "max-rounds-reached".)
-  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16, expansion: false };
+  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16, expansion: false, rebelPolicy: null, empirePolicy: null };
   for (let i = 0; i < a.length; i++) {
     const k = a[i];
     if (k === '--games') out.games = parseInt(a[++i], 10);
@@ -36,6 +36,16 @@ const args = (() => {
     // base-game result, which is fine for base-game behaviour but silently
     // measures nothing when the change under test is expansion-only.
     else if (k === '--expansion' || k === '--roe') out.expansion = true;
+    // Swap in a STRONGER Command-phase brain for one side. Both sides run the
+    // plain heuristic by default, which means every A/B here measures a change
+    // against that specific opponent. That matters for anything defensive or
+    // denial-based: if the opponent never mounts the attack a change defends
+    // against, the A/B can only ever see the change's COST. Measured case:
+    // the heuristic Rebel enters the Death Star's system in 3.3% of games and
+    // has never destroyed a DSUC, so a Shield Bunker's protection had no
+    // opportunity to pay for itself. Values: 'mcts' | 'eval'.
+    else if (k === '--rebel-policy') out.rebelPolicy = a[++i];
+    else if (k === '--empire-policy') out.empirePolicy = a[++i];
   }
   if (!out.out) {
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -52,7 +62,23 @@ const args = (() => {
 
 const { createGame } = await import('../src/engine/setup.ts');
 const phases = await import('../src/engine/phases.ts');
-const { stepOnce: aiStep, seedAI } = await import('../src/play/randomAI.ts');
+const { stepOnce: aiStep, seedAI, setCommandPolicyOverride } = await import('../src/play/randomAI.ts');
+// Optional stronger Command policies. Imported lazily so a default run pays
+// nothing for them.
+async function installPolicy(side, name) {
+  if (!name) return null;
+  if (name === 'mcts') {
+    const { mctsCommandStep } = await import('../src/play/mctsAI.ts');
+    setCommandPolicyOverride(side, (G, s) => mctsCommandStep(G, s));
+    return 'mcts';
+  }
+  if (name === 'eval') {
+    const { evalCommandStepDeep } = await import('../src/play/boardEval.ts');
+    setCommandPolicyOverride(side, (G, s) => evalCommandStepDeep(G, s, 2));
+    return 'eval(depth2)';
+  }
+  throw new Error(`unknown policy '${name}' (want: mcts | eval)`);
+}
 
 function loadJson(path) {
   return JSON.parse(readFileSync(join(ROOT, 'assets', path), 'utf-8'));
@@ -69,6 +95,14 @@ const data = {
 };
 
 mkdirSync(args.out, { recursive: true });
+
+// Install any stronger Command policies BEFORE the first game.
+const rebelPolicyName = await installPolicy('Rebel', args.rebelPolicy);
+const empirePolicyName = await installPolicy('Empire', args.empirePolicy);
+if (rebelPolicyName || empirePolicyName) {
+  console.log(`policies: Rebel=${rebelPolicyName ?? 'heuristic'} Empire=${empirePolicyName ?? 'heuristic'}`);
+}
+console.log(`mode: ${args.expansion ? 'Rise of the Empire' : 'base game'}`);
 
 /** Run one game. Returns { result, rounds, steps, elapsed_ms, log }. */
 function playOne(seed) {
