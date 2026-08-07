@@ -65,6 +65,7 @@ Measurements are Empire win rate unless noted, from `tournament.mjs`.
 | `SWR_RESOURCE_SHAPE` | ON | contingent | 2026-08-06, 1200 RoE | **+2.8pp** (38.0→40.8), base found 61.4→67.7%. Weigh subjugation targets by icon shape, not count (#694). |
 | `SWR_SUBJ_GROUND` | ON | mechanical | 2026-08-06, 1200 RoE | Neutral (40.8 vs 40.7). Ground-less "subjugation" moves 30/595 → 9/595 (#696). |
 | `SWR_REAL_REINFORCE` | ON | mechanical | 2026-08-06, 1200 RoE | **+1.6pp**. Transport/garrison-aware reinforcement estimate; hopeless lone-ship attacks 5 → 0 (#653). |
+| `SWR_THEATER_ODDS` | ON | mechanical + contingent | 2026-08-07, 1200 RoE | **Neutral (40.7 → 40.2, inside noise).** Don't score a ground rout the rules will not roll: the "can't win the ground fight" penalty now needs the Empire to actually have ground there, since combat.ts gates each theatre on `bothSidesHaveTheater`. Also stops the "already Imperial, gains nothing" and "don't waste activations on Coruscant" penalties firing on a system the REBEL is holding. Empire activations onto a Rebel-held Coruscant **65 → 92** (59 → 87 of 1200 games). Base-found 67.2→66.8, subjugations 13.9→13.8, passes 7.8→7.8, stuck 0 — no regression signal. Planner smoke: same 7 PASS / 1 FAIL in both arms. **Benefit is NOT measurable here** — see below (#697). |
 | `SWR_ASSIGN_OPP` | ON | contingent | 2026-08-06, 1200 RoE | **+5.0pp** (33.0→38.0). Largest single gain. Base game showed *nothing* (29.9 vs 29.5) — mode mattered. |
 | `SWR_COMBAT_CARDS` | ON | contingent | 2026-08-06, 1200 RoE | **+1.7pp**. Play Start-of-Combat action cards. Symmetric — needs the per-side form to measure. |
 | `SWR_DSUC_GARRISON` | **OFF** | contingent | 2026-08-06, 1200 RoE + 400 vs strong | **REJECTED.** −5.4pp vs heuristic Rebel (38.0→32.6), −2.3pp vs eval-depth2 Rebel (29.8→27.5). Base found 61.4→55.3%. Penalty halves against the stronger opponent and is inside noise at n=400; cost is opponent-independent, so the verdict is fairly robust. |
@@ -75,6 +76,35 @@ Measurements are Empire win rate unless noted, from `tournament.mjs`.
 | `SWR_ASSIGN_GATE` | ON | contingent | pre-2026-08 (see code) | Don't assign a leader to a mission the Command phase would refuse to reveal. |
 | `SWR_EMPIRE_PLANNER` | **OFF** | contingent | pre-2026-08 (see code) | Strike-fleet plan layer (#539). |
 | `SWR_HUNT_OCCUPY` | see code | contingent | pre-2026-08 (see code) | Occupy-to-clear base candidates. |
+
+### `SWR_THEATER_ODDS` — why the number above proves less than it looks
+
+This is the "opponent capability" trap from the top of this file, and it is worth
+spelling out so the neutral result is not later misread as "measured, worthless."
+
+The lever's *point* is denial: a Rebel force on Coruscant with no Imperial unit
+present scores Heart Of The Empire, which pays **2 reputation at every Refresh
+and returns to hand instead of being spent**. The Empire only has to be there to
+stop it. For self-play to price that, the heuristic Rebel would have to actually
+pursue the occupation — and it barely does: it moves a unit to Coruscant in
+**201 of 1200 games (16.8%)**, incidentally rather than as a plan. So in five
+games out of six the lever cannot fire at all, and the A/B sees its cost with
+almost none of its benefit.
+
+What the run *does* establish is that the cost is ≈ zero and the mechanism is
+live (Coruscant contests up 42%). The mechanical half — not docking 30 points
+for a ground battle that `bothSidesHaveTheater` will never start — is
+opponent-independent and needs no re-test. The Coruscant denial bonus is
+contingent and **currently unvalidated in either direction**; re-run it when the
+Rebel AI is good enough to camp the capital on purpose.
+
+Known limit, measured: on the reporter's actual board this moves the heuristic
+prior for Coruscant from **−11 (filtered out entirely, below the `ts > 0`
+cutoff) to 45 (second of eight)**, and the reported bad move — shuffling the
+fleet to an empty neutral — drops from 13% to **0%** of 30 MCTS searches. But
+MCTS still does not *pick* Coruscant: it prefers a base-hunt activation. The
+prior can only offer the move; making the search value denying a repeating
+objective is a separate piece of work in `boardEval`/rollouts.
 
 Rows marked "pre-2026-08 (see code)" predate this ledger; their rationale lives
 in the doc comment at the flag definition, but the numbers were not recorded in

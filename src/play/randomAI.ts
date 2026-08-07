@@ -1117,6 +1117,31 @@ const REAL_REINFORCE_ESTIMATE: boolean = (() => {
   return true;
 })();
 
+/** Opt-out for theater-aware attack odds (SWR_THEATER_ODDS=0). Default ON.
+ *
+ *  The Empire's "can't win the ground fight" penalty compared the Empire's
+ *  ground strength against the Rebel's and docked up to 30 points — but it
+ *  fired even when the Empire was bringing NO ground at all. combat.ts only
+ *  runs a ground battle when `bothSidesHaveTheater(ground)`, so a fleet with
+ *  no troops never has a ground battle to lose: it fights purely in space and
+ *  the leader rides with the ships. Penalizing that as a ground rout scores a
+ *  fight the rules will not run.
+ *
+ *  Player report #697: a Rebel force sat on Coruscant with zero Imperial units
+ *  (Heart Of The Empire — 2 reputation at EVERY Refresh, since the card returns
+ *  to hand). The Empire's nine-ship fleet was one jump away at Corellia and
+ *  would have won the space battle outright — and merely BEING there denies the
+ *  objective, which needs "no Imperial units". Coruscant scored −11 and was
+ *  filtered out before the search ever saw it; the Empire shuffled the fleet to
+ *  an empty neutral instead. Off restores the theater-blind comparison. */
+const THEATER_AWARE_ODDS: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_THEATER_ODDS === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
 /** Opt-out for distinct-target activation candidates (SWR_ACTIVATE_DIVERSITY=0).
  *  Default ON. Off restores the old behavior where every pool leader proposed
  *  the SAME argmax system — kept so the change can be A/B'd without a rebuild. */
@@ -1648,7 +1673,8 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
       // Spread heuristic — reward visiting untouched neutral/Rebel-loyalty
       // systems to extend Imperial control + drop a unit for subjugation.
       // Worth more when the system has build resources.
-      if (!hasOwnUnits && !sys.subjugated && sys.loyalty === 'imperial') {
+      if (!hasOwnUnits && !sys.subjugated && sys.loyalty === 'imperial'
+          && !(THEATER_AWARE_ODDS && hasEnemyUnits)) {
         // Already Imperial-controlled and no enemy here: moving units in gains
         // nothing — there's no loyalty to flip, nothing to subjugate, and no
         // combat. Don't reward shuffling a fleet onto a system we already own
@@ -1656,8 +1682,20 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         // for no benefit). Mild penalty so consolidation toward the marching
         // column (a separate +6 adjacency bonus) can still override when the
         // move actually serves a purpose.
+        //
+        // The "no enemy here" half of that sentence was never in the condition,
+        // so the penalty also hit Imperial-loyal systems the REBEL had taken —
+        // exactly the ones worth retaking. There is a fight to have and loyalty
+        // to defend, so the "gains nothing" premise does not hold (#697).
         ts -= 3;
-      } else if (!hasOwnUnits && !sys.subjugated) {
+      } else if (!hasOwnUnits && !sys.subjugated && sys.loyalty !== 'imperial') {
+        // The explicit loyalty test keeps this branch exactly where it always
+        // was. It used to be implied — every Imperial-loyal system fell into the
+        // branch above — but now that a contested one can skip that branch, it
+        // must not fall through to here: there is no loyalty to flip and nothing
+        // to subjugate on a system the Empire already owns. Retaking it is
+        // scored as a fight, below, not as a land grab.
+        //
         // Count icons, or weigh them by SHAPE. A square icon builds a capital
         // ship or an AT-AT; a triangle builds a fighter or a trooper — so two
         // systems with "2 resources" can be worth very different amounts, both
@@ -1893,10 +1931,12 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         // Reinforcements the executor would ACTUALLY bring, not every unit
         // parked next door. Counting the latter is what let a lone ship attack
         // a system it could not beat (#653) — see bringableStrength.
+        let reinforceSpace = 0;
         if (REAL_REINFORCE_ESTIMATE) {
           const reinforce = bringableStrength(G, 'Empire', sysId);
           empAll += reinforce.all;
           empGround += reinforce.ground;
+          reinforceSpace = reinforce.all - reinforce.ground;
         } else {
           for (const a of (G.catalog.adjacency[sysId] ?? [])) {
             if ((G.empire.leadersOnBoard[a] ?? []).length > 0) continue; // RAW p.2: leader-blocked
@@ -1916,8 +1956,30 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         // too weak against a big subjugation/search bonus, so a badly-outnumbered
         // assault still went through. Scale it: a ground force that's less than
         // HALF the defender's is a near-certain leader loss — penalize hard.
-        if (rebGround > 0 && empGround < rebGround) {
+        //
+        // ...but only when a ground battle is actually going to happen. combat.ts
+        // gates each theatre on bothSidesHaveTheater(), so with empGround === 0
+        // there is no ground battle at all — nothing to lose it in, and no
+        // Confrontation window, because the leader is up in space with the fleet.
+        // Docking 30 points for a rout that the rules will not roll is what made
+        // Coruscant unreachable in #697 (final score −11, below the ts > 0 cutoff,
+        // so it never even entered the candidate list).
+        const groundBattleHappens = !THEATER_AWARE_ODDS || empGround > 0;
+        if (rebGround > 0 && empGround < rebGround && groundBattleHappens) {
           ts -= empGround < rebGround * 0.5 ? 30 : 14;
+        }
+        // A groundless fleet is not thereby a free move: judge it on the fight it
+        // WILL have. If the defender has ships, this is a space battle and the
+        // space odds decide it. If the defender has none, no theatre is shared,
+        // beginCombat no-ops, and the ships arrive to sit next to a Rebel army
+        // they cannot touch — the #666 shape, worth less than nothing.
+        if (THEATER_AWARE_ODDS && empGround === 0 && rebGround > 0) {
+          const spaceStrength = (side2: 'Empire' | 'Rebel') => sys.units.reduce((a, u) =>
+            a + (u.side === side2 && !isGround(u) ? strengthOf(u) : 0), 0);
+          const rebSpace = spaceStrength('Rebel');
+          const empSpace = spaceStrength('Empire') + reinforceSpace;
+          if (rebSpace === 0) ts -= 12;            // no shared theatre — no fight
+          else if (empSpace < rebSpace) ts -= 12;  // outgunned in the only theatre that matters
         }
       }
       // STRIKE-FLEET PLAN (#539): add the plan's dominant, stable bonus for
@@ -1934,8 +1996,17 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
       // rounds to march by the time candidates narrow. The unwired pieces
       // (deriveHuntTarget/huntMarchBonus) live in empirePlanner.ts with the
       // full post-mortem; a real hunt fix must engage EARLIER than narrowing.
-      // Don't waste activations on Coruscant or systems already saturated.
-      if (sysId === 'coruscant') ts -= 3;
+      // Don't waste activations on Coruscant or systems already saturated —
+      // while it is quiet. A Rebel force standing on the Imperial capital is the
+      // opposite of a wasted activation: Heart Of The Empire pays the Rebel 2
+      // reputation at EVERY Refresh for as long as Coruscant "contains a Rebel
+      // unit and no Imperial units", and the card returns to hand rather than
+      // being spent. That condition is public board state, so preferring to
+      // break it is not the AI peeking at the Rebel's objective hand — it is the
+      // Empire noticing an enemy army camped on its capital. Merely arriving
+      // denies it; the Empire does not have to clear the ground (#697).
+      if (sysId === 'coruscant' && !(THEATER_AWARE_ODDS && hasEnemyUnits)) ts -= 3;
+      if (THEATER_AWARE_ODDS && sysId === 'coruscant' && hasEnemyUnits && !hasOwnUnits) ts += 20;
     } else {
       if (baseDist) {
         // Base still hidden — don't cluster units onto/next to it and give the
