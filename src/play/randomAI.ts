@@ -989,7 +989,7 @@ const ASSIGN_GATE_ENABLED: boolean = (() => {
  *  and the Y-Wing — both Rebel — which is why 80% of Rebel activations moved
  *  nothing against the Empire's 25% (#647 measurements). One predicate, used by
  *  both, so they cannot disagree again. */
-function isSelfMovingUnit(t: { theater?: string; transport?: { capacity: number; restriction: boolean; immobile: boolean } } | undefined): boolean {
+export function isSelfMovingUnit(t: { theater?: string; transport?: { capacity: number; restriction: boolean; immobile: boolean } } | undefined): boolean {
   if (!t || !t.transport || t.transport.immobile) return false;
   return t.theater === 'space' && t.transport.capacity === 0 && !t.transport.restriction;
 }

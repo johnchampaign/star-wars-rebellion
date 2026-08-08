@@ -12,6 +12,58 @@ an entry if the smoke suite goes RED or the baseline bench moves > ~3 points.
 
 ---
 
+## Passivity: the activation half is mostly RAW (2026-08-08)
+
+Standing note, not a weekly entry — it retires a false lead that the
+diagnostics themselves were generating.
+
+The single biggest `from-game` cluster is "the Empire passed with a leader in
+the pool and fleets that could still be moved" (#695, #629, #617, #600, #581,
+#580, #649). `scripts/measure-pass-with-plays.mjs` splits those passes by cause
+and the dominant bucket is NO-ALTS — the generator emitted no candidate at all —
+which pointed at an action-GENERATION gap in `bestCommandAction`.
+
+Instrumenting the generator's own `systemScore` map at those decisions: in
+**86 of 89** cases *every system on the map* scored exactly `-50`, the hard-veto
+value from the no-op-activation guard. A blanket veto looks damning, so the
+question is whether those vetoes were wrong. Classifying every friendly mobile
+unit on the board at those moments:
+
+| | units |
+|---|---|
+| pinned under the faction's own leader (RR p.2) | 1602 |
+| unpinned but ground/restricted with no carrier at source (RR p.9) | 586 |
+| genuinely free to move | **3** |
+
+So the veto was right almost every time: there was no legal move to make.
+RR p.2 — "Units cannot move out of a system that already contains a leader from
+its faction" — is enforced by the engine at `phases.ts`
+(`friendly-leader-blocks-source`) and correctly mirrored by the generator, which
+skips own-leader neighbours when counting what it could pull in. The 3 free-unit
+cases scored exactly `0`, so they fall to the `ts > 0` filter boundary rather
+than to a veto; a system scoring 0 loses to `PASS_ACTION_SCORE` (0.5) on the
+argmax anyway, so admitting them would change only what MCTS gets to search.
+
+**`scripts/diag-idle-activations.mjs` was the source of the false lead.** Its
+`movableInto` counted any non-immobile friendly unit in any neighbour, ignoring
+both the own-leader pin and transport capacity, and so labelled 17.3% of Empire
+passes "units WERE movable". With both rules applied the same run reports **0**
+Empire decisions with a legal move and 2 (1.8%) for the Rebel. Fixed, with the
+bucket renamed to say which half is the bug.
+
+Implication for triage: the activation half of these reports is largely correct
+play that reads as passivity to a player who hasn't accounted for the own-leader
+pin. The live gaps are on the MISSION half — `diag-facedown-missions.mjs` shows
+`all-targets-pointless` dominating (draw-them-out, superlaser-online,
+imperial-might), plus a small `AVAILABLE-but-passed` bucket. Look there first.
+
+A caveat worth keeping: 1602 pinned vs 589 unpinned means the AI ends its turns
+with roughly three quarters of its army immobilised under its own leaders. Each
+individual pass is legal, but whether the AI should be *choosing* activations
+that pin that much force is a separate, unexamined strategic question.
+
+---
+
 ## 2026-08-03 — smoke RED (3 FAIL gates), strength gate PASS, corpus +150
 
 > ### 🚩 REGRESSION FLAG

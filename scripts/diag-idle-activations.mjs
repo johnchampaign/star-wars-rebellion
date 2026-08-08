@@ -7,8 +7,20 @@
 //   no-tactic-leader   pool has no leader with tactic values (RAW: can't activate)
 //   empty-pool         no leaders at all — passing is correct
 //   no-positive-system every system scored <= 0, so the generator emitted NO
-//                      activate action for ANY leader even though one could move
+//                      activate action for ANY leader. Split by whether a LEGAL
+//                      move actually existed (see movableInto below).
 //   generated-lost     an activate WAS generated and pass still outscored it
+//
+// FINDING (2026-08-08): the no-positive-system bucket is NOT the smoking gun it
+// looks like. This script used to call it "units WERE movable" on a count that
+// ignored both the own-leader pin (RR p.2) and transport capacity (RR p.9), so
+// it reported ~17% of Empire passes as a generation bug. Applying both rules,
+// 86 of 89 such decisions had NO legal move at all — the units were pinned
+// under the faction's own leaders or were ground troops with no carrier. The
+// remaining 3 scored exactly 0 and are the `ts > 0` filter boundary in
+// bestCommandAction, not a veto. The activation half of the passivity reports
+// is largely correct play; the live gaps are on the MISSION half
+// (scripts/diag-facedown-missions.mjs).
 //
 // Also measures candidate DIVERSITY, because bestCommandAction picks each
 // leader's target as the argmax of a LEADER-INDEPENDENT system score: every
@@ -41,16 +53,44 @@ const topKWaste = { Empire: [], Rebel: [] };
 const TOPK = 12;
 
 /** Units this side could actually pull into `sysId` from a neighbour — the
- *  same notion the generator's no-op guard uses. */
+ *  same notion the generator's no-op guard uses.
+ *
+ *  This MUST mirror bestCommandAction's `movable` count, because the whole
+ *  point of the 'units WERE movable' bucket is "the generator vetoed a move
+ *  that was really available". An earlier version counted any non-immobile
+ *  friendly unit in any neighbour, which ignored two hard rules and so
+ *  reported a generation bug that does not exist:
+ *
+ *    • RR p.2 "Units cannot move out of a system that already contains a
+ *      leader from its faction." Enforced by the engine at phases.ts
+ *      (`friendly-leader-blocks-source`). Measured over 12 self-play games,
+ *      1602 of the 2191 friendly mobile units sitting at these "idle" passes
+ *      were pinned this way — they legally could not move at all.
+ *    • Transport capacity (RR p.9): ground units and restricted fighters move
+ *      only if a capital ship at the SAME source has spare capacity. Of the
+ *      589 unpinned units, 586 were stranded ground troops with no carrier.
+ *
+ *  With both rules applied, only 3 of 89 all-vetoed decisions had a genuinely
+ *  movable unit — and those scored exactly 0, i.e. they are the `ts > 0`
+ *  boundary, not a veto. The activation half of the passivity reports is
+ *  overwhelmingly RAW-correct behaviour; do not go hunting a veto bug here.
+ *  See docs/ai-health.md, "Passivity: activation half is mostly RAW". */
 function movableInto(G, side, sysId) {
+  const f = side === 'Rebel' ? G.rebel : G.empire;
   let n = 0;
   for (const nb of (G.catalog.adjacency[sysId] ?? [])) {
+    // RR p.2: our own leader standing here pins every unit in the system.
+    if ((f.leadersOnBoard[nb] ?? []).length > 0) continue;
+    let selfMoving = 0, capacity = 0, needCarry = 0;
     for (const u of (G.map.systems[nb]?.units ?? [])) {
       if (u.side !== side) continue;
       const t = G.catalog.unitTypes[u.typeId];
       if (!t || t.transport?.immobile || t.class === 'structure') continue;
-      n++;
+      if (t.transport?.capacity > 0) { selfMoving++; capacity += t.transport.capacity; }
+      else if (AI.isSelfMovingUnit(t)) selfMoving++;
+      else needCarry++;
     }
+    n += selfMoving + Math.min(capacity, needCarry);
   }
   return n;
 }
@@ -87,9 +127,14 @@ for (let seed = 1; seed <= GAMES; seed++) {
           if (f.leaderPool.length === 0) bump(side, 'empty-pool');
           else if (tacticLeaders.length === 0) bump(side, 'no-tactic-leader');
           else if (activates.length === 0) {
-            // Generator produced nothing. Did it actually have something to move?
+            // Generator produced nothing. Did it actually have a LEGAL move?
+            // movableInto now applies the own-leader pin and transport capacity,
+            // so 'units WERE movable' means a real move existed and was vetoed
+            // anyway — that bucket, and only that one, is a bug.
             const couldMove = Object.keys(G.map.systems).some((s) => movableInto(G, side, s) > 0);
-            bump(side, couldMove ? 'no-positive-system (units WERE movable)' : 'no-positive-system (nothing movable)');
+            bump(side, couldMove
+              ? 'no-positive-system (a LEGAL move existed — real gap)'
+              : 'no-positive-system (no legal move — RAW-correct pass)');
           } else bump(side, 'generated-lost');
         }
       }
