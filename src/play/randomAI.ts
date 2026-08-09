@@ -1052,6 +1052,36 @@ const BUILD_SHIELD_BUNKERS: boolean = (() => {
   } catch { return false; } // browser: no process
 })();
 
+/** A/B lever: hold the Death Star back instead of sweeping it into reach of
+ *  Rebel ships (SWR_DS_CAUTION=1), from playtester report #701.
+ *
+ *  OFF by default, and NOT because it doesn't work — see docs/ab-levers.md.
+ *  The station has transport capacity 8, so it classifies as a capital ship and
+ *  "bring all capitals" dragged it along with every activation sourced from its
+ *  system. It is invulnerable except to a Death Star Plans attempt, so keeping
+ *  it out of reach removes the only way it dies.
+ *
+ *  Effect is large and the cost looks free: station moves ending in or beside
+ *  Rebel ships fall 69/204 (33.8%) -> 5/168 (3.0%) over 60 games, games
+ *  affected 61.7% -> 8.3%, stations lost 8.3% -> 6.7%, and it still moves.
+ *  Win rate 40.2% -> 40.4% over 1200 expansion games — noise.
+ *
+ *  BLOCKED ON A PASSIVITY INTERACTION. Holding the station back reduces what an
+ *  activation delivers, and on the #639 duplicate-arm fixture that is enough to
+ *  make the Empire PASS 8% of the time (0% without it) — reproducible, not
+ *  noise. An earlier attempt to instead reject the whole action was far worse
+ *  (9 passes in 25, and it broke #649 outright). Passivity is the single most
+ *  reported Empire complaint and has cost 43% -> 30% before, so this does not
+ *  ship until the scorer knows the station will be held back and prices the
+ *  activation on what actually moves — the same scorer/executor divergence
+ *  #653 fixed for reinforcements. */
+const DEATH_STAR_CAUTION: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    return proc?.env?.SWR_DS_CAUTION === '1';
+  } catch { return false; } // browser: no process
+})();
+
 /** Opt-out for weighing subjugation targets by resource SHAPE rather than icon
  *  count (SWR_RESOURCE_SHAPE=0), from playtester report #694. Default ON.
  *
@@ -4054,9 +4084,41 @@ export function tryCommandAction(G: GameState, side: Side, action: CommandAction
           const fighters: typeof mine = []; // restriction-icon, need transport
           const ground: typeof mine = [];   // need transport
           const selfMovers: typeof mine = []; // X-/Y-Wings: own hyperdrive, no carrier
+          const heldStations: typeof mine = []; // Death Star held back for safety
+          // DON'T DRAG THE DEATH STAR INTO A KNIFE FIGHT (jocke01, #701).
+          //
+          // The station has transport capacity 8, so it classifies as a capital
+          // ship and "bring all capitals" swept it along with EVERY activation
+          // sourced from its system. The Empire never decided to move it — it
+          // came as cargo capacity. Reporter: "it only moved once and that was
+          // to check dantooine ... I had moved a death star killing fleet next
+          // to it the same turn using behind enemy lines, so it was a free
+          // death star kill for me."
+          //
+          // The station is invulnerable EXCEPT to a Death Star Plans attempt,
+          // which needs the Rebel to reach it — so simply not parking it within
+          // reach costs nothing and removes the only way it dies. Measured:
+          // 33.8% of its moves landed it in, or next to, Rebel ships (69 of 204
+          // across 60 games; 62% of games saw it at least once).
+          //
+          // Still moves when the destination is safe, and still goes to the
+          // revealed base, which is the one place it is supposed to be risked.
+          const dsUnsafeHere = DEATH_STAR_CAUTION
+            && !(G.rebelBaseRevealed && action.targetSystemId === G.rebelBaseSystemId)
+            && ((G.map.systems[action.targetSystemId]?.units ?? []).some((u) =>
+                  u.side !== side && G.catalog.unitTypes[u.typeId]?.theater === 'space')
+              || (G.catalog.adjacency[action.targetSystemId] ?? []).some((adjId) =>
+                  (G.map.systems[adjId]?.units ?? []).some((u) =>
+                    u.side !== side && G.catalog.unitTypes[u.typeId]?.theater === 'space')));
+          const isStation = (typeId: string) =>
+            typeId === 'death-star' || typeId === 'death-star-under-construction';
           for (const u of mine) {
             const t = G.catalog.unitTypes[u.typeId];
             if (!t || t.transport.immobile) continue;
+            // Leave the station home. Its capacity leaves with it, so the
+            // fighter/ground fitting below sees the real figure and simply
+            // brings fewer passengers rather than an illegal load.
+            if (dsUnsafeHere && isStation(u.typeId)) { heldStations.push(u); continue; }
             if (t.transport.capacity > 0) capitalShips.push(u);
             else if (t.theater === 'ground' && t.class !== 'structure') ground.push(u);
             else if (t.transport.restriction) fighters.push(u);
@@ -4129,6 +4191,18 @@ export function tryCommandAction(G: GameState, side: Side, action: CommandAction
             ...fightersToBring.map((u) => u.instanceId),
             ...groundToBring.map((u) => u.instanceId),
           ];
+          // If holding the station back leaves this source sending NOTHING, send
+          // it after all. The station is often the only capital in its system,
+          // and the alternatives are both worse than the risk: an activation
+          // that moves nothing (the no-troop waste #647/#666 removed), or —
+          // if we reject the action outright — the Empire passing instead.
+          // Rejecting measured 9 passes in 25 on the #639 fixture and broke
+          // #649 too, which is the passivity failure this project has fought
+          // hardest against. Caution about the Death Star does not get to
+          // reintroduce it.
+          if (pickIds.length === 0 && heldStations.length > 0) {
+            pickIds.push(...heldStations.map((u) => u.instanceId));
+          }
           if (pickIds.length > 0) {
             orders.push({ fromSystemId: fromId, unitInstanceIds: pickIds });
           }
