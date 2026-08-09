@@ -74,6 +74,65 @@ console.log('[ applyCinematicPrevent: cannot remove more hits than were rolled ]
 }
 
 // ---------------------------------------------------------------------------
+// #698: a reporter watched dice that had just rolled hits vanish right after
+// their cinematic reroll, with nothing on screen saying why. The removal was
+// RAW-correct; the silence was not. The prevented dice are now handed back so
+// the board can render them struck through instead of deleting them.
+console.log('[ #698: prevented dice are returned, not just counted ]');
+{
+  const die = (color, face) => ({ color, face });
+  const dice = [
+    die('red', 'hit'), die('red', 'hit'), die('red', 'blank'),
+    die('black', 'direct-hit'), die('black', 'special'),
+  ];
+  const { kept, removed, removedDice } = combat.applyCinematicPrevent(dice, { red: 1, black: 1, special: 1 });
+  check('removedDice is populated', Array.isArray(removedDice) && removedDice.length > 0, JSON.stringify(removedDice));
+  check('removedDice count == the tallied counts',
+    removedDice.length === removed.red + removed.black + removed.special,
+    `dice=${removedDice.length} counts=${JSON.stringify(removed)}`);
+  check('kept + removedDice == the original roll', kept.length + removedDice.length === dice.length,
+    `${kept.length}+${removedDice.length} vs ${dice.length}`);
+  check('the removed red die really was a red HIT',
+    removedDice.some((d) => d.color === 'red' && d.face === 'hit'), JSON.stringify(removedDice));
+  check('the removed ★ really was a special',
+    removedDice.some((d) => d.face === 'special'), JSON.stringify(removedDice));
+  check('no DIRECT hit was removed (#671 still holds)',
+    !removedDice.some((d) => d.face === 'direct-hit'), JSON.stringify(removedDice));
+}
+
+console.log('[ #698: the engine stashes prevented dice + a report line ]');
+{
+  // Find a seed where the prevent actually bites, so this can't pass vacuously.
+  let hit = null;
+  for (let seed = 950; seed < 1010 && !hit; seed++) {
+    const G = createGame(data, baseOpts(seed));
+    for (let i = 0; i < 2; i++) M.deployUnit(G, 'Empire', 'star-destroyer', 'felucia');
+    M.deployUnit(G, 'Rebel', 'mon-cala-cruiser', 'felucia');
+    combat.beginCombat(G, 'Empire', 'malastare', 'felucia');
+    const c = G.pendingCombat;
+    c.activeTheater = 'space'; c.theaterStaged = []; c.theaterAttackersDone = [];
+    c.cinematicPrevent = { Empire: { red: 2, black: 0, special: 0 } };
+    combat.beginAttack(G, c, 'Empire', 'space');
+    const ev = G.turnLog.filter((e) => e.kind === 'cinematic-prevent-applied').pop();
+    if ((ev?.payload?.red ?? 0) > 0) hit = { c, ev };
+  }
+  check('found a roll where the prevent removed a red hit', !!hit, 'no seed in 950..1009 removed anything');
+  if (hit) {
+    const pa = hit.c.pendingAttack;
+    const stashed = pa?.cinematicPreventedDice ?? [];
+    check('cinematicPreventedDice is stashed on the attack', stashed.length === hit.ev.payload.red,
+      `stashed=${stashed.length} logged=${hit.ev.payload.red}`);
+    check('every stashed die is a red hit', stashed.every((d) => d.color === 'red' && d.face === 'hit'),
+      JSON.stringify(stashed));
+    check('the stashed dice are NOT still in the live roll',
+      !(pa?.dice ?? []).some((d) => stashed.includes(d)), 'a prevented die is still live');
+    check('the combat report names the prevention',
+      (pa?.tacticsPlayed ?? []).some((t) => t.card === 'cinematic-prevent' && /prevented/.test(t.detail)),
+      JSON.stringify(pa?.tacticsPlayed));
+  }
+}
+
+// ---------------------------------------------------------------------------
 console.log('[ Prevent does NOT reduce the roll — all dice are rolled (#401/#408) ]');
 {
   const G = createGame(data, baseOpts(950));

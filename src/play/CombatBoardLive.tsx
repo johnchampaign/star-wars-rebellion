@@ -369,6 +369,9 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
 
   // Dice rolled by the in-flight attack (if any) — shown in the active theater.
   const dice: DieResult[] | null = c.pendingAttack?.dice ?? null;
+  // Results a "Prevent N red/black hits" tactic card struck off this roll —
+  // rendered as crossed-out ghosts so they don't just vanish (#698).
+  const preventedDice: DieResult[] | null = c.pendingAttack?.cinematicPreventedDice ?? null;
   const activeTheater: Theater | null = c.pendingAttack?.theater ?? c.activeTheater ?? null;
 
   // ============================================================
@@ -500,6 +503,10 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
       display: 'flex', flexDirection: 'column', zIndex: 2000,
       padding: 16, color: '#e8e8ea',
+      // The board is a fixed, viewport-sized box, so anything taller than the
+      // screen is simply unreachable — the page behind it can't be scrolled.
+      // On a phone the tactic-card picker is exactly that tall (#699).
+      overflowY: 'auto', WebkitOverflowScrolling: 'touch',
     }}>
       <Header
         systemName={systemName}
@@ -571,6 +578,7 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
           G={G} c={c} theater="space" humanSide={humanSide}
           attacker={attacker} defender={defender}
           dice={activeTheater === 'space' ? dice : null}
+          prevented={activeTheater === 'space' ? preventedDice : null}
           rolling={activeTheater === 'space' ? c.pendingAttack?.side ?? null : null}
           damageAssign={damageAssignBundle?.theater === 'space' ? damageAssignBundle : null}
         />
@@ -578,16 +586,21 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
           G={G} c={c} theater="ground" humanSide={humanSide}
           attacker={attacker} defender={defender}
           dice={activeTheater === 'ground' ? dice : null}
+          prevented={activeTheater === 'ground' ? preventedDice : null}
           rolling={activeTheater === 'ground' ? c.pendingAttack?.side ?? null : null}
           damageAssign={damageAssignBundle?.theater === 'ground' ? damageAssignBundle : null}
         />
       </div>
 
-      {/* Decision strip — bottom row, fixed height. */}
+      {/* Decision strip — bottom row. Never allowed to be squeezed by the
+          theaters above it, and scrolls internally when its content (the
+          advanced-tactic card picker, mainly) is taller than the screen. */}
       <div style={{
         marginTop: 12, padding: 14, background: '#15171c', borderRadius: 6,
         border: `2px solid ${decisionSide ? SIDE_COLOR[decisionSide] : '#3a3d44'}`,
         minHeight: 110,
+        flexShrink: 0, maxHeight: '65dvh',
+        overflowY: 'auto', WebkitOverflowScrolling: 'touch',
       }}>
         {waitingForAI && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -876,10 +889,10 @@ type DamageAssignBundle = {
   onUnitClick: (unitInstanceId: string) => void;
 };
 
-function TheaterPanel({ G, c, theater, attacker, defender, dice, rolling, damageAssign, humanSide }: {
+function TheaterPanel({ G, c, theater, attacker, defender, dice, prevented, rolling, damageAssign, humanSide }: {
   G: GameState; c: NonNullable<GameState['pendingCombat']>;
   theater: Theater; attacker: Side; defender: Side;
-  dice: DieResult[] | null; rolling: Side | null;
+  dice: DieResult[] | null; prevented?: DieResult[] | null; rolling: Side | null;
   damageAssign?: DamageAssignBundle | null;
   humanSide: Side;
 }) {
@@ -912,7 +925,7 @@ function TheaterPanel({ G, c, theater, attacker, defender, dice, rolling, damage
           isYou={attacker === humanSide}
           damageAssign={damageAssign && damageAssign.defenderSide === attacker ? damageAssign : null}
         />
-        <DicePanel dice={dice} side={rolling} humanSide={humanSide} />
+        <DicePanel dice={dice} prevented={prevented} side={rolling} humanSide={humanSide} />
         <SidePanel
           G={G}
           side={defender}
@@ -1171,10 +1184,14 @@ function UnitIcon({ G, unit, legalTarget, assignedCount, onClick }: {
   );
 }
 
-function DicePanel({ dice, side, humanSide }: { dice: DieResult[] | null; side: Side | null; humanSide: Side }) {
-  if (!dice || dice.length === 0) {
+function DicePanel({ dice, prevented, side, humanSide }: {
+  dice: DieResult[] | null; prevented?: DieResult[] | null; side: Side | null; humanSide: Side;
+}) {
+  const gone = prevented ?? [];
+  if ((!dice || dice.length === 0) && gone.length === 0) {
     return <div style={{ alignSelf: 'center', color: '#444', fontSize: 11, fontStyle: 'italic' }}>(no roll yet)</div>;
   }
+  dice = dice ?? [];
   const color = side ? SIDE_COLOR[side] : '#888';
   const isYou = side === humanSide;
   // Plain-English tally so the player doesn't have to decode the glyphs.
@@ -1198,10 +1215,19 @@ function DicePanel({ dice, side, humanSide }: { dice: DieResult[] | null; side: 
       </div>
       <div style={{ display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'center', maxWidth: 220 }}>
         {dice.map((d, i) => <Die key={i} d={d} />)}
+        {gone.map((d, i) => <Die key={`p${i}`} d={d} prevented />)}
       </div>
       <div style={{ fontSize: 10, color: '#cbd2da' }}>
         {parts.length ? parts.join(' · ') : 'no results'}
       </div>
+      {gone.length > 0 && (
+        // #698: the prevented results used to just disappear, which read as a
+        // bug ("dice that were hits vanished after my reroll"). Name the cause.
+        <div style={{ fontSize: 10, color: '#e8b4b4', textAlign: 'center', maxWidth: 220 }}>
+          {gone.length} {gone.length === 1 ? 'result' : 'results'} prevented by{' '}
+          {side ? (side === 'Rebel' ? 'the Empire' : 'the Rebels') : 'the opponent'} (crossed out)
+        </div>
+      )}
     </div>
   );
 }
@@ -1219,7 +1245,7 @@ function dieColor(color: DieResult['color']): string {
   }
 }
 
-function Die({ d }: { d: DieResult }) {
+function Die({ d, prevented }: { d: DieResult; prevented?: boolean }) {
   const bg = dieColor(d.color);
   const face =
     d.face === 'hit' ? '✓' :
@@ -1227,12 +1253,25 @@ function Die({ d }: { d: DieResult }) {
     d.face === 'special' ? '◈' : '·';
   const faceColor = d.face === 'blank' ? '#555' : '#fff';
   return (
-    <div title={`${d.color} ${d.face}`} style={{
-      width: 22, height: 22, background: bg, border: '1px solid #000', borderRadius: 3,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: 14, fontWeight: 700, color: faceColor,
-    }}>
+    <div
+      title={prevented ? `${d.color} ${d.face} — PREVENTED by opponent's tactic card` : `${d.color} ${d.face}`}
+      style={{
+        position: 'relative',
+        width: 22, height: 22, background: bg, border: '1px solid #000', borderRadius: 3,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 14, fontWeight: 700, color: faceColor,
+        opacity: prevented ? 0.4 : 1,
+      }}
+    >
       {face}
+      {prevented && (
+        // Diagonal strike-through: the die still shows the face it rolled, so
+        // the player can see it was a real hit that got cancelled.
+        <span style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          background: 'linear-gradient(to top left, transparent 45%, #ff5c5c 45%, #ff5c5c 55%, transparent 55%)',
+        }} />
+      )}
     </div>
   );
 }

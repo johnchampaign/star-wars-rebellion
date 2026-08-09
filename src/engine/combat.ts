@@ -820,22 +820,30 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
  *  red/black hits"), so there is no direct-hit channel to spend; a card that
  *  did would need its own counter here.
  *
- *  Returns the surviving dice plus the counts actually removed. Pure. */
+ *  Returns the surviving dice, the counts actually removed, and the removed
+ *  dice themselves (`removedDice`) so the UI can show the player WHICH of
+ *  their results were prevented rather than silently deleting them (#698).
+ *  Pure. */
 export function applyCinematicPrevent(
   dice: DieResult[],
   want: { red: number; black: number; special: number },
-): { kept: DieResult[]; removed: { red: number; black: number; special: number } } {
+): {
+  kept: DieResult[];
+  removed: { red: number; black: number; special: number };
+  removedDice: DieResult[];
+} {
   let needRed = want.red, needBlack = want.black, needSpecial = want.special;
   const removed = { red: 0, black: 0, special: 0 };
+  const removedDice: DieResult[] = [];
   const kept: DieResult[] = [];
   for (const d of dice) {
     const isHit = d.face === 'hit'; // NOT direct-hit — see the #671 note above.
-    if (needRed > 0 && d.color === 'red' && isHit) { needRed--; removed.red++; continue; }
-    if (needBlack > 0 && d.color === 'black' && isHit) { needBlack--; removed.black++; continue; }
-    if (needSpecial > 0 && d.face === 'special') { needSpecial--; removed.special++; continue; }
+    if (needRed > 0 && d.color === 'red' && isHit) { needRed--; removed.red++; removedDice.push(d); continue; }
+    if (needBlack > 0 && d.color === 'black' && isHit) { needBlack--; removed.black++; removedDice.push(d); continue; }
+    if (needSpecial > 0 && d.face === 'special') { needSpecial--; removed.special++; removedDice.push(d); continue; }
     kept.push(d);
   }
-  return { kept, removed };
+  return { kept, removed, removedDice };
 }
 
 /** Roll dice for `side`, queue the attacker-tactics choice if appropriate.
@@ -1015,10 +1023,22 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
   //      (#401, #408). Done before the ★-heal so a prevented ★ can't also be
   //      spent on healing.
   if (c.cinematic && pa.cinematicRerollResolved && pa.cinematicPrevent && !pa.cinematicPreventApplied) {
-    const { kept, removed } = applyCinematicPrevent(pa.dice, pa.cinematicPrevent);
+    const { kept, removed, removedDice } = applyCinematicPrevent(pa.dice, pa.cinematicPrevent);
     pa.dice = kept;
     pa.cinematicPreventApplied = true;
     if (removed.red || removed.black || removed.special) {
+      // Keep the prevented dice so the board can show them struck through
+      // instead of having results vanish between the reroll and the tactics
+      // step with no on-screen explanation (#698).
+      pa.cinematicPreventedDice = removedDice;
+      const bits: string[] = [];
+      if (removed.red) bits.push(`${removed.red} red hit${removed.red === 1 ? '' : 's'}`);
+      if (removed.black) bits.push(`${removed.black} black hit${removed.black === 1 ? '' : 's'}`);
+      if (removed.special) bits.push(`${removed.special} ★`);
+      pa.tacticsPlayed.push({
+        card: 'cinematic-prevent',
+        detail: `${other(pa.side)} prevented ${bits.join(' + ')}`,
+      });
       log(G, { kind: 'cinematic-prevent-applied', side: pa.side, payload: {
         theater: pa.theater, round: c.round,
         red: removed.red, black: removed.black, special: removed.special,

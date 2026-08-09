@@ -1781,6 +1781,11 @@ export type CombatState = {
     // re-entry. RAW: RotE rulebook "PREVENTING HITS" (#401, #408).
     cinematicPrevent?: { red: number; black: number; special: number };
     cinematicPreventApplied?: boolean;
+    // The dice actually removed by the prevent above, kept purely so the
+    // combat board can show them struck through. Without this the rolling
+    // player watches hits vanish right after their reroll with nothing on
+    // screen to explain it (#698).
+    cinematicPreventedDice?: DieResult[];
     // Set when entering 'awaitingDamageAssignment'. Frozen list of hits
     // the attacker must assign (post-blocks), and the legal targets per
     // hit (computed when the choice is queued).
