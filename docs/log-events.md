@@ -94,7 +94,7 @@ formats to `{ meta, humanSide, winner, events, snapshots, final }`.
 | `cinematic-deck-recycle` | — | `{"theater":"ground","kept":"cin-rebel-ground-rogue-one","recycled":7}` | src/engine/cinematicTactics.ts |
 | `cinematic-escape-plan` | — | `{"theater":"ground","round":2}` | src/engine/combat.ts |
 | `cinematic-escape-plan-cancel` | — | `{"cancelKey":"Empire:ground:2"}` | src/engine/combat.ts |
-| `cinematic-prevent-applied` | — | `{"theater":"space","round":1,"red":0,"black":2,"special":0}` | src/engine/combat.ts |
+| `cinematic-prevent-applied` | — | `{"theater":"space","round":1,"red":0,"black":2,"directHit":0}` | src/engine/combat.ts |
 | `cinematic-remove-damage` | — | `{"theater":"space","round":2,"removed":1}` | src/engine/cinematicTactics.ts, src/engine/combat.ts |
 | `cinematic-reroll` | — | `{"theater":"space","round":1,"rerolled":1,"allowance":1}` | src/engine/combat.ts |
 | `cinematic-rogue-one-no-retreat` | — | `(not seen in corpus or sample game)` | src/engine/cinematicTactics.ts |

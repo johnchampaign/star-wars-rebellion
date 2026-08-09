@@ -816,9 +816,15 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
  *  1 red [hit], and 1 black [direct hit]." — the black direct hit survives
  *  even though black prevention was still unspent against it.
  *
- *  No card in the RoE set prevents direct hits (all six read "prevent N
- *  red/black hits"), so there is no direct-hit channel to spend; a card that
- *  did would need its own counter here.
+ *  TWO cards DO prevent direct hits, and this comment used to deny it: Escort
+ *  reads "Prevent 1 red hit, 1 black hit, and 1 direct hit" and Overwhelming
+ *  Presence reads "Prevent 2 red hits and 1 direct hit" (card scans:
+ *  images/Escort_s.png, images/Overwhelming Presence_s.png). Both had been
+ *  transcribed as "1 special", so the engine removed a star the card cannot
+ *  touch and left the direct hit standing — visible to the player as soon as
+ *  #698 started showing WHICH dice were prevented (player report #700:
+ *  "it claims a red special (saber cross) is blocked by ... escort").
+ *  Conversely NO card prevents a star, so there is no special channel.
  *
  *  Returns the surviving dice, the counts actually removed, and the removed
  *  dice themselves (`removedDice`) so the UI can show the player WHICH of
@@ -826,21 +832,21 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
  *  Pure. */
 export function applyCinematicPrevent(
   dice: DieResult[],
-  want: { red: number; black: number; special: number },
+  want: { red: number; black: number; directHit: number },
 ): {
   kept: DieResult[];
-  removed: { red: number; black: number; special: number };
+  removed: { red: number; black: number; directHit: number };
   removedDice: DieResult[];
 } {
-  let needRed = want.red, needBlack = want.black, needSpecial = want.special;
-  const removed = { red: 0, black: 0, special: 0 };
+  let needRed = want.red, needBlack = want.black, needDirect = want.directHit;
+  const removed = { red: 0, black: 0, directHit: 0 };
   const removedDice: DieResult[] = [];
   const kept: DieResult[] = [];
   for (const d of dice) {
     const isHit = d.face === 'hit'; // NOT direct-hit — see the #671 note above.
     if (needRed > 0 && d.color === 'red' && isHit) { needRed--; removed.red++; removedDice.push(d); continue; }
     if (needBlack > 0 && d.color === 'black' && isHit) { needBlack--; removed.black++; removedDice.push(d); continue; }
-    if (needSpecial > 0 && d.face === 'special') { needSpecial--; removed.special++; removedDice.push(d); continue; }
+    if (needDirect > 0 && d.face === 'direct-hit') { needDirect--; removed.directHit++; removedDice.push(d); continue; }
     kept.push(d);
   }
   return { kept, removed, removedDice };
@@ -883,10 +889,10 @@ export function beginAttack(G: GameState, c: CombatState, side: Side, theater: T
   // after the reroll window. We must NOT under-roll (the old behaviour, which
   // also silently dropped potential ★ symbols the roller could heal/spend with
   // — #401, #408).
-  let cinPrevent: { red: number; black: number; special: number } | undefined;
+  let cinPrevent: { red: number; black: number; directHit: number } | undefined;
   if (c.cinematic) {
     const prev = takeCinematicPrevent(c, side);
-    if (prev.red || prev.black || prev.special) cinPrevent = prev;
+    if (prev.red || prev.black || prev.directHit) cinPrevent = prev;
   }
 
   // "According To My Design" (Emperor Palpatine start-of-combat action card):
@@ -1026,7 +1032,7 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
     const { kept, removed, removedDice } = applyCinematicPrevent(pa.dice, pa.cinematicPrevent);
     pa.dice = kept;
     pa.cinematicPreventApplied = true;
-    if (removed.red || removed.black || removed.special) {
+    if (removed.red || removed.black || removed.directHit) {
       // Keep the prevented dice so the board can show them struck through
       // instead of having results vanish between the reroll and the tactics
       // step with no on-screen explanation (#698).
@@ -1034,14 +1040,14 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
       const bits: string[] = [];
       if (removed.red) bits.push(`${removed.red} red hit${removed.red === 1 ? '' : 's'}`);
       if (removed.black) bits.push(`${removed.black} black hit${removed.black === 1 ? '' : 's'}`);
-      if (removed.special) bits.push(`${removed.special} ★`);
+      if (removed.directHit) bits.push(`${removed.directHit} direct hit${removed.directHit === 1 ? '' : 's'}`);
       pa.tacticsPlayed.push({
         card: 'cinematic-prevent',
         detail: `${other(pa.side)} prevented ${bits.join(' + ')}`,
       });
       log(G, { kind: 'cinematic-prevent-applied', side: pa.side, payload: {
         theater: pa.theater, round: c.round,
-        red: removed.red, black: removed.black, special: removed.special,
+        red: removed.red, black: removed.black, directHit: removed.directHit,
       }});
     }
   }

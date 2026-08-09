@@ -34,7 +34,7 @@ function unitsOf(G: GameState, side: Side, sysId: string, theater: Theater) {
 }
 
 type DealEffect = { kind: 'deal'; amount: number; color?: 'red' | 'black' };
-type PreventEffect = { kind: 'prevent'; red: number; black: number; special: number; extra?: boolean };
+type PreventEffect = { kind: 'prevent'; red: number; black: number; directHit: number; extra?: boolean };
 // Conditional deal — only deals if the named condition holds.
 type CondDealEffect = { kind: 'condDeal'; amount: number; color?: 'red' | 'black'; cond: 'more-fighters' | 'no-shield-generator' };
 // Targeted deal — assigns damage to a specific class of enemy unit.
@@ -50,7 +50,7 @@ type DestroyEffect = { kind: 'destroy'; tier?: 'triangle'; unitClass?: 'structur
 // — the player picks WHICH of their triangle ground unit types (Rebel: Trooper
 // or Vanguard). `typeId` is the fallback/default when only one type exists. When
 // false the gain is a specific fixed unit (e.g. Reinforcements → TIE Fighter).
-type GainEffect = { kind: 'gain'; typeId: string; prevent?: { red: number; black: number; special: number }; chooseTriangleGround?: boolean };
+type GainEffect = { kind: 'gain'; typeId: string; prevent?: { red: number; black: number; directHit: number }; chooseTriangleGround?: boolean };
 // The OPPONENT resolves their attacks first in this theatre for the rest of
 // the combat (rules p.9 "During [theatre] battles this combat, [opp]
 // resolves attacks first").
@@ -96,7 +96,11 @@ type UnwiredEffect = { kind: 'unwired' };
 type Ability = DealEffect | PreventEffect | CondDealEffect | TargetDealEffect | DestroyEffect | GainEffect | ResolveFirstEffect | LockDeckEffect | RemoveDamageEffect | CaptureEffect | CancelEffect | ShieldAbsorbEffect | ExtraCardEffect | RogueOneEffect | SpecialLockEffect | ConfrontationEffect | EscapePlanEffect | UnwiredEffect;
 
 const D = (amount: number, color?: 'red' | 'black'): DealEffect => ({ kind: 'deal', amount, color });
-const P = (red: number, black: number, special = 0, extra = false): PreventEffect => ({ kind: 'prevent', red, black, special, extra });
+// Third slot is DIRECT HITS, not the star special. Both cards that use it —
+// Escort and Overwhelming Presence — read "and 1 direct hit" on the printed
+// card (scans: images/Escort_s.png, images/Overwhelming Presence_s.png). No
+// card in the set prevents a star, which is why there is no special channel.
+const P = (red: number, black: number, directHit = 0, extra = false): PreventEffect => ({ kind: 'prevent', red, black, directHit, extra });
 const CD = (amount: number, cond: CondDealEffect['cond'], color?: 'red' | 'black'): CondDealEffect => ({ kind: 'condDeal', amount, color, cond });
 const TD = (amount: number, targetClass: TargetDealEffect['targetClass']): TargetDealEffect => ({ kind: 'targetDeal', amount, targetClass });
 const DESTROY = (opts: { tier?: 'triangle'; unitClass?: 'structure'; theater?: Theater }): DestroyEffect => ({ kind: 'destroy', ...opts });
@@ -125,7 +129,7 @@ const ABILITIES: Record<string, [Ability, Ability]> = {
   // Card scan (images/Swarm Tactics_s.png): "If there are more Imperial
   // fighters than Rebel fighters, deal 2 damage." — was mis-entered as 1 (#570).
   'cin-empire-space-swarm-tactics':          [CD(2, 'more-fighters'), D(1, 'black')],
-  'cin-empire-space-reinforcements':         [GAIN('tie-fighter', { red: 0, black: 2, special: 0 }), P(0, 2)],
+  'cin-empire-space-reinforcements':         [GAIN('tie-fighter', { red: 0, black: 2, directHit: 0 }), P(0, 2)],
   'cin-empire-space-tractor-beam':           [CAPTURE, D(1, 'red')],
   'cin-empire-space-overwhelming-presence':  [P(2, 0, 1), P(2, 0)],
   'cin-empire-space-superlaser-blast':       [TD(5, 'capital'), D(1)],
@@ -212,7 +216,7 @@ function abilityValue(G: GameState, c: CombatState, side: Side, theater: Theater
       const t = G.catalog.unitTypes[u.typeId];
       return t && (t.attack.red + t.attack.black + t.attack.green) > 0;
     });
-    return oppAttacks ? (ab.red + ab.black + ab.special) : 0;
+    return oppAttacks ? (ab.red + ab.black + ab.directHit) : 0;
   }
   if (ab.kind === 'condDeal') {
     if (!condHolds(G, c, side, theater, ab.cond)) return 0;
@@ -356,8 +360,8 @@ function resolveDeal(G: GameState, c: CombatState, side: Side, theater: Theater,
 function resolvePrevent(c: CombatState, side: Side, eff: PreventEffect): void {
   const opp = other(side);
   if (!c.cinematicPrevent) c.cinematicPrevent = {};
-  const cur = c.cinematicPrevent[opp] ?? { red: 0, black: 0, special: 0 };
-  cur.red += eff.red; cur.black += eff.black; cur.special += eff.special;
+  const cur = c.cinematicPrevent[opp] ?? { red: 0, black: 0, directHit: 0 };
+  cur.red += eff.red; cur.black += eff.black; cur.directHit += eff.directHit;
   c.cinematicPrevent[opp] = cur;
 }
 
@@ -514,7 +518,7 @@ export function applyCinematicAbility(
   } else if (ab.kind === 'prevent') {
     resolvePrevent(c, side, ab);
     if (ab.extra) grantExtraCard(c, side, theater);
-    logPlay({ prevent: { red: ab.red, black: ab.black, special: ab.special }, extra: !!ab.extra });
+    logPlay({ prevent: { red: ab.red, black: ab.black, directHit: ab.directHit }, extra: !!ab.extra });
   } else if (ab.kind === 'condDeal') {
     const ok = condHolds(G, c, side, theater, ab.cond);
     logPlay({ condDealt: ok ? resolveDeal(G, c, side, theater, { kind: 'deal', amount: ab.amount, color: ab.color }) : 0, cond: ab.cond, condMet: ok });
@@ -1130,9 +1134,9 @@ function resolveDestroy(G: GameState, c: CombatState, side: Side, theater: Theat
  *  the {red,black,special} counts of opponent results to remove at the Assign
  *  Damage step (applied to the rolled dice, NOT a reduction of the roll —
  *  RAW RotE "PREVENTING HITS"). Zeroes the accumulator so it only applies once. */
-export function takeCinematicPrevent(c: CombatState, side: Side): { red: number; black: number; special: number } {
+export function takeCinematicPrevent(c: CombatState, side: Side): { red: number; black: number; directHit: number } {
   const v = c.cinematicPrevent?.[side];
-  if (!v) return { red: 0, black: 0, special: 0 };
-  c.cinematicPrevent![side] = { red: 0, black: 0, special: 0 };
+  if (!v) return { red: 0, black: 0, directHit: 0 };
+  c.cinematicPrevent![side] = { red: 0, black: 0, directHit: 0 };
   return v;
 }

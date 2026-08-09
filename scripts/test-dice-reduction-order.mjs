@@ -1,9 +1,13 @@
 // Cinematic combat dice rules:
-//   (A) "Prevent N red/black/special" (RotE rulebook, "PREVENTING HITS") does
-//       NOT reduce how many dice the opponent rolls. All dice are ROLLED; at
-//       the Assign Damage step, up to N matching red/black HITS (or ★ specials)
-//       are removed from the rolled dice. Reporters #401 (Escort) and #408
-//       (Overwhelming Presence) caught the old code under-rolling instead.
+//   (A) "Prevent N red/black/direct hit" (RotE rulebook, "PREVENTING HITS")
+//       does NOT reduce how many dice the opponent rolls. All dice are ROLLED;
+//       at the Assign Damage step, up to N matching results are removed from
+//       the rolled dice. Reporters #401 (Escort) and #408 (Overwhelming
+//       Presence) caught the old code under-rolling instead.
+//       This section previously asserted that Escort prevents a ★ SPECIAL. It
+//       does not — the printed card reads "and 1 direct hit" (#700, scan at
+//       images/Escort_s.png), and NO card in the set prevents a ★. The test
+//       was encoding the same mis-transcription the engine was.
 //   (B) A genuine "roll N fewer dice" ability (According To My Design) DOES
 //       reduce the roll, and per RoE p.9 that reduction applies BEFORE the
 //       5-die cap (audit #9).
@@ -30,19 +34,22 @@ console.log('[ applyCinematicPrevent: removes matching HIT/★ results, not dice
     die('red', 'hit'), die('red', 'hit'), die('red', 'blank'),
     die('black', 'direct-hit'), die('black', 'special'), die('red', 'special'),
   ];
-  // Escort: prevent 1 red, 1 black, 1 special. The only black HIT-icon result
-  // here is... none — the black die rolled a DIRECT hit, which "prevent 1
-  // black hit" cannot touch (#671), so the black prevention goes unspent.
-  const { kept, removed } = combat.applyCinematicPrevent(dice, { red: 1, black: 1, special: 1 });
+  // Escort: prevent 1 red hit, 1 black hit, 1 DIRECT hit. There is no black
+  // HIT-icon result here — the black die rolled a DIRECT hit, which "prevent 1
+  // black hit" cannot touch (#671), so the black prevention goes unspent. The
+  // direct-hit channel DOES take that black direct hit.
+  const { kept, removed } = combat.applyCinematicPrevent(dice, { red: 1, black: 1, directHit: 1 });
   check('removed exactly 1 red hit', removed.red === 1, JSON.stringify(removed));
-  check('removed NO black (the black die is a direct-hit)', removed.black === 0, JSON.stringify(removed));
-  check('removed exactly 1 ★ special', removed.special === 1, JSON.stringify(removed));
+  check('removed NO black HIT (the black die is a direct-hit)', removed.black === 0, JSON.stringify(removed));
+  check('removed exactly 1 direct hit', removed.directHit === 1, JSON.stringify(removed));
   check('kept = 6 − 2 = 4 dice', kept.length === 4, `got ${kept.length}`);
   // The surviving dice should still contain a red hit, a red blank, and one ★.
   check('one red HIT survives (only 1 of 2 prevented)', kept.filter((d) => d.color === 'red' && d.face === 'hit').length === 1);
   check('the red blank is never removed', kept.some((d) => d.color === 'red' && d.face === 'blank'));
-  check('the black DIRECT HIT survives', kept.some((d) => d.color === 'black' && d.face === 'direct-hit'));
-  check('one ★ survives (red ★, since black ★ taken)', kept.filter((d) => d.face === 'special').length === 1);
+  check('the black DIRECT HIT is now the one removed',
+    !kept.some((d) => d.color === 'black' && d.face === 'direct-hit'));
+  check('BOTH ★ survive — no card prevents a special (#700)',
+    kept.filter((d) => d.face === 'special').length === 2);
 }
 
 // The rulebook's own worked example (RoE "PREVENTING HITS"), verbatim (#671).
@@ -54,7 +61,7 @@ console.log('[ applyCinematicPrevent: matches the RoE rulebook example exactly ]
     die('black', 'hit'), die('black', 'hit'), die('black', 'hit'),
     die('red', 'hit'), die('black', 'direct-hit'),
   ];
-  const { kept, removed } = combat.applyCinematicPrevent(dice, { red: 0, black: 2, special: 0 });
+  const { kept, removed } = combat.applyCinematicPrevent(dice, { red: 0, black: 2, directHit: 0 });
   check('removed exactly 2 black hits', removed.black === 2, JSON.stringify(removed));
   // Expected leftovers: 1 black hit, 1 red hit, 1 black direct hit.
   check('3 dice remain', kept.length === 3, `got ${kept.length}`);
@@ -68,7 +75,7 @@ console.log('[ applyCinematicPrevent: cannot remove more hits than were rolled ]
   const die = (color, face) => ({ color, face });
   // Only 1 red hit on the table, but "prevent 2 red" asked for 2.
   const dice = [die('red', 'hit'), die('red', 'blank'), die('red', 'blank')];
-  const { kept, removed } = combat.applyCinematicPrevent(dice, { red: 2, black: 0, special: 0 });
+  const { kept, removed } = combat.applyCinematicPrevent(dice, { red: 2, black: 0, directHit: 0 });
   check('removes only the 1 red hit that exists', removed.red === 1, JSON.stringify(removed));
   check('the two red blanks survive', kept.length === 2 && kept.every((d) => d.face === 'blank'));
 }
@@ -85,19 +92,23 @@ console.log('[ #698: prevented dice are returned, not just counted ]');
     die('red', 'hit'), die('red', 'hit'), die('red', 'blank'),
     die('black', 'direct-hit'), die('black', 'special'),
   ];
-  const { kept, removed, removedDice } = combat.applyCinematicPrevent(dice, { red: 1, black: 1, special: 1 });
+  const { kept, removed, removedDice } = combat.applyCinematicPrevent(dice, { red: 1, black: 1, directHit: 1 });
   check('removedDice is populated', Array.isArray(removedDice) && removedDice.length > 0, JSON.stringify(removedDice));
   check('removedDice count == the tallied counts',
-    removedDice.length === removed.red + removed.black + removed.special,
+    removedDice.length === removed.red + removed.black + removed.directHit,
     `dice=${removedDice.length} counts=${JSON.stringify(removed)}`);
   check('kept + removedDice == the original roll', kept.length + removedDice.length === dice.length,
     `${kept.length}+${removedDice.length} vs ${dice.length}`);
   check('the removed red die really was a red HIT',
     removedDice.some((d) => d.color === 'red' && d.face === 'hit'), JSON.stringify(removedDice));
-  check('the removed ★ really was a special',
-    removedDice.some((d) => d.face === 'special'), JSON.stringify(removedDice));
-  check('no DIRECT hit was removed (#671 still holds)',
-    !removedDice.some((d) => d.face === 'direct-hit'), JSON.stringify(removedDice));
+  // Escort's third channel is DIRECT HITS (#700), so the black direct-hit is
+  // what goes — and the ★ stays, because nothing in the set can prevent one.
+  check('the removed direct hit really was a direct hit',
+    removedDice.some((d) => d.face === 'direct-hit'), JSON.stringify(removedDice));
+  check('the ★ was NOT removed', !removedDice.some((d) => d.face === 'special'),
+    JSON.stringify(removedDice));
+  check('the ★ is still in the surviving roll',
+    kept.some((d) => d.face === 'special'), JSON.stringify(kept));
 }
 
 console.log('[ #698: the engine stashes prevented dice + a report line ]');

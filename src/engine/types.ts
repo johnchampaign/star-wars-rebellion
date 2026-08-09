@@ -1671,8 +1671,8 @@ export type CombatState = {
   // NOT reduce how many dice are rolled; RAW RotE "PREVENTING HITS", #401/#408).
   // Reset per theatre step.
   cinematicPrevent?: {
-    Rebel?: { red: number; black: number; special: number };
-    Empire?: { red: number; black: number; special: number };
+    Rebel?: { red: number; black: number; directHit: number };
+    Empire?: { red: number; black: number; directHit: number };
   };
   // RoE Cinematic "remove damage after the opponent assigns damage" heals
   // (Draw Their Fire / Energy Shield). These are reactive: they must run AFTER
@@ -1779,7 +1779,7 @@ export type CombatState = {
     // applied to the rolled dice — removing matching HIT/★ results — after the
     // reroll window. `cinematicPreventApplied` guards against re-applying it on
     // re-entry. RAW: RotE rulebook "PREVENTING HITS" (#401, #408).
-    cinematicPrevent?: { red: number; black: number; special: number };
+    cinematicPrevent?: { red: number; black: number; directHit: number };
     cinematicPreventApplied?: boolean;
     // The dice actually removed by the prevent above, kept purely so the
     // combat board can show them struck through. Without this the rolling
