@@ -12,6 +12,286 @@ an entry if the smoke suite goes RED or the baseline bench moves > ~3 points.
 
 ---
 
+## 2026-08-10 — smoke RED (2 FAIL gates), strength gate PASS, corpus +132
+
+> ### 🚩 REGRESSION FLAG
+>
+> Two triggers fired.
+> **(1) The planner smoke suite is RED** — but it improved: 3 FAIL gates last
+> week, **2** now. `PEAK delivered` recovered from a knife-edge 8.0 to **9.5**
+> and passes. The two survivors are `reveal→capture not slower` (2.0 → 2.3
+> rounds, misses its +0.2 slack by 0.1 — the same gate has now failed three
+> entries running) and the `every reveal-replay assaults` gate.
+> **(2) The consolidation bench moved +3.4 points** (33.3% → 36.7% Empire
+> win-rate), just over the ~3-point movement threshold — **upward**, so the
+> trigger is mechanical rather than a deterioration.
+> No other trigger fired: MCTS replay midpoint **24.5 → 42.5 finds** (up), and
+> the strength gate exited **0** with both CIs clear of their tripwires.
+> **Near-miss worth naming:** the strength gate's Rebel arm moved **−8.0pt**
+> (96.0% → 88.0%), which is *at* the ~8-point rule, not over it. Empire moved
+> **+7.0pt** the other way. See the strength section.
+> **No fix attempted — report only.**
+
+### Corpus
+
+- **983** total log files in `logs/` — **+132** vs the 851 at 2026-08-03.
+- **377** are schemaVersion 2 (**+118**); **606** are v1 (+14 — v1 uploads keep
+  trickling in from older clients).
+- Human-side split: **469** human-Rebel, **507** human-Empire, **7** unknown
+  (v1 files predating the `humanSide` field).
+- **126** v2 logs uploaded in the last 8 days.
+- Zero unreadable/malformed files across all 983.
+
+#### v2 finished games by AI policy — the real-player watch
+
+AI win-rate is *the AI's* wins against the human, per `meta.ai`:
+
+| AI policy | config | AI side | games | AI wins | win reasons |
+|---|---|---|---|---|---|
+| **mcts** | planner+hunt ON (production) | Empire | 110 | **6 (5.5%)** | Rebel/reputation-time ×104, Empire/base-captured ×5, Empire/base-destroyed ×1 |
+| mcts | planner+hunt OFF | Empire | 3 | 0 | Rebel/reputation-time ×3 |
+| heuristic (fallback) | planner OFF | Empire | 15 | 0 | Rebel/reputation-time ×15 |
+| heuristic (fallback) | planner+hunt OFF | Empire | 4 | 0 | Rebel/reputation-time ×4 |
+| heuristic (fallback) | planner+hunt ON | Empire | 2 | 0 | Rebel/reputation-time ×2 |
+| heuristic (fallback) | planner ON (hunt unrecorded) | Empire | 1 | 0 | Rebel/reputation-time ×1 |
+| **depth2-eval** | planner+hunt ON | Rebel | 201 | **8 (4.0%)** | Empire/base-captured ×187, Rebel/reputation-time ×8, Empire/base-destroyed ×6 |
+| depth2-eval | planner OFF | Rebel | 35 | 0 | Empire/base-captured ×35 |
+| depth2-eval | planner+hunt OFF | Rebel | 4 | 0 | Empire/base-captured ×4 |
+| depth2-eval | planner ON (hunt unrecorded) | Rebel | 1 | 0 | Empire/base-captured ×1 |
+| mcts-rebel | planner+hunt ON | Rebel | 1 | 0 | Empire/base-captured ×1 |
+
+- **MCTS Empire (headline): 6/110 = 5.5%** in the shipped production config
+  (4/68 = 5.9% last week); **6/113 = 5.3%** across all MCTS configs. The win
+  count went 4 → 6 over 42 additional production games, so the rate is
+  essentially flat on a substantially larger sample.
+- **Heuristic Empire (fallback): 0/22 = 0%**, unchanged for a third entry.
+- **depth2-eval Rebel: 8/201 = 4.0%** in production (4/125 = 3.2% last week),
+  **8/241 = 3.3%** across configs. All eight AI-Rebel wins are
+  `Rebel/reputation-time` — the AI Rebel wins by surviving the clock, never by
+  any other route.
+- Failure shapes are unchanged and stark: the AI Empire loses on
+  `Rebel/reputation-time` in **104 of 110** production games (it runs out of
+  clock; it is not run off the board), and the AI Rebel loses on
+  `Empire/base-captured` in **187 of 201**.
+- `base-destroyed` continues to appear in both directions (1 MCTS-Empire win,
+  6 human-Empire wins against the depth-2 Rebel — up from 1 and 2). The Death
+  Star is now a routine win condition in real play, not a curiosity.
+
+### Soft-lock watch
+
+- **v2 logs with no `meta.outcome` (abandoned): 0** — across all 377 v2 logs,
+  not just this week. Clean for a second entry running.
+- **Open `from-game` issues mentioning freezes/stuck filed this week: none.**
+  Seven from-game issues were filed 2026-08-03 → 2026-08-10: **#683** (turn
+  nudge emails not sending; plus a retreat-eligibility rules question),
+  **#690** (Piett's fleet moves to Toydaria instead of toward the revealed
+  base), **#693** (Empire subjugates the wrong systems, leaving Rebel-loyal
+  planets to build with), **#695** (Empire passed with Krennic in the pool and
+  movable fleets), **#697** (Empire shuffles a fleet back to Cato Neimoidia for
+  nothing), **#701** (Death Star *did* dodge — reporter notes it dodged to a
+  still-reachable system), **#702** (Empire shuffles between Ord Mantell and
+  Alderaan for several turns; "gets stuck inside the core planets"). None is a
+  freeze or soft-lock. #683's email complaint is an online-stack issue, not an
+  engine one.
+- The **Empire-idle / pointless-activation cluster** keeps growing — #690,
+  #693, #697, #702 this week, on top of #617/#629/#649/#653/#677/#695 and the
+  older #574/#580/#581/#599/#600/#605/#606. Worth reading against the
+  2026-08-08 standing note: the *activation* half is largely RAW-correct
+  (own-leader pin), but #702's specific complaint — the Empire circling
+  already-searched core systems instead of probing outward — is a **hunt
+  targeting** observation, which the standing note does *not* excuse and which
+  the hunt profile below independently confirms.
+
+### Planner smoke suite — RED (2 FAIL, improved from 3)
+
+`node scripts/smoke-empire-planner.mjs 200 6` → **exit 1**.
+
+Hold-defender self-play, planner OFF → ON (same seeds), with the 2026-08-03 ON
+arm for reference:
+
+| metric | OFF | ON | 08-03 ON | Δ ON |
+|---|---|---|---|---|
+| Empire win-rate % | 27.0 | 40.5 | 28.0 | **+12.5** |
+| base revealed | 107 | 107 | 90 | +17 |
+| avg find-turn | 5.4 | 5.4 | 5.9 | −0.5 (faster) |
+| conversion % (revealed→win) | 49.5 | 74.8 | 61.1 | **+13.7** |
+| assault waves / revealed game | 1.5 | 1.5 | 1.5 | 0.0 |
+| delivered ground @ first assault | 4.4 | 4.4 | 4.5 | −0.1 |
+| PEAK delivered ground / revealed | 6.5 | 9.5 | 8.0 | **+1.5** |
+| rounds reveal→capture | 2.0 | 2.3 | 2.1 | +0.2 |
+
+Gates:
+
+- **PASS** base-finding not down (same seeds) — 107 vs 107
+- **PASS** avg find-turn not slower (+0.3 slack) — 5.4 → 5.4
+- **PASS** PEAK delivered ≥ 8 (the #539 target) and not down — **6.5 → 9.5**.
+  Recovered from last week's knife-edge 8.0 FAIL with room to spare.
+- **PASS** waves per revealed game not down — 1.5 → 1.5
+- **PASS** conversion not down vs holding defender — 49.5% → 74.8%
+- **FAIL** reveal→capture not slower — **2.0 → 2.3 rounds** (gate allows +0.2
+  slack, so it misses by 0.1). Third consecutive entry failing this gate
+  (1.2→1.9, then 1.8→2.1, now 2.0→2.3). The OFF arm is also drifting slower
+  (1.2 → 1.8 → 2.0), so this is not purely a planner effect, but the ON arm
+  stays 0.2–0.3 rounds behind it every time.
+- **PASS** Empire win-rate not down > 2pt — 27.0% → 40.5%
+- **FAIL** every reveal-replay: ON assaults and captures (or ≥ OFF when neither
+  captures). The gate needs `assaults >= 1` in every reveal position. **19
+  reveal replays, 7 offenders**:
+  - `0a262b2571ba` (yavin, def 2), `6fbc3a2e26e7` (yavin, def 1) — **capture
+    the system with `assaults=0`**, the unexplained accounting shape first
+    flagged 2026-07-20. OFF and ON bit-identical.
+  - `646d770089b8` (mon-calamari, def 3), `a1d081b9c258` (nal-hutta, def 10),
+    `e186c1a35f9c` (felucia, def 5) — `assaults=0` in **both** arms; nothing
+    planner-induced.
+  - `f555a039c8be` (dantooine, def 7) — OFF 1 assault, **ON 0**. Genuinely
+    ON-worse.
+  - `4be86936b033` (ryloth, def 3) — OFF 2 assaults / 9 delivered, **ON 1 / 1**.
+    Genuinely ON-worse.
+  - So **5 of 7 offenders are arm-identical** (the gate is firing on an
+    accounting/behaviour shape the planner does not control) and **2 are real
+    ON-side losses**. That is a change from last week, when all four offenders
+    were arm-identical.
+- **OPEN** hunt-replays: ON finds the base in **27/103** recorded hunt positions
+  (**26.2%**), against 15/76 (19.7%) last week. The replay set grew 76 → 103
+  with this week's uploads, so compare the rate, not the count. (Still an OPEN
+  tracker, not a gate.)
+
+Every ON-vs-OFF comparison inside the suite is neutral or better, and by wider
+margins than last week (win-rate +13.5, conversion +25.3, PEAK +3.0).
+
+### MCTS replay bench — multi-seed
+
+`node scripts/mcts-bench.mjs --replays-only --ai-seed {424242,111,222}`:
+
+| seed | heuristic OFF | MCTS ON | captures ON |
+|---|---|---|---|
+| 424242 | 27/103 | **44/103** | 52/122 |
+| 111 | 27/103 | **39/103** | 49/122 |
+| 222 | 27/103 | **46/103** | 50/122 |
+
+- **MCTS find range 39–46/103, midpoint 42.5.** Previous post-fix entry
+  (2026-08-03) was 23–26/76, midpoint 24.5 — the midpoint is **up 18 finds**,
+  nowhere near the −3 regression trigger. As a **rate**: **37.9–44.7%**
+  (midpoint 41.3%) against last week's 30.3–34.2% (midpoint 32.2%), so the
+  gain survives normalising for the bigger replay set.
+- Heuristic fallback arm **27/103 (26.2%)**, bit-stable across all three seeds,
+  vs 15/76 (19.7%) last week. Both arms improved; MCTS finds **~1.6×** what the
+  heuristic finds and captures **2.7–2.9×** as often (18/122 OFF vs 49–52/122
+  ON).
+- Search cost: **~63.8 rollouts/decision** (identical across seeds),
+  **~1.93–1.97 s/decision**, disagreeing with the heuristic on **33–35%** of
+  2705–2794 decisions per seed. **Caveat: the three seeds ran concurrently on
+  this box, so the per-decision latency is inflated by contention and is not
+  comparable to last week's ~1.6 s.** Rollout counts and find counts are
+  unaffected (both are budget-, not clock-, driven).
+
+### Hunt profile — expert vs AI Empire
+
+`node scripts/analyze-hunt-profile.mjs` over the v2 corpus:
+
+| | Expert (human Empire) | AI Empire |
+|---|---|---|
+| games | 242 (was 166) | 135 (was 93) |
+| found base | **234/242 (97%)** | **20/135 (15%)** |
+| find turns | 1–9 (median 5) | 3,3,3,5,5,5,5,6,6,6,6,6,6,6,7,7,7,7,8,11 |
+| activations onto candidates | 2625/3906 (67%) | 1387/2289 (61%) |
+| clears by **occupation** | 2373 | 1198 |
+| clears by probe rule-out | 2135 | 1542 |
+| candidates remaining @ t5 / t8 | 10 / 4 | 11 / 6 |
+
+Sample grew ~45% on both sides and the verdict is unchanged. The expert clears
+candidates by **occupying** them (2373 occupation vs 2135 probe, a 1.11 ratio);
+the AI inverts it (1198 occupation vs 1542 probe, 0.78) and finds the base in
+15% of games against the expert's 97%. The AI also points fewer of its
+activations at candidate systems at all (61% vs 67%) — which is exactly what
+#702 describes from the player's side. The candidate-decay row is the compact
+summary: by t8 the expert is down to 4 live candidates and the AI is still
+carrying 6. **Occupy-to-clear remains the outstanding fix.**
+
+### Consolidation baseline bench
+
+`node scripts/consolidation-bench.mjs 150` (self-play guardrail), vs 2026-08-03:
+
+| metric | this run | 08-03 | Δ |
+|---|---|---|---|
+| Empire win-rate (overall) | **36.7%** | 33.3% | **+3.4** |
+| Base revealed | 82/150 (55%) | 85/150 (57%) | −3 |
+| …converted to a win | 51/82 (62%) | 50/85 (59%) | +3 |
+| Buildup (B) — ground within 2 hops at reveal | 5.4 | 5.8 | −0.4 |
+| Executor (A) — delivered Empire ground | 4.3 (vs Rebel 6.4) | 4.5 (vs Rebel 6.5) | −0.2 |
+| Assaults arriving under-strength | 72% | 76% | −4 |
+| Rounds from reveal to capture | 0.9 | 1.1 | −0.2 |
+
++3.4 points trips the ~3-point movement threshold, hence the flag line — but
+it moved **up**, and the supporting rows moved with it in the right direction
+(conversion +3, under-strength assaults −4, reveal→capture −0.2 rounds). The
+one row going the other way is finding: 57% → 55% of games. Composition-wise
+this is the mirror image of last week, when the Empire found more and converted
+less.
+
+### Strength gate — PASS
+
+`node scripts/ai-strength/eval-strength.mjs --games 200 --seed 1` → **exit 0**.
+
+- **Rebel vs random Empire: 88/100 = 88.0% [80.2, 93.0]** — PASS (tripwire 0.70)
+- **Empire vs random Rebel: 60/100 = 60.0% [50.2, 69.1]** — PASS (tripwire 0.22)
+
+Trend (last 5 runs):
+
+| date | rebel | empire | policies |
+|---|---|---|---|
+| 2026-07-19 | 92.0% | 40.0% | heuristic/heuristic, n=200 |
+| 2026-07-20 | 92.0% | 40.0% | heuristic/heuristic, n=200 |
+| 2026-07-27 | 91.0% | 54.0% | heuristic/heuristic, n=200 |
+| 2026-08-03 | 96.0% | 53.0% | heuristic/heuristic, n=200 |
+| 2026-08-10 | **88.0%** | **60.0%** | heuristic/heuristic, n=200 |
+
+**Delta vs previous run (2026-08-03): rebel −8.0pt, empire +7.0pt.** The Rebel
+drop is *at* the ~8-point rule, not past it, so it does not fire on its own —
+but it is the largest Rebel move this log has recorded, and the two CIs
+overlap heavily ([80.2, 93.0] vs [90.2, 98.4]), so a single run cannot
+distinguish a real drop from n=100 noise. Worth watching next week rather than
+acting on. The Empire's 60.0% is a third consecutive reading in the 53–60 band;
+**the routine's "Empire ~40% is the calibrated level" note is now two entries
+stale and should be re-baselined to ~55%** before the −8pt rule can do useful
+work on that side.
+
+### Notable
+
+**The smoke suite is RED for the third week running, but the failure surface
+keeps shrinking and the underlying numbers keep improving.** Three FAIL gates
+became two; `PEAK delivered` went from missing `≥ 8` by 0.05 to clearing it at
+9.5; the ON-vs-OFF margins roughly doubled (win-rate +7.0 → +13.5, conversion
++15.5 → +25.3). What has *not* moved is `reveal→capture`, which has now failed
+three entries in a row, and the `assaults=0` accounting shape, which has been
+unexplained since 2026-07-20. The one genuinely new signal is that two of this
+week's seven reveal-replay offenders are **real ON-side losses** (`f555a039c8be`
+1→0 assaults, `4be86936b033` 2→1 assaults and 9→1 delivered) rather than
+arm-identical noise. Last week all four offenders were arm-identical. That is
+the item most worth a human look.
+
+**The hunt keeps improving, fast, and it is still the thing that loses the
+game.** MCTS replay finds went 24.5 → 42.5 (midpoint), rate 32.2% → 41.3%; the
+heuristic arm 19.7% → 26.2%; the smoke suite's hunt tracker 19.7% → 26.2%; and
+in self-play the Empire finds the base sooner (find-turn 5.9 → 5.4) and in more
+games (90 → 107 of 200). Against that, in **real** games the AI Empire still
+finds the base in 15% of games and loses 104 of 110 on the reputation clock. The
+benches and the human corpus disagree by an enormous margin, and the hunt
+profile shows why: the AI still clears candidates by probing (1542) more than by
+occupying (1198), the exact inverse of the expert. Issue #702 is a player
+describing that same statistic from the inside.
+
+**The Empire got stronger against fixed opposition; the Rebel got weaker.**
+The strength gate is the one control in this report that side-to-side changes
+cannot confound, and it moved −8.0pt Rebel / +7.0pt Empire in a single week.
+Neither crosses a tripwire and the CIs overlap, so this is a watch item, not a
+finding. But it is the first entry where the two seats moved in opposite
+directions by that much, and it lands in the same week the consolidation bench
+gained +3.4 points of Empire win-rate. If next week's run repeats an 88%-ish
+Rebel, that stops being noise.
+
+---
+
 ## Passivity: the activation half is mostly RAW (2026-08-08)
 
 Standing note, not a weekly entry — it retires a false lead that the
