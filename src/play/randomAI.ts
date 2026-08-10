@@ -1052,6 +1052,28 @@ const BUILD_SHIELD_BUNKERS: boolean = (() => {
   } catch { return false; } // browser: no process
 })();
 
+/** Opt-out for letting a leader who CANNOT activate a system oppose missions
+ *  the Empire would otherwise wave through (SWR_OPPOSE_IDLE=0), report #704.
+ *  Default ON.
+ *
+ *  The oppose-only-high-impact rule is priced on "a leader spent opposing is an
+ *  activation foregone". RAW gates activating on having tactic values, so for
+ *  Boba Fett, Jabba and Greejatus that price is zero — they cannot activate
+ *  anything, ever. This exempts exactly those leaders from the skip.
+ *
+ *  Measured over 1200 expansion games: win rate 40.2% -> 40.0% (two games,
+ *  noise), passes 7.8 -> 7.8, activations 24.2 -> 24.2, base-found and
+ *  invasions unchanged. Over 60 games the waste it targets nearly disappears:
+ *  Empire passes while holding an idle no-tactic leader 27/477 (5.7%) ->
+ *  3/475 (0.6%), and such leaders opposing 2.3% -> 7.6% of oppositions. */
+const OPPOSE_WITH_IDLE_LEADERS: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_OPPOSE_IDLE === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
 /** A/B lever: hold the Death Star back instead of sweeping it into reach of
  *  Rebel ships (SWR_DS_CAUTION=1), from playtester report #701.
  *
@@ -4262,9 +4284,23 @@ function handleOpposeMission(G: GameState, side: Side): boolean {
   // is an activation foregone — and reporters kept watching the Empire burn
   // its pool on low-impact Rebel missions (sabotage/infiltration) while its
   // fleets sat idle (#516). Was T1-4 only; A/B'd whole-game before shipping.
+  //
+  // REFINEMENT (jocke01 again, #704): "Jabba had nothing to do this round
+  // except opposing since he can't move ships. If the rebel does their last
+  // mission he should auto oppose if nothing else since otherwise he is a
+  // complete waste." He is right, and it is a correction to his OWN earlier
+  // rule. The skip is priced on "a leader spent opposing is an activation
+  // foregone" — but RAW gates activating a system on having tactic values, so
+  // for Boba Fett, Jabba and Greejatus that cost is exactly zero. They cannot
+  // activate anything, ever. Sitting in the pool is not saving them for
+  // something better; it is wasting them.
+  const bestCannotActivate = !!best
+    && ((G.catalog.leaders[best.lid]?.tacticValues.space ?? 0)
+      + (G.catalog.leaders[best.lid]?.tacticValues.ground ?? 0)) === 0;
   const empireEarlyGameSkip =
     side === 'Empire' &&
-    !isHighImpactMissionForOpposer(c.missionId, side);
+    !isHighImpactMissionForOpposer(c.missionId, side) &&
+    !(OPPOSE_WITH_IDLE_LEADERS && bestCannotActivate);
   if (best && !empireEarlyGameSkip) {
     const withBestExpected = (existingSkill + best.m) * 0.5;
     // Send a pool leader if it materially improves the math AND
