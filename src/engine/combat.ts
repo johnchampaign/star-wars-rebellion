@@ -388,6 +388,35 @@ export function runCombat(G: GameState): void {
       const retreatOrder: Side[] = c.cinematic
         ? [c.attackerSide, other(c.attackerSide)]
         : [other(c.attackerSide), c.attackerSide];
+      // Record WHY each side gets no retreat window, so the UI can say so
+      // instead of leaving the player staring at an option that never appears
+      // (#703). This runs for BOTH sides up front, before any choice is posted
+      // — the loop below returns the moment it posts one, so a side evaluated
+      // later would otherwise never get a reason recorded.
+      c.retreatBlockedReason = c.retreatBlockedReason ?? {};
+      for (const side of retreatOrder) {
+        const blocked =
+          c.retreated.includes(side)
+            ? 'You have already retreated from this battle — each side can only retreat once per combat.'
+          : c.flags?.cannotRetreatThisRound?.[side]
+            ? 'A tactic card is stopping you from retreating this round.'
+          : c.flags?.opponentCannotRetreat?.includes(side)
+            ? 'A tactic card is stopping you from retreating for the rest of this battle.'
+          : retreatBlockReason(G, c, side);
+        if (blocked) {
+          // Log once per combat per distinct reason — enough for a report to
+          // carry the answer, without spamming a long fight every round.
+          if (c.retreatBlockedReason[side] !== blocked) {
+            log(G, { kind: 'combat-retreat-unavailable', side, payload: {
+              systemId: c.systemId, round: c.round, reason: blocked,
+            }});
+          }
+          c.retreatBlockedReason[side] = blocked;
+        } else {
+          delete c.retreatBlockedReason[side];
+        }
+      }
+
       for (const side of retreatOrder) {
         if (c.retreated.includes(side)) continue; // already retreated this combat
         if (c.retreatDecidedThisRound.includes(side)) continue; // already decided this round (declined or retreated)
@@ -487,6 +516,48 @@ export function runCombat(G: GameState): void {
  *  immediate-retreat. The Death Star block and leader/mobility requirements are
  *  applied here; `retreatIgnoresTransport` (Escape Plan) waives the carrier
  *  requirement. */
+/** Why `side` cannot be offered the retreat window right now, in plain
+ *  board-game language — or null if it CAN retreat. Every `return false` path
+ *  in postRetreatChoice has a matching branch here, so the two never disagree.
+ *
+ *  This exists because "the retreat button never appeared" is indistinguishable
+ *  from a bug unless the game says which rule is stopping you (#703). Nothing
+ *  branches on the string; it is display/log text only. */
+export function retreatBlockReason(G: GameState, c: CombatState, side: Side): string | null {
+  // RR p.6: the Imperial player cannot retreat ANY units if a Death Star or
+  // Death Star Under Construction is in the combat.
+  if (side === 'Empire' && unitsOf(G, 'Empire', c.systemId).some((u) =>
+    u.typeId === 'death-star' || u.typeId === 'death-star-under-construction')) {
+    return 'The Empire cannot retreat while a Death Star or Death Star Under Construction is in the battle.';
+  }
+  const here = unitsOf(G, side, c.systemId);
+  if (here.length === 0) return 'You have no units left here to retreat with.';
+  const leadersHere = (side === 'Rebel' ? G.rebel : G.empire).leadersOnBoard[c.systemId] ?? [];
+  if (leadersHere.length === 0) {
+    return 'Retreating means marching a leader out of the system, and you have no leader here — so these units have to stand and fight.';
+  }
+  const ignoresT = !!c.flags?.retreatIgnoresTransport?.[side];
+  const hasMovable = here.some((u) => {
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t || t.transport.immobile) return false;
+    if (ignoresT) return true;
+    return t.theater === 'space' && !t.transport.restriction;
+  });
+  if (!hasMovable) {
+    return 'None of your units here can leave on their own — retreating needs a ship that can fly itself out (fighters, ground units and immobile units cannot).';
+  }
+  // Interdictor (RoE p.8) pins Rebel units; legalRetreatDestinations returns []
+  // for that, so name it specifically rather than blaming the map.
+  if (G.expansion?.enabled && side === 'Rebel'
+    && (G.map.systems[c.systemId]?.units ?? []).some((u) => u.side === 'Empire' && u.typeId === 'interdictor')) {
+    return 'An Imperial Interdictor in this system is stopping your units from retreating.';
+  }
+  if (legalRetreatDestinations(G, c, side).length === 0) {
+    return 'There is nowhere legal to retreat to — every neighbouring system either holds enemy units or is where the attack came from.';
+  }
+  return null;
+}
+
 function postRetreatChoice(G: GameState, c: CombatState, side: Side): boolean {
   // RR p.6: the Imperial player cannot retreat ANY units if a Death Star or
   // Death Star Under Construction is in the combat.

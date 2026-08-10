@@ -721,6 +721,19 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
         {pc?.kind === 'RetreatDecision' && isHumanDecision && (
           <RetreatPanel G={G} choice={pc} onPersist={onPersist} />
         )}
+        {/* Why the retreat option never appeared for you. Without this a player
+            who legally cannot retreat just sees the button never show up and
+            reasonably reads it as a bug (#703). */}
+        {pc?.kind !== 'RetreatDecision' && c.retreatBlockedReason?.[humanSide] && (
+          <div style={{
+            marginTop: 8, padding: '6px 10px', borderRadius: 4,
+            border: '1px solid #5a4a2a', background: '#241d10',
+            color: '#c8b483', fontSize: 12,
+          }}>
+            <strong style={{ color: '#e0c98a' }}>No retreat available.</strong>{' '}
+            {c.retreatBlockedReason[humanSide]}
+          </div>
+        )}
         {/* Always-visible diagnostic line so the player can see what state
             the combat is in even if no panel renders for it. */}
         <div style={{ fontSize: 10, color: '#555', marginTop: 6, fontFamily: 'monospace' }}>

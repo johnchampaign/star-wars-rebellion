@@ -1849,6 +1849,13 @@ export type CombatState = {
   // decision and the engine infinite-loops re-posting RetreatDecision.
   // Reset at the start of each new round.
   retreatDecidedThisRound?: Side[];
+  // Plain-language reason a side was NOT offered the retreat window this
+  // round, keyed by side. Recomputed every retreat step. Purely explanatory —
+  // nothing branches on it — but without it a player who is legally unable to
+  // retreat just sees the option silently never appear and reads it as a bug
+  // (player report #703: "I cannot retreat from the fight since the start
+  // although I would like to").
+  retreatBlockedReason?: Partial<Record<Side, string>>;
   // Sides that have used their Yoda reroll during the current round
   // (resets each round, mirrors G.yodaRerollUsedThisRound semantics).
   yodaRerollUsedRound?: number;
