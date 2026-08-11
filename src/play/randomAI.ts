@@ -1445,75 +1445,183 @@ function unitStrength(G: GameState, u: { typeId: string }): number {
   return (t.attack.red ?? 0) + (t.attack.black ?? 0) + (t.attack.green ?? 0) + (t.health?.value ?? 0);
 }
 
-/** Strength this side could ACTUALLY pull into `sysId` — a mirror of the move
- *  executor in tryCommandAction, not a count of everything standing nearby.
+/** The EXACT set of move orders the activate executor would build for this
+ *  target. Extracted so the scorer and the executor cannot disagree.
  *
- *  The strength gates used to sum every Empire unit in every non-leader-blocked
- *  adjacent system. The executor commits far less, for two reasons the gate
- *  modelled nowhere:
+ *  They used to. bestCommandAction carried two independent approximations of
+ *  'what can I bring here' — a transport-aware `movable` count for the no-op
+ *  guard, and a second strength estimate for the gates — while the executor
+ *  did the real thing a third time. Every guard added to the executor (the
+ *  garrison reserve, the prison-system guard, the revealed-base drain guard,
+ *  holding the Death Star back) widened the gap, and each widening showed up
+ *  as the AI choosing a move on a promise the executor then broke: #653's lone
+ *  ship, and the passivity #701's Death Star guard caused.
  *
- *   • TRANSPORT (RR p.9). Ground units and restricted fighters only move if a
- *     capital ship at the SAME source has spare capacity. A lone AT-AT sitting
- *     next door counts for nothing.
- *   • THE GARRISON RESERVE. The executor keeps 1 ground unit at each subjugated
- *     or producing Imperial-loyal system (so vacating it doesn't lose the
- *     subjugation or the production), except once the Rebel base is revealed.
- *
- *  Player report #653 is what that gap looks like from the table: the Empire
- *  activated a system holding a Mon Calamari Cruiser and a Nebulon-B Frigate,
- *  the gate weighed a neighbouring Star Destroyer AND the AT-AT beside it and
- *  read the attack as even, then the reserve held the AT-AT back and a single
- *  ship arrived alone to die. Replayed from self-play at seed 28/Sullust: gate
- *  15 vs 13 (attack looks fine), delivered 7 vs 13 (hopeless).
- *
- *  Returns overall and ground-only strength, matching the gate's two tests. */
-function bringableStrength(
-  G: GameState, side: Side, sysId: SystemId,
-): { all: number; ground: number } {
+ *  Pure: reads G, mutates nothing. Callers must not mutate the result.
+ */
+function plannedMoveOrders(
+  G: GameState, side: Side, targetSystemId: SystemId,
+): phases.MoveOrder[] {
   const f = side === 'Rebel' ? G.rebel : G.empire;
+  const orders: phases.MoveOrder[] = [];
+  const adj = G.catalog.adjacency[targetSystemId] ?? [];
+  // Never empty a system that imprisons a captured ENEMY leader — the
+  // moment no friendly unit remains there, the leader is auto-freed
+  // (player report #158: the AI moved every unit off Corellia and gifted
+  // Luke his freedom). Simplest safe guard: don't pull units from a
+  // prison system at all, keeping the garrison on watch.
   const prisonSystems = new Set<string>(
     (f.capturedLeaders ?? []).map((c) => c.systemId).filter(Boolean) as string[],
   );
-  const baseDrainGuard = side === 'Rebel' && G.rebelBaseRevealed ? G.rebelBaseSystemId : undefined;
-  let all = 0, ground = 0;
-  for (const a of (G.catalog.adjacency[sysId] ?? [])) {
-    if ((f.leadersOnBoard[a] ?? []).length > 0) continue; // RAW p.2: leader-blocked
-    if (prisonSystems.has(a)) continue;                   // guards a captured leader
-    if (a === baseDrainGuard) continue;                   // never drain the revealed base
-    const ss = G.map.systems[a];
+  // Never DRAIN the revealed Rebel base: once exposed, the base system's
+  // units are its last line of defense, and pulling them to a neighbor
+  // hands the Empire the base (player report #196: "the rebels moved
+  // troops away from their base as I was closing in"). The defensive
+  // gradient already steers activations to converge ON the base; this
+  // stops a competing activation (a mission target, an Imperial system)
+  // from using the base as a source and emptying it.
+  const baseDrainGuard = side === 'Rebel' && G.rebelBaseRevealed
+    ? G.rebelBaseSystemId : undefined;
+  const sources = adj.filter((sysId) => {
+    if ((f.leadersOnBoard[sysId] ?? []).length > 0) return false;
+    if (prisonSystems.has(sysId)) return false; // guard captured leaders
+    if (sysId === baseDrainGuard) return false; // guard the revealed base
+    const ss = G.map.systems[sysId];
+    return ss && ss.units.some((u) => u.side === side);
+  });
+  for (const fromId of sources) {
+    const ss = G.map.systems[fromId];
     if (!ss) continue;
-    const capitals: { typeId: string }[] = [];
-    const fighters: { typeId: string }[] = [];
-    const groundUnits: { typeId: string }[] = [];
-    const selfMovers: { typeId: string }[] = [];
-    for (const u of ss.units) {
-      if (u.side !== side) continue;
+    const mine = ss.units.filter((u) => u.side === side);
+    // Classify units at this source.
+    const capitalShips: typeof mine = [];
+    const fighters: typeof mine = []; // restriction-icon, need transport
+    const ground: typeof mine = [];   // need transport
+    const selfMovers: typeof mine = []; // X-/Y-Wings: own hyperdrive, no carrier
+    const heldStations: typeof mine = []; // Death Star held back for safety
+    // DON'T DRAG THE DEATH STAR INTO A KNIFE FIGHT (jocke01, #701).
+    //
+    // The station has transport capacity 8, so it classifies as a capital
+    // ship and "bring all capitals" swept it along with EVERY activation
+    // sourced from its system. The Empire never decided to move it — it
+    // came as cargo capacity. Reporter: "it only moved once and that was
+    // to check dantooine ... I had moved a death star killing fleet next
+    // to it the same turn using behind enemy lines, so it was a free
+    // death star kill for me."
+    //
+    // The station is invulnerable EXCEPT to a Death Star Plans attempt,
+    // which needs the Rebel to reach it — so simply not parking it within
+    // reach costs nothing and removes the only way it dies. Measured:
+    // 33.8% of its moves landed it in, or next to, Rebel ships (69 of 204
+    // across 60 games; 62% of games saw it at least once).
+    //
+    // Still moves when the destination is safe, and still goes to the
+    // revealed base, which is the one place it is supposed to be risked.
+    const dsUnsafeHere = DEATH_STAR_CAUTION
+      && !(G.rebelBaseRevealed && targetSystemId === G.rebelBaseSystemId)
+      && ((G.map.systems[targetSystemId]?.units ?? []).some((u) =>
+            u.side !== side && G.catalog.unitTypes[u.typeId]?.theater === 'space')
+        || (G.catalog.adjacency[targetSystemId] ?? []).some((adjId) =>
+            (G.map.systems[adjId]?.units ?? []).some((u) =>
+              u.side !== side && G.catalog.unitTypes[u.typeId]?.theater === 'space')));
+    const isStation = (typeId: string) =>
+      typeId === 'death-star' || typeId === 'death-star-under-construction';
+    for (const u of mine) {
       const t = G.catalog.unitTypes[u.typeId];
       if (!t || t.transport.immobile) continue;
-      if (t.transport.capacity > 0) capitals.push(u);
-      else if (t.theater === 'ground' && t.class !== 'structure') groundUnits.push(u);
+      // Leave the station home. Its capacity leaves with it, so the
+      // fighter/ground fitting below sees the real figure and simply
+      // brings fewer passengers rather than an illegal load.
+      if (dsUnsafeHere && isStation(u.typeId)) { heldStations.push(u); continue; }
+      if (t.transport.capacity > 0) capitalShips.push(u);
+      else if (t.theater === 'ground' && t.class !== 'structure') ground.push(u);
       else if (t.transport.restriction) fighters.push(u);
+      // Previously there was NO final branch, so a space unit with no
+      // capacity and no restriction icon matched nothing and was silently
+      // dropped from the move. The X-Wing and the Y-Wing are the only two
+      // types in the catalog with that shape — both Rebel — so the Rebel
+      // AI activated systems and then left its fighters standing there
+      // (task_a3b11e85; 80% of Rebel activations moved nothing).
       else selfMovers.push(u);
     }
-    const produces = (G.catalog.systems[a]?.resources?.length ?? 0) > 0;
+    // Empire subjugation reserve: keep 1 ground at subjugated systems
+    // so the subjugation marker stays — EXCEPT once the Rebel base is
+    // revealed, when capturing it wins the game outright and holding
+    // subjugations is worthless: commit every ground unit to the assault
+    // (log diagnosis 2026-06-17: the Empire was leaving ~6-10 ground
+    // stranded as subjugation garrisons while it failed to muster an
+    // assault force at the exposed base).
+    //
+    // Widened to Imperial-LOYAL systems that PRODUCE (#625/#632). The reserve
+    // covered subjugated systems only, so the AI would march every unit out of
+    // a loyal system and hand the Rebels an uncontested one: "AI Imperials
+    // moved ALL units away from an imperial loyal system... removing the
+    // ability for Imperials to deploy or generate any units."
+    //
+    // Gated on the system actually producing, for two reasons. It is the
+    // concrete reported harm — a build skips any system with opponent units
+    // present (rr p.3), so a system the Empire vacates and the Rebels walk into
+    // stops producing for it. And it bounds the cost: reserving at EVERY loyal
+    // system would strand ground across the map, which is the failure the
+    // 2026-06-17 diagnosis above found and the post-reveal exemption exists to
+    // prevent.
+    const produces = (G.catalog.systems[fromId]?.resources?.length ?? 0) > 0;
     const worthHolding = ss.subjugated || (produces && ss.loyalty === 'imperial');
-    const reserve = (side === 'Empire' && worthHolding && groundUnits.length > 0
+    const groundReserve = (side === 'Empire' && worthHolding && ground.length > 0
       && !G.rebelBaseRevealed) ? 1 : 0;
-    const groundCandidates = groundUnits.slice(0, Math.max(0, groundUnits.length - reserve));
+    const groundCandidates = ground.slice(0, Math.max(0, ground.length - groundReserve));
+    // Transport-capacity math: capital ships' total capacity must
+    // cover (fighters + ground) we move. Bring all capitals (they're
+    // valuable + provide capacity), then fit as many fighters/ground
+    // as capacity allows.
     let capacity = 0;
-    for (const u of capitals) capacity += G.catalog.unitTypes[u.typeId]?.transport.capacity ?? 0;
-    // Same fill order as the executor: fighters first, then ground.
+    for (const u of capitalShips) {
+      const t = G.catalog.unitTypes[u.typeId];
+      capacity += t?.transport.capacity ?? 0;
+    }
+    // Prefer fighters first (they're space, useful in space combat),
+    // then ground (useful for ground combat at target). Both consume
+    // 1 capacity each per RAW p.9.
+    const fightersToBring: typeof mine = [];
+    const groundToBring: typeof mine = [];
     let used = 0;
-    for (const u of capitals) all += unitStrength(G, u);
-    for (const u of selfMovers) all += unitStrength(G, u);
-    for (const u of fighters) { if (used >= capacity) break; all += unitStrength(G, u); used++; }
+    for (const u of fighters) {
+      if (used >= capacity) break;
+      fightersToBring.push(u); used++;
+    }
     for (const u of groundCandidates) {
       if (used >= capacity) break;
-      const s = unitStrength(G, u);
-      all += s; ground += s; used++;
+      groundToBring.push(u); used++;
+    }
+    // If no capacity-providing ships present, skip non-capital units
+    // entirely (engine would reject). Could still send capital-ship-
+    // only moves (useful for moving SDs alone).
+    const pickIds: string[] = [
+      ...capitalShips.map((u) => u.instanceId),
+      // Self-movers ride along unconditionally: they need no carrier and
+      // consume no capacity, so they never compete with ground/fighters
+      // for transport space.
+      ...(SELF_MOVER_FIX ? selfMovers.map((u) => u.instanceId) : []),
+      ...fightersToBring.map((u) => u.instanceId),
+      ...groundToBring.map((u) => u.instanceId),
+    ];
+    // If holding the station back leaves this source sending NOTHING, send
+    // it after all. The station is often the only capital in its system,
+    // and the alternatives are both worse than the risk: an activation
+    // that moves nothing (the no-troop waste #647/#666 removed), or —
+    // if we reject the action outright — the Empire passing instead.
+    // Rejecting measured 9 passes in 25 on the #639 fixture and broke
+    // #649 too, which is the passivity failure this project has fought
+    // hardest against. Caution about the Death Star does not get to
+    // reintroduce it.
+    if (pickIds.length === 0 && heldStations.length > 0) {
+      pickIds.push(...heldStations.map((u) => u.instanceId));
+    }
+    if (pickIds.length > 0) {
+      orders.push({ fromSystemId: fromId, unitInstanceIds: pickIds });
     }
   }
-  return { all, ground };
+  return orders;
 }
 
 export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
@@ -1716,6 +1824,18 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
     const sys = G.map.systems[sysId];
     if (!sys) continue;
     const def = G.catalog.systems[sysId];
+    // What the executor would ACTUALLY move here, computed once and shared by
+    // every guard below. This is the single source of truth for "what can I
+    // bring": the no-op guard, the strength gates and the executor all read the
+    // same answer, so the AI can no longer pick a move on a promise the
+    // executor then breaks.
+    const plannedHere = plannedMoveOrders(G, side, sysId);
+    const plannedUnits = plannedHere.flatMap((o) => {
+      const ss = G.map.systems[o.fromSystemId];
+      return o.unitInstanceIds
+        .map((id) => ss?.units.find((u) => u.instanceId === id))
+        .filter((u): u is NonNullable<typeof u> => !!u);
+    });
     const hasEnemyUnits = sys.units.some((u) => u.side !== side);
     const hasOwnUnits = sys.units.some((u) => u.side === side);
     if (side === 'Empire') {
@@ -1770,8 +1890,13 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         // Only the take-the-planet bonus is withheld, not the whole target:
         // moving ships somewhere can still be right for a fight or for staging,
         // and those bonuses are scored elsewhere on their own merits.
+        // Ground deliverability comes from the shared planner, so it matches
+        // what the executor will really carry (#696).
         const canDeliverGround = !SUBJUGATION_NEEDS_GROUND
-          || bringableStrength(G, 'Empire', sysId).ground > 0;
+          || plannedUnits.some((u) => {
+            const t = G.catalog.unitTypes[u.typeId];
+            return t?.theater === 'ground' && t.class !== 'structure';
+          });
         if (canDeliverGround) ts += 2 + resourceWeight;
         // GERRY STRATEGY: prioritize subjugating Rebel-loyal systems —
         // strips Rebel production AND likely sits on the hidden base
@@ -1981,14 +2106,20 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
           else if (u.side === 'Rebel') { rebAll += strengthOf(u); if (isGround(u)) rebGround += strengthOf(u); }
         }
         // Reinforcements the executor would ACTUALLY bring, not every unit
-        // parked next door. Counting the latter is what let a lone ship attack
-        // a system it could not beat (#653) — see bringableStrength.
+        // parked next door — that was #653's lone ship. Now taken straight
+        // from the shared planner rather than a second estimate of it, so the
+        // gate prices the exact force that will show up.
         let reinforceSpace = 0;
         if (REAL_REINFORCE_ESTIMATE) {
-          const reinforce = bringableStrength(G, 'Empire', sysId);
-          empAll += reinforce.all;
-          empGround += reinforce.ground;
-          reinforceSpace = reinforce.all - reinforce.ground;
+          let rAll = 0, rGround = 0;
+          for (const u of plannedUnits) {
+            const v = strengthOf(u);
+            rAll += v;
+            if (isGround(u)) rGround += v;
+          }
+          empAll += rAll;
+          empGround += rGround;
+          reinforceSpace = rAll - rGround;
         } else {
           for (const a of (G.catalog.adjacency[sysId] ?? [])) {
             if ((G.empire.leadersOnBoard[a] ?? []).length > 0) continue; // RAW p.2: leader-blocked
@@ -2208,36 +2339,14 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
       // MORE than the expert while moving units 59% LESS — i.e. the Rebel AI
       // was landing leaders alone exactly the way the Empire guard was added to
       // prevent. Same logic, side-generic now.)
-      const actF = side === 'Rebel' ? G.rebel : G.empire;
-      const adj = G.catalog.adjacency[sysId] ?? [];
-      // Transport-aware "can I actually bring units here?" — a ground unit or
-      // restricted fighter only moves if a capital ship at the SAME source has
-      // spare capacity to carry it (RR p.9). The old count treated every mobile
-      // unit as pullable, so the AI would activate expecting a ground stack,
-      // the move executor would find no carrier, and the leader landed alone
-      // (player report #114: "activated leaders without accompanying troops").
-      let movable = 0;
-      for (const a of adj) {
-        if ((actF.leadersOnBoard[a] ?? []).length > 0) continue;
-        const ss2 = G.map.systems[a];
-        if (!ss2) continue;
-        let selfMoving = 0; // capital ships: move themselves + provide capacity
-        let capacity = 0;
-        let needCarry = 0; // ground + restricted fighters: need a carrier
-        for (const u of ss2.units) {
-          if (u.side !== side) continue;
-          const t = G.catalog.unitTypes[u.typeId];
-          if (!t || t.transport.immobile) continue;
-          if (t.transport.capacity > 0) { selfMoving++; capacity += t.transport.capacity; }
-          // X-/Y-Wings move themselves and need no carrier. The old two-way
-          // split counted them as needCarry, so a source holding ONLY Rebel
-          // fighters read as "nothing movable" and the activation was sunk to
-          // -50 — the Rebel AI declined to move its own fighters at all.
-          else if (SELF_MOVER_FIX && isSelfMovingUnit(t)) selfMoving++;
-          else needCarry++;
-        }
-        movable += selfMoving + Math.min(capacity, needCarry);
-      }
+      // "Can I actually bring units here?" — now answered by the SAME planner
+      // the executor runs (plannedMoveOrders), not by a parallel estimate.
+      // This was already better than counting every mobile unit (player report
+      // #114: "activated leaders without accompanying troops"), but it still
+      // knew nothing about the garrison reserve, the prison-system guard, the
+      // revealed-base drain guard, or a Death Star held back — so it kept
+      // drifting from what the executor would really do.
+      const movable = plannedUnits.length;
       const ownHere = sys.units.filter((u) => u.side === side).length;
       const enemyHere = sys.units.some((u) => u.side !== side);
       // An activation is worth something only if it BRINGS units (movable > 0)
@@ -4070,165 +4179,9 @@ export function tryCommandAction(G: GameState, side: Side, action: CommandAction
         //      Without enough capacity from this source's same-move
         //      capital ships, the engine rejects the order — pick
         //      conservatively to stay legal.
-        const orders: phases.MoveOrder[] = [];
-        const f = side === 'Rebel' ? G.rebel : G.empire;
-        const adj = G.catalog.adjacency[action.targetSystemId] ?? [];
-        // Never empty a system that imprisons a captured ENEMY leader — the
-        // moment no friendly unit remains there, the leader is auto-freed
-        // (player report #158: the AI moved every unit off Corellia and gifted
-        // Luke his freedom). Simplest safe guard: don't pull units from a
-        // prison system at all, keeping the garrison on watch.
-        const prisonSystems = new Set<string>(
-          (f.capturedLeaders ?? []).map((c) => c.systemId).filter(Boolean) as string[],
-        );
-        // Never DRAIN the revealed Rebel base: once exposed, the base system's
-        // units are its last line of defense, and pulling them to a neighbor
-        // hands the Empire the base (player report #196: "the rebels moved
-        // troops away from their base as I was closing in"). The defensive
-        // gradient already steers activations to converge ON the base; this
-        // stops a competing activation (a mission target, an Imperial system)
-        // from using the base as a source and emptying it.
-        const baseDrainGuard = side === 'Rebel' && G.rebelBaseRevealed
-          ? G.rebelBaseSystemId : undefined;
-        const sources = adj.filter((sysId) => {
-          if ((f.leadersOnBoard[sysId] ?? []).length > 0) return false;
-          if (prisonSystems.has(sysId)) return false; // guard captured leaders
-          if (sysId === baseDrainGuard) return false; // guard the revealed base
-          const ss = G.map.systems[sysId];
-          return ss && ss.units.some((u) => u.side === side);
-        });
-        for (const fromId of sources) {
-          const ss = G.map.systems[fromId];
-          if (!ss) continue;
-          const mine = ss.units.filter((u) => u.side === side);
-          // Classify units at this source.
-          const capitalShips: typeof mine = [];
-          const fighters: typeof mine = []; // restriction-icon, need transport
-          const ground: typeof mine = [];   // need transport
-          const selfMovers: typeof mine = []; // X-/Y-Wings: own hyperdrive, no carrier
-          const heldStations: typeof mine = []; // Death Star held back for safety
-          // DON'T DRAG THE DEATH STAR INTO A KNIFE FIGHT (jocke01, #701).
-          //
-          // The station has transport capacity 8, so it classifies as a capital
-          // ship and "bring all capitals" swept it along with EVERY activation
-          // sourced from its system. The Empire never decided to move it — it
-          // came as cargo capacity. Reporter: "it only moved once and that was
-          // to check dantooine ... I had moved a death star killing fleet next
-          // to it the same turn using behind enemy lines, so it was a free
-          // death star kill for me."
-          //
-          // The station is invulnerable EXCEPT to a Death Star Plans attempt,
-          // which needs the Rebel to reach it — so simply not parking it within
-          // reach costs nothing and removes the only way it dies. Measured:
-          // 33.8% of its moves landed it in, or next to, Rebel ships (69 of 204
-          // across 60 games; 62% of games saw it at least once).
-          //
-          // Still moves when the destination is safe, and still goes to the
-          // revealed base, which is the one place it is supposed to be risked.
-          const dsUnsafeHere = DEATH_STAR_CAUTION
-            && !(G.rebelBaseRevealed && action.targetSystemId === G.rebelBaseSystemId)
-            && ((G.map.systems[action.targetSystemId]?.units ?? []).some((u) =>
-                  u.side !== side && G.catalog.unitTypes[u.typeId]?.theater === 'space')
-              || (G.catalog.adjacency[action.targetSystemId] ?? []).some((adjId) =>
-                  (G.map.systems[adjId]?.units ?? []).some((u) =>
-                    u.side !== side && G.catalog.unitTypes[u.typeId]?.theater === 'space')));
-          const isStation = (typeId: string) =>
-            typeId === 'death-star' || typeId === 'death-star-under-construction';
-          for (const u of mine) {
-            const t = G.catalog.unitTypes[u.typeId];
-            if (!t || t.transport.immobile) continue;
-            // Leave the station home. Its capacity leaves with it, so the
-            // fighter/ground fitting below sees the real figure and simply
-            // brings fewer passengers rather than an illegal load.
-            if (dsUnsafeHere && isStation(u.typeId)) { heldStations.push(u); continue; }
-            if (t.transport.capacity > 0) capitalShips.push(u);
-            else if (t.theater === 'ground' && t.class !== 'structure') ground.push(u);
-            else if (t.transport.restriction) fighters.push(u);
-            // Previously there was NO final branch, so a space unit with no
-            // capacity and no restriction icon matched nothing and was silently
-            // dropped from the move. The X-Wing and the Y-Wing are the only two
-            // types in the catalog with that shape — both Rebel — so the Rebel
-            // AI activated systems and then left its fighters standing there
-            // (task_a3b11e85; 80% of Rebel activations moved nothing).
-            else selfMovers.push(u);
-          }
-          // Empire subjugation reserve: keep 1 ground at subjugated systems
-          // so the subjugation marker stays — EXCEPT once the Rebel base is
-          // revealed, when capturing it wins the game outright and holding
-          // subjugations is worthless: commit every ground unit to the assault
-          // (log diagnosis 2026-06-17: the Empire was leaving ~6-10 ground
-          // stranded as subjugation garrisons while it failed to muster an
-          // assault force at the exposed base).
-          //
-          // Widened to Imperial-LOYAL systems that PRODUCE (#625/#632). The reserve
-          // covered subjugated systems only, so the AI would march every unit out of
-          // a loyal system and hand the Rebels an uncontested one: "AI Imperials
-          // moved ALL units away from an imperial loyal system... removing the
-          // ability for Imperials to deploy or generate any units."
-          //
-          // Gated on the system actually producing, for two reasons. It is the
-          // concrete reported harm — a build skips any system with opponent units
-          // present (rr p.3), so a system the Empire vacates and the Rebels walk into
-          // stops producing for it. And it bounds the cost: reserving at EVERY loyal
-          // system would strand ground across the map, which is the failure the
-          // 2026-06-17 diagnosis above found and the post-reveal exemption exists to
-          // prevent.
-          const produces = (G.catalog.systems[fromId]?.resources?.length ?? 0) > 0;
-          const worthHolding = ss.subjugated || (produces && ss.loyalty === 'imperial');
-          const groundReserve = (side === 'Empire' && worthHolding && ground.length > 0
-            && !G.rebelBaseRevealed) ? 1 : 0;
-          const groundCandidates = ground.slice(0, Math.max(0, ground.length - groundReserve));
-          // Transport-capacity math: capital ships' total capacity must
-          // cover (fighters + ground) we move. Bring all capitals (they're
-          // valuable + provide capacity), then fit as many fighters/ground
-          // as capacity allows.
-          let capacity = 0;
-          for (const u of capitalShips) {
-            const t = G.catalog.unitTypes[u.typeId];
-            capacity += t?.transport.capacity ?? 0;
-          }
-          // Prefer fighters first (they're space, useful in space combat),
-          // then ground (useful for ground combat at target). Both consume
-          // 1 capacity each per RAW p.9.
-          const fightersToBring: typeof mine = [];
-          const groundToBring: typeof mine = [];
-          let used = 0;
-          for (const u of fighters) {
-            if (used >= capacity) break;
-            fightersToBring.push(u); used++;
-          }
-          for (const u of groundCandidates) {
-            if (used >= capacity) break;
-            groundToBring.push(u); used++;
-          }
-          // If no capacity-providing ships present, skip non-capital units
-          // entirely (engine would reject). Could still send capital-ship-
-          // only moves (useful for moving SDs alone).
-          const pickIds: string[] = [
-            ...capitalShips.map((u) => u.instanceId),
-            // Self-movers ride along unconditionally: they need no carrier and
-            // consume no capacity, so they never compete with ground/fighters
-            // for transport space.
-            ...(SELF_MOVER_FIX ? selfMovers.map((u) => u.instanceId) : []),
-            ...fightersToBring.map((u) => u.instanceId),
-            ...groundToBring.map((u) => u.instanceId),
-          ];
-          // If holding the station back leaves this source sending NOTHING, send
-          // it after all. The station is often the only capital in its system,
-          // and the alternatives are both worse than the risk: an activation
-          // that moves nothing (the no-troop waste #647/#666 removed), or —
-          // if we reject the action outright — the Empire passing instead.
-          // Rejecting measured 9 passes in 25 on the #639 fixture and broke
-          // #649 too, which is the passivity failure this project has fought
-          // hardest against. Caution about the Death Star does not get to
-          // reintroduce it.
-          if (pickIds.length === 0 && heldStations.length > 0) {
-            pickIds.push(...heldStations.map((u) => u.instanceId));
-          }
-          if (pickIds.length > 0) {
-            orders.push({ fromSystemId: fromId, unitInstanceIds: pickIds });
-          }
-        }
+        // Build the orders the same way the scorer priced them — one shared
+        // function, so the move that happens is the move that was scored.
+        const orders = plannedMoveOrders(G, side, action.targetSystemId);
         // Don't waste an activation on a lone leader that moves NO units and
         // starts NO combat — it just sits there (player reports #92/#93:
         // "activated Palpatine but moved no units"). If there's an enemy at the
