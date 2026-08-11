@@ -158,10 +158,13 @@ function rand(): number { return _rng ? _rng() : Math.random(); }
 // `passRescues` counts pass-margin overrides; `keepPlaying` counts the
 // lost-position fallback (#630). Both are narrow guards, so a high firing rate
 // is itself a signal that something is wrong — watch them in benches.
-export const mctsStats = { decisions: 0, pulls: 0, ms: 0, disagreements: 0, passRescues: 0, keepPlaying: 0, revealRescues: 0 };
+// `noiseRescues` counts the subset the measured noise floor caught that the
+// fixed constants would have let pass through.
+export const mctsStats = { decisions: 0, pulls: 0, ms: 0, disagreements: 0, passRescues: 0, keepPlaying: 0, revealRescues: 0, noiseRescues: 0 };
 export function resetMctsStats(): void {
   mctsStats.decisions = 0; mctsStats.pulls = 0; mctsStats.ms = 0; mctsStats.disagreements = 0;
   mctsStats.passRescues = 0; mctsStats.keepPlaying = 0; mctsStats.revealRescues = 0;
+  mctsStats.noiseRescues = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -489,7 +492,10 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
 
   // UCB1 across root actions; each pull rolls one world (cycled round-robin so
   // every action's mean averages over the same belief distribution).
-  const arms = candidates.map((a) => ({ a, n: 0, sum: 0, dead: false }));
+  // `sumsq` exists only so an arm can report its own measurement error to the
+  // pass guard below — a mean with no spread attached cannot say whether it
+  // beat the field or beat the dice.
+  const arms = candidates.map((a) => ({ a, n: 0, sum: 0, sumsq: 0, dead: false }));
   const dbg = envDebug();
   const dbgOutcomes = new Map<(typeof arms)[number], { win: number; loss: number; cut: number; endTM: number }>();
   const totalBudget = Math.max(arms.length, conf.budget);
@@ -523,8 +529,10 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
       searching = false;
     }
     if (!ok) { arm.dead = true; continue; }
+    const lv = leafValue(c, side, refWeight);
     arm.n++;
-    arm.sum += leafValue(c, side, refWeight);
+    arm.sum += lv;
+    arm.sumsq += lv * lv;
     pulls++;
     if (dbg) {
       const d = (dbgOutcomes.get(arm) ?? { win: 0, loss: 0, cut: 0, endTM: 0 });
@@ -566,6 +574,9 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
   // by beating the best actionable arm by a real margin. When the
   // alternatives are genuinely bad their means sit clearly lower and pass
   // still goes through.
+  // Recorded for the trace so a future "why did it pass?" report can be read
+  // off the log instead of re-derived by replaying the board.
+  let passGuard: { gap: number; se: number; eff: number } | null = null;
   if (chosen.kind === 'pass' && alive.length > 1) {
     const acts = alive.filter((x) => x.a.kind !== 'pass');
     const bestAct = acts[0];
@@ -610,13 +621,52 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
       // through the margin path below. SWR_MCTS_REVEAL_SOLE=0 to A/B it off.
       const soleReveal = acts.length === 1 && bestAct.a.kind === 'reveal'
         && envInt('SWR_MCTS_REVEAL_SOLE', 1) === 1;
-      const effMargin = soleReveal
-        ? Infinity
-        : bestAct.a.kind === 'reveal' ? Math.max(margin, revealMargin) : margin;
+      // MEASURED NOISE (#705 and the wider pass-with-plays cluster: #706 #702
+      // #695 #629 #617 #600 #581 #580). Both margins above are CONSTANTS
+      // standing in for how big the search's sampling error is, and #649's note
+      // recorded the hazard in that: "the guard was calibrated tighter than the
+      // measurement it guards." Nothing in the code could check that, because
+      // an arm carried a mean with no spread attached.
+      //
+      // Now it can. `stderr` is the standard error of an arm's own mean and
+      // `noiseSE` the SE of the pass-vs-best-action difference, recorded on
+      // every guarded decision via the trace's `passGuard`. Read them before
+      // touching either constant.
+      //
+      // First reading, on #705's board over 20 seeds: SE ~0.03-0.04 against a
+      // pass-vs-action gap of 0.02-0.09. So the 0.05 activation margin is NOT
+      // swamped by noise the way the reveal margin was, and the 30% of seeds
+      // that pass there are passing on a ~2-SE preference — the search really
+      // does rate pass above the alternatives on that board. That makes the
+      // remaining reports a question about the LEAF EVALUATION (does it value
+      // a forfeited round correctly?) rather than about this guard, which is
+      // why no threshold here was changed.
+      //
+      // SWR_MCTS_PASS_Z scales the SE into an additional floor under the
+      // margins. Default 0 = off, constants unchanged: it exists so the
+      // hypothesis can be A/B'd without a rebuild, NOT as tuning already
+      // believed in.
+      const stderr = (x: { n: number; sum: number; sumsq: number }): number => {
+        if (x.n < 1) return 0;
+        const m = x.sum / x.n;
+        // n<2 has no sample variance; fall back to the Bernoulli bound, an
+        // over-estimate for the horizon-cut values that cluster tightly.
+        if (x.n < 2) return Math.sqrt(Math.max(0, m * (1 - m)));
+        const v = Math.max(0, (x.sumsq - x.n * m * m) / (x.n - 1));
+        return Math.sqrt(v / x.n);
+      };
+      // SE of the difference of two means. Common random numbers pair the arms'
+      // rollouts, so treating them as independent OVER-states this slightly.
+      const noiseSE = Math.hypot(stderr(alive[0]), stderr(bestAct));
+      const z = envInt('SWR_MCTS_PASS_Z', 0) / 100;
+      const baseMargin = bestAct.a.kind === 'reveal' ? Math.max(margin, revealMargin) : margin;
+      const effMargin = soleReveal ? Infinity : Math.max(baseMargin, z * noiseSE);
+      passGuard = { gap: passMean - actMean, se: noiseSE, eff: effMargin };
       if (passMean - actMean < effMargin) {
         chosen = bestAct.a;
         mctsStats.passRescues++;
         if (passMean - actMean >= margin) mctsStats.revealRescues++;
+        if (passMean - actMean >= baseMargin) mctsStats.noiseRescues++;
       } else if (
         envInt('SWR_MCTS_KEEP_PLAYING', 1) === 1
         && acts.every((x) => x.sum / x.n <= envInt('SWR_MCTS_LOST_FLOOR', 1) / 100)
@@ -654,6 +704,7 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
   // playtest could only be attributed by the ABSENCE of traces, which is
   // exactly the forensics the trace exists to avoid.
   const r2 = (x: number) => Math.round(x * 100) / 100;
+  const r3 = (x: number) => (Number.isFinite(x) ? Math.round(x * 1000) / 1000 : null);
   const brief = (a: (typeof candidates)[number]): Record<string, unknown> => {
     const arm = arms.find((x) => x.a === a);
     const mean = arm && arm.n > 0 ? r2(arm.sum / arm.n) : null;
@@ -669,7 +720,10 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
       policy: 'mcts',
       chose: brief(chosen),
       alts: alive.filter((x) => x.a !== chosen).slice(0, 5).map((x) => brief(x.a)),
-      search: { pulls, worlds: worlds.length, ms: Date.now() - t0, heuristicRank: candidates.indexOf(chosen) },
+      search: {
+        pulls, worlds: worlds.length, ms: Date.now() - t0, heuristicRank: candidates.indexOf(chosen),
+        ...(passGuard ? { passGuard: { gap: r3(passGuard.gap), se: r3(passGuard.se), eff: r3(passGuard.eff) } } : {}),
+      },
     },
   };
 }
