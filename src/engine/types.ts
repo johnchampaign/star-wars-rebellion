@@ -221,7 +221,10 @@ export type Phase = 'Setup' | 'Assignment' | 'Command' | 'Refresh' | 'GameOver';
 // (Raid Outposts / Rebel Cell), which can be drawn in different contexts:
 //   'command'     — drawn during a Command-phase action (resume advanceCommandTurn)
 //   'refresh-draw'— drawn during the Refresh draw step (resume the rest of Refresh)
-export type ImmediateResume = 'command' | 'refresh-draw';
+// 'command-start' is the Assignment->Command transition, BEFORE the Rebel's
+// first turn: resuming there must NOT advance the turn (#710). 'command' is
+// mid-phase, after an action, where advancing is exactly right.
+export type ImmediateResume = 'command' | 'command-start' | 'refresh-draw';
 
 export type ChoiceRequest =
   | { kind: 'AssignLeaders'; missionId: string; min: 1; max: 1 | 2 }

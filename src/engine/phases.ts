@@ -926,7 +926,12 @@ function enterCommandPhase(G: GameState): void {
   // flushes at the top, then offers Under the Radar at the turn switch), and if
   // this posts, its resolver re-enters advanceCommandTurn, which still makes the
   // Under the Radar offer.
-  if (flushImmediateObjectiveActivations(G, 'command')) return;
+  // 'command-start', NOT 'command': resuming from here must not advance the
+  // turn. RR p.6 gives the REBEL the first Command turn, but the resume path
+  // used to re-enter advanceCommandTurn, which flips the current player — so
+  // a Rebel who drew an Immediate objective (Rebel Planning during Assignment)
+  // placed its marker and then watched the Empire take the first turn (#710).
+  if (flushImmediateObjectiveActivations(G, 'command-start')) return;
   // RoE Under the Radar: offer to return a held probe at the start of the
   // Rebel's first Command turn.
   maybeOfferUnderTheRadarReturn(G);
@@ -5436,6 +5441,13 @@ function resumeAfterImmediateObjective(G: GameState, resumeKind: import('./types
   if (G.isGameOver) return;
   if (resumeKind === 'refresh-draw') {
     continueRefreshAfterObjectiveDraw(G, logStart);
+  } else if (resumeKind === 'command-start') {
+    // Phase-start flush (#710): chain any further Immediate objective, then do
+    // exactly what enterCommandPhase would have done next. Crucially it does
+    // NOT advance the turn — nobody has taken one yet, and the Rebel is owed
+    // the first (RR p.6).
+    if (flushImmediateObjectiveActivations(G, 'command-start')) return;
+    maybeOfferUnderTheRadarReturn(G);
   } else {
     // 'command' — re-enter advanceCommandTurn, which re-flushes any further
     // un-activated Immediate objective, then advances the turn.
