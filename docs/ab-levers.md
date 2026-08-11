@@ -7,10 +7,36 @@ no way to answer "what have we already tried?" without grepping.
 
 This is that record. **Keep it current when you add or re-measure a lever.**
 
+> ## ⚠ Every number in this file measures the HEURISTIC AI, not the one players face
+>
+> `MCTS_ENABLED` returns **true in a browser** and **false in node**, and
+> `PlayTab` registers an MCTS worker policy for the Empire. So the shipped game
+> decides the Empire's Command phase with MCTS, while `tournament.mjs` decides
+> it with the heuristic unless you pass `--empire-policy mcts`.
+>
+> MCTS still *consumes* the heuristic — `searchMctsCommand` searches over
+> `bestCommandAction(...).slice(0, topK)` — so a lever that changes which
+> candidates exist, or their ranking, does carry over. But the final choice is
+> the search's, and a lever measured as "neutral" here can still be invisible or
+> decisive in a real game.
+>
+> **This is not a switch anyone forgot to flip.** MCTS costs ~3 s per decision
+> in node — roughly 3 minutes a game, ~100× the heuristic — so a 1200-game arm
+> is days, not minutes. It is only practical in the browser because it runs in a
+> worker against a human's thinking time. Re-basing a lever onto MCTS therefore
+> means a deliberate plan: a reduced rollout budget, tens of games rather than
+> thousands, and error bars sized accordingly.
+>
+> Note also that `SWR_MCTS=1` **alone changes nothing in the harness** — it only
+> sets `MCTS_ENABLED`. Decisions route through MCTS only when a policy is
+> registered, which in the tournament means `--empire-policy mcts`. A run that
+> sets the env var and nothing else produces byte-identical results and looks
+> like a valid MCTS measurement. It is not.
+
 ## Why results expire
 
 A self-play A/B measures a change's value *against the opponent we happen to
-have*. That makes results conditional, and two kinds of conditionality have
+have*. That makes results conditional, and three kinds of conditionality have
 already bitten us:
 
 1. **Opponent capability.** If the opponent never mounts the attack a change
@@ -22,9 +48,16 @@ already bitten us:
 2. **Game mode.** `tournament.mjs` ran the **base game** by default until
    2026-08-06. Any expansion-only lever measured before then measured nothing.
    Always pass `--expansion` for RoE content.
+3. **Which AI is deciding.** See the banner above: every row here is the
+   heuristic Empire; the shipped game uses MCTS. Found 2026-08-11, so no row
+   below has been validated against the AI players actually meet.
 
 So a rejection is not permanent. When the AI gets materially stronger, the
 contingent rows below are worth re-running.
+
+All three were found the same way — by checking an assumption about the harness
+rather than the code under test. When a result surprises you, suspect the
+measurement before the change.
 
 ## Harness
 
@@ -36,7 +69,7 @@ node scripts/tournament.mjs --games 1200 --seed 1 --expansion
 |---|---|
 | `--expansion` / `--roe` | Rise of the Empire content. **Without it you are testing the base game.** |
 | `--rebel-policy mcts\|eval` | Give the Rebel a stronger Command brain than the heuristic. |
-| `--empire-policy mcts\|eval` | Same for the Empire. |
+| `--empire-policy mcts\|eval` | Same for the Empire. **Use `mcts` to measure what players face** — but see the banner: ~3 s/decision, so size the run accordingly. |
 | `--games N --seed S` | Sample size and base seed (paired across arms). |
 
 Rough costs: heuristic-vs-heuristic ≈ 20 games/sec; `--rebel-policy eval` ≈
