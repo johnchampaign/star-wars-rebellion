@@ -54,7 +54,22 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   }
 
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const title = description.split('\n')[0].slice(0, 80) || 'Problem report';
+
+  // Every in-game report is filed with the repo owner's token, so GitHub shows
+  // johnchampaign as the author of all of them. The from-game label says
+  // otherwise, but labels don't render in GitHub's notification emails — which
+  // is where these actually get read. #714 was mistaken for a self-filed
+  // duplicate for exactly that reason. Put the provenance in the title, the one
+  // field that survives every surface (email, gh issue list, web).
+  //
+  // The short reporter hash makes re-files by the same player obvious at a
+  // glance: #676 and #714 were the same person escalating a wrong ruling, and
+  // nothing in the queue showed it. Six chars is plenty to spot a repeat and
+  // still meaningless to anyone else — and it's a pseudonymous ID that already
+  // ships in the issue body, so this discloses nothing new.
+  const reporterId = (body.reporterId || '').replace(/[^a-zA-Z0-9-]/g, '');
+  const titleTag = reporterId ? `[player ${reporterId.slice(0, 6)}]` : '[player]';
+  const title = `${titleTag} ${description.split('\n')[0].slice(0, 80) || 'Problem report'}`;
 
   // Commit screenshot first (if present) so the issue body can embed it.
   let screenshotRawUrl: string | null = null;
@@ -82,9 +97,7 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
   // ID so /api/my-responses can find this reporter's issues later. Don't
   // strip / sanitize — GitHub preserves HTML comments in issue bodies and
   // they're invisible in the rendered view.
-  const reporterTag = body.reporterId
-    ? `<!-- reporter:${body.reporterId.replace(/[^a-zA-Z0-9-]/g, '')} -->`
-    : '';
+  const reporterTag = reporterId ? `<!-- reporter:${reporterId} -->` : '';
   const sideLine = body.humanSide
     ? `\n\n**Reporter played: ${body.humanSide}** (AI: ${body.aiSide || (body.humanSide === 'Rebel' ? 'Empire' : 'Rebel')})`
     : '';

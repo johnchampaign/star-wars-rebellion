@@ -116,9 +116,17 @@ function devPlugin() {
           }
 
           // Build a GitHub-friendly markdown issue body.
-          const title = description.split('\n')[0].slice(0, 80) || 'Problem report';
+          // Keep in step with functions/api/report.ts — the '[player]' title tag
+          // is what marks these as player-filed rather than hand-filed, since
+          // every one of them lands under the repo owner's account. The dev path
+          // previously dropped reporterId entirely, so dev-filed reports carried
+          // no reporter tag and /api/my-responses could never match them back.
+          const reporterId = (body.reporterId || '').replace(/[^a-zA-Z0-9-]/g, '');
+          const reporterTag = reporterId ? `<!-- reporter:${reporterId} -->\n` : '';
+          const titleTag = reporterId ? `[player ${reporterId.slice(0, 6)}]` : '[player]';
+          const title = `${titleTag} ${description.split('\n')[0].slice(0, 80) || 'Problem report'}`;
           const sideLine = body.humanSide ? `\n\n**Reporter played: ${body.humanSide}** (AI: ${body.aiSide || (body.humanSide === 'Rebel' ? 'Empire' : 'Rebel')})` : '';
-          const sections: string[] = [`**What happened**\n\n${description}${sideLine}`];
+          const sections: string[] = [`${reporterTag}**What happened**\n\n${description}${sideLine}`];
           sections.push(`**Build / context**\n\n- humanSide: \`${body.humanSide || 'unknown'}\` (AI: \`${body.aiSide || 'unknown'}\`)\n- userAgent: \`${body.userAgent || ''}\`\n- canEncodeState: \`${body.canEncodeState}\`\n- timestamp: \`${body.timestamp || ''}\``);
           if (body.turnLog?.length) {
             const tail = body.turnLog.slice(-30).map((e: any) => `t${e.turn} ${e.side || ''} ${e.kind} ${JSON.stringify(e.payload || '')}`.slice(0, 220)).join('\n');

@@ -84,7 +84,12 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
       }
       out.push({
         number: issue.number,
-        title: issue.title,
+        // Strip the '[player abc123]' provenance tag that /api/report puts on
+        // every in-game report. It exists so the maintainer can tell player
+        // reports from hand-filed ones in a notification email; showing it back
+        // to the player in their own response modal would just be noise — they
+        // know they filed it, and the hash means nothing to them.
+        title: issue.title.replace(/^\[player(?:\s+[a-zA-Z0-9-]+)?\]\s*/, ''),
         htmlUrl: issue.html_url,
         closedAt: issue.closed_at,
         response,
