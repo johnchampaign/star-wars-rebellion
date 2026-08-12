@@ -116,16 +116,39 @@ export function objectiveConditionMet(G: GameState, objectiveId: string): boolea
 
     case 'regional-support-1': {
       // All populous systems in at least 1 region have Rebel loyalty.
+      //
+      // RR p.10: "Each system that has at least one resource icon and a
+      // loyalty space is a populous system." In our data those two conditions
+      // coincide exactly with NOT being remote — every non-remote system has
+      // resources and every remote system has none — so resource count is the
+      // direct expression of the rule.
+      //
+      // CORUSCANT COUNTS (#676). It used to be excluded here, on the reasoning
+      // that it has no loyalty space and therefore is not populous. That was
+      // wrong on the facts: it carries a resource icon (ground triangle), and
+      // RR states "Coruscant is always LOYAL to the Imperial player and cannot
+      // gain or lose loyalty" — a system that IS loyal has loyalty. Its marker
+      // is pre-printed on the board rather than placed, which is why our data
+      // has no loyaltyMarkerPos for it; that is a rendering detail, not an
+      // absence of the space. The designer confirmed the same on BGG. Every
+      // other check in this file already treats Coruscant as Imperial-loyal.
+      //
+      // Consequence, and it is intended: region 7 (Alderaan, Cato Neimoidia,
+      // Corellia, Coruscant) can never satisfy this objective, because
+      // Coruscant can never be Rebel. The card says "1 region" — the Rebel
+      // scores it somewhere else. The old exclusion existed to avoid making a
+      // region unscoreable, but that outcome is the rule, not a bug in it.
       const byRegion = new Map<number, SystemId[]>();
       for (const s of Object.values(G.catalog.systems)) {
-        if (s.isRemote || s.isCoruscant) continue;
+        if ((s.resources?.length ?? 0) === 0) continue; // remote — not populous
         const list = byRegion.get(s.region) ?? [];
         list.push(s.id);
         byRegion.set(s.region, list);
       }
       for (const ids of byRegion.values()) {
         if (ids.length === 0) continue;
-        const allRebel = ids.every((id) => G.map.systems[id]?.loyalty === 'rebel');
+        const allRebel = ids.every((id) => !G.catalog.systems[id]?.isCoruscant
+          && G.map.systems[id]?.loyalty === 'rebel');
         if (allRebel) return true;
       }
       return false;
