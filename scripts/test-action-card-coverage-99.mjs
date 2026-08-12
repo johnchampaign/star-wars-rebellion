@@ -43,7 +43,7 @@ const WIRED = {
   'temporary-alliance': 'assignment', 'trust-in-the-force': 'assignment',
   'boba-fett-where': 'assignment', 'brilliant-administrator': 'assignment',
   'catch-them-by-surprise': 'assignment', 'local-rumors': 'assignment',
-  'lord-vader-s-orders': 'assignment', 'proceeding-as-planned': 'assignment',
+  'proceeding-as-planned': 'assignment',
   'public-support': 'assignment', 'scouting-mission': 'assignment',
   // ---- StartOfCombat (applyStartOfCombatActionCardEffect) ----
   'according-to-my-design': 'startofcombat', 'fully-operational': 'startofcombat',
@@ -55,6 +55,7 @@ const WIRED = {
   // ---- Immediate (switch, droid ring, or passive) ----
   'early-promotion': 'immediate', 'secret-facility': 'immediate', 'sweep-the-area': 'immediate',
   'rebel-extremist': 'immediate', 'under-the-radar': 'immediate',
+  'lord-vader-s-orders': 'immediate',
   'resourceful-astromech': 'droid-ring', 'human-cyborg-relations': 'droid-ring',
   'he-means-well': 'droid-ring', 'the-milleninium-falcon': 'passive-trigger',
   // ---- Special (typed *Offer trigger) ----

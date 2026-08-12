@@ -1251,6 +1251,11 @@ export type ChoiceRequest =
       // objective deck (Stolen Plans / Lord Vader's Orders). Prepare For Battle
       // reorders a base tactic deck instead (#329).
       deckKind?: 'objective' | 'space-tactic' | 'ground-tactic';
+      // Lord Vader's Orders is an Immediate card, so it can post this choice
+      // with no pendingMission behind it. These tags tell the resolver which
+      // paused flow to resume instead of mission-resume (#713).
+      autoFlush?: boolean;
+      viaRecruit?: boolean;
     }
   | {
       // Prepare For Battle (Rebel/RoE, base combat): "look at the top 4 cards of

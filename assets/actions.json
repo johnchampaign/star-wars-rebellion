@@ -19,7 +19,8 @@
       "Phase 5d-handlers Wave H: wired 1 RoE action card (Under the Radar) + the new play-immediate-action-card affordance (requestImmediateActionCardPlay / PlayImmediateActionCard / etc.). Under the Radar's MVP peeks the top 4 probes for the Rebel; the multi-turn \"keep one facedown and return later\" mechanic is a follow-up.",
       "Phase 5d-handlers Wave I: wired 2 RoE Empire Immediate cards (Secret Facility, Sweep the Area). Adds ArmedActionCard state + ArmCardProbePick choice. Cards auto-reveal at the start of an Empire Command turn (Secret Facility) or at end of Command phase (Sweep the Area).",
       "Phase 5d-handlers Wave J: wired 2 RoE starting action cards (Early Promotion, Rebel Extremist). All 14 RoE action cards are now wired (with sub-choice TODOs noted on these two and on Under the Radar's facedown-and-return).",
-      "Phase 5d (data-only): appended 0 Rise of the Empire action cards tagged set: \"rote\". effectKey is empty pending handler bindings."
+      "Phase 5d (data-only): appended 0 Rise of the Empire action cards tagged set: \"rote\". effectKey is empty pending handler bindings.",
+  "#713: Lord Vader's Orders restored to its printed timing, Immediate. The Wave-D reclassification to Assignment was an implementation shortcut taken before the Immediate path existed; with Wave H/I's recruit-time + flush dispatch in place it resolves on gain per RR \"Immediate\"."
     ]
   },
   "actions": [
@@ -528,7 +529,7 @@
       "name": "Lord Vader's Orders",
       "side": "Empire",
       "isStarting": false,
-      "timing": "Assignment",
+      "timing": "Immediate",
       "leaderRequirement": [
         "krennic"
       ],

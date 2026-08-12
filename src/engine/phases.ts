@@ -2241,7 +2241,12 @@ export function resolveStolenPlansPick(G: GameState, cardId: string): { ok: bool
       deck.unshift(choice.orderedTop[i]);
     }
     log(G, { kind: 'stolen-plans-reorder', side: choice.side, payload: { order: [...choice.orderedTop], deck: choice.deckKind ?? 'objective' } });
+    const { autoFlush, viaRecruit } = choice;
     G.pendingChoice = undefined;
+    // Lord Vader's Orders posts this choice with no mission behind it, so
+    // mission-resume is a no-op and the paused flow would strand (#713).
+    if (viaRecruit) { continueRecruitFlow(G); return { ok: true }; }
+    if (autoFlush) { if (!G.isGameOver) advanceCommandTurn(G); return { ok: true }; }
     resumeMissionAfterChoice(G);
   }
   return { ok: true };
@@ -7054,6 +7059,10 @@ function applyImmediateActionCardEffect(G: GameState, side: Side, cardId: string
       }});
       break;
     }
+    case 'lord-vader-s-orders': {
+      applyLordVadersOrders(G, cardId);
+      break;
+    }
     case 'secret-facility':
     case 'sweep-the-area': {
       // RoE: "Place 1 of your probe cards facedown under this card." The
@@ -7545,7 +7554,7 @@ function legalSystemsForAssignmentCard(G: GameState, side: Side, cardId: string)
     case 'our-most-desperate-hour':  return null; // attached to a mission card in hand
     case 'start-the-evacuation':     return null; // system chosen via StartEvacuationPick; Rieekan placed there at resolve (#648)
     // RoE Wave-D — no system pick:
-    case 'lord-vader-s-orders':      return null; // peeks Rebel objective deck
+    // (lord-vader-s-orders moved to the Immediate path in #713)
     case 'false-orders':             return null; // operates on Empire's assigned missions
     default: return null;
   }
@@ -8087,42 +8096,43 @@ function applyAssignmentActionCardEffect(
       }});
       break;
     }
-    case 'lord-vader-s-orders': {
-      // RAW: "Look at the top 3 objective cards and replace them on top of
-      // the deck in any order." Reuses the existing StolenPlansReorder
-      // choice + modal — same UX as the base Stolen Plans mission, with
-      // 3 cards instead of 4. The choice's missionId field carries the
-      // card id (informational); the resolver doesn't run mission-resume
-      // when there's no pendingMission.
-      const deck = G.rebel.objectiveDeck;
-      if (!deck || deck.length === 0) break;
-      const n = Math.min(3, deck.length);
-      const drawn = deck.splice(0, n);
-      if (drawn.length === 1) {
-        // No reordering possible; just put back.
-        deck.unshift(drawn[0]);
-        log(G, { kind: 'lord-vader-s-orders-peek', side: 'Empire', payload: {
-          objectiveIds: [...drawn],
-        }});
-        break;
-      }
-      G.pendingChoice = {
-        kind: 'StolenPlansReorder',
-        side: 'Empire',
-        missionId: cardId,
-        remaining: drawn,
-        orderedTop: [],
-      };
-      log(G, { kind: 'choice-request', side: 'Empire', payload: {
-        kind: 'StolenPlansReorder', count: drawn.length, via: 'lord-vader-s-orders',
-      }});
-      break;
-    }
     default: {
       log(G, { kind: 'action-card-unknown', side, payload: { cardId } });
       break;
     }
   }
+}
+
+/** Lord Vader's Orders (RoE, Empire, Immediate — #713).
+ *  RAW: "Look at the top 3 objective cards and replace them on top of the deck
+ *  in any order." Reuses the existing StolenPlansReorder choice + modal — same
+ *  UX as the base Stolen Plans mission, with 3 cards instead of 4. The choice's
+ *  missionId field carries the card id (informational); there is no
+ *  pendingMission, so the resolver resumes via the autoFlush / viaRecruit tags
+ *  instead of mission-resume. */
+function applyLordVadersOrders(G: GameState, cardId: string): void {
+  const deck = G.rebel.objectiveDeck;
+  if (!deck || deck.length === 0) return;
+  const n = Math.min(3, deck.length);
+  const drawn = deck.splice(0, n);
+  if (drawn.length === 1) {
+    // No reordering possible; just put back.
+    deck.unshift(drawn[0]);
+    log(G, { kind: 'lord-vader-s-orders-peek', side: 'Empire', payload: {
+      objectiveIds: [...drawn],
+    }});
+    return;
+  }
+  G.pendingChoice = {
+    kind: 'StolenPlansReorder',
+    side: 'Empire',
+    missionId: cardId,
+    remaining: drawn,
+    orderedTop: [],
+  };
+  log(G, { kind: 'choice-request', side: 'Empire', payload: {
+    kind: 'StolenPlansReorder', count: drawn.length, via: 'lord-vader-s-orders',
+  }});
 }
 
 /** Default unit pick for a resource icon (used by Temporary Alliance — simplified). */
