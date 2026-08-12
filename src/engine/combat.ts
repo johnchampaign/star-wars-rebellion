@@ -1381,10 +1381,23 @@ export function resolveCinematicReroll(
   for (const i of uniq) {
     if (i < 0 || i >= pa.dice.length) return { ok: false, reason: `bad-index:${i}` };
   }
-  for (const i of uniq) pa.dice[i] = rollDie(G.rng, pa.dice[i].color);
+  // Record what each rerolled die WAS and what it BECAME. The count alone made
+  // rerolls unauditable — a reroll that lands the same faces is indistinguishable
+  // from one that never happened, which is exactly what player report #712
+  // ("entirely unclear if rerolls are working") ran into.
+  const changes = uniq.map((i) => ({
+    index: i, color: pa.dice[i].color, from: pa.dice[i].face, to: '' as string,
+  }));
+  for (const ch of changes) {
+    pa.dice[ch.index] = rollDie(G.rng, pa.dice[ch.index].color);
+    ch.to = pa.dice[ch.index].face;
+  }
   if (uniq.length > 0) {
     log(G, { kind: 'cinematic-reroll', side: pa.side, payload: {
       theater: pa.theater, round: c.round, rerolled: uniq.length, allowance: pc.allowance,
+      before: changes.map((ch) => ch.from),
+      after: changes.map((ch) => ch.to),
+      changes,
     }});
   }
   pa.cinematicRerollResolved = true;
@@ -1568,19 +1581,31 @@ export function resolveCombatAttackerTactics(
       return { ok: false, reason: 'bad-concentrate-fire-card' };
     }
     let rerolls = 0;
+    // Every reroll here starts from a blank, so only the RESULT varies — but a
+    // reroll that comes up blank again looked identical to no reroll at all
+    // (player report #712). Record the faces it landed so the log and the
+    // combat board both say what actually happened.
+    const landed: string[] = [];
     const newDice = pa.dice.map((d) => {
       if (rerolls >= 2) return d;
       if (d.face === 'blank') {
         rerolls++;
-        return rollDie(G.rng, d.color);
+        const fresh = rollDie(G.rng, d.color);
+        landed.push(fresh.face);
+        return fresh;
       }
       return d;
     });
     if (rerolls > 0) {
       discardCard(G, hand, cid);
       pa.dice = newDice;
-      pa.tacticsPlayed.push({ card: cid, detail: `rerolled ${rerolls} blank dice` });
-      log(G, { kind: 'combat-tactic', side: pa.side, payload: { card: cid, rerolls } });
+      pa.tacticsPlayed.push({
+        card: cid,
+        detail: `rerolled ${rerolls} blank dice → ${landed.join(', ')}`,
+      });
+      log(G, { kind: 'combat-tactic', side: pa.side, payload: {
+        card: cid, rerolls, before: landed.map(() => 'blank'), after: landed,
+      }});
     }
   }
 

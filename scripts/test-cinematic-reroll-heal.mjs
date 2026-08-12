@@ -121,5 +121,35 @@ console.log('[ #15B: full AI-vs-AI cinematic combat terminates (handlers auto-re
   check('the new cinematic pauses were exercised', sawReroll || sawHeal, `reroll=${sawReroll} heal=${sawHeal}`);
 }
 
+// #712: "entirely unclear if rerolls are currently always working. My last
+// reroll had no effect." The reroll DID happen — the log just recorded a count,
+// so a reroll that landed the same face was indistinguishable from no reroll.
+// The entry must now carry the before/after faces of every die it touched.
+console.log('[ #712: the reroll log records what each die was and became ]');
+{
+  const { G, c, allowance } = setupSpaceAttack(712, true);
+  combat.beginAttack(G, c, 'Empire', 'space');
+  const picks = Array.from({ length: Math.min(allowance, c.pendingAttack.dice.length) }, (_, i) => i);
+  const wasFaces = picks.map((i) => c.pendingAttack.dice[i].face);
+  const r = combat.resolveCinematicReroll(G, picks);
+  check('resolver ok', r.ok === true, r.reason ?? '');
+  const entry = [...G.turnLog].reverse().find((e) => e.kind === 'cinematic-reroll');
+  check('a reroll entry was written', !!entry, `picks=${picks.length}`);
+  if (entry) {
+    const p = entry.payload ?? {};
+    check('records the pre-reroll faces', JSON.stringify(p.before) === JSON.stringify(wasFaces),
+      `before=${JSON.stringify(p.before)} expected=${JSON.stringify(wasFaces)}`);
+    check('records one post-reroll face per die', Array.isArray(p.after) && p.after.length === picks.length,
+      `after=${JSON.stringify(p.after)}`);
+    check('the recorded results match the dice on the table',
+      JSON.stringify(p.after) === JSON.stringify(picks.map((i) => c.pendingAttack.dice[i].face)),
+      `after=${JSON.stringify(p.after)}`);
+    check('each change names its die index and colour',
+      Array.isArray(p.changes) && p.changes.length === picks.length
+      && p.changes.every((ch, n) => ch.index === picks[n] && typeof ch.color === 'string'),
+      JSON.stringify(p.changes));
+  }
+}
+
 console.log(fail ? `\n${fail} FAILED` : '\nAll #15B reroll/heal tests passed');
 process.exit(fail ? 1 : 0);
