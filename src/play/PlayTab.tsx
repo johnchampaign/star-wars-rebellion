@@ -1870,10 +1870,13 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
         gap: 12, margin: '8px 0', alignItems: 'start',
       }}>
-        <LeaderRoster G={G} side="Rebel" humanSide={humanSide} />
-        <UnitRoster G={G} side="Rebel" />
-        <LeaderRoster G={G} side="Empire" humanSide={humanSide} />
-        <UnitRoster G={G} side="Empire" />
+        {/* Your own faction reads first — a player looking up their leaders'
+            skills shouldn't have to scan past the opponent's roster to find
+            their own (#716). */}
+        <LeaderRoster G={G} side={humanSide} humanSide={humanSide} />
+        <UnitRoster G={G} side={humanSide} />
+        <LeaderRoster G={G} side={otherSide(humanSide)} humanSide={humanSide} />
+        <UnitRoster G={G} side={otherSide(humanSide)} />
       </div>
 
       <Board
@@ -1910,12 +1913,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         />
       )}
 
-      {/* Online: only show the human their OWN assignment, on their OWN turn —
-          otherwise the opponent sees this side's panel (with an undo button on
-          their assigned leaders, and the mission redacted to __hidden__). Hotseat
-          shows the engine's active side. */}
+      {/* Always the human's OWN assignment panel, never the opponent's.
+          Online: also gated to the human's own turn, so the opponent can't see
+          this side's panel (with an undo button on their assigned leaders, and
+          the mission redacted to __hidden__).
+          Offline vs-AI: the panel used to follow G.currentPlayer, so while the
+          AI took its assignment sub-turn the human was shown the AI's mission
+          hand and leader pool — both an information leak (assignment is secret
+          per RAW) and, per report #716, the player's own cards vanished from
+          the screen mid-turn. The panel now stays on the human's side and just
+          goes read-only while the AI assigns. */}
       {G.phase === 'Assignment' && !G.isGameOver && (!online || G.currentPlayer === humanSide) && (
-        <AssignmentPanel G={G} side={online ? humanSide : G.currentPlayer} humanSide={humanSide} onChange={() => { persist(); refresh(); }} />
+        <AssignmentPanel G={G} side={humanSide} humanSide={humanSide} onChange={() => { persist(); refresh(); }} />
       )}
 
       {G.phase === 'Command' && !G.isGameOver && G.currentPlayer === humanSide && (
@@ -10755,6 +10764,10 @@ function MissionNameHover({ name, image, color }: { name: string; image?: string
 function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side: Side; humanSide: Side; onChange: () => void }) {
   const f = side === 'Rebel' ? G.rebel : G.empire;
   const color = sideColor(side);
+  // Rebel assigns everything, then Empire (RAW). While the other side is
+  // assigning, this panel stays on screen showing your own cards but can't
+  // act — the engine rejects out-of-turn assigns with 'not-your-turn'. (#716)
+  const myTurn = G.currentPlayer === side;
   const [pickerMissionId, setPickerMissionId] = useState<string | null>(null);
   const [selectedLeaders, setSelectedLeaders] = useState<string[]>([]);
 
@@ -10788,10 +10801,17 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <strong style={{ color, fontSize: 15 }}>{side} — Assignment Phase</strong>
-        <span style={{ color: '#888', fontSize: 12 }}>
-          Pick a mission, assign 1–2 leaders. The skill total is shown live; you can
-          still assign with insufficient skill, but the reveal will be rejected.
-        </span>
+        {myTurn ? (
+          <span style={{ color: '#888', fontSize: 12 }}>
+            Pick a mission, assign 1–2 leaders. The skill total is shown live; you can
+            still assign with insufficient skill, but the reveal will be rejected.
+          </span>
+        ) : (
+          <span style={{ color: '#ffd54a', fontSize: 12 }}>
+            Waiting for {otherSide(side)} to finish assigning — these are still your
+            own cards; you can look but not assign yet.
+          </span>
+        )}
       </div>
 
       {/* Action cards playable during Assignment surface a button right here in
@@ -10842,8 +10862,11 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
                     )}
                     <button
                       className="tab-button"
+                      disabled={!myTurn}
+                      title={myTurn ? undefined : `Wait for ${otherSide(side)} to finish assigning.`}
                       onClick={() => startPicker(mid)}
-                      style={{ padding: '2px 8px', fontSize: 11 }}
+                      style={{ padding: '2px 8px', fontSize: 11, opacity: myTurn ? 1 : 0.45,
+                        cursor: myTurn ? 'pointer' : 'not-allowed' }}
                     >
                       assign
                     </button>
