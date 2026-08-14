@@ -3862,19 +3862,36 @@ function maybePostDeathStarPlansChoice(G: GameState, c: CombatState): void {
   if (securePlansActive) return;
   const ss = G.map.systems[c.systemId];
   if (!ss) return;
-  // Rebel fighter alive at the combat system.
-  const hasRebelFighter = ss.units.some((u) => {
-    if (u.side !== 'Rebel') return false;
-    const t = G.catalog.unitTypes[u.typeId];
-    return t?.class === 'fighter';
-  });
-  if (!hasRebelFighter) return;
   // Death Star(s) at the system. RAW says "a Death Star" — destroying one
   // requires the player to pick if multiple are present (edge case).
   const deathStarInstanceIds = ss.units
     .filter((u) => u.side === 'Empire' && (u.typeId === 'death-star' || u.typeId === 'death-star-under-construction'))
     .map((u) => u.instanceId);
   if (deathStarInstanceIds.length === 0) return;
+  // Rebel fighter alive at the combat system.
+  const hasRebelFighter = ss.units.some((u) => {
+    if (u.side !== 'Rebel') return false;
+    const t = G.catalog.unitTypes[u.typeId];
+    return t?.class === 'fighter';
+  });
+  if (!hasRebelFighter) {
+    // Say why nothing happened. A player holding the card, in the Death Star's
+    // system, watching the space step end with no prompt, has no way to tell
+    // "the game is broken" from "you no longer qualify" (#715: "destroyed all
+    // other ships ... intending to use Death Star Plans, however combat
+    // continued"). The trap is that clearing the escorts is usually what kills
+    // the fighters that qualify you, so doing the setup work can remove the
+    // requirement. Only fires when they actually hold the card with a Death
+    // Star present, so it can't become background noise.
+    pushNotice(
+      G,
+      `dsp-no-fighter-${c.systemId}-t${G.timeMarker}`,
+      'Death Star Plans — no fighter left to make the run',
+      'Death Star Plans needs at least 1 of your FIGHTERS (X-Wing or Y-Wing) still alive when the space battle step ends. Capital ships don\'t qualify, however many survive, and destroying the Death Star\'s escorts doesn\'t help if your fighters die doing it. The card stays in your hand — the window is re-checked after the space step of every round.',
+      'Rebel',
+    );
+    return;
+  }
   // Post the choice for the first eligible card. (If both are in hand,
   // the second will become eligible on the next combat — they don't stack
   // in a single combat per RAW.)
