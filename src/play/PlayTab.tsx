@@ -1857,6 +1857,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       <TurnTrack G={G} />
       <DecksPanel
         G={G}
+        humanSide={humanSide}
         onProbeHover={humanSide === 'Empire' ? setProbeHover : undefined}
       />
       <EmpireProbeAnalysisPanel G={G} humanSide={humanSide} />
@@ -4614,7 +4615,7 @@ function HandTip({ count, cards }: {
       onClick={() => { place(); setPinned((p) => !p); }}
       title={pinned ? 'Click to unpin (or press Esc)' : 'Click to pin this open'}
     >
-      {count} cards{pinned ? ' 📌' : ''}
+      {count} {count === 1 ? 'card' : 'cards'}{pinned ? ' 📌' : ''}
       {open && (
         <div
           // Float a strip of card images to the right of the row. Force
@@ -11262,7 +11263,7 @@ function objectiveDiscardPile(G: GameState): { id: string; scored: boolean }[] {
   return out;
 }
 
-function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active: boolean) => void }) {
+function DecksPanel({ G, humanSide, onProbeHover }: { G: GameState; humanSide?: Side; onProbeHover?: (active: boolean) => void }) {
   // Cinematic Combat (RoE) replaces the shared 15-card Space/Ground tactic decks
   // entirely with four faction-specific decks of 8 advanced cards each (combat.ts
   // never draws the base decks when cinematic). Show the decks that are ACTUALLY
@@ -11337,7 +11338,9 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
               : d.panelKey?.startsWith('missions:')
                 ? `${d.label} — click to see both sides' discard piles`
                 : d.panelKey === 'objectives'
-                  ? `${d.label} — click to see the discard pile`
+                  ? humanSide === 'Rebel'
+                    ? `${d.label} — click to read your objective hand and the discard pile`
+                    : `${d.label} — click to see the discard pile`
                   : d.panelKey
                     ? `${d.label} — click to see the cards and which are discarded`
                     : d.label
@@ -11360,7 +11363,7 @@ function DecksPanel({ G, onProbeHover }: { G: GameState; onProbeHover?: (active:
       {openDeck?.startsWith('missions:')
         ? <MissionDiscardPanel G={G} focus={openDeck.slice('missions:'.length) as Side} />
         : openDeck === 'objectives'
-          ? <ObjectiveDiscardPanel G={G} />
+          ? <ObjectiveDiscardPanel G={G} humanSide={humanSide} />
           : openDeck && <TacticDeckReference G={G} deckKey={openDeck} />}
     </div>
   );
@@ -11542,10 +11545,52 @@ function MissionDiscardPanel({ G, focus }: { G: GameState; focus: Side }) {
  *  Shows each card's reputation value so the Empire can read what the Rebel has
  *  already banked, and tags the ones that scored (both kinds are retrievable by
  *  Something To Fight For — see objectiveDiscardPile). */
-function ObjectiveDiscardPanel({ G }: { G: GameState }) {
+function ObjectiveDiscardPanel({ G, humanSide }: { G: GameState; humanSide?: Side }) {
   const pile = objectiveDiscardPile(G);
+  // A Rebel player asked on BGG where to find their own objective hand, and two
+  // others agreed. It WAS on screen — but only in the faction panel near the
+  // bottom of a ~1800px page, two screens below the fold. Meanwhile this panel,
+  // opened from the "Objective deck" chip at the very top and already
+  // advertising "+N in hand", showed everything EXCEPT the hand. That's the
+  // first place anyone would click, so the hand belongs here too.
+  //
+  // Hand cards are the Rebel's secret (RR: objectives are drawn and held
+  // facedown), so this is gated on the viewer actually BEING the Rebel — the
+  // discard list below stays public, which is the point of that list.
+  const hand = humanSide === 'Rebel' ? (G.rebel.objectiveHand ?? []) : [];
   return (
     <div style={{ gridColumn: '1 / -1', marginTop: 6, background: '#15171c', borderRadius: 4, padding: 10 }}>
+      {humanSide === 'Rebel' && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, color: '#aed581', marginBottom: 6 }}>
+            Your objective hand ({hand.length}) — only you can see these
+          </div>
+          {hand.length === 0 ? (
+            <div style={{ fontSize: 11, color: '#666' }}>
+              No objectives in hand — you draw one each Refresh phase.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gap: 4, maxHeight: 190, overflowY: 'auto' }}>
+              {hand.map((id) => {
+                const o = G.catalog.objectives[id];
+                return (
+                  <div key={id} style={{ background: '#0c0d10', borderRadius: 3, padding: '5px 8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: '#e8e8ea' }}>{o?.name ?? id}</span>
+                      {o?.reputation ? (
+                        <span style={{ fontSize: 11, color: '#aed581', whiteSpace: 'nowrap' }}>{o.reputation} rep</span>
+                      ) : null}
+                    </div>
+                    {o?.rulesText && (
+                      <div style={{ fontSize: 10, color: '#9a9a9e', marginTop: 3, lineHeight: 1.35 }}>{o.rulesText}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ fontSize: 11, color: '#aed581', marginBottom: 6 }}>
         Objective discards ({pile.length})
       </div>
