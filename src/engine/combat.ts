@@ -4083,6 +4083,17 @@ export function resolveDsPlansYoda(G: GameState, blankIndex: number): { ok: bool
 }
 
 /** Score the (possibly reroll-modified) Death Star Plans attempt. */
+/** The Death Star Plans roll, written out for a player who shouldn't have to
+ *  read the log to find out what happened. Glyphs match the mission-roll modal
+ *  (✶ direct hit / ✓ hit / ◈ special / · blank); the words are spelled out too,
+ *  because the whole point is that this is readable at a glance. */
+const DSP_GLYPH: Record<string, string> = {
+  'direct-hit': '✶', hit: '✓', special: '◈', blank: '·',
+};
+function dsPlansRollText(faces: readonly string[]): string {
+  return faces.map((f) => `${DSP_GLYPH[f] ?? '?'} ${f.replace(/-/g, ' ')}`).join('   ');
+}
+
 function finalizeDsPlans(G: GameState): { ok: boolean; reason?: string } {
   const d = G.dsPlansAttempt;
   if (!d) return { ok: false, reason: 'no-dsplans-attempt' };
@@ -4108,6 +4119,12 @@ function finalizeDsPlans(G: GameState): { ok: boolean; reason?: string } {
       log(G, { kind: 'death-star-plans-blocked-by-shield-bunker', side: 'Rebel', payload: {
         objectiveId: pc.objectiveId, systemId: pc.systemId, faces,
       }});
+      pushNotice(G, `dsp-roll-${G.turnLog.length}`,
+        'Death Star Plans — direct hit, but the Shield Bunker held',
+        `You rolled   ${dsPlansRollText(faces)}   — a direct hit, which would normally destroy the Death Star at `
+        + `${G.catalog.systems[pc.systemId]?.name ?? pc.systemId}. A Shield Bunker in the system makes it immune, `
+        + 'so the shot is wasted and the card returns to your hand. Destroy the bunker and the run works.',
+        'Rebel');
       return resumeAfterDsPlans(G);
     }
     // RoE "Secure the Plans" Imperial mission (rules p.8) places a target
@@ -4118,6 +4135,12 @@ function finalizeDsPlans(G: GameState): { ok: boolean; reason?: string } {
       log(G, { kind: 'death-star-plans-blocked-by-target-marker', side: 'Rebel', payload: {
         objectiveId: pc.objectiveId, systemId: pc.systemId, source: 'secure-the-plans', faces,
       }});
+      pushNotice(G, `dsp-roll-${G.turnLog.length}`,
+        'Death Star Plans — direct hit, but the plans are not yours yet',
+        `You rolled   ${dsPlansRollText(faces)}   — a direct hit, but the Empire's Secure the Plans mission is still `
+        + 'in force, and while its marker is on the board the Rebels cannot play Death Star Plans. The card returns '
+        + 'to your hand.',
+        'Rebel');
       return resumeAfterDsPlans(G);
     }
     // Death Star can't be damaged by normal attacks (health.color === null),
@@ -4131,6 +4154,12 @@ function finalizeDsPlans(G: GameState): { ok: boolean; reason?: string } {
       objectiveId: pc.objectiveId, systemId: pc.systemId, destroyed: targetId,
       faces, reputation: rep,
     }});
+    pushNotice(G, `dsp-roll-${G.turnLog.length}`,
+      'Death Star Plans — DIRECT HIT. The Death Star is destroyed.',
+      `You rolled   ${dsPlansRollText(faces)}`
+      + `\n\nThat direct hit blows the Death Star at ${G.catalog.systems[pc.systemId]?.name ?? pc.systemId} `
+      + `out of the sky. +${rep} reputation.`,
+      'Rebel');
     M.recordObjectiveScored(G, pc.objectiveId, rep, 'death-star-plans', G.turnLog.length);
     // RAW: one objective per combat — playing Death Star Plans uses up this
     // combat's objective, so decisive-victory / liberation / etc. cannot also
@@ -4142,6 +4171,13 @@ function finalizeDsPlans(G: GameState): { ok: boolean; reason?: string } {
     log(G, { kind: 'death-star-plans-miss', side: 'Rebel', payload: {
       objectiveId: pc.objectiveId, systemId: pc.systemId, faces,
     }});
+    pushNotice(G, `dsp-roll-${G.turnLog.length}`,
+      'Death Star Plans — no direct hit',
+      `You rolled   ${dsPlansRollText(faces)}`
+      + '\n\nOnly a ✶ direct hit destroys a Death Star — hits and specials do nothing here. The card returns to '
+      + 'your hand, and you can try the run again after the space step of a later round, as long as one of your '
+      + 'fighters is still alive in the system.',
+      'Rebel');
   }
   return resumeAfterDsPlans(G);
 }
