@@ -15,12 +15,22 @@
 // CRON_SECRET env var to require a matching `x-cron-key` header if you'd rather
 // lock it down. GET and POST both work (POST is what the Worker uses).
 
-import { makeCronServer, json, fail, type Env } from '../../_lib/gameServer';
+import { runBoundedReminderSweep, json, fail, type Env } from '../../_lib/gameServer';
 
-// Nudge the player on the clock once their turn has been idle this long. The
-// cron runs every ~5 min, so the actual email lands roughly 15-20 min after the
-// opponent's move (one sweep interval of observation lag on top of this).
-const OLDER_THAN_MS = 15 * 60 * 1000; // 15 minutes
+// #683 "turn nudge emails do not send": the framework's own sweep
+// (GameServer.sweepTurnReminders) lists EVERY unresolved game and decodes each
+// full snapshot in one request. Once the unresolved backlog outgrew the
+// request budget the endpoint started dying mid-run — measured from outside,
+// it hangs indefinitely while /api/report answers in 0.1s — and since only
+// this sweep marks finished games `resolved`, the backlog could never shrink
+// again. No nudge has ever been delivered past that point.
+//
+// runBoundedReminderSweep is the same fix ai-due got for the same disease:
+// bounded chunks (newest 30 for live nudges + oldest 8 so the dead backlog
+// drains), a 15s wall-clock deadline, per-call timeouts, identical
+// reminder-clock semantics (turn/since/sent). The 5-minute cron cadence does
+// the rest: each tick makes real progress, and the response now reports
+// scanned/reminded/resolvedMarked/truncated so the drain is observable.
 
 const handler: PagesFunction<Env> = async (ctx) => {
   try {
@@ -29,8 +39,7 @@ const handler: PagesFunction<Env> = async (ctx) => {
       return json({ error: 'unauthorized' }, 401);
     }
     const origin = new URL(request.url).origin;
-    const { server } = await makeCronServer(env, origin);
-    const result = await server.sweepTurnReminders({ olderThanMs: OLDER_THAN_MS });
+    const result = await runBoundedReminderSweep(env, origin);
     return json({ ok: true, ...result });
   } catch (e) {
     return fail(e);

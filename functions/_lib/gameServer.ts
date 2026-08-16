@@ -261,6 +261,159 @@ export async function makeCronServer(env: Env, originFallback?: string): Promise
   return { server };
 }
 
+// ---------------------------------------------------------------------------
+// Bounded stale-turn-reminder sweep (#683: "turn nudge emails do not send").
+//
+// The framework's GameServer.sweepTurnReminders does `listActiveGames()` —
+// EVERY resolved=false row, unbounded — then serially getLatest()s and DECODES
+// each game's full snapshot. That is the same shape that already killed the
+// ai-due endpoint ("Decoding N full snapshots per poll is what pushed this
+// endpoint past Cloudflare's per-request CPU limit", listAiDueGames above),
+// and it killed this one worse: games are only marked `resolved` BY THIS
+// SWEEP, so the first time the backlog grew past the request budget the sweep
+// started dying mid-run, nothing got marked resolved, and the set could never
+// shrink again. Externally: /api/cron/sweep-reminders hangs with no response
+// while /api/report answers in 0.1s, and no nudge has ever been delivered.
+//
+// This version is the same medicine ai-due got: bounded work per tick, with
+// the cron's 5-minute cadence draining the backlog across ticks.
+//  - one NEWEST chunk (recent games are where live players await nudges)
+//  - one small OLDEST chunk (so the ancient finished-but-unmarked rows drain)
+//  - a wall-clock deadline with per-call raceTimeouts inside it
+//  - per-game failures skipped, never fatal (same contract as the framework)
+// Reminder-clock semantics (turn/since/sent) are copied from the framework
+// loop verbatim so a later return to the stock sweep stays compatible.
+// ---------------------------------------------------------------------------
+export interface SweepDeps {
+  /** Two bounded, non-overlapping chunks of unresolved games. */
+  listChunks(): Promise<GameMetaLike[]>;
+  getLatest(gameId: string): Promise<{ turn: number; state: string } | null>;
+  putGameMeta(meta: GameMetaLike): Promise<void>;
+  /** Decoded state → whose turn (null = game over). */
+  actorOf(rawState: string): Side | null;
+  notifyYourTurn(args: { email: string; meta: GameMetaLike; actor: Side; turn: number }): Promise<void>;
+  now(): number;
+}
+export interface GameMetaLike {
+  gameId: string;
+  players: unknown; tokens: Record<string, string>; emails?: Partial<Record<Side, string>>;
+  createdAt: string; resolved: boolean;
+  reminder?: { turn: number; since: string; sent: boolean };
+  identities?: unknown;
+}
+
+export async function boundedReminderSweep(
+  deps: SweepDeps,
+  opts: { olderThanMs: number; deadlineMs: number },
+): Promise<{ scanned: number; reminded: number; resolvedMarked: number; truncated: boolean; msElapsed: number }> {
+  const t0 = deps.now();
+  const games = await deps.listChunks();
+  let reminded = 0, resolvedMarked = 0, scanned = 0, truncated = false;
+  for (const meta of games) {
+    if (deps.now() - t0 > opts.deadlineMs) { truncated = true; break; }
+    scanned++;
+    try {
+      const latest = await raceTimeout(deps.getLatest(meta.gameId), 8000, `sweep-getLatest:${meta.gameId}`);
+      if (!latest) continue;
+      const actor = deps.actorOf(latest.state);
+      if (actor === null) {
+        // Game over → mark resolved so it leaves the unresolved set for good.
+        if (!meta.resolved) { await deps.putGameMeta({ ...meta, resolved: true }); resolvedMarked++; }
+        continue;
+      }
+      const r = meta.reminder;
+      if (!r || r.turn !== latest.turn) {
+        // Activity since we last looked → restart the clock, don't email yet.
+        await deps.putGameMeta({
+          ...meta,
+          reminder: { turn: latest.turn, since: new Date(deps.now()).toISOString(), sent: false },
+        });
+        continue;
+      }
+      if (r.sent) continue;
+      if (deps.now() - new Date(r.since).getTime() < opts.olderThanMs) continue;
+      const email = meta.emails?.[actor];
+      if (email) {
+        try {
+          await raceTimeout(
+            deps.notifyYourTurn({ email, meta, actor, turn: latest.turn }),
+            8000, `sweep-notify:${meta.gameId}`);
+          reminded++;
+        } catch (e) {
+          console.error('[sweep] turn reminder failed:', e);
+        }
+      }
+      // Mark sent regardless (no email on file → nothing to retry; avoid re-spin).
+      await deps.putGameMeta({ ...meta, reminder: { ...r, sent: true } });
+    } catch (e) {
+      console.error(`[sweep] failed for game ${meta.gameId}:`, e);
+    }
+  }
+  return { scanned, reminded, resolvedMarked, truncated, msElapsed: deps.now() - t0 };
+}
+
+/** Wire boundedReminderSweep to the real Supabase + Resend + codec. */
+export async function runBoundedReminderSweep(
+  env: Env, originFallback?: string,
+): Promise<{ scanned: number; reminded: number; resolvedMarked: number; truncated: boolean; msElapsed: number }> {
+  const base = env.PUBLIC_BASE_URL || originFallback;
+  if (!base) throw new Error('PUBLIC_BASE_URL (or a request origin) is required for the reminder sweep.');
+  const dataBundle = await getDataBundleFromOrigin(base);
+  const catalog = _catalog ?? (_catalog = buildCatalog(dataBundle));
+  const codec = makeRebellionCodec(catalog);
+  const supabase = getSupabase(env);
+  const store: SnapshotStore = new SupabaseStore(supabase);
+  const notifier = makeNotifier(env);
+  const NEWEST = 30, OLDEST = 8;
+  const rowToMeta = (d: Record<string, unknown>): GameMetaLike => ({
+    gameId: d.game_id as string, players: d.players,
+    tokens: d.tokens as Record<string, string>,
+    emails: d.emails as GameMetaLike['emails'],
+    createdAt: d.created_at as string, resolved: d.resolved as boolean,
+    reminder: (d.reminder ?? undefined) as GameMetaLike['reminder'],
+    identities: d.identities,
+  });
+  return boundedReminderSweep({
+    listChunks: async () => {
+      const sel = 'game_id,players,tokens,emails,created_at,resolved,reminder,identities';
+      const [newest, oldest] = await Promise.all([
+        supabase.from('dbf_games').select(sel).eq('resolved', false)
+          .order('created_at', { ascending: false }).limit(NEWEST),
+        supabase.from('dbf_games').select(sel).eq('resolved', false)
+          .order('created_at', { ascending: true }).limit(OLDEST),
+      ]);
+      if (newest.error) throw new Error(newest.error.message);
+      if (oldest.error) throw new Error(oldest.error.message);
+      const seen = new Set<string>();
+      const out: GameMetaLike[] = [];
+      for (const d of [...(newest.data ?? []), ...(oldest.data ?? [])]) {
+        const m = rowToMeta(d as Record<string, unknown>);
+        if (!seen.has(m.gameId)) { seen.add(m.gameId); out.push(m); }
+      }
+      return out;
+    },
+    getLatest: async (gameId) => {
+      const latest = await store.getLatest(gameId);
+      return latest ? { turn: latest.turn, state: latest.state } : null;
+    },
+    putGameMeta: async (meta) => {
+      // Through the framework store so the row format stays canonical.
+      await store.putGameMeta(meta as Parameters<SnapshotStore['putGameMeta']>[0]);
+    },
+    actorOf: (raw) => rebellionAdapter.currentActor(decodeSnapshot(codec, raw)),
+    notifyYourTurn: async ({ email, meta, actor, turn }) => {
+      // Same link the framework sweep would mint: the game with the ACTOR's
+      // seat token, so the click lands them in their own seat.
+      const token = meta.tokens?.[actor] ?? '';
+      await notifier.notifyYourTurn({
+        email, gameId: meta.gameId, turn,
+        gameUrl: `${base}/?g=${encodeURIComponent(meta.gameId)}&t=${encodeURIComponent(token)}`,
+      });
+    },
+    now: () => Date.now(),
+  }, { olderThanMs: 15 * 60 * 1000, deadlineMs: 15_000 });
+}
+
 /** Record who is on the clock and since when, per game (table
  *  swr_turn_notify). Called on every fetch and submit. When the actor changes,
  *  the clock restarts with a fresh `started_at` = the real moment the turn was
