@@ -2843,7 +2843,12 @@ export function stepOnce(G: GameState, side: Side): boolean {
   const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   const did = stepOnceInner(G, side);
   const elapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0;
-  if (elapsed > 500) {
+  // A deliberately-installed search policy (MCTS / eval-depth2) is SUPPOSED to
+  // take seconds per Command decision — that is the whole trade. Warning on
+  // every one of its steps turned a 300-game harness run into thousands of
+  // lines of identical noise and hid the warnings that matter (a slow HEURISTIC
+  // step, which is always a bug). Only warn when no override owns this side.
+  if (elapsed > 500 && !commandPolicyOverride[side]) {
     // Per-step budget exceeded — log so the slow path can be diagnosed.
     console.warn(`[ai] slow stepOnce: ${elapsed.toFixed(0)}ms`, {
       side, phase: G.phase, pendingChoice: G.pendingChoice?.kind, currentPlayer: G.currentPlayer,

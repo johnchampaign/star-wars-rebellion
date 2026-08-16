@@ -22,7 +22,7 @@ const args = (() => {
   const a = process.argv.slice(2);
   // maxRounds defaults to 16 — the real length of the time track. (It was 8,
   // which force-ended healthy games early and inflated "max-rounds-reached".)
-  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16, expansion: false, rebelPolicy: null, empirePolicy: null };
+  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16, expansion: false, rebelPolicy: null, empirePolicy: null, fastSearch: false };
   for (let i = 0; i < a.length; i++) {
     const k = a[i];
     if (k === '--games') out.games = parseInt(a[++i], 10);
@@ -46,6 +46,14 @@ const args = (() => {
     // opportunity to pay for itself. Values: 'mcts' | 'eval'.
     else if (k === '--rebel-policy') out.rebelPolicy = a[++i];
     else if (k === '--empire-policy') out.empirePolicy = a[++i];
+    // Cheaper search for A/B arms. The full MCTS budget (64 rollouts, horizon
+    // 4) is what players face and costs ~115s/game as the Rebel — a 300-game
+    // arm is ~10 hours. --fast-search sets budget 24 / horizon 2, measured
+    // (see docs/ab-levers.md, "MCTS-Rebel arm") to keep most of the strength
+    // at a fraction of the cost. It is a DIFFERENT opponent from the shipped
+    // one, so the run summary names it; never compare a fast-search arm
+    // against a full-search arm as if they were the same baseline.
+    else if (k === '--fast-search') out.fastSearch = true;
   }
   if (!out.out) {
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -97,10 +105,15 @@ const data = {
 mkdirSync(args.out, { recursive: true });
 
 // Install any stronger Command policies BEFORE the first game.
+if (args.fastSearch) {
+  process.env.SWR_MCTS_BUDGET ??= '24';
+  process.env.SWR_MCTS_HORIZON ??= '2';
+}
 const rebelPolicyName = await installPolicy('Rebel', args.rebelPolicy);
 const empirePolicyName = await installPolicy('Empire', args.empirePolicy);
 if (rebelPolicyName || empirePolicyName) {
-  console.log(`policies: Rebel=${rebelPolicyName ?? 'heuristic'} Empire=${empirePolicyName ?? 'heuristic'}`);
+  const prof = args.fastSearch ? ' [fast-search: budget 24 / horizon 2 — NOT the shipped strength]' : ' [full search]';
+  console.log(`policies: Rebel=${rebelPolicyName ?? 'heuristic'} Empire=${empirePolicyName ?? 'heuristic'}${prof}`);
 }
 console.log(`mode: ${args.expansion ? 'Rise of the Empire' : 'base game'}`);
 
@@ -273,6 +286,17 @@ for (let i = 0; i < args.games; i++) {
   writeFileSync(join(args.out, filename), JSON.stringify({
     schemaVersion: 1,
     seed,
+    // WHICH AI was deciding, per side. Without this a stronger-opponent arm
+    // is indistinguishable from heuristic self-play once the run finishes —
+    // the exact "which AI is deciding" trap docs/ab-levers.md warns about.
+    // Any analysis script that pools directories should key on this.
+    policies: {
+      Rebel: rebelPolicyName ?? 'heuristic',
+      Empire: empirePolicyName ?? 'heuristic',
+      search: (rebelPolicyName || empirePolicyName)
+        ? { budget: Number(process.env.SWR_MCTS_BUDGET ?? 64), horizon: Number(process.env.SWR_MCTS_HORIZON ?? 4), fast: !!args.fastSearch }
+        : null,
+    },
     result: r.result,
     winReason: r.winReason,
     rounds: r.rounds,
