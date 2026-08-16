@@ -12,6 +12,7 @@ import type {
 import * as M from './mechanics';
 import { beginCombat, runCombat } from './combat';
 import { log, logState, pushNotice } from './log';
+import { pickDsucSite } from './setup';
 import * as Handlers from './handlers/registry';
 import { missionTargets } from './missionTargets';
 import { PROJECT_ONLY_UNIT_IDS } from './units';
@@ -608,8 +609,20 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
       // random instead; G.rng is seeded, so a given game is still reproducible.
       const remotes = Object.keys(G.map.systems).filter(
         (id) => G.catalog.systems[id]?.isRemote && !G.map.systems[id]?.destroyed);
-      const remote = G.empireDeployTarget
-        ?? (remotes.length > 0 ? remotes[nextInt(G.rng, remotes.length)] : undefined);
+      // #709: choose the site READING THE LOYALTY MAP, not blind. Deployment
+      // happens after loyalty is dealt, and that ordering is one of the
+      // Empire's genuine RoE openings — the reporter: "Since deployment happens
+      // after the systems get loyal I think an empire human player would
+      // choose a remote system on the right side of the map in this case."
+      // A DSUC parked next to Rebel-loyal space spends the game under threat;
+      // one far from it is safe scaffolding. Rank remotes by BFS distance to
+      // the NEAREST Rebel-loyal system and draw among the tied-farthest with
+      // the game rng (same single draw as the old uniform pick, so replays and
+      // seeds are unaffected). No Rebel loyalty on the map → all tie → the old
+      // uniform choice. The reporter's companion idea (escort the site) was
+      // measured separately and LOSES (SWR_DSUC_GARRISON, -5.4pp) — this is
+      // deliberately the siting half only.
+      const remote = G.empireDeployTarget ?? pickDsucSite(G.catalog, G.map.systems, G.rng);
       if (remote) {
         G.empireDeployTarget = remote;
         M.removeProbeForSystem(G, remote); // DSUC system's probe leaves play (#372)

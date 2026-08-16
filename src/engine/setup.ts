@@ -7,7 +7,7 @@ import type {
 } from '../types';
 import type {
   GameState, GameCatalog, FactionState, SystemState, MapState,
-  Phase, BuildQueue, UnitInstance, LeaderId, SystemDef, Side, SystemId,
+  Phase, BuildQueue, UnitInstance, LeaderId, SystemDef, Side, SystemId, SeededRngState,
 } from './types';
 import { createRng, shuffle, nextInt } from './rng';
 import { drawSetupBonusMissions } from './mechanics';
@@ -126,6 +126,46 @@ function byId<T extends { id: string }>(arr: readonly T[]): Record<string, T> {
 /** Build the static catalog (systems/leaders/cards) from raw asset data.
  *  Exported so the online server can build the catalog the multiplayer codec
  *  needs to rehydrate snapshots (decode requires it). */
+/** Choose the Death Star Under Construction's remote system by READING THE
+ *  LOYALTY MAP (#709). Deployment happens after starting loyalty is dealt, and
+ *  that ordering is one of the Empire's genuine RoE openings — the reporter:
+ *  "Since deployment happens after the systems get loyal I think an empire
+ *  human player would choose a remote system on the right side of the map."
+ *  A DSUC parked beside Rebel-loyal space spends the game under threat; one
+ *  far from it is safe scaffolding.
+ *
+ *  BFS from every Rebel-loyal system, keep the remotes tied at the farthest
+ *  distance, draw among them with the game rng — ONE draw, exactly like the
+ *  uniform pick this replaces at both call sites (setup auto-place and the
+ *  auto-fill resolver in phases.ts), so seeds and replays are unaffected. No
+ *  Rebel loyalty on the map → everything ties → the old uniform behaviour.
+ *
+ *  The reporter's companion idea (escort the site with a carrier + ground) was
+ *  measured separately and LOSES (SWR_DSUC_GARRISON, −5.4pp) — siting only. */
+export function pickDsucSite(
+  catalog: GameCatalog,
+  systems: Record<SystemId, { loyalty?: string | null; destroyed?: boolean }>,
+  rng: SeededRngState,
+): SystemId | undefined {
+  const remotes = Object.keys(systems).filter(
+    (id) => catalog.systems[id]?.isRemote && !systems[id]?.destroyed);
+  if (remotes.length === 0) return undefined;
+  const rebelLoyal = Object.keys(systems).filter((id) => systems[id]?.loyalty === 'rebel');
+  const dist = new Map<string, number>(rebelLoyal.map((s) => [s, 0]));
+  let frontier = rebelLoyal.slice();
+  for (let d = 1; frontier.length > 0 && d <= 8; d++) {
+    const next: string[] = [];
+    for (const s of frontier) for (const a of (catalog.adjacency[s] ?? [])) {
+      if (!dist.has(a)) { dist.set(a, d); next.push(a); }
+    }
+    frontier = next;
+  }
+  const away = (id: string): number => Math.min(dist.get(id) ?? 9, 9);
+  const bestAway = Math.max(...remotes.map(away));
+  const best = remotes.filter((id) => away(id) === bestAway);
+  return best[nextInt(rng, best.length)];
+}
+
 export function buildCatalog(data: DataBundle): GameCatalog {
   const systems: Record<string, SystemDef> = {};
   for (const s of data.systems.systems) {
@@ -418,9 +458,9 @@ export function createGame(data: DataBundle, opts: SetupOptions): GameState {
     // so `empirePool` is just `empireUnitsToPlace` and nothing changes here.
     let empirePool = empireUnitsToPlace;
     if (expansion.enabled && empireUnitsToPlace.includes('death-star-under-construction')) {
-      const remotes = Object.values(catalog.systems).filter((s) => s.isRemote).map((s) => s.id);
-      if (remotes.length > 0) {
-        empireDeployTarget = remotes[nextIntForSetup(rng, remotes.length)];
+      const sited = pickDsucSite(catalog, map.systems, rng);
+      if (sited) {
+        empireDeployTarget = sited;
         const companions = ['death-star-under-construction', 'tie-fighter', 'tie-fighter',
           'tie-fighter', 'tie-fighter', 'stormtrooper'];
         const pool = [...empireUnitsToPlace];
