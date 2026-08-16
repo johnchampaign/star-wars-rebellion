@@ -95,7 +95,6 @@ const LS_GAME_ID = 'rebellion-game-id';
 // encodedAt ids of completed games already uploaded, so we don't re-send them
 // (player report #125 — uploads kept re-submitting old, already-stored logs).
 const LS_UPLOADED = 'rebellion-uploaded-logs';
-const LS_OIAM_ARMED = 'rebellion-oiam-armed';
 // Stable per-device reporter ID. Generated once on first problem-report
 // submission, persisted forever. Lets us tie GitHub issues back to the
 // reporter so we can surface our resolution comment to them on next visit
@@ -433,17 +432,15 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   const [reportScreenshot, setReportScreenshot] = useState<string | null>(null);
   const [showUploadLogs, setShowUploadLogs] = useState(false);
   const [showSupply, setShowSupply] = useState(false);
-  // One In A Million is OFF by default — the engine offers it on every eligible
-  // roll, which nagged players who didn't want to spend their one-time power
-  // (#340). When un-armed, the offer is auto-skipped (card kept). The player
-  // arms it from a toggle when they actually want to use it.
-  const [oiamArmed, setOiamArmedState] = useState<boolean>(() => {
-    try { return localStorage.getItem(LS_OIAM_ARMED) === '1'; } catch { return false; }
-  });
-  const setOiamArmed = useCallback((v: boolean) => {
-    setOiamArmedState(v);
-    try { localStorage.setItem(LS_OIAM_ARMED, v ? '1' : '0'); } catch { /* ignore */ }
-  }, []);
+  // One In A Million (#564, closing out #340/#448/#543/#544/#614): the old
+  // "arm it" toggle is GONE. It existed because the engine offered the card
+  // AFTER rolling — a reactive save the card doesn't grant — on every eligible
+  // roll, which nagged, so the UI suppressed the offer unless armed, which
+  // then made the card look broken to anyone who never found the toggle. Five
+  // reports patched around that. The engine now makes the offer BEFORE the
+  // roll, blind, as RAW requires ("instead of rolling up to two dice, place
+  // them"), and only when the card is in hand with Luke/Wedge present — a
+  // genuine one-time decision, not a nag — so there is nothing to arm.
   // Queue of unseen "objective scored" notices for the human side. Populated
   // by an effect that watches turnLog for new play-objective entries; each
   // one becomes a modal that the user acknowledges before the next shows.
@@ -1207,49 +1204,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     if (G && !G.isGameOver && gameOverAck) setGameOverAck(false);
   }, [G, G?.isGameOver, gameOverAck]);
 
-  // One In A Million: when the player hasn't armed it, auto-skip the offer so
-  // they aren't prompted to spend their one-time power on every roll (#340).
-  // The skip keeps the card in hand; the engine continues normally.
-  // #448: the silent skip made the card look unusable to players who never
-  // noticed the toggle ("I wasn't allowed to use my card — no prompt came up"),
-  // so an auto-skip surfaces a dismissible hint pointing at the toggle.
-  // #543/#544: a once-per-session hint was too easy to miss — a player who
-  // dismissed it early then attacked the Death Star (the signature One in a
-  // Million moment) got no reminder. Now the hint re-appears on EVERY auto-skip
-  // (still nothing when the card isn't usable, so it's not spammy — the offer
-  // only fires with Luke/Wedge present + the card in hand), and it carries an
-  // "Arm it now" action so the player can turn it on without hunting for the
-  // toggle. The arm-toggle DESIGN (#340) is unchanged.
-  const [oiamSkipHint, setOiamSkipHint] = useState(false);
-  /** Set when the One-In-A-Million auto-skip (toggle OFF) fails to resolve.
-   *  Forces the offer panel to render even while disarmed, so an unresolvable
-   *  choice can never leave the player stuck with no UI (#614). */
-  const [oiamSkipFailed, setOiamSkipFailed] = useState(false);
-  useEffect(() => {
-    if (online || oiamArmed) { setOiamSkipHint(false); return; }
-    const Gn = gameRef.current;
-    const pc = Gn?.pendingChoice;
-    if (!Gn || !pc || pc.kind !== 'OneInAMillionOffer' || pc.side !== humanSide) return;
-    const r = pc.context === 'combat' ? combat.resolveOneInAMillionCombat(Gn, [])
-      : pc.context === 'dsplans' ? combat.resolveDsPlansOneInAMillion(Gn, [])
-      : phases.resolveOneInAMillionMission(Gn, []);
-    // Only advance on a clean skip — never re-run a failing resolve (would loop).
-    if (r.ok) {
-      setOiamSkipHint(true); // re-show on every skip (#543/#544)
-      setOiamSkipFailed(false);
-      persist(); refresh();
-    } else {
-      // ESCAPE HATCH (#614 "One In A Million locks game"): with the toggle
-      // OFF the offer panel is deliberately hidden, so a failed auto-skip
-      // left an unresolvable pendingChoice with NO UI to clear it — the
-      // player saw a blank box and the game was stuck for good (the report
-      // button is blocked mid-choice too). Same shape as the #603 watchdog
-      // bug: a guard that gives up silently. Surface the panel so the choice
-      // can always be resolved by hand.
-      console.warn('[oiam] auto-skip failed:', r.reason, '— surfacing the panel');
-      setOiamSkipFailed(true);
-    }
-  }, [tick, oiamArmed, humanSide, online, persist, refresh]);
+  // (One In A Million auto-skip removed — see the note by the header state.)
 
   // #193 instrumentation: report-ordering diagnostics. When the player reports
   // that a combat summary shows out of order (e.g. after the opponent's
@@ -1691,33 +1646,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             title="See how many of each unit type are left in the supply">
             Supply
           </button>
-          {humanSide === 'Rebel' && (G.rebel.actionHand ?? []).includes('one-in-a-million') && (
-            <button className="tab-button" onClick={() => setOiamArmed(!oiamArmed)}
-              title="One In A Million is a one-time card. ON = the game prompts you to set dice on your rolls; OFF (default) = it stays in your hand, no interruptions. Flip it ON just before the roll you want to use it on."
-              style={oiamArmed ? { borderColor: '#aae0ff', color: '#aae0ff', fontWeight: 700 } : undefined}>
-              One in a Million: {oiamArmed ? 'ON' : 'off'}
-            </button>
-          )}
           <button className="tab-button" onClick={startNew}>New game</button>
-          {oiamSkipHint && (
-            <div style={{
-              flexBasis: '100%', background: '#1d2a38', border: '1px solid #3a5a7a',
-              borderRadius: 4, padding: '6px 10px', fontSize: 12, color: '#aae0ff',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
-            }}>
-              <span>
-                ⚡ Your <b>One in a Million</b> card could have set dice on that roll, but it's
-                {' '}<b>off</b> so it was skipped (the card is still in your hand). Turn it on for the
-                {' '}rolls you want to use it on — e.g. attacking the Death Star.
-              </span>
-              <span style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                <button className="tab-button" style={{ fontSize: 11, padding: '2px 8px', borderColor: '#aae0ff', color: '#aae0ff', fontWeight: 700 }}
-                  onClick={() => { setOiamArmed(true); setOiamSkipHint(false); }}>Arm it now</button>
-                <button className="tab-button" style={{ fontSize: 11, padding: '2px 8px' }}
-                  onClick={() => setOiamSkipHint(false)}>Dismiss</button>
-              </span>
-            </div>
-          )}
           {G.phase === 'Setup' && (
             <button className="tab-button" onClick={() => onSetupAutoFill(G.currentPlayer)}>
               {G.currentPlayer} auto-fill remaining
@@ -2771,7 +2700,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         && (!G.combatReports || G.combatReports.length === 0)
         && G.pendingChoice?.kind === 'OneInAMillionOffer'
         && (G.pendingChoice.context === 'mission' || G.pendingChoice.context === 'dsplans')
-        && G.pendingChoice.side === humanSide && (oiamArmed || oiamSkipFailed || !!online) && (
+        && G.pendingChoice.side === humanSide && (
         <OneInAMillionMissionModal choice={G.pendingChoice}
           onSubmit={(picks) => {
             // DSP context routes to the Death Star Plans resolver (#186).
@@ -3615,7 +3544,6 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <CombatBoardLive
           G={G}
           humanSide={humanSide}
-          oiamArmed={oiamArmed || oiamSkipFailed || !!online}
           online={online ? { submit: online.submit, yourTurn: online.yourTurn } : undefined}
           onPersist={() => { persist(); refresh(); }}
           onShowDiceKey={() => setShowDiceKey(true)}

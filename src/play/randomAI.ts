@@ -3405,6 +3405,19 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       const picks = haveHit ? [] : [{ index: indexed[0].i, face: 'direct-hit' }];
       return combat.resolveDsPlansOneInAMillion(G, picks).ok;
     }
+    if (c.preRoll) {
+      // PRE-ROLL (#564): the dice are unrolled, so ranking faces is meaningless.
+      // Blind, the card is worth its most on the roll that matters most —
+      // attacking a Death Star, where two placed direct-hits are the difference
+      // between chipping it and killing it. Anywhere else, keep the one-time
+      // card for that moment.
+      const sysId = G.pendingCombat?.systemId;
+      const dsHere = !!sysId && (G.map.systems[sysId]?.units ?? []).some((u) =>
+        u.side === 'Empire' && (u.typeId === 'death-star' || u.typeId === 'death-star-under-construction'));
+      const n = Math.min(2, c.colors.length);
+      const picks = dsHere ? Array.from({ length: n }, (_, i) => ({ index: i, face: 'direct-hit' })) : [];
+      return combat.resolveOneInAMillionCombat(G, picks).ok;
+    }
     const picks = indexed.slice(0, Math.min(2, indexed.length))
       .filter((x) => x.r < 3) // don't bother overriding direct-hits
       .map((x) => ({ index: x.i, face: 'direct-hit' }));

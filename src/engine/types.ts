@@ -517,11 +517,18 @@ export type ChoiceRequest =
       // the card to pull Seek Yoda or Daring Rescue into the Rebel's hand.
       // Noble Sacrifice (Rebel/Obi-Wan): when Obi-Wan is captured, may
       // discard this card to eliminate Obi-Wan instead, gaining 1 reputation.
-      // One In A Million (Rebel/Luke|Wedge): after rolling, may discard to
-      // set up to 2 dice faces to results of choice. Works on Rebel-side
-      // rolls in both combat and mission contexts.
+      // One In A Million (Rebel/Luke|Wedge): "instead of rolling up to two
+      // dice, place them on the table showing results of your choice". Works
+      // on Rebel-side rolls in both combat and mission contexts.
       kind: 'OneInAMillionOffer';
       side: Side; // 'Rebel'
+      // TRUE = the RAW-faithful pre-roll offer (#564): the dice have NOT been
+      // rolled, `faces` are placeholders, and the Rebel is choosing blind which
+      // dice to PLACE instead of rolling. Absent/false = the legacy post-roll
+      // window, kept only for the Death Star Plans objective roll ('dsplans'),
+      // where the card is explicitly "an automatic success" and the choice is
+      // trivially "yes" regardless of what the dice show.
+      preRoll?: boolean;
       // 'dsplans' = set faces of the Death Star Plans objective roll (the card
       // explicitly works on that roll for an automatic success).
       context: 'combat' | 'mission' | 'dsplans';
@@ -1759,6 +1766,11 @@ export type CombatState = {
     theater: Theater;
     phase: 'awaitingYodaReroll' | 'awaitingR2D2Flip' | 'awaitingOneInAMillion' | 'awaitingCinematicReroll' | 'awaitingCinematicHeal' | 'awaitingSpecialSpend' | 'awaitingAttackerTactics' | 'awaitingDefenderTactics' | 'awaitingDamageAssignment';
     dice: DieResult[];   // current dice (may be modified by reroll)
+    // Pre-roll One In A Million pause (#564): the dice pool decided but NOT yet
+    // rolled — colours only. Set while phase === 'awaitingOneInAMillion' with a
+    // preRoll offer pending; the resolver places the chosen dice, rolls the
+    // rest into `dice`, and clears this. `dice` is empty while this is set.
+    unrolledColors?: DieColor[];
     attackerUnits: number;
     bonusDamage: number; // accumulated from damage-boost tactics
     // Per-source breakdown of bonus damage. Used by the damage-assignment

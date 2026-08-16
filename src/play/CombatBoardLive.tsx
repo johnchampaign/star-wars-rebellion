@@ -114,12 +114,11 @@ function CardHover({ G, cardId, children }: {
   );
 }
 
-export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportProblem, onShowDiceKey, onShowTacticKey, online }: {
+export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onShowDiceKey, onShowTacticKey, online }: {
   G: GameState;
   humanSide: Side;
   /** One In A Million is opt-in (#340): only show its panel when the player has
    *  armed it; otherwise PlayTab auto-skips the offer. */
-  oiamArmed?: boolean;
   onPersist: () => void;
   /** Online mode: when set, combat resolvers submit a RebellionAction to the
    *  server instead of mutating local state, and the local AI combat-stepper is
@@ -661,7 +660,7 @@ export function CombatBoardLive({ G, humanSide, oiamArmed, onPersist, onReportPr
         {pc?.kind === 'R2D2Flip' && pc.context === 'combat' && isHumanDecision && (
           <R2D2FlipPanel G={G} choice={pc} c={c} onPersist={onPersist} />
         )}
-        {pc?.kind === 'OneInAMillionOffer' && pc.context === 'combat' && isHumanDecision && oiamArmed && (
+        {pc?.kind === 'OneInAMillionOffer' && pc.context === 'combat' && isHumanDecision && (
           <OneInAMillionPanel G={G} choice={pc} onPersist={onPersist} />
         )}
         {pc?.kind === 'SpecialDieSpend' && isHumanDecision && (
@@ -1680,9 +1679,22 @@ function OneInAMillionPanel({ G, choice, onPersist }: {
   return (
     <div>
       <div style={{ fontSize: 13, marginBottom: 6 }}>
-        <b style={{ color: '#aae0ff' }}>One In A Million:</b>{' '}
-        Discard the card to set up to 2 dice faces to results of your choice.
-        <span style={{ color: '#888', fontSize: 11, marginLeft: 8 }}>⚠ One-time use.</span>
+        <b style={{ color: '#aae0ff' }}>One In A Million</b>{' '}
+        {choice.preRoll ? (
+          <>
+            — you're about to roll {choice.colors.length} {choice.colors.length === 1 ? 'die' : 'dice'}.
+            Play the card now to <b>place up to 2 of them</b> showing results of your choice
+            <i> instead of</i> rolling them; the rest roll normally.
+            <span style={{ color: '#888', fontSize: 11, marginLeft: 8 }}>
+              ⚠ One-time use. You decide before seeing the roll — that's the card.
+            </span>
+          </>
+        ) : (
+          <>
+            : Discard the card to set up to 2 dice faces to results of your choice.
+            <span style={{ color: '#888', fontSize: 11, marginLeft: 8 }}>⚠ One-time use.</span>
+          </>
+        )}
       </div>
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
         {choice.faces.map((face, i) => {
@@ -1695,12 +1707,22 @@ function OneInAMillionPanel({ G, choice, onPersist }: {
               {/* choice.faces is string[] on the wire (see types.ts) but always
                   holds DieFace values — narrow here rather than cascading a
                   DieFace[] through the engine's face stores. */}
-              <Die d={{ color: choice.colors[i], face: face as DieFace }} />
+              {choice.preRoll ? (
+                // Unrolled: show the die COLOUR only, no face — the whole point
+                // is that the Rebel hasn't seen a result.
+                <div title="not yet rolled" style={{
+                  width: 22, height: 22, borderRadius: 3, border: '1px dashed #777',
+                  background: choice.colors[i] === 'red' ? '#5a2020' : choice.colors[i] === 'black' ? '#222' : '#1f4a24',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: 12,
+                }}>?</div>
+              ) : (
+                <Die d={{ color: choice.colors[i], face: face as DieFace }} />
+              )}
               <span style={{ color: '#888' }}>→</span>
               <select value={overridden ?? ''} onChange={(e) => setFace(i, e.target.value || null)}
                 style={{ background: '#0c0d10', color: '#e8e8ea', border: '1px solid #555', fontSize: 11 }}
               >
-                <option value="">(keep)</option>
+                <option value="">{choice.preRoll ? '(roll it)' : '(keep)'}</option>
                 <option value="blank">blank</option>
                 <option value="hit">hit ✓</option>
                 <option value="direct-hit">direct-hit ✶</option>

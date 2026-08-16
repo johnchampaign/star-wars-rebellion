@@ -985,11 +985,28 @@ export function beginAttack(G: GameState, c: CombatState, side: Side, theater: T
   black = Math.min(5, black);
   green = Math.min(3, green);
 
-  // Roll dice.
+  // ONE IN A MILLION — pre-roll (#564, #543, #544). RAW: "instead of rolling
+  // up to two dice, place them on the table showing results of your choice".
+  // The decision to play the card is made BEFORE the roll, blind. The old
+  // window rolled first and then showed the Rebel the results before asking —
+  // a reactive save the card does not grant — and needed a UI arm-toggle to
+  // stop it nagging on every roll, which three players independently found
+  // alien ("nothing like any other card / ability in the game"). Now: if the
+  // card is in hand and Luke/Wedge is here, pause with the dice pool DECIDED
+  // but UNROLLED; the resolver places the chosen dice and rolls the rest.
+  const pool: DieColor[] = [
+    ...Array<DieColor>(red).fill('red'), ...Array<DieColor>(black).fill('black'), ...Array<DieColor>(green).fill('green'),
+  ];
+  const oimPreRoll = side === 'Rebel' && pool.length > 0
+    && G.rebel.actionHand.includes('one-in-a-million') && oimLeaderAt(G, c.systemId);
+
+  // Roll dice (unless the pre-roll pause holds them).
   const dice: DieResult[] = [];
-  for (let i = 0; i < red; i++) dice.push(rollDie(G.rng, 'red' as DieColor));
-  for (let i = 0; i < black; i++) dice.push(rollDie(G.rng, 'black' as DieColor));
-  for (let i = 0; i < green; i++) dice.push(rollDie(G.rng, 'green' as DieColor));
+  if (!oimPreRoll) {
+    for (let i = 0; i < red; i++) dice.push(rollDie(G.rng, 'red' as DieColor));
+    for (let i = 0; i < black; i++) dice.push(rollDie(G.rng, 'black' as DieColor));
+    for (let i = 0; i < green; i++) dice.push(rollDie(G.rng, 'green' as DieColor));
+  }
 
   // CINEMATIC COMBAT reroll (RoE p.9, "Once per attack, reroll up to your
   // leader's tactic value of dice") and the "Removing damage" ★-spend
@@ -1001,8 +1018,9 @@ export function beginAttack(G: GameState, c: CombatState, side: Side, theater: T
   // based on which pre-tactic pause point (Yoda / Special) applies first.
   c.pendingAttack = {
     side, theater,
-    phase: 'awaitingYodaReroll', // placeholder; advanceAttackToTactics may change it
+    phase: oimPreRoll ? 'awaitingOneInAMillion' : 'awaitingYodaReroll', // placeholder; advanceAttackToTactics may change it
     dice,
+    unrolledColors: oimPreRoll ? pool : undefined,
     attackerUnits: myUnits.length,
     bonusDamage: 0,
     tacticsPlayed: [],
@@ -1021,6 +1039,22 @@ export function beginAttack(G: GameState, c: CombatState, side: Side, theater: T
       reducedRed: accordingToMyDesignReduction.red,
       reducedBlack: accordingToMyDesignReduction.black,
     }});
+  }
+  if (oimPreRoll) {
+    G.pendingChoice = {
+      kind: 'OneInAMillionOffer',
+      side: 'Rebel',
+      context: 'combat',
+      preRoll: true,
+      rebelRoleInRoll: 'attacker',
+      // Placeholders — the dice have not been rolled. Renderers key on preRoll.
+      faces: pool.map(() => 'unrolled'),
+      colors: pool,
+    };
+    log(G, { kind: 'choice-request', side: 'Rebel', payload: {
+      kind: 'OneInAMillionOffer', context: 'combat', preRoll: true, theater, dice: pool.length,
+    }});
+    return;
   }
   advanceAttackToTactics(G, c);
 }
@@ -1191,26 +1225,12 @@ function advanceAttackToTactics(G: GameState, c: CombatState): void {
     }
   }
 
-  // 1c) One In A Million — Rebel side, Luke or Wedge at the system, card in
-  //     hand, at least 1 die. Lets the Rebel set up to 2 dice faces.
-  if (!pa.oneInAMillionResolved && pa.side === 'Rebel'
-      && G.rebel.actionHand.includes('one-in-a-million')) {
-    if (oimLeaderAt(G, c.systemId) && pa.dice.length > 0) {
-      pa.phase = 'awaitingOneInAMillion';
-      G.pendingChoice = {
-        kind: 'OneInAMillionOffer',
-        side: 'Rebel',
-        context: 'combat',
-        rebelRoleInRoll: 'attacker',
-        faces: pa.dice.map((d) => d.face),
-        colors: pa.dice.map((d) => d.color),
-      };
-      log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-        kind: 'OneInAMillionOffer', context: 'combat', theater: pa.theater, dice: pa.dice.length,
-      }});
-      return;
-    }
-  }
+  // 1c) One In A Million — RETIRED here (#564). The offer is now made BEFORE
+  //     the roll, in beginAttack, so the Rebel decides blind as the card
+  //     requires; by the time this walker runs the dice are already placed or
+  //     rolled and oneInAMillionResolved is set. Left as a comment so nobody
+  //     re-adds a post-roll window: that would let the Rebel see the roll and
+  //     then "un-roll" two dice, which the card does not permit.
 
   // 2) Special-die spend (BASE GAME only) — draw/play base tactic cards with ★.
   //     In CINEMATIC combat the base tactic deck is off entirely: ★ dice are
@@ -1295,15 +1315,30 @@ export function resolveOneInAMillionCombat(
   }
   if (picks.length > 2) return { ok: false, reason: 'too-many-picks' };
   const validFaces = new Set(['blank', 'hit', 'direct-hit', 'special']);
+  // Pre-roll path (#564): the pool is unrolled. Validate against the pool,
+  // PLACE the chosen dice, then roll everything else. Whether or not the card
+  // is played, the dice come into existence here.
+  const preRoll = !!G.pendingChoice.preRoll && !!pa.unrolledColors;
+  const poolLen = preRoll ? pa.unrolledColors!.length : pa.dice.length;
   if (picks.length > 0) {
     const seen = new Set<number>();
     for (const p of picks) {
       if (seen.has(p.index)) return { ok: false, reason: 'dup-index' };
       seen.add(p.index);
       if (!validFaces.has(p.face)) return { ok: false, reason: `bad-face:${p.face}` };
-      if (p.index < 0 || p.index >= pa.dice.length) return { ok: false, reason: `bad-index:${p.index}` };
+      if (p.index < 0 || p.index >= poolLen) return { ok: false, reason: `bad-index:${p.index}` };
     }
-    for (const p of picks) pa.dice[p.index] = { color: pa.dice[p.index].color, face: p.face as DieResult['face'] };
+  }
+  if (preRoll) {
+    const placed = new Map(picks.map((p) => [p.index, p.face as DieResult['face']]));
+    pa.dice = pa.unrolledColors!.map((color, i) =>
+      placed.has(i) ? { color, face: placed.get(i)! } : rollDie(G.rng, color));
+    pa.unrolledColors = undefined;
+  }
+  if (picks.length > 0) {
+    if (!preRoll) {
+      for (const p of picks) pa.dice[p.index] = { color: pa.dice[p.index].color, face: p.face as DieResult['face'] };
+    }
     // Discard the card.
     const i = G.rebel.actionHand.indexOf('one-in-a-million');
     if (i >= 0) {
