@@ -71,9 +71,38 @@ node scripts/tournament.mjs --games 1200 --seed 1 --expansion
 | `--rebel-policy mcts\|eval` | Give the Rebel a stronger Command brain than the heuristic. |
 | `--empire-policy mcts\|eval` | Same for the Empire. **Use `mcts` to measure what players face** — but see the banner: ~3 s/decision, so size the run accordingly. |
 | `--games N --seed S` | Sample size and base seed (paired across arms). |
+| `--fast-search` | MCTS at budget 24 / horizon 2 instead of 64 / 4. **Validated as a proxy** (below) and ~6× cheaper. The summary and every game log label it, because it is NOT the shipped strength. |
 
 Rough costs: heuristic-vs-heuristic ≈ 20 games/sec; `--rebel-policy eval` ≈
-4 s/game, so budget accordingly. Standard error on a win-rate difference is
+4 s/game; `--rebel-policy mcts` ≈ **115–133 s/game** at full strength (a
+300-game arm ≈ 10 h) and **≈ 21 s/game with `--fast-search`** (300 games ≈
+1.75 h). Every game log now records `policies: {Rebel, Empire, search}` — pool
+directories by that field, never by name.
+
+### The MCTS-Rebel arm (2026-08-16)
+
+The arm every "re-test against a stronger opponent" note in this file was
+waiting for. Three things established before trusting it:
+
+- **Fast-search is a faithful proxy.** 12 games, paired seeds, full (64/4) vs
+  fast (24/2): identical 12/12 outcomes, avg rounds 9.4 vs 9.2, end reputation
+  9.4 vs 9.2, at 133 s vs 21 s per game. Nothing measurable is lost.
+- **It is a real stick, not a broken one.** First 28 games were 28 Rebel wins,
+  which would have made it useless (a 100% opponent cannot register anything
+  the Empire does). At n=60 it settles at **~86% Rebel** with the Empire still
+  winning by base-capture — so the needle moves. Compare the heuristic Rebel's
+  ~65% on comparable seeds.
+- **It is stronger in the way the notes predicted.** It scores **4.33 objectives
+  per game vs the heuristic's 2.65** and wins on reputation-time — the exact
+  "tempo gap" (AI wins ~10 rounds vs an expert's ~6) written into randomAI.ts.
+  So a lever whose value is *denying the Rebel objectives* now has an opponent
+  that actually pursues them.
+
+What it still is NOT: a human. It doesn't play Heart of the Empire twice a
+game the way jocke01 does, and it inherits the heuristic's move generator
+(MCTS searches over `bestCommandAction`'s output), so a mission the heuristic
+suppresses is invisible to the search too. Fixture evidence still outranks it
+for behaviours the Rebel AI never exhibits. Standard error on a win-rate difference is
 roughly `2.0pp` at n=1200 and `3.5pp` at n=400 — size the run to the effect you
 care about.
 
