@@ -87,6 +87,22 @@ function aiRand(): number { return _aiRng ? _aiRng() : Math.random(); }
  *  but identically on a re-run of the same position. */
 const CORUSCANT = 'coruscant';
 
+/** Opt-out for assigning Capture Rebel Operative speculatively
+ *  (SWR_CAPTURE_ASSIGN=0). Default ON. Off restores the old behaviour, where the
+ *  mission was only assigned if a Rebel leader was ALREADY standing in a system
+ *  with an Imperial unit — a condition that is false in 100% of Assignment
+ *  phases, because Rebel leaders do not reach the board until they reveal their
+ *  own missions during Command. Its two siblings (Detained, Collect Bounty)
+ *  already had this exception; this one was left out. From jocke01's report.
+ *  See docs/ab-levers.md. */
+const CAPTURE_ASSIGN_SPECULATIVE: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_CAPTURE_ASSIGN === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
 /** Opt-out for the Coruscant threat response (SWR_DEFEND_CORUSCANT=0). Default
  *  ON. Off restores the old behaviour, which only noticed Rebels once they were
  *  standing ON the capital with the garrison already wiped out. From playtester
@@ -1393,6 +1409,12 @@ function bestRevealTarget(
   return { targetSystemId, targetScore, revealScore: baseValue + targetScore + 6 };
 }
 
+export function __testPlanAssignment(
+  G: GameState, side: Side,
+): Array<{ missionId: string; leaderIds: LeaderId[] }> {
+  return planAssignment(G, side);
+}
+
 function planAssignment(G: GameState, side: Side): Array<{ missionId: string; leaderIds: LeaderId[] }> {
   const f = side === 'Rebel' ? G.rebel : G.empire;
   const hand = [...f.missionHand];
@@ -1480,13 +1502,35 @@ function planAssignment(G: GameState, side: Side): Array<{ missionId: string; le
       // every game (the Empire captured/detained 0 leaders despite ~2 surfacing
       // per game). Assign them anyway when the opponent has leaders that will
       // surface; the Command-phase reveal still gates on a live target.
+      //
+      // capture-rebel-operative belongs to this same class and was simply left
+      // out of it, which is the whole of jocke01's "the empire uses capture
+      // rebel operative way to little". Measured: across 60 games there were
+      // ZERO Rebel leaders on the board at the start of EVERY Assignment phase
+      // (513/513 rounds), so the "is a Rebel leader standing somewhere I can
+      // reach?" question was being asked at the one moment each round when the
+      // answer is guaranteed to be no. Result: assigned 0.23 times per game
+      // against rule-by-fear's 5.33, and first attempted around turn 6.
+      //
+      // It does need a stricter test than its two siblings. Detained and
+      // Collect Bounty target a leader "in any system"; Capture Rebel Operative
+      // needs one "in a system that contains an IMPERIAL UNIT", so a surfaced
+      // leader is not automatically a target. Require the Empire to actually
+      // hold ground somewhere a leader could surface, or this trades one wasted
+      // assignment for another.
+      const CAPTURE_OP = side === 'Empire' && missionId === 'capture-rebel-operative'
+        && CAPTURE_ASSIGN_SPECULATIVE;
       const FRESH_CAPTURE = side === 'Empire'
-        && (missionId === 'detained' || missionId === 'collect-bounty');
+        && (missionId === 'detained' || missionId === 'collect-bounty' || CAPTURE_OP);
       const oppHasLeaders = FRESH_CAPTURE && (
         G.rebel.leaderPool.length > 0
         || (G.rebel.leadersOnMissions ?? []).length > 0
         || Object.values(G.rebel.leadersOnBoard).some((l) => l.length > 0));
-      if (!oppHasLeaders) return null;
+      // The card's extra clause, modelled: somewhere for the capture to happen.
+      const empireHoldsSomewhere = !CAPTURE_OP || Object.entries(G.map.systems).some(
+        ([sid, ss]) => !G.catalog.systems[sid]?.isRemote
+          && (ss.units ?? []).some((u) => u.side === 'Empire'));
+      if (!oppHasLeaders || !empireHoldsSomewhere) return null;
     }
     // Base mission value + situational + leader bonuses minus the
     // opportunity cost of using N leaders (we'd rather a 1-leader plan
