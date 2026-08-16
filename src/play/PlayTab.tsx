@@ -9162,7 +9162,26 @@ function leaderStatusFor(
     return { label: 'assigning…', color: '#888' };
   }
   if (inPool) return { label: 'In pool', color: '#80dc78' };
-  if (onMission) return { label: 'On a mission', color: '#ffd54a' };
+  if (onMission) {
+    // RAW (RR "Assignment Phase"): the mission card goes facedown on the table
+    // and the leaders are placed ON TOP OF IT — so which leaders share a card
+    // is PUBLIC information even though the card itself is secret. The roster
+    // used to flatten every commitment to "On a mission", so three enemy
+    // leaders on missions could be two cards or three and there was no way to
+    // tell (player report #723). Name the partner instead: that answers the
+    // pairing question without leaking the card, and it survives other missions
+    // being revealed (unlike numbering the slots, which would renumber).
+    const entry = f.leadersOnMissions.find((m) => m.leaderIds.includes(leaderId))!;
+    const partner = entry.leaderIds.find((id) => id !== leaderId);
+    const partnerName = partner ? (G.catalog.leaders[partner]?.name ?? partner) : null;
+    // Your own missions aren't secret from you — show which card it is.
+    const own = side === humanSide ? (G.catalog.missions[entry.missionId]?.name ?? entry.missionId) : null;
+    const what = own ?? 'Mission';
+    return {
+      label: partnerName ? `${what} w/ ${partnerName}` : `${what} (alone)`,
+      color: '#ffd54a',
+    };
+  }
   return { label: 'Not in play', color: '#5a5a5a' };
 }
 
