@@ -198,6 +198,9 @@ function tieOrdered(G: GameState, arr: readonly string[]): string[] {
  *  driving a full tournament. Not used by the app. */
 export const __testArgmaxTie = argmaxTie;
 export const __testTieOrdered = tieOrdered;
+export const __testPlannedMoveOrders = (
+  G: GameState, side: Side, targetSystemId: SystemId,
+): phases.MoveOrder[] => plannedMoveOrders(G, side, targetSystemId);
 
 /** Max Rebel units the AI keeps at the hidden base during setup. The rest go
  *  to one Rebel/neutral "decoy" system. Empire's Gather Intel draws 1 probe
@@ -643,7 +646,37 @@ export function chooseRebelBaseSystem(G: GameState, candidates: SystemId[]): Sys
     }
     return far * 4 + loyal;
   };
-  return [...candidates].sort((a, b) => score(b) - score(a))[0];
+  // Sample among the near-best candidates instead of taking the deterministic
+  // maximum. `sort(...)[0]` made the pick a pure function of the map, and the
+  // map's geography barely varies — measured across 600 games the base was at
+  // RYLOTH 53% OF THE TIME, and a playtester noticed from the other side of
+  // the table: "the rebel base is almost every time at ryloth - a bit more
+  // variability could be useful" (#718). That understates it. A hidden base's
+  // value is partly its unpredictability; an Empire that knows to probe Ryloth
+  // first gets the single most important piece of information in the game for
+  // free, every game. Trading up to 4 points of placement score (one distance
+  // step) for entropy is the same call a human makes when they don't always
+  // pick the "obvious" base.
+  // Eligibility is DISTANCE-AWARE rather than a flat score margin: a flat
+  // margin of one hop (4 points) let the sampler trade the base to distance 1
+  // on cramped maps — turn-1 transport reach for the Empire — which
+  // test-base-placement-heuristic rightly rejects. Distance ties are always
+  // eligible (the +2 loyalty bonus rides along and no safety is given up); a
+  // one-hop concession is eligible only while it still leaves the base 2+ hops
+  // out, i.e. beyond the Empire's turn-1 reach.
+  const farOf = (sid: string): number => Math.min(distTo.get(sid) ?? 8, 4);
+  // The aggressive doctrine's whole point is the strike target, so eligibility
+  // there is "has one" (sampling only varies WHICH Empire neighbour to camp);
+  // if none exists it degrades to the safe rule, same as its score formula.
+  const strikers = aggressive ? candidates.filter(hasStrikeTarget) : [];
+  const pool = strikers.length > 0 ? strikers : candidates;
+  const bestFar = Math.max(...pool.map(farOf));
+  const good = pool.filter((sid) =>
+    farOf(sid) === bestFar || (farOf(sid) === bestFar - 1 && farOf(sid) >= 2));
+  // `score` stays the within-pool preference for the degenerate single-option
+  // maps; sampling handles everything else.
+  if (good.length === 0) return [...pool].sort((a, b) => score(b) - score(a))[0];
+  return good[Math.min(good.length - 1, Math.floor(aiRand() * good.length))];
 }
 
 /** How much the Rebel wants to KEEP a drawn objective (Infiltration / Covert
@@ -1681,10 +1714,26 @@ function plannedMoveOrders(
   // from using the base as a source and emptying it.
   const baseDrainGuard = side === 'Rebel' && G.rebelBaseRevealed
     ? G.rebelBaseSystemId : undefined;
+  // Never DRAIN Coruscant while a Rebel force is in or next to it. Heart of
+  // the Empire pays the Rebel 2 reputation at EVERY Refresh while Coruscant
+  // "contains a Rebel unit and no Imperial units" — so the last Imperial unit
+  // walking off the capital with an enemy army one jump away is a standing
+  // 2-rep gift, exactly like the revealed-base drain above. Player report
+  // #489: "the empire player had a massive fleet next to coruscant and ...
+  // decided to move the entire fleet to corellia to subjugate my planet
+  // instead. This is a major blunder that will give me 2vp." The
+  // DEFEND_CORUSCANT gradient pulls units toward the threatened capital;
+  // this stops a competing activation from using it as a source. Only while
+  // actually threatened — a quiet Coruscant is a normal staging system.
+  const corDrainGuard = side === 'Empire' && DEFEND_CORUSCANT
+    && [CORUSCANT, ...(G.catalog.adjacency[CORUSCANT] ?? [])].some((sid) =>
+      (G.map.systems[sid]?.units ?? []).some((u) => u.side === 'Rebel'))
+    ? CORUSCANT : undefined;
   const sources = adj.filter((sysId) => {
     if ((f.leadersOnBoard[sysId] ?? []).length > 0) return false;
     if (prisonSystems.has(sysId)) return false; // guard captured leaders
     if (sysId === baseDrainGuard) return false; // guard the revealed base
+    if (sysId === corDrainGuard) return false;  // guard the threatened capital
     const ss = G.map.systems[sysId];
     return ss && ss.units.some((u) => u.side === side);
   });

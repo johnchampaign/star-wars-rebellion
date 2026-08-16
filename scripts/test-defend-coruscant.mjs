@@ -128,6 +128,33 @@ console.log('\n[ narrowness — a quiet capital must NOT hoover up activations ]
     `on=${quiet.score} off=${off}`);
 }
 
+console.log('\n[ the capital is not used as a SOURCE while threatened (#489) ]');
+{
+  // The other half of the reported failure: the Empire had a fleet AT/NEXT TO
+  // Coruscant and marched it away to subjugate Corellia, gifting Heart of the
+  // Empire. Pulling units OUT of a threatened capital must be refused the same
+  // way the revealed Rebel base and prison systems refuse to be drained.
+  const G = createGame(data, { seed: 8, autoSetupUnits: true, expansion: { enabled: true, roeUnits: true } });
+  for (const ss of Object.values(G.map.systems)) ss.units = [];
+  if (G.map.rebelBaseSpace) G.map.rebelBaseSpace.units = [];
+  G.rebel.leadersOnBoard = {}; G.empire.leadersOnBoard = {};
+  const nb = data.adjacency.neighbors['coruscant'];
+  for (const t of ['star-destroyer', 'stormtrooper', 'stormtrooper']) M.deployUnit(G, 'Empire', t, 'coruscant');
+  for (const t of ['rebel-trooper', 'x-wing']) M.deployUnit(G, 'Rebel', t, nb[0]);
+  // A tempting activation target next door to Coruscant on the OTHER side.
+  G.map.systems[nb[1]].loyalty = 'neutral';
+  const pulled = ai.__testPlannedMoveOrders(G, 'Empire', nb[1])
+    .filter((o) => o.fromSystemId === 'coruscant');
+  check('no move order sources from the threatened capital', pulled.length === 0,
+    JSON.stringify(pulled));
+  // And with the Rebels gone, Coruscant is an ordinary staging system again.
+  for (const sid of [nb[0]]) G.map.systems[sid].units = G.map.systems[sid].units.filter((u) => u.side !== 'Rebel');
+  const pulledQuiet = ai.__testPlannedMoveOrders(G, 'Empire', nb[1])
+    .filter((o) => o.fromSystemId === 'coruscant');
+  check('a QUIET capital may still supply moves', pulledQuiet.length > 0,
+    'coruscant refused to source even with no threat');
+}
+
 console.log('\n[ the response scales with the size of the threat ]');
 {
   const small = coruscantOption(board(6, ['stormtrooper', 'stormtrooper'], ['x-wing', 'rebel-trooper']));

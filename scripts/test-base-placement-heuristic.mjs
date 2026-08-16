@@ -31,22 +31,27 @@ const bfsFrom = (G, sources) => {
 const imperialOf = (G) => Object.keys(G.map.systems).filter((sid) =>
   G.map.systems[sid]?.loyalty === 'imperial' || G.map.systems[sid]?.units.some((u) => u.side === 'Empire'));
 
-console.log('[ chooseRebelBaseSystem: distance dominates, loyalty tiebreaks ]');
+// UPDATED for the #718 entropy fix: the picker now SAMPLES among near-safest
+// candidates instead of returning the deterministic maximum. The exact-max and
+// loyal-tiebreak assertions that used to live here were the predictability bug
+// itself — "always the max-distance loyal system" is why the base sat at
+// Ryloth in 53% of 600 games and a playtester learned to probe it first. The
+// distance CONTRACT still holds and is asserted: the pick is at the best
+// distance or one hop inside it, and never below 2 hops unless nothing at 2+
+// exists. Spread is asserted in test-base-placement-variability.
+console.log('[ chooseRebelBaseSystem: distance band respected ]');
 for (const seed of [3, 9, 21, 40, 55]) {
   const G = createGame(data, { seed, autoSetupUnits: false, expansion: { enabled: true, roeUnits: true } });
   const cands = G.pendingRebelBasePick ?? [];
   if (cands.length === 0) { check(`seed ${seed}: candidates exist`, false); continue; }
+  AI.seedAI(seed);
   const picked = AI.chooseRebelBaseSystem(G, cands);
+  AI.unseedAI();
   const dist = bfsFrom(G, imperialOf(G));
   const dOf = (sid) => Math.min(dist.get(sid) ?? 8, 4);
   const maxD = Math.max(...cands.map(dOf));
-  check(`seed ${seed}: picked ${picked} at max distance (${dOf(picked)}/${maxD})`, dOf(picked) === maxD);
-  // Loyalty tiebreak: among max-distance candidates, a loyal one wins if any.
-  const atMax = cands.filter((s) => dOf(s) === maxD);
-  const loyalAtMax = atMax.filter((s) => G.map.systems[s]?.loyalty === 'rebel');
-  if (loyalAtMax.length > 0) {
-    check(`seed ${seed}: loyal tiebreak respected`, G.map.systems[picked]?.loyalty === 'rebel');
-  }
+  const ok = dOf(picked) === maxD || (dOf(picked) === maxD - 1 && dOf(picked) >= 2);
+  check(`seed ${seed}: ${picked} within the safe band (${dOf(picked)} vs best ${maxD})`, ok);
 }
 
 console.log('\n[ setup.ts defaulting fix: omitted autoSetupUnits finalises the pick ]');
