@@ -71,10 +71,100 @@ export function seedAI(seed: number): void {
 export function unseedAI(): void { _aiRng = null; }
 function aiRand(): number { return _aiRng ? _aiRng() : Math.random(); }
 
+/** Ordering key for tie-breaks: a hash of the candidate's id, salted with the
+ *  game's current RNG state.
+ *
+ *  WHY A HASH AND NOT Math.random(). The bias being fixed here (see
+ *  `argmaxTie`) is real, but curing it with live randomness would be worse than
+ *  the disease: the app supports undo, so a nondeterministic AI would answer
+ *  the same position differently after an undo/redo, and roughly forty engine
+ *  tests that drive the AI without seeding it would become coin-flips. This
+ *  keeps every position perfectly reproducible while removing the alphabet.
+ *
+ *  The rng state is READ, never advanced — no dice or draws are consumed, so
+ *  this cannot desync a replay. It changes constantly as the game rolls and
+ *  draws, so tied decisions resolve differently across turns and across games,
+ *  but identically on a re-run of the same position. */
+/** Opt-out for the unbiased tie-break (SWR_TIEBREAK=0). Default ON. Off
+ *  restores the old first-wins behaviour, which resolved every tied decision to
+ *  the alphabetically-first system. Exists so the change stays measurable —
+ *  see docs/ab-levers.md; the shipped measurement is a mission-target
+ *  distribution, not a win rate. */
+const UNBIASED_TIEBREAK: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_TIEBREAK === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
+function tieKey(G: GameState, id: string): number {
+  if (!UNBIASED_TIEBREAK) return 0; // all keys equal → first-wins, the old behaviour
+  let h = ((G.rng?.state ?? 0) ^ 0x9e3779b9) >>> 0;
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i);
+    h = Math.imul(h, 16777619) >>> 0;
+  }
+  return h >>> 0;
+}
+
+/** Highest-scoring item, breaking EXACT ties without favouring list order.
+ *
+ *  The naive `if (s > best)` loop keeps the first maximum, which is not a
+ *  neutral choice: system candidates come from `Object.keys(G.map.systems)`,
+ *  whose insertion order is the catalog's — and the catalog is stored
+ *  alphabetically, with `alderaan` at index 0. So every tied decision silently
+ *  resolved to whichever system sorts earliest, and the AI looked like it had a
+ *  fixation. A playtester spotted the pattern from the outside and guessed the
+ *  cause exactly: "it often targets alderaan with missions. I think it's
+ *  because it's first in alphabetical order."
+ *
+ *  Ties are common because these scorers deal in small integers, so a flat
+ *  board hands many systems the same number. Breaking ties by hash changes no
+ *  ranking — a strictly better option still wins — it just stops the tiebreak
+ *  from encoding the alphabet. */
+function argmaxTie<T>(
+  G: GameState, items: readonly T[], keyOf: (x: T) => string, score: (x: T) => number,
+): { item: T; score: number } | null {
+  let best: T[] = [];
+  let bestScore = -Infinity;
+  for (const it of items) {
+    const s = score(it);
+    if (s > bestScore) { bestScore = s; best = [it]; }
+    else if (s === bestScore) best.push(it);
+  }
+  if (best.length === 0) return null;
+  let winner = best[0];
+  let winnerKey = tieKey(G, keyOf(best[0]));
+  for (let i = 1; i < best.length; i++) {
+    const k = tieKey(G, keyOf(best[i]));
+    if (k < winnerKey) { winner = best[i]; winnerKey = k; }
+  }
+  return { item: winner, score: bestScore };
+}
+
 function pick<T>(arr: T[]): T | undefined {
   if (arr.length === 0) return undefined;
   return arr[Math.floor(aiRand() * arr.length)];
 }
+
+/** A copy reordered by tie-key. Feed this to a `.sort()` that ranks by score
+ *  when ties are meaningful: Array.prototype.sort is STABLE, so equal scores
+ *  come out in input order — and system lists are built from
+ *  `Object.keys(G.map.systems)`, which is the alphabetically-stored catalog.
+ *  Sorting a raw system list therefore ranks every tied group alphabetically,
+ *  and taking `[0]` picks the earliest name on the board. Pre-ordering by hash
+ *  makes the stable sort's tie order arbitrary-but-reproducible, leaving the
+ *  score ordering untouched. */
+function tieOrdered(G: GameState, arr: readonly string[]): string[] {
+  return arr.slice().sort((a, b) => tieKey(G, a) - tieKey(G, b));
+}
+
+/** Test hooks for scripts/test-alphabetical-tiebreak-bias.mjs. The tiebreak is
+ *  the whole point of that test and isn't reachable from outside without
+ *  driving a full tournament. Not used by the app. */
+export const __testArgmaxTie = argmaxTie;
+export const __testTieOrdered = tieOrdered;
 
 /** Max Rebel units the AI keeps at the hidden base during setup. The rest go
  *  to one Rebel/neutral "decoy" system. Empire's Gather Intel draws 1 probe
@@ -1242,15 +1332,12 @@ function bestRevealTarget(
   const candidates = (targets.permissive ? Object.keys(G.map.systems) : targets.systemIds)
     .filter((sid) => !missionRevealIsPointless(G, side, missionId, sid));
   if (candidates.length === 0) return null;
-  let targetSystemId: SystemId | null = null;
-  let targetScore = -Infinity;
-  for (const sysId of candidates) {
-    const t = side === 'Empire'
-      ? empireMissionTargetScore(G, missionId, sysId)
-      : rebelMissionTargetScore(G, missionId, sysId, baseDist);
-    if (t > targetScore) { targetScore = t; targetSystemId = sysId; }
-  }
-  if (!targetSystemId) return null;
+  const bestTarget = argmaxTie(G, candidates, (sysId) => sysId, (sysId) => (side === 'Empire'
+    ? empireMissionTargetScore(G, missionId, sysId)
+    : rebelMissionTargetScore(G, missionId, sysId, baseDist)));
+  if (!bestTarget) return null;
+  const targetSystemId = bestTarget.item;
+  const targetScore = bestTarget.score;
   const baseValue = missionBaseValue(missionId, side) + missionSituationalAdjust(G, missionId, side);
   return { targetSystemId, targetScore, revealScore: baseValue + targetScore + 6 };
 }
@@ -2422,7 +2509,13 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
       const l = G.catalog.leaders[lid];
       return !!l && (l.tacticValues.space + l.tacticValues.ground) > 0;
     });
-    const ranked = allSystemIds
+    // tieOrdered first: this ranking picks the activation target, and a stable
+    // sort over the alphabetical system list sent every tied fleet to the same
+    // early-alphabet systems round after round. That is the "empire loves
+    // shuffling fleets between ord mantel, cato nemodia and alderaan" report —
+    // the Empire wasn't oscillating on purpose, it was re-picking the
+    // alphabetically-first of several equally-scored destinations each turn.
+    const ranked = tieOrdered(G, allSystemIds)
       .map((sid) => ({ sid, ts: systemScore.get(sid) ?? 0 }))
       .filter((x) => x.ts > 0)
       .sort((a, b) => b.ts - a.ts);
@@ -3043,17 +3136,14 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       // Other (shouldn't really hit) — prefer own-unit systems.
       return ss.units.some((u) => u.side === side) ? 1 : 0;
     };
-    let bestSys = c.candidates[0];
-    let bestScore = -Infinity;
-    for (const sysId of c.candidates) {
-      // Strike-fleet plan (#539): once the base is revealed, pull the strongest
-      // ground (ATAT) and capital ships (SD/SSD) toward base-adjacent systems
-      // with transport, per the Empire's massing doctrine. Env-gated; 0 when off.
-      const s = scoreSystem(sysId)
-        + (side === 'Empire' ? deployProximityScore(G, sysId, c.typeId) : 0);
-      if (s > bestScore) { bestScore = s; bestSys = sysId; }
-    }
-    return phases.resolveDeployUnitPick(G, bestSys).ok;
+    // Ties broken at random, not by catalog position — new units were otherwise
+    // funnelled into the same early-alphabet systems every build.
+    // Strike-fleet plan (#539): once the base is revealed, pull the strongest
+    // ground (ATAT) and capital ships (SD/SSD) toward base-adjacent systems
+    // with transport, per the Empire's massing doctrine. Env-gated; 0 when off.
+    const bestDeploy = argmaxTie(G, c.candidates, (sysId) => sysId, (sysId) => scoreSystem(sysId)
+      + (side === 'Empire' ? deployProximityScore(G, sysId, c.typeId) : 0));
+    return phases.resolveDeployUnitPick(G, bestDeploy?.item ?? c.candidates[0]).ok;
   }
   // Plant False Lead: AI Rebel buries all taken probe cards on the bottom of
   // the deck (denies the Empire that ruled-out intel for the longest).

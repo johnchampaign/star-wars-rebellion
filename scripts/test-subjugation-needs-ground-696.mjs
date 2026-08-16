@@ -61,6 +61,18 @@ function board(seed, staged) {
     && !G.catalog.systems[sid]?.isRemote
     && (G.catalog.systems[sid]?.resources?.length ?? 0) > 0
     && (G.catalog.adjacency[sid] ?? []).some((a) => G.map.systems[a] && a !== G.rebelBaseSystemId));
+  // Make the target the UNIQUELY best conquest target by handing every other
+  // system to the Empire. Without this the board is left full of equally
+  // attractive neutral planets, `target` is merely the alphabetically-first of
+  // them, and the test only passed because the AI's tiebreak ALSO resolved
+  // alphabetically — so it silently depended on the bias fixed in
+  // test-alphabetical-tiebreak-bias. The fixture's own comment already claimed
+  // "everything else is swept off"; it swept units but not loyalty.
+  for (const [sid, ss] of Object.entries(G.map.systems)) {
+    if (sid === target || sid === G.rebelBaseSystemId) continue;
+    ss.loyalty = 'imperial';
+    ss.subjugated = false;
+  }
   G.map.systems[target].loyalty = 'neutral';
   G.map.systems[target].subjugated = false;
   const staging = (G.catalog.adjacency[target] ?? [])

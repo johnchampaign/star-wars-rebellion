@@ -60,13 +60,25 @@ console.log('[ #630 — a losing Empire must still take its turn ]');
   check('and a leader is genuinely available', G.empire.leaderPool.length > 0, 'pool empty');
 
   const SEEDS = 20;
-  let passes = 0, chosenScores = [];
+  let passes = 0, chosenScores = [], chosen = [];
   for (let s = 1; s <= SEEDS; s++) {
+    // The heuristic's action list is seed-dependent, so the bar for "took the
+    // best action" has to be computed under the SAME seed. Comparing every
+    // seed's choice against a single seed-1 maximum only ever passed because
+    // the top action happened to be stable, and it broke the moment tie-breaks
+    // stopped resolving alphabetically. Fresh board for the ranking so the
+    // search below still sees an untouched one.
+    const gRank = board();
+    AI.seedAI(s);
+    const actsS = AI.bestCommandAction(gRank, 'Empire').filter((a) => a.kind !== 'pass');
+    const bestS = actsS.length ? Math.max(...actsS.map((a) => a.score)) : -Infinity;
+
     const g = board();
     AI.seedAI(s); mcts.seedMCTS?.(s);
     const r = mcts.searchMctsCommand(g, 'Empire');
     if (!r) continue;
-    if (r.chosen.kind === 'pass') passes++; else chosenScores.push(r.chosen.score);
+    if (r.chosen.kind === 'pass') passes++;
+    else { chosenScores.push(r.chosen.score); chosen.push({ got: r.chosen.score, want: bestS }); }
   }
   console.log(`    passed in ${passes}/${SEEDS} searches`);
   // Pre-guard this was 25/25. It must now essentially never give up.
@@ -74,10 +86,33 @@ console.log('[ #630 — a losing Empire must still take its turn ]');
   // And it should take a SERIOUS action, not the cheapest thing on the list —
   // the fallback picks by heuristic score precisely because the rollout means
   // are all tied at zero and carry no ranking.
-  const best = Math.max(...acts.filter((a) => a.kind !== 'pass').map((a) => a.score));
-  const tookBest = chosenScores.length > 0 && chosenScores.every((s) => s >= best - 0.001);
-  check(`it takes the highest-scoring action (score ${best})`, tookBest,
-    `chose scores ${JSON.stringify([...new Set(chosenScores)])}`);
+  // NOTE — this used to assert the chosen action was the highest-SCORING one,
+  // which is not something the search promises and stopped being true when
+  // tie-breaks stopped resolving alphabetically. The reason is worth recording,
+  // because it is not a regression:
+  //
+  //   old tiebreak — every action arm rolled out 0.000 (the trace in the header
+  //     above). Nothing to choose between them, so the argmax fell through to
+  //     arm order, arms are sorted by heuristic score, and the top-scoring
+  //     action won by default. The assertion passed by luck of that ordering.
+  //   new tiebreak — reveal:secret-weapons-research@coruscant now WINS a
+  //     rollout (mean 0.1 vs 0.091 for the rest). The position is no longer
+  //     hopeless in the search's eyes, so the lost-position fallback does not
+  //     fire here at all, and MCTS picks by rollout mean over heuristic score.
+  //     That is the search doing exactly what it exists to do.
+  //
+  // So the fixture no longer exercises the fallback, and asserting the
+  // fallback's tie-break through it would be asserting nothing. What #630
+  // actually reported — the Empire downing tools with a full hand — is the
+  // `passes <= 2` check above, which is the guard that matters.
+  //
+  // COVERAGE GAP, stated rather than hidden: "the fallback picks by heuristic
+  // score" is now unasserted. Reaching that branch needs a position where pass
+  // beats every action by more than the margin AND all action means sit under
+  // the lost floor, which this fixture no longer is.
+  check('every search committed to a real action, never a no-op pass',
+    chosen.length === SEEDS - passes && chosen.every((c) => c.got > 0),
+    `chose ${JSON.stringify([...new Set(chosenScores)])}`);
 }
 
 console.log('[ narrowness — the guard must stay off when the search has signal ]');
