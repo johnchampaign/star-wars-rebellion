@@ -633,19 +633,47 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
       // every guarded decision via the trace's `passGuard`. Read them before
       // touching either constant.
       //
-      // First reading, on #705's board over 20 seeds: SE ~0.03-0.04 against a
-      // pass-vs-action gap of 0.02-0.09. So the 0.05 activation margin is NOT
-      // swamped by noise the way the reveal margin was, and the 30% of seeds
-      // that pass there are passing on a ~2-SE preference — the search really
-      // does rate pass above the alternatives on that board. That makes the
-      // remaining reports a question about the LEAF EVALUATION (does it value
-      // a forfeited round correctly?) rather than about this guard, which is
-      // why no threshold here was changed.
+      // First reading, on #705's board over 20 seeds (2026-08-11): SE ~0.03-0.04
+      // against a pass-vs-action gap of 0.02-0.09, passing on 30% of seeds. That
+      // read as a real ~2-SE preference for pass, i.e. a LEAF EVALUATION fault,
+      // so no threshold here was changed.
       //
-      // SWR_MCTS_PASS_Z scales the SE into an additional floor under the
-      // margins. Default 0 = off, constants unchanged: it exists so the
-      // hypothesis can be A/B'd without a rebuild, NOT as tuning already
-      // believed in.
+      // RE-MEASURED 2026-08-16 across all ten reporter boards that carry an
+      // encoded state (#580 #581 #600 #617 #629 #649 #705 #706 #711 #720), and
+      // the leaf-eval reading no longer holds — those commits landed. Paired
+      // 16-rollout arm means (scripts/diag-pass-decompose.mjs) now put the best
+      // ACTION above pass on seven boards, tie on two, and prefer pass on one
+      // (#706, where every action arm rolls out at 0 and keep-playing below is
+      // what handles it). End-to-end (scripts/diag-pass-margin.mjs, 12 seeds):
+      // nine of ten boards pass 0% of the time, #705 included — it was 30%.
+      //
+      // What is LEFT is one shape, and it is a measurement problem, not an
+      // evaluation one. #580 (Vader + Tagge in the pool, a score-44 reveal on
+      // the table) still forfeits on 2/24 seeds, and its own numbers say why:
+      //   true gap over 16 paired rollouts  +0.007   — a tie
+      //   single-search gap, 24 seeds        0.001 .. 0.088  (median 0.044)
+      //   SE of that difference              0.019 .. 0.033  (median 0.027)
+      // A 64-pull search cannot resolve this board at all; it just draws a
+      // number from a distribution straddling the 0.05 constant. Worse, WHICH
+      // side of the guard it lands on is decided by which arm happens to top the
+      // means: when a reveal does, #649's 0.15 margin (~5 SE) rescues gaps up to
+      // 0.088; when an activation does, the 0.05 margin (~1.9 SE) lets 0.054 and
+      // 0.071 through. Same board, same tie, opposite answer.
+      //
+      // So the activation margin gets the noise robustness #649 already gave
+      // reveals — not as a bigger constant (the next drift just walks past it)
+      // but as a floor that scales with the search's OWN measured error, via the
+      // SWR_MCTS_PASS_Z hook that was built and instrumented for exactly this
+      // and shipped off pending evidence. z=3 is a DECISION-THEORETIC bar, not a
+      // statistical one: a wrong pass forfeits the whole round and is what ~20
+      // reports are about, while a wrong action costs one slightly-off move, so
+      // ties must not go to pass. It clears every noise-driven pass measured on
+      // #580 (3 x 0.025 = 0.075 > 0.071) and leaves genuine preferences alone —
+      // #706's 0.62 gap against SE ~0.1 is 6 SE and still passes freely.
+      //
+      // SWR_MCTS_PASS_Z=0 restores the old constants-only behaviour (the A/B
+      // control). Read the trace's `passGuard {gap, se, eff}` before touching
+      // any of this — every guarded decision records all three.
       const stderr = (x: { n: number; sum: number; sumsq: number }): number => {
         if (x.n < 1) return 0;
         const m = x.sum / x.n;
@@ -658,7 +686,7 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
       // SE of the difference of two means. Common random numbers pair the arms'
       // rollouts, so treating them as independent OVER-states this slightly.
       const noiseSE = Math.hypot(stderr(alive[0]), stderr(bestAct));
-      const z = envInt('SWR_MCTS_PASS_Z', 0) / 100;
+      const z = envInt('SWR_MCTS_PASS_Z', 300) / 100;
       const baseMargin = bestAct.a.kind === 'reveal' ? Math.max(margin, revealMargin) : margin;
       const effMargin = soleReveal ? Infinity : Math.max(baseMargin, z * noiseSE);
       passGuard = { gap: passMean - actMean, se: noiseSE, eff: effMargin };
