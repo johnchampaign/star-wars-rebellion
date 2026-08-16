@@ -85,6 +85,23 @@ function aiRand(): number { return _aiRng ? _aiRng() : Math.random(); }
  *  this cannot desync a replay. It changes constantly as the game rolls and
  *  draws, so tied decisions resolve differently across turns and across games,
  *  but identically on a re-run of the same position. */
+const CORUSCANT = 'coruscant';
+
+/** Opt-out for the Coruscant threat response (SWR_DEFEND_CORUSCANT=0). Default
+ *  ON. Off restores the old behaviour, which only noticed Rebels once they were
+ *  standing ON the capital with the garrison already wiped out. From playtester
+ *  jocke01's report that the Empire "reacts really slow" to fleets massing next
+ *  to Coruscant. Self-play cannot measure this — the AI Rebel plays Heart of
+ *  the Empire 0.027 times per game where a human plays it 2+ times in one — so
+ *  the evidence is a fixture, not a win rate. See docs/ab-levers.md. */
+const DEFEND_CORUSCANT: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_DEFEND_CORUSCANT === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
 /** Opt-out for the unbiased tie-break (SWR_TIEBREAK=0). Default ON. Off
  *  restores the old first-wins behaviour, which resolved every tied decision to
  *  the alphabetically-first system. Exists so the change stays measurable —
@@ -765,6 +782,40 @@ function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: 
     else if (hasRebelHere) s += 8;                                          // any Rebel presence
     else if (sysState?.loyalty === 'imperial' || sysState?.subjugated) s -= 15; // pointless reinforce (#561)
     else s += 3;                                                            // mild forward push (neutral/Rebel-loyal, empty)
+  }
+  // Deployment ("Attempt on a system with no Rebel units or loyalty. Gain 1
+  // triangle ground unit.") had NO target score — the same hole #561 left in
+  // Planetary Conquest — so every legal target tied on the opposition term
+  // alone and the pick was arbitrary. jocke01 (#719/#721): "The empire uses the
+  // mission on alderaan that it already controls with massive fleet ... Same
+  // issue again with the empire targeting a planet with a bunch of ground
+  // units." A stormtrooper added to a 19-unit stack in the rear does nothing;
+  // the same stormtrooper on a system with no Imperial ground is a garrison —
+  // it plants the flag a subjugation needs (#696) and extends reach.
+  if (missionId === 'deployment') {
+    const units = sysState?.units ?? [];
+    const impGround = units.filter((u) => {
+      const t = G.catalog.unitTypes[u.typeId];
+      return u.side === 'Empire' && t?.theater === 'ground' && t.class !== 'structure';
+    }).length;
+    // Worth is what the planet produces, weighed by shape like every other
+    // take-the-planet term (#694) — a square icon is a capital ship, a triangle
+    // is a trooper.
+    const shapeWeight = RESOURCE_SHAPE_WEIGHT
+      ? (sys.resources ?? []).reduce((a, r) =>
+          a + (r.shape === 'square' ? 3 : r.shape === 'circle' ? 2 : 1), 0)
+      : (sys.resources?.length ?? 0);
+    if (impGround === 0) {
+      // First boots on the ground here. Best on a system we don't yet hold,
+      // where the trooper unlocks a subjugation; still good on an Imperial
+      // world that has no garrison at all.
+      s += 14 + shapeWeight * 3;
+      if (sysState?.loyalty !== 'imperial' && !sysState?.subjugated) s += 6;
+    } else {
+      // Already garrisoned — reinforcing is the weakest use of the card, and
+      // the more that's already parked there the weaker it gets.
+      s -= 4 + Math.min(impGround, 8) * 2;
+    }
   }
   // Prefer an undefended target so the attempt auto-succeeds (see helper).
   s += oppositionTargetTerm(G, 'Empire', missionId, targetSysId);
@@ -1896,6 +1947,31 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   // each turn; env-gated for A/B. null when disabled or no plan this turn.
   const empirePlan: StrikeFleetPlan | null =
     side === 'Empire' && PLANNER_ENABLED ? derivePlan(G) : null;
+  // Rebel force IN OR ADJACENT TO Coruscant, and what the Empire has standing
+  // on the capital to meet it. Both are public board state, so reacting to them
+  // is not the AI peeking at the Rebel's objective hand.
+  //
+  // Adjacency is the point. Two Rebel objectives key off this square and the
+  // engine's existing Coruscant term saw neither coming:
+  //   Threaten the Core     "5 or more Rebel units are in AND/OR ADJACENT TO
+  //                          Coruscant" — scores while the fleet is still next
+  //                          door, so by the time units arrive it has paid out.
+  //   Heart of the Empire   "If the Coruscant system contains a Rebel unit and
+  //                          NO Imperial units" — and it RETURNS TO HAND rather
+  //                          than being spent, so it pays 2 reputation at every
+  //                          Refresh until the Empire puts something back.
+  // A playtester scored the second one 2+ times in single games: "if the rebels
+  // ever gathers a threatening fleet next to coruscant they have heart of the
+  // empire in hand 8-9 out of 10 times ... it reacts really slow to it being
+  // attacked."
+  const corAdj = side === 'Empire' ? [CORUSCANT, ...(G.catalog.adjacency[CORUSCANT] ?? [])] : [];
+  const corThreat = corAdj.reduce((n, sid) => n
+    + (G.map.systems[sid]?.units ?? []).filter((u) => u.side === 'Rebel').length, 0);
+  const corGarrison = (G.map.systems[CORUSCANT]?.units ?? []).filter((u) => {
+    if (u.side !== 'Empire') return false;
+    return G.catalog.unitTypes[u.typeId]?.class !== 'structure';
+  }).length;
+
   const systemScore = new Map<string, number>();
   for (const sysId of allSystemIds) {
     let ts = 0;
@@ -2275,8 +2351,25 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
       // break it is not the AI peeking at the Rebel's objective hand — it is the
       // Empire noticing an enemy army camped on its capital. Merely arriving
       // denies it; the Empire does not have to clear the ground (#697).
-      if (sysId === 'coruscant' && !(THEATER_AWARE_ODDS && hasEnemyUnits)) ts -= 3;
+      // The "quiet capital" penalty must not apply while a Rebel army is within
+      // one jump: that is the moment reinforcing is most valuable, and docking
+      // it 3 was telling the Empire to look away right up until the Rebels
+      // landed. Measured on a fixture before this change, with SIX Rebel units
+      // next door and Coruscant EMPTY, activating to the capital scored 2 and
+      // ranked last of four — defending an undefended capital was the Empire's
+      // least attractive move on the board.
+      const corQuiet = !DEFEND_CORUSCANT || corThreat === 0;
+      if (sysId === 'coruscant' && corQuiet && !(THEATER_AWARE_ODDS && hasEnemyUnits)) ts -= 3;
       if (THEATER_AWARE_ODDS && sysId === 'coruscant' && hasEnemyUnits && !hasOwnUnits) ts += 20;
+      if (DEFEND_CORUSCANT && sysId === CORUSCANT && corThreat > 0) {
+        // Scale with how badly the capital is outnumbered, so a lone scout next
+        // door is a nudge and a massed fleet is an emergency. Deliberately fires
+        // BEFORE the garrison is gone: waiting for `!hasOwnUnits` means waiting
+        // until Heart of the Empire is already scoreable, which is exactly the
+        // reaction lag being reported. Capped so the capital cannot outbid every
+        // other consideration on the map forever.
+        ts += Math.min(26, 5 + 4 * Math.max(0, corThreat - corGarrison));
+      }
     } else {
       if (baseDist) {
         // Base still hidden — don't cluster units onto/next to it and give the
