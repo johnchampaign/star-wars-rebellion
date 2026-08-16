@@ -1196,17 +1196,34 @@ const SUBJUGATION_NEEDS_GROUND: boolean = (() => {
   return true;
 })();
 
-/** A/B lever: build Shield Bunkers to garrison the Death Star site
- *  (SWR_BUNKERS=1). Playtester suggestion, OFF by default — rejected against
- *  the heuristic Rebel, but that opponent enters the Death Star's system in
- *  3.3% of games and has never destroyed a DSUC, so the Bunker's protection
- *  never had an opportunity to pay for itself. Kept wired so it can be
- *  re-measured against a stronger opponent (docs/ab-levers.md). */
+/** Build Shield Bunkers to garrison the Death Star site (SWR_BUNKERS=0 to opt
+ *  out). NOW ON — this reverses the 2026-08-06 rejection, on the re-test that
+ *  rejection explicitly asked for.
+ *
+ *  The original verdict was −2.5pp against a Rebel that "enters the Death Star's
+ *  system in 3.3% of games and has never destroyed a DSUC", so the Bunker's
+ *  whole purpose — making a Death Star immune to the Death Star Plans objective
+ *  — never had an opportunity to pay for itself. That precondition no longer
+ *  holds: the same 300-game bench now sees the Rebel destroy 21 Death Stars and
+ *  5 DSUCs, so the threat is real and the protection has something to protect
+ *  against.
+ *
+ *  Re-measured 2026-08-15, 300 RoE games per arm on paired seeds. The mechanism
+ *  works: bunkers reaching the Death Star's system 22 → 111, Death Star Plans
+ *  attempts BLOCKED 0 → 11, Death Stars lost 21 → 17. Win rate 36.0 → 38.0
+ *  (+2.0pp, CI [−5.7,+9.7]) — still inside noise, but the sign has flipped from
+ *  −2.5pp, which is exactly the direction the old entry predicted a stronger
+ *  opponent would produce.
+ *
+ *  Also a playtester report: "it still never uses the shield bunker to try and
+ *  protect the death star" (jocke01). He was right, and measurably so — with
+ *  this off, only 22 of 288 bunkers ever reached the station they exist for. */
 const BUILD_SHIELD_BUNKERS: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-    return proc?.env?.SWR_BUNKERS === '1';
-  } catch { return false; } // browser: no process
+    if (proc?.env?.SWR_BUNKERS === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
 })();
 
 /** Opt-out for letting a leader who CANNOT activate a system oppose missions
