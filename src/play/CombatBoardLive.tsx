@@ -13,6 +13,7 @@ import * as _combat from '../engine/combat';
 import { makeOnlineCombat } from '../online/onlineEngine';
 import type { RebellionAction } from '../adapter/rebellionAction';
 import { stepOnce as aiStepOnce } from './randomAI';
+import { playedTacticsForCombat } from './combatTacticsStrip';
 import { vmodAssetUrl, CARD_IMAGE_BASE, UNIT_IMAGE_BASE } from '../data/loadAssets';
 import { unitImageUrl, getUnitStyle } from './unitImages';
 
@@ -196,32 +197,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
   // Tactic cards played so far THIS combat, both sides (RAW: revealed once
   // played). Lets you see the enemy actually played one and click to read it
   // (feature: MightyFaben — "you can't tell if the enemy played a tactic").
-  const playedTactics: { side: Side; card: string }[] = (() => {
-    const tl = G.turnLog;
-    let beginIdx = -1;
-    for (let i = tl.length - 1; i >= 0; i--) {
-      const e = tl[i];
-      if (e.kind === 'combat-begin' && (e.payload as { systemId?: string })?.systemId === c.systemId) { beginIdx = i; break; }
-    }
-    if (beginIdx < 0) return [];
-    const out: { side: Side; card: string }[] = [];
-    for (let i = beginIdx + 1; i < tl.length; i++) {
-      const e = tl[i];
-      if (e.kind === 'combat-end') break;
-      // combat-tactic fires when a tactic ACTS (reroll/damage). But a cinematic
-      // tactic that's revealed and then CANCELLED by the opponent, or that has
-      // NO applicable ability, logs a different event and would otherwise never
-      // show — so the enemy's defensive/cancel card was invisible unless you dug
-      // through the log (playtester: "you aren't told the enemy tactic card").
-      // All three are post-reveal, so surfacing them leaks nothing face-down.
-      if ((e.kind === 'combat-tactic' || e.kind === 'cinematic-tactic-cancelled'
-        || e.kind === 'cinematic-tactic-no-ability') && e.side) {
-        const card = (e.payload as { card?: string })?.card;
-        if (card) out.push({ side: e.side as Side, card });
-      }
-    }
-    return out;
-  })();
+  const playedTactics = playedTacticsForCombat(G);
 
   // Current decision (if any) and which side owns it.
   const pc = G.pendingChoice;
@@ -541,6 +517,7 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
               <CardHover G={G} cardId={p.card}>
                 {G.catalog.tactics[p.card]?.name ?? p.card}
               </CardHover>
+              {p.note && <span style={{ color: '#9a9a9e', fontSize: 11, marginLeft: 5 }}>({p.note})</span>}
             </span>
           ))}
         </div>
