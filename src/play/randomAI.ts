@@ -1668,6 +1668,48 @@ function captureTargetLeaderId(G: GameState, side: Side, missionId: string, sysI
   return [...here].sort((a, b) => leaderValue(G, b) - leaderValue(G, a))[0] as LeaderId;
 }
 
+/** Opt-out for the hold-or-flee assessment on a revealed base
+ *  (SWR_HOLD_BASE=0). Default ON. Off restores the old unconditional flee. */
+const HOLD_REVEALED_BASE: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_HOLD_BASE === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
+/** Should a REVEALED base stay put when Rapid Mobilization offers to move it?
+ *  Compares the Imperial force that can reach the base next round against the
+ *  Rebel force standing on it. Exported for tests. */
+export function shouldHoldRevealedBase(G: GameState): boolean {
+  const baseId = G.rebelBaseSystemId;
+  if (!baseId) return false;
+  const here = G.map.systems[baseId]?.units ?? [];
+  const defence = here.filter((u) => u.side === 'Rebel').reduce((s, u) => s + unitStrength(G, u), 0);
+  // Reachable Imperial force: standing on the base or one jump out.
+  const reach = [baseId, ...(G.catalog.adjacency[baseId] ?? [])];
+  let threat = 0;
+  for (const sid of reach) {
+    for (const u of (G.map.systems[sid]?.units ?? [])) {
+      if (u.side !== 'Empire') continue;
+      const t = G.catalog.unitTypes[u.typeId];
+      if (t?.class === 'structure') continue;
+      threat += unitStrength(G, u);
+    }
+  }
+  // A completed Death Star within two jumps wins by orbit — treat as decisive.
+  const within2 = new Set<string>(reach);
+  for (const a of reach) for (const b of (G.catalog.adjacency[a] ?? [])) within2.add(b);
+  const dsNear = [...within2].some((sid) =>
+    (G.map.systems[sid]?.units ?? []).some((u) => u.side === 'Empire' && u.typeId === 'death-star'));
+  if (dsNear) return false;
+  // Nothing can reach us next round → fleeing buys nothing and costs the turn.
+  if (threat === 0) return true;
+  // Hold when the defence clearly outmatches what can arrive. The 1.25 margin
+  // is the attacker's edge for choosing the moment; below it, flee.
+  return defence >= threat * 1.25;
+}
+
 /** Combat weight of a single unit: dice + health. The strength gates' own
  *  measure, lifted to module scope so the reinforcement estimate below scores
  *  units the same way the gate scores defenders. */
@@ -4013,6 +4055,30 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     // away a hidden position the Empire hadn't even found. When hidden, always
     // take move-units instead — pull ships INTO the base to defend/consolidate
     // (which never strands anything) and keep hiding.
+    // REVEALED: hold or flee? (#638 / #508). This used to be an unconditional
+    // flee — `revealed ? 'establish-base' : 'move-units'` — so the Rebel
+    // abandoned even a base it could easily have held ("Rebels moved the base
+    // even though they had MUCH better unit numbers and the death star was
+    // far away"). Self-play says always-flee is no better than a coin flip:
+    // after a reveal, relocated bases were captured 70/119 and held bases
+    // 43/81 — the same ~45% either way. Fleeing costs the position and the
+    // turn; it should be paid for by an actual threat.
+    //
+    // Weigh what can reach the base NEXT round against what is standing on
+    // it, in the strength gates' own units (dice + health). No reachable
+    // threat → hold; the Death Star anywhere within two jumps counts as an
+    // overwhelming threat regardless of the ground fight, because it wins by
+    // orbit. Env-gated (SWR_HOLD_BASE=0 restores always-flee) — see
+    // docs/ab-levers.md.
+    //
+    // HOW to hold when revealed: NOT via move-units — the card reads "IF the
+    // Rebel base is not revealed, move up to 5 units", so that branch is
+    // illegal once revealed and the engine rejects it (`move-units-
+    // unavailable`). A first cut of this holding rule chose it anyway and
+    // 79 of 300 self-play games hung on the choice forever. The legal hold is
+    // RR p.11: take establish-base, draw the probes (free intel either way),
+    // and DECLINE at the base pick — see the RapidMobilizationBasePick handler
+    // below, which consults the same assessment.
     const branch = G.rebelBaseRevealed ? 'establish-base' : 'move-units';
     return phases.resolveRapidMobilizationBranch(G, branch).ok;
   }
@@ -4038,6 +4104,13 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     const candidates = c.probeSystemIds ?? [];
     if (candidates.length === 0) {
       // No legal relocation target this draw — decline (keep current base).
+      return phases.resolveRapidMobilizationBasePick(G, null).ok;
+    }
+    // HOLD a revealed base that can be held (#638/#508): decline the
+    // relocation. The probes were still drawn and go to the bottom — that is
+    // the "draw and look, then decide not to establish" option RR p.11 grants,
+    // and it costs nothing the flee would not also have spent.
+    if (G.rebelBaseRevealed && HOLD_REVEALED_BASE && shouldHoldRevealedBase(G)) {
       return phases.resolveRapidMobilizationBasePick(G, null).ok;
     }
     // Relocate to the SAFEST candidate: farthest from Empire units, not the
