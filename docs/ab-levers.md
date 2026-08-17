@@ -121,8 +121,34 @@ It is a different animal from the Rebel arm in two ways that matter:
   fast-search** — cheaper than the Rebel arm at both profiles because Empire
   Command decisions are fewer per game.
 
-Validation of fast-as-proxy and of the arm's usable dynamic range recorded
-below once measured; do NOT assume the Rebel arm's numbers transfer. Standard error on a win-rate difference is
+Validated 2026-08-17:
+
+- **Fast-search is a slightly WEAKER proxy here, not a faithful one.** 12
+  paired seeds, full (64/4/8) vs fast (24/2/8): Empire **11/12 vs 9/12**, two
+  seeds flip E→R under fast, avg rounds 8.2 vs 8.1, at 127 s vs 21 s. That is
+  the determinization budget biting — with `horizon 2` the search sees fewer
+  base-hunt payoffs. So unlike the Rebel arm, treat fast-search Empire numbers
+  as a **lower bound** on the shipped Empire's strength, and use full search
+  for any verdict that hinges on the Empire being strong enough.
+- **The shipped Empire is far stronger than the harness default implied.** At
+  n=60 (fast-search, so if anything understated): **Empire 73.3% (SE 5.7)**,
+  44 base-captures, base revealed in 80% of games — versus **~35%** for the
+  heuristic Empire on comparable seeds. The heuristic-vs-heuristic default has
+  been measuring an Empire roughly *half* as strong as the one players face.
+
+Consequences worth stating plainly:
+1. **The passivity cluster is about a STRONG AI's occasional bad decisions**,
+   not a weak AI's general drift. That reframes it as a search-quality problem
+   (the `mctsAI.ts` pass-margin / keep-playing guards), which is exactly where
+   the #630/#580 fixture work already lives — the fixture approach was right.
+2. **Every heuristic-vs-heuristic Empire harm check this week understated the
+   Empire.** The fixture evidence for `SWR_DEFEND_CORUSCANT`, `SWR_CAPTURE_
+   ASSIGN`, `SWR_TIEBREAK` still stands (fixtures test the scorer MCTS searches
+   over), but their harm checks should be re-run under this arm before anyone
+   leans on the win-rate numbers.
+3. **The harness default should probably be MCTS-vs-MCTS**, since that is the
+   only pairing where both sides resemble what a player faces. Cost is the
+   obstacle: ~40 s/game fast, ~4 min/game full. Standard error on a win-rate difference is
 roughly `2.0pp` at n=1200 and `3.5pp` at n=400 — size the run to the effect you
 care about.
 
