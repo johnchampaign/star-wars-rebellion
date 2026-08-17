@@ -55,7 +55,13 @@ const board = (raw) => {
 // are pinned instead — deterministic, and 4 searches rather than 50.
 // The measurement that sized the fix (24 seeds, header above) lives in
 // scripts/diag-pass-margin.mjs; this file is the tripwire, not the measurement.
-const REPRO_SEEDS = [3, 11];
+// RE-DERIVED 2026-08-16 (was [3, 11]). Pinned MCTS seeds are coupled to
+// EVERYTHING the heuristic does inside a rollout, not just the board: turning
+// SWR_BUNKERS back off changed what the Empire builds in rollouts, which moved
+// the arm means on this fixture, and seed 3 stopped forfeiting (2/24 -> 1/24
+// reproduce). Seed 11 still does. When this trips again, the message below
+// says how to re-derive; do NOT read a drifted seed as a regression in the fix.
+const REPRO_SEEDS = [11];
 const chooseWithSeed = (raw, s) => {
   const g = board(raw);
   AI.seedAI(s); mcts.seedMCTS?.(s);
@@ -103,7 +109,7 @@ console.log('[ the fixture still reproduces the bug with the fix off (SWR_MCTS_P
 {
   const off = withPassZ('0', () => REPRO_SEEDS.map((s) => chooseWithSeed(raw, s)));
   console.log(`    floor off, seeds ${REPRO_SEEDS.join('/')}: ${off.join(', ')}`);
-  check('both pinned seeds forfeit the round when the floor is off',
+  check('the pinned seed(s) forfeit the round when the floor is off',
     off.every((k) => k === 'pass'),
     `got ${JSON.stringify(off)} — the board drifted; re-derive the seeds with scripts/diag-pass-margin.mjs`);
 }

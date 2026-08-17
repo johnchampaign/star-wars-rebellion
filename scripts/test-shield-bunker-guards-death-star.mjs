@@ -12,7 +12,10 @@
 // finalizeDsPlans enforces it). Anywhere else on the map it is an immobile
 // structure with no attack doing nothing at all.
 //
-// WHY THIS WAS OFF, AND WHY IT IS ON NOW. The 2026-08-06 A/B rejected it at
+// WHY THIS WAS OFF, WHY IT WAS BRIEFLY ON, AND WHY IT IS OFF AGAIN. (Read
+// with the SWR_BUNKERS row in docs/ab-levers.md — the strong-opponent re-test
+// on 2026-08-16 found the placement rule fires too rarely to matter and blocked
+// zero Plans rolls in 120 games; the lever is opt-in and this test guards it.) The 2026-08-06 A/B rejected it at
 // −2.5pp, but recorded WHY the verdict was untrustworthy: the Rebel of that era
 // "enters the Death Star's system in 3.3% of games and has never destroyed a
 // DSUC", so the protection had nothing to protect against, and the entry asked
@@ -32,6 +35,10 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// The lever is OFF by default again (see the header history and
+// docs/ab-levers.md, SWR_BUNKERS). This test pins the PLACEMENT rule for the
+// opt-in path, so it sets the env itself before the AI module loads.
+process.env.SWR_BUNKERS = '1';
 const { register } = await import('tsx/esm/api'); register();
 const { createGame } = await import('../src/engine/setup.ts');
 const M = await import('../src/engine/mechanics.ts');

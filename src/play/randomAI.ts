@@ -1251,12 +1251,22 @@ const SUBJUGATION_NEEDS_GROUND: boolean = (() => {
  *  Also a playtester report: "it still never uses the shield bunker to try and
  *  protect the death star" (jocke01). He was right, and measurably so — with
  *  this off, only 22 of 288 bunkers ever reached the station they exist for. */
+//
+//  BACK TO OFF (2026-08-16), on the very re-test the ON flip asked for. Against
+//  the MCTS-Rebel arm (60 games/arm, paired seeds — an opponent that DOES attack
+//  the station: 18 assaults, 16 successful Death Star Plans rolls) the lever
+//  built 2.4x the bunkers (34 -> 81) yet only 7 of 81 reached the Death Star,
+//  and it blocked ZERO Death Star Plans rolls in 120 games. Empire win rate
+//  21.7 -> 16.7 (CI [-19.1,+9.1], noise). The +2.0pp that flipped it ON was
+//  self-play noise, and against a real threat the mechanism doesn't engage:
+//  bunkers only chase a station present at deploy time, and the Plans hits
+//  land where no bunker ever arrived. 81 build slots spent doing nothing,
+//  against an opponent that punishes tempo. SWR_BUNKERS=1 to opt in.
 const BUILD_SHIELD_BUNKERS: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-    if (proc?.env?.SWR_BUNKERS === '0') return false;
-  } catch { /* browser: no process */ }
-  return true;
+    return proc?.env?.SWR_BUNKERS === '1';
+  } catch { return false; } // browser: no process
 })();
 
 /** Opt-out for letting a leader who CANNOT activate a system oppose missions
