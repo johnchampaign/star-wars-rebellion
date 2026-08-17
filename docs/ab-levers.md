@@ -102,7 +102,27 @@ What it still is NOT: a human. It doesn't play Heart of the Empire twice a
 game the way jocke01 does, and it inherits the heuristic's move generator
 (MCTS searches over `bestCommandAction`'s output), so a mission the heuristic
 suppresses is invisible to the search too. Fixture evidence still outranks it
-for behaviours the Rebel AI never exhibits. Standard error on a win-rate difference is
+for behaviours the Rebel AI never exhibits.
+
+### The MCTS-Empire arm (2026-08-17)
+
+`--empire-policy mcts`, same `--fast-search` and per-game `policies` record.
+It is a different animal from the Rebel arm in two ways that matter:
+
+- **It IS the shipped Empire.** `MCTS_ENABLED` is true in the browser, so every
+  Empire-side player report in the queue was generated against THIS opponent,
+  not the heuristic. That means every Empire lever measured heuristic-vs-
+  heuristic in this ledger was measuring an AI nobody plays. The
+  `SWR_DS_CAUTION` and passivity-cluster work in particular should be re-read
+  under this arm before anything is concluded.
+- **It determinizes.** The Empire samples hidden-base worlds (`worlds: 8` in
+  its traces), which the Rebel search does not need to. So its cost is
+  `budget × horizon × dets`; measured **~92 s/game full, ~19 s/game
+  fast-search** — cheaper than the Rebel arm at both profiles because Empire
+  Command decisions are fewer per game.
+
+Validation of fast-as-proxy and of the arm's usable dynamic range recorded
+below once measured; do NOT assume the Rebel arm's numbers transfer. Standard error on a win-rate difference is
 roughly `2.0pp` at n=1200 and `3.5pp` at n=400 — size the run to the effect you
 care about.
 

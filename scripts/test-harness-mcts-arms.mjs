@@ -1,4 +1,4 @@
-// The MCTS-Rebel arm of the tournament harness.
+// The MCTS arms of the tournament harness (Rebel AND Empire).
 //
 // Every "re-test against a stronger opponent" note in docs/ab-levers.md needs
 // this arm to be REAL — and the harness has silently measured nothing before:
@@ -70,6 +70,33 @@ check('and records the search profile as fast with the reduced budget',
   gm.policies?.search?.fast === true && gm.policies?.search?.budget === 24 && gm.policies?.search?.horizon === 2,
   JSON.stringify(gm.policies?.search));
 check('the heuristic log has no search profile', gh.policies?.search === null, JSON.stringify(gh.policies?.search));
+
+console.log('\n[ the EMPIRE arm gets the same guarantees ]');
+{
+  // The shipped Empire IS the MCTS Empire (browser default ON), so this arm is
+  // the one that measures what players actually face. It also DETERMINIZES the
+  // hidden base (samples worlds), which the Rebel arm does not, so its wiring
+  // is asserted separately rather than assumed from the Rebel's.
+  const OUT_E = join(ROOT, 'tournament-logs', '_test-arm-empire');
+  if (existsSync(OUT_E)) rmSync(OUT_E, { recursive: true, force: true });
+  const e = run(OUT_E, ['--empire-policy', 'mcts', '--fast-search']);
+  check('empire mcts arm ran', e.status === 0, (e.stderr || e.stdout).slice(-300));
+  check('the harness reports the Empire policy as mcts', /policies: Rebel=heuristic Empire=mcts/.test(e.stdout), e.stdout.slice(0, 200));
+  const ge = JSON.parse(readFileSync(join(OUT_E, 'game-0001.json'), 'utf8'));
+  const empCmds = (g) => (g.log ?? [])
+    .filter((x) => x.side === 'Empire' && ['activate-system', 'reveal-mission', 'pass'].includes(x.kind))
+    .map((x) => `${x.kind}:${x.payload?.targetSystemId ?? x.payload?.missionId ?? ''}`);
+  check('the MCTS Empire diverges from the heuristic Empire on the same seed',
+    JSON.stringify(empCmds(gh)) !== JSON.stringify(empCmds(ge)), 'identical Empire sequences — override not wired');
+  const dec = (ge.log ?? []).filter((x) => x.kind === 'ai-decision' && x.side === 'Empire' && x.payload?.policy === 'mcts');
+  check('the Empire search logs policy=mcts decision traces', dec.length > 0);
+  check('and those traces show DETERMINIZATION (worlds > 1) — the Empire samples the hidden base',
+    dec.some((x) => (x.payload?.search?.worlds ?? 0) > 1), JSON.stringify(dec[0]?.payload?.search));
+  check('the game log records Empire=mcts with the fast profile',
+    ge.policies?.Empire === 'mcts' && ge.policies?.Rebel === 'heuristic' && ge.policies?.search?.fast === true,
+    JSON.stringify(ge.policies));
+  rmSync(OUT_E, { recursive: true, force: true });
+}
 
 for (const d of [OUT_H, OUT_M]) rmSync(d, { recursive: true, force: true });
 console.log(fail === 0 ? `\nALL PASS — ${pass} passed, 0 failed` : `\nFAILURES — ${pass} passed, ${fail} failed`);
