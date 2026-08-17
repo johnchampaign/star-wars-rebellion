@@ -10,7 +10,7 @@
 //
 // Run: npm test            (all)
 //      npm test -- --list  (just show what would run)
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -32,9 +32,18 @@ if (process.argv.includes('--list')) {
 const pass = [], fail = [], timeout = [];
 const t0 = Date.now();
 
+// A test that legitimately drives real MCTS games (the harness-arm tripwire)
+// can't fit the default budget and shouldn't force it up for everyone. It
+// declares its own in a header line: `// @timeout 480000`. Kept next to the
+// reason in the file, not in an allowlist here that would drift.
+const budgetFor = (f) => {
+  const m = readFileSync(join(ROOT, 'scripts', f), 'utf-8').slice(0, 4000).match(/^\/\/\s*@timeout\s+(\d+)/m);
+  return m ? Number(m[1]) : TIMEOUT_MS;
+};
+
 for (const [i, f] of files.entries()) {
   const r = spawnSync(process.execPath, [join(ROOT, 'scripts', f)], {
-    cwd: ROOT, timeout: TIMEOUT_MS, encoding: 'utf-8',
+    cwd: ROOT, timeout: budgetFor(f), encoding: 'utf-8',
   });
   const label = `[${String(i + 1).padStart(3)}/${files.length}] ${f}`;
   if (r.error?.code === 'ETIMEDOUT' || r.signal === 'SIGTERM') {

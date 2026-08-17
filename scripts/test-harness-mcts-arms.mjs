@@ -17,7 +17,12 @@
 // This drives real (short) games, so it takes ~1–2 min. Kept deliberately
 // small: it is a wiring test, not a strength measurement.
 //
-// Run: node scripts/test-harness-mcts-rebel-arm.mjs
+// @timeout 480000
+// (Runner budget override — see run-all-tests.mjs. This file drives five real
+// short MCTS games to prove the arms are wired, ~4 min; the default 180 s
+// budget is for pure-engine tests. It is the ONE test allowed to be slow.)
+//
+// Run: node scripts/test-harness-mcts-arms.mjs
 import { readFileSync, existsSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -96,6 +101,34 @@ console.log('\n[ the EMPIRE arm gets the same guarantees ]');
     ge.policies?.Empire === 'mcts' && ge.policies?.Rebel === 'heuristic' && ge.policies?.search?.fast === true,
     JSON.stringify(ge.policies));
   rmSync(OUT_E, { recursive: true, force: true });
+}
+
+console.log('\n[ --realistic: one word for the pairing players actually face ]');
+{
+  const OUT_R = join(ROOT, 'tournament-logs', '_test-arm-realistic');
+  const OUT_R1 = join(ROOT, 'tournament-logs', '_test-arm-realistic-override');
+  for (const d of [OUT_R, OUT_R1]) if (existsSync(d)) rmSync(d, { recursive: true, force: true });
+  // NOTE: no --expansion passed — the preset must turn it on itself.
+  const r = spawnSync(process.execPath, [
+    join(ROOT, 'scripts', 'tournament.mjs'), '--games', '1', '--seed', '9001',
+    '--max-rounds', '3', '--out', OUT_R, '--realistic',
+  ], { cwd: ROOT, encoding: 'utf8', env: { ...process.env } });
+  check('realistic run completed', r.status === 0, (r.stderr || r.stdout).slice(-300));
+  check('summary shows BOTH sides mcts, fast-search, and the preset name',
+    /policies: Rebel=mcts Empire=mcts .*fast-search.*\[--realistic preset\]/.test(r.stdout), r.stdout.slice(0, 260));
+  check('the preset turned Rise of the Empire on by itself', /mode: Rise of the Empire/.test(r.stdout));
+  const gr = JSON.parse(readFileSync(join(OUT_R, 'game-0001.json'), 'utf8'));
+  check('the game log records both policies, fast, AND realistic=true',
+    gr.policies?.Rebel === 'mcts' && gr.policies?.Empire === 'mcts' && gr.policies?.search?.fast === true && gr.policies?.realistic === true,
+    JSON.stringify(gr.policies));
+  // Explicit flags must win, so a one-sided arm is still one word away.
+  const r1 = spawnSync(process.execPath, [
+    join(ROOT, 'scripts', 'tournament.mjs'), '--games', '1', '--seed', '9001',
+    '--max-rounds', '3', '--out', OUT_R1, '--realistic', '--empire-policy', 'eval',
+  ], { cwd: ROOT, encoding: 'utf8', env: { ...process.env } });
+  check('an explicit --empire-policy overrides the preset\'s Empire choice',
+    r1.status === 0 && /policies: Rebel=mcts Empire=eval/.test(r1.stdout), r1.stdout.slice(0, 200));
+  for (const d of [OUT_R, OUT_R1]) rmSync(d, { recursive: true, force: true });
 }
 
 for (const d of [OUT_H, OUT_M]) rmSync(d, { recursive: true, force: true });

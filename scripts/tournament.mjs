@@ -22,7 +22,7 @@ const args = (() => {
   const a = process.argv.slice(2);
   // maxRounds defaults to 16 — the real length of the time track. (It was 8,
   // which force-ended healthy games early and inflated "max-rounds-reached".)
-  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16, expansion: false, rebelPolicy: null, empirePolicy: null, fastSearch: false };
+  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16, expansion: false, rebelPolicy: null, empirePolicy: null, fastSearch: false, realistic: false };
   for (let i = 0; i < a.length; i++) {
     const k = a[i];
     if (k === '--games') out.games = parseInt(a[++i], 10);
@@ -54,6 +54,22 @@ const args = (() => {
     // one, so the run summary names it; never compare a fast-search arm
     // against a full-search arm as if they were the same baseline.
     else if (k === '--fast-search') out.fastSearch = true;
+    // The pairing that resembles what a player actually faces: MCTS on BOTH
+    // sides (the shipped Empire IS the MCTS Empire; the MCTS Rebel is the
+    // strongest opponent the harness has), Rise of the Empire on, fast-search
+    // for affordability (~40 s/game). Measured 2026-08-17: the heuristic-vs-
+    // heuristic default plays an Empire about HALF as strong as the shipped
+    // one (35% vs 73% win rate against the same Rebel), so any verdict that
+    // goes in docs/ab-levers.md as "validated" should be run under this preset.
+    // Explicit flags still win — `--realistic --empire-policy heuristic` gives
+    // a one-sided arm — and the summary line says which preset was in force.
+    else if (k === '--realistic') out.realistic = true;
+  }
+  if (out.realistic) {
+    out.expansion = true;
+    out.fastSearch = true;
+    out.rebelPolicy ??= 'mcts';
+    out.empirePolicy ??= 'mcts';
   }
   if (!out.out) {
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
@@ -113,7 +129,8 @@ const rebelPolicyName = await installPolicy('Rebel', args.rebelPolicy);
 const empirePolicyName = await installPolicy('Empire', args.empirePolicy);
 if (rebelPolicyName || empirePolicyName) {
   const prof = args.fastSearch ? ' [fast-search: budget 24 / horizon 2 — NOT the shipped strength]' : ' [full search]';
-  console.log(`policies: Rebel=${rebelPolicyName ?? 'heuristic'} Empire=${empirePolicyName ?? 'heuristic'}${prof}`);
+  const preset = args.realistic ? ' [--realistic preset]' : '';
+  console.log(`policies: Rebel=${rebelPolicyName ?? 'heuristic'} Empire=${empirePolicyName ?? 'heuristic'}${prof}${preset}`);
 }
 console.log(`mode: ${args.expansion ? 'Rise of the Empire' : 'base game'}`);
 
@@ -296,6 +313,7 @@ for (let i = 0; i < args.games; i++) {
       search: (rebelPolicyName || empirePolicyName)
         ? { budget: Number(process.env.SWR_MCTS_BUDGET ?? 64), horizon: Number(process.env.SWR_MCTS_HORIZON ?? 4), fast: !!args.fastSearch }
         : null,
+      realistic: !!args.realistic,
     },
     result: r.result,
     winReason: r.winReason,

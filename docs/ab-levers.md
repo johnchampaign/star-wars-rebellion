@@ -71,6 +71,7 @@ node scripts/tournament.mjs --games 1200 --seed 1 --expansion
 | `--rebel-policy mcts\|eval` | Give the Rebel a stronger Command brain than the heuristic. |
 | `--empire-policy mcts\|eval` | Same for the Empire. **Use `mcts` to measure what players face** — but see the banner: ~3 s/decision, so size the run accordingly. |
 | `--games N --seed S` | Sample size and base seed (paired across arms). |
+| `--realistic` | **The pairing players actually face**, in one word: MCTS on both sides + `--expansion` + `--fast-search`. Explicit `--rebel-policy` / `--empire-policy` still override it, so `--realistic --empire-policy heuristic` is a one-sided arm. ~40 s/game. Recorded as `policies.realistic: true` in every game log. |
 | `--fast-search` | MCTS at budget 24 / horizon 2 instead of 64 / 4. **Validated as a proxy** (below) and ~6× cheaper. The summary and every game log label it, because it is NOT the shipped strength. |
 
 Rough costs: heuristic-vs-heuristic ≈ 20 games/sec; `--rebel-policy eval` ≈
@@ -238,8 +239,21 @@ unrelated to A/B and documented in `docs/deploy.md`.
 1. Ship the behaviour behind `SWR_<NAME>`, defaulting to the **current**
    behaviour so an unset environment is unchanged.
 2. Measure both arms at a sample size that can see the effect, in the mode the
-   change applies to (`--expansion` for RoE content).
-3. Add a row here with the date, sample, mode, and result — including
-   rejections. A rejection you didn't write down gets re-implemented later.
+   change applies to (`--expansion` for RoE content). **Heuristic-vs-heuristic
+   is the cheap smoke run, not the verdict.** Since 2026-08-17 the harness
+   default plays an Empire about half as strong as the shipped one, so:
+   - a lever may be recorded as **validated** only from a `--realistic` run
+     (both sides MCTS — the pairing players face). Note the caveat that
+     fast-search *understates* the Empire; if the verdict hinges on Empire
+     strength, run the Empire arm at full search.
+   - a heuristic-only result is recorded as **smoke** and says so.
+   - a fixture (a captured board with the decision asserted directly) still
+     outranks both for behaviours the AI opponent never exhibits — see
+     `SWR_DEFEND_CORUSCANT` for the worked example.
+3. Add a row here with the date, sample, mode, **which policies were on each
+   side**, and result — including rejections. A rejection you didn't write
+   down gets re-implemented later. A verdict whose opponent you didn't write
+   down gets trusted later against a different opponent (see `SWR_BUNKERS`,
+   accepted on self-play noise and rejected two days later).
 4. State the robustness class, and if the result is contingent, say what about
    the opponent it depends on.
