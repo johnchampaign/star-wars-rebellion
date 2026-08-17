@@ -698,6 +698,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           console.warn('[mcts-bridge] worker reply lost after', Math.round(waitedMs), 'ms — recovering synchronously');
           aiWaitingRef.current = false;
           mctsPendingRef.current = null;
+          // Recycle the worker as well. Left alive it keeps grinding the search
+          // we just gave up on, and everything we post afterwards queues behind
+          // it — the permanent, new-game-surviving slowdown of #569.
+          mctsKillRef.current?.();
         }
         const Gn = gameRef.current;
         if (!Gn || Gn.isGameOver) break;
@@ -1095,15 +1099,44 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // encodable, the worker errors, or a search exceeds the watchdog.
   const mctsWorkerRef = useRef<Worker | null>(null);
   const mctsPendingRef = useRef<{ key: string; done: boolean; result: MctsSearchResult | null; t0: number } | null>(null);
+  // Monotonic request id. A reply whose id isn't the CURRENT request is a
+  // late/orphaned answer to a decision we already abandoned — dropping it
+  // stops a stale search from being committed onto a different board.
+  const mctsReqIdRef = useRef(0);
+  // Set by the worker effect so the AI loop's own watchdog (which lives above,
+  // outside this effect's closure) can recycle a wedged worker too.
+  const mctsKillRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     if (online || !MCTS_ENABLED) return;
     const canWorker = typeof Worker !== 'undefined';
+    // A worker whose search overran the watchdog is NOT idle — it's still
+    // grinding, and every message we posted meanwhile is sitting behind it in
+    // its (strictly serial) queue. Abandoning the pending entry without
+    // killing the worker therefore RATCHETS: each timed-out decision leaves
+    // one more orphan in the backlog, so every later decision waits the full
+    // 20s watchdog and then re-runs the search synchronously on the UI thread.
+    // That is #569 exactly — "delays up to a minute after you OK an action …
+    // continues even if you start a new game and can only be fixed by
+    // reloading the browser" (a reload is the only thing that used to discard
+    // the backlog, since starting a new game keeps this component mounted).
+    // Terminating drops the wedged search AND its queue; the next decision
+    // lazily spins a clean worker.
+    const killWorker = () => {
+      mctsReqIdRef.current++; // any in-flight reply is now stale
+      try { mctsWorkerRef.current?.terminate(); } catch { /* ignore */ }
+      mctsWorkerRef.current = null;
+    };
+    mctsKillRef.current = killWorker;
     const getWorker = (): Worker | null => {
       if (!canWorker) return null;
       if (!mctsWorkerRef.current) {
         try {
           const w = new Worker(new URL('./mctsWorker.ts', import.meta.url), { type: 'module' });
           w.onmessage = (ev: MessageEvent<{ id: number; ok: boolean; result?: MctsSearchResult | null; error?: string }>) => {
+            if (ev.data.id !== mctsReqIdRef.current) {
+              console.log('[mcts-bridge] dropping stale worker reply', ev.data.id);
+              return;
+            }
             console.log('[mcts-bridge] worker reply', ev.data.ok, ev.data.error ?? '');
             const p = mctsPendingRef.current;
             if (!p || p.done) return;
@@ -1117,6 +1150,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             const p = mctsPendingRef.current;
             if (p && !p.done) { p.done = true; p.result = null; }
             aiWaitingRef.current = false;
+            killWorker(); // an errored worker stays broken — recycle it
             refresh();
           };
           mctsWorkerRef.current = w;
@@ -1141,6 +1175,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           console.warn('[mcts-bridge] watchdog — sync fallback', key);
           mctsPendingRef.current = null;
           aiWaitingRef.current = false;
+          killWorker(); // don't leave the overrunning search + its backlog behind (#569)
           return mctsCommandStep(g, s); // synchronous fallback
         }
         aiWaitingRef.current = true;
@@ -1154,15 +1189,15 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       }
       console.log('[mcts-bridge] search start', key);
       mctsPendingRef.current = { key, done: false, result: null, t0: Date.now() };
-      w.postMessage({ id: Date.now(), codec: encode(g), side: s });
+      w.postMessage({ id: ++mctsReqIdRef.current, codec: encode(g), side: s });
       aiWaitingRef.current = true;
       aiWaitingSinceRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
       return true; // "thinking" — loop pauses until the worker replies
     });
     return () => {
       setCommandPolicyOverride('Empire', null);
-      mctsWorkerRef.current?.terminate();
-      mctsWorkerRef.current = null;
+      killWorker();
+      mctsKillRef.current = null;
       mctsPendingRef.current = null;
       aiWaitingRef.current = false;
     };
