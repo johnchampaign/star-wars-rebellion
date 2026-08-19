@@ -767,9 +767,69 @@ function oppositionTargetTerm(G: GameState, attackerSide: Side, missionId: strin
   return -2 - oppSkill * 2; // -2 (any leader) down through -2/skill-icon
 }
 
+/** Strategic worth of DESTROYING one enemy unit, for the "destroy up to N
+ *  health worth of units of your choice in this system" missions (Hit And Run,
+ *  Hunt Them Down).
+ *
+ *  `unitStrength` alone (dice + health) is the wrong yardstick here: it prices
+ *  a unit by how it fights, not by what losing it costs the owner. Two TIE
+ *  Fighters and one Assault Carrier both come to 4 — but the carrier is 4
+ *  transport capacity and a 2-resource build, and the TIEs cannot even move
+ *  without a carrier to ride in. Report #727: the AI Rebel spent Hit And Run on
+ *  two TIE Fighters at Corellia while an Assault Carrier sat at Naboo.
+ *
+ *  So add the two things strength misses:
+ *   - build cost (×2) — what the owner must pay to replace it.
+ *   - transport capacity (×2) — killing the ride strands everything it carries,
+ *     which is the single most disruptive thing a 2-health budget can buy.
+ */
+function unitKillValue(G: GameState, u: { typeId: string }): number {
+  const t = G.catalog.unitTypes[u.typeId];
+  if (!t) return 0;
+  return unitStrength(G, u) + (t.buildResource ?? 0) * 2 + (t.transport?.capacity ?? 0) * 2;
+}
+
+/** Best total `unitKillValue` obtainable at `targetSysId` with `healthBudget`
+ *  health to spend — an exact 0/1 knapsack over the destroyable enemy units
+ *  (weights are unit health; a dozen units and a budget of ≤4 make this tiny).
+ *
+ *  Candidate rule mirrors engine `queueDestroyUpToHealth` exactly: opposing
+ *  side, optional theater filter, and never a `health.color === null` unit (the
+ *  Death Star, destroyable only by the Plans).
+ */
+function bestDestroyValue(
+  G: GameState, oppSide: Side, targetSysId: SystemId, healthBudget: number,
+  theater?: 'space' | 'ground', unitCap?: number,
+): number {
+  const ss = targetSysId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[targetSysId];
+  if (!ss || healthBudget <= 0) return 0;
+  const items = ss.units
+    .filter((u) => u.side === oppSide)
+    .map((u) => ({ u, t: G.catalog.unitTypes[u.typeId] }))
+    .filter((x) => !!x.t && x.t.health.color !== null)
+    .filter((x) => !theater || x.t!.theater === theater)
+    .map((x) => ({ hp: Math.max(1, x.t!.health.value ?? 1), val: unitKillValue(G, x.u) }));
+  if (items.length === 0) return 0;
+  const cap = unitCap ?? items.length;
+  // best[k][h] = best value using at most k units and exactly ≤h health.
+  let best: number[][] = Array.from({ length: cap + 1 }, () => new Array<number>(healthBudget + 1).fill(0));
+  for (const it of items) {
+    const next = best.map((row) => row.slice());
+    for (let k = 1; k <= cap; k++) {
+      for (let h = it.hp; h <= healthBudget; h++) {
+        const cand = best[k - 1][h - it.hp] + it.val;
+        if (cand > next[k][h]) next[k][h] = cand;
+      }
+    }
+    best = next;
+  }
+  return best[cap][healthBudget];
+}
+
 /** True when revealing this Empire mission at this system would accomplish
  *  nothing, so the AI shouldn't burn the leader + card on it (players #276/#277). */
-function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: SystemId): number {
+/** Exported for tests (#727): pure scorer, no side effects. */
+export function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: SystemId): number {
   let s = 0;
   const sys = G.catalog.systems[targetSysId];
   if (!sys) return -Infinity;
@@ -865,6 +925,14 @@ function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: 
       // the more that's already parked there the weaker it gets.
       s -= 4 + Math.min(impGround, 8) * 2;
     }
+  }
+  // Hunt Them Down: "destroy up to 2-health worth of units of your choice in
+  // this system." It had NO target score, so every system with any Rebel unit
+  // tied and the pick fell to the first candidate — the Empire mirror of the
+  // hole #727 reported on the Rebel side. Score a target by what the 2 health
+  // can actually buy there (see bestDestroyValue).
+  if (missionId === 'hunt-them-down') {
+    s += Math.min(30, bestDestroyValue(G, 'Rebel', targetSysId, 2));
   }
   // Prefer an undefended target so the attempt auto-succeeds (see helper).
   s += oppositionTargetTerm(G, 'Empire', missionId, targetSysId);
@@ -1087,6 +1155,17 @@ export function rebelMissionTargetScore(
     if (hasLoneDS && (G.rebel.objectiveHand ?? []).some((id) => id.startsWith('death-star-plans')) && reb >= 5) {
       s += 30;
     }
+  }
+  // Hit And Run: "destroy up to 2-health worth of units of your choice in this
+  // system." No target score existed, so every system holding ANY destroyable
+  // Imperial unit scored identically and the pick came down to the base-
+  // distance term and tie-break order. Player report #727: the AI Rebel put
+  // Han on Corellia and killed two TIE Fighters — "quite possibly the two most
+  // useless units in the game" — while an Assault Carrier sat at Naboo, where
+  // the same 2 health would have stranded a whole invasion's worth of ground.
+  // Score the target by the best kill the budget can actually buy there.
+  if (missionId === 'hit-and-run') {
+    s += Math.min(30, bestDestroyValue(G, 'Empire', targetSysId, 2));
   }
   // Prefer an undefended target so the attempt auto-succeeds (see helper).
   s += oppositionTargetTerm(G, 'Rebel', missionId, targetSysId);
@@ -4233,20 +4312,40 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   if (G.pendingChoice && G.pendingChoice.kind === 'DestroyUpToHealth' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
     const ss = G.map.systems[c.systemId] ?? G.map.rebelBaseSpace;
-    const tierRank: Record<string, number> = { triangle: 0, circle: 1, square: 2 };
-    const sorted = c.candidates
+    // Spend the health budget on the units it actually hurts to lose. The old
+    // rule sorted by tier-then-health and took greedily, which prices a unit by
+    // its silhouette rather than by what replacing it costs — a transport is a
+    // circle, same as an AT-ST (#727). Exact knapsack over unitKillValue, with
+    // the same weights the target scorer uses so the two cannot disagree about
+    // which system was worth attacking.
+    const items = c.candidates
       .map((uid) => {
         const u = ss?.units.find((x) => x.instanceId === uid);
         const t = u ? G.catalog.unitTypes[u.typeId] : null;
-        return { uid, hp: t?.health.value ?? 0, tier: tierRank[t?.tier ?? 'triangle'] ?? 0 };
-      })
-      .sort((a, b) => b.tier - a.tier || b.hp - a.hp);
-    let spent = 0;
+        return { uid, hp: Math.max(1, t?.health.value ?? 1), val: u ? unitKillValue(G, u) : 0 };
+      });
+    const cap = c.unitCap ?? items.length;          // Plant Explosives: ≤3 units (#303)
+    const budget = Math.max(0, c.budget);
+    // dp[k][h] = best value using ≤k units and ≤h health; keep[i][k][h] records
+    // whether item i was taken, so the winning set can be read back out.
+    let dp: number[][] = Array.from({ length: cap + 1 }, () => new Array<number>(budget + 1).fill(0));
+    const keep: boolean[][][] = [];
+    for (const it of items) {
+      const next = dp.map((row) => row.slice());
+      const took: boolean[][] = Array.from({ length: cap + 1 }, () => new Array<boolean>(budget + 1).fill(false));
+      for (let k = 1; k <= cap; k++) {
+        for (let h = it.hp; h <= budget; h++) {
+          const cand = dp[k - 1][h - it.hp] + it.val;
+          if (cand > next[k][h]) { next[k][h] = cand; took[k][h] = true; }
+        }
+      }
+      keep.push(took);
+      dp = next;
+    }
     const picks: string[] = [];
-    for (const x of sorted) {
-      if (spent + x.hp > c.budget) continue;
-      if (c.unitCap != null && picks.length >= c.unitCap) break; // Plant Explosives: ≤3 units (#303)
-      picks.push(x.uid); spent += x.hp;
+    let k = cap; let h = budget;
+    for (let i = items.length - 1; i >= 0; i--) {
+      if (keep[i][k][h]) { picks.push(items[i].uid); h -= items[i].hp; k -= 1; }
     }
     return phases.resolveDestroyUpToHealth(G, picks).ok;
   }
