@@ -441,6 +441,15 @@ export function missionRevealIsPointless(
       // Empire places a Rebel leader from the pool here — nothing to place when
       // the Rebel pool is empty.
       return side === 'Empire' && (G.rebel.leaderPool?.length ?? 0) === 0;
+    case 'misdirection':
+      // "Imperial leaders IN THE LEADER POOL cannot be sent to oppose this
+      // leader's mission this round." The whole card is that restriction, so
+      // with an empty Imperial pool there is nobody to restrain and the
+      // mission does literally nothing (#728: AI Rebel spent Misdirection
+      // while the Empire pool was empty). Mirror of draw-them-out above.
+      // The pool only refills at Refresh or via specific recruit/False Orders
+      // events, so empty at reveal time means empty for the opposition check.
+      return side === 'Rebel' && (G.empire.leaderPool?.length ?? 0) === 0;
     case 'single-reactor-ignition': {
       // Resolves on the Empire's own Death Star (so the Empire already occupies
       // the system and the base would have auto-revealed). It only does
