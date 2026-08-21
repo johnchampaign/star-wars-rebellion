@@ -22,7 +22,7 @@ const args = (() => {
   const a = process.argv.slice(2);
   // maxRounds defaults to 16 — the real length of the time track. (It was 8,
   // which force-ended healthy games early and inflated "max-rounds-reached".)
-  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16, expansion: false, rebelPolicy: null, empirePolicy: null, fastSearch: false, realistic: false };
+  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16, expansion: false, rebelPolicy: null, empirePolicy: null, fastSearch: false, realistic: false, deterministic: false };
   for (let i = 0; i < a.length; i++) {
     const k = a[i];
     if (k === '--games') out.games = parseInt(a[++i], 10);
@@ -30,6 +30,7 @@ const args = (() => {
     else if (k === '--out') out.out = a[++i];
     else if (k === '--verbose' || k === '-v') out.verbose = true;
     else if (k === '--max-rounds') out.maxRounds = parseInt(a[++i], 10);
+    else if (k === '--deterministic') out.deterministic = true;
     // Rise of the Empire. WITHOUT this the harness runs the BASE game, so no
     // expansion content exists to measure — no DSUC, no Shield Bunkers, no RoE
     // units or missions. Every A/B run here before this flag existed was a
@@ -98,11 +99,19 @@ const phases = await import('../src/engine/phases.ts');
 const { stepOnce: aiStep, seedAI, setCommandPolicyOverride } = await import('../src/play/randomAI.ts');
 // Optional stronger Command policies. Imported lazily so a default run pays
 // nothing for them.
+/** Set when the MCTS policy is installed, so playOne() can seed its RNG. */
+let mctsMod = null;
 async function installPolicy(side, name) {
   if (!name) return null;
   if (name === 'mcts') {
-    const { mctsCommandStep } = await import('../src/play/mctsAI.ts');
-    setCommandPolicyOverride(side, (G, s) => mctsCommandStep(G, s));
+    // Keep the module around: playOne() must call seedMCTS() per game, or the
+    // search runs on unseeded Math.random() and --seed does not reproduce a
+    // game. Every other MCTS bench (mcts-bench, selfplay/playGame,
+    // mcts-rebel-bench) already pairs seedAI with seedMCTS; this harness did
+    // not, which made same-seed arms independent rather than paired and cost
+    // every MCTS A/B its variance reduction.
+    mctsMod = await import('../src/play/mctsAI.ts');
+    setCommandPolicyOverride(side, (G, s) => mctsMod.mctsCommandStep(G, s));
     return 'mcts';
   }
   if (name === 'eval') {
@@ -134,12 +143,29 @@ if (args.fastSearch) {
   process.env.SWR_MCTS_BUDGET ??= '24';
   process.env.SWR_MCTS_HORIZON ??= '2';
 }
+// --deterministic: make a seed fully reproduce a game, so OFF/ON arms are
+// genuinely PAIRED and a per-seed transition table means what it says.
+// Two things break reproducibility and BOTH must go (measured 2026-08-21):
+//   1. the search RNG — fixed unconditionally in playOne() via seedMCTS();
+//   2. mctsAI's msCap, a WALL-CLOCK break in the pull loop, so under load a
+//      decision gets fewer pulls and the machine's business changes the move.
+// Must be set BEFORE installPolicy() imports mctsAI: defaultConfig() reads the
+// env at import time. Costs ~3.5x wall-clock per game (the 8000ms default was
+// binding constantly) — that is the price of a paired comparison.
+if (args.deterministic) process.env.SWR_MCTS_MS ??= '600000';
 const rebelPolicyName = await installPolicy('Rebel', args.rebelPolicy);
 const empirePolicyName = await installPolicy('Empire', args.empirePolicy);
 if (rebelPolicyName || empirePolicyName) {
   const prof = args.fastSearch ? ' [fast-search: budget 24 / horizon 2 — NOT the shipped strength]' : ' [full search]';
   const preset = args.realistic ? ' [--realistic preset]' : '';
-  console.log(`policies: Rebel=${rebelPolicyName ?? 'heuristic'} Empire=${empirePolicyName ?? 'heuristic'}${prof}${preset}`);
+  const det = args.deterministic ? ' [deterministic: seed reproduces the game]' : '';
+  console.log(`policies: Rebel=${rebelPolicyName ?? 'heuristic'} Empire=${empirePolicyName ?? 'heuristic'}${prof}${preset}${det}`);
+  if (mctsMod && !args.deterministic) {
+    console.warn('[warn] MCTS arm without --deterministic: msCap (SWR_MCTS_MS) breaks the');
+    console.warn('       pull loop on WALL CLOCK, so a seed does NOT reproduce a game and the');
+    console.warn('       arms are only PARTIALLY paired. Do not report a per-seed transition');
+    console.warn('       table from this run. See docs/ab-levers.md (harness note 2026-08-21).');
+  }
 }
 console.log(`mode: ${args.expansion ? 'Rise of the Empire' : 'base game'}`);
 
@@ -152,6 +178,9 @@ function playOne(seed) {
   // Seed the AI's own RNG too (not just the engine) so each game is fully
   // reproducible from its seed.
   seedAI(seed);
+  // Separate stream from seedAI's so the search's coin-flips do not shift when
+  // the heuristic happens to draw a different number of randoms.
+  if (mctsMod) mctsMod.seedMCTS(seed * 29 + 3);
   const G = createGame(data, { seed, autoSetupUnits: false,
     expansion: args.expansion
       ? { enabled: true, roeUnits: true, roeMissions: true }
@@ -323,6 +352,10 @@ for (let i = 0; i < args.games; i++) {
         ? { budget: Number(process.env.SWR_MCTS_BUDGET ?? 64), horizon: Number(process.env.SWR_MCTS_HORIZON ?? 4), fast: !!args.fastSearch }
         : null,
       realistic: !!args.realistic,
+      // Whether a seed reproduces this game. Analysis that pairs two arms by
+      // seed is only valid when BOTH were run with this true.
+      deterministic: !!args.deterministic,
+      msCap: Number(process.env.SWR_MCTS_MS ?? 8000),
     },
     result: r.result,
     winReason: r.winReason,
