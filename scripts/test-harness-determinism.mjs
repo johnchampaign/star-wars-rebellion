@@ -59,7 +59,11 @@ const board = (side) => {
 
 /** One MCTS decision. Returns a signature of what the search DID plus how much
  *  work it got to do — pulls is what msCap truncates. */
-function decide(side, { mctsSeed, aiSeed = 1, msCap = 600000 }) {
+// msCap must be high enough that it never TRUNCATES at budget 24 (or the
+// reproducibility check becomes a coin flip), but still bounded: an unbounded
+// cap gives this test no ceiling, and under the parallel suite's load it ran
+// past its 600s limit while taking ~4s standalone.
+function decide(side, { mctsSeed, aiSeed = 1, msCap = 20000 }) {
   const g = board(side);
   AI.seedAI(aiSeed);
   if (mctsSeed !== null) mcts.seedMCTS(mctsSeed);
@@ -109,16 +113,16 @@ console.log('\n[ which of the two fixes is actually load-bearing ]');
   // differs. Stripping wall-clock made it fail honestly. Left as a comment rather
   // than hunting for a board that makes the assertion green.
   const sigs = new Set();
-  for (let s = 1; s <= 6; s++) sigs.add(decide(SIDE, { mctsSeed: s }).sig);
-  console.log(`  (fyi) distinct decisions across 6 search seeds on this board: ${sigs.size}`);
+  for (let s = 1; s <= 3; s++) sigs.add(decide(SIDE, { mctsSeed: s }).sig);
+  console.log(`  (fyi) distinct decisions across 3 search seeds on this board: ${sigs.size}`);
   check('seeding is at least stable — every seed yields SOME decision', sigs.size >= 1);
 }
 
 console.log('\n[ NON-VACUOUS: msCap truncates the search, so wall-clock changes the move ]');
 {
-  const big = decide(SIDE, { mctsSeed: 42, msCap: 600000 });
+  const big = decide(SIDE, { mctsSeed: 42, msCap: 20000 });
   const tiny = decide(SIDE, { mctsSeed: 42, msCap: 1 });
-  check('a 1ms cap does strictly less search than a 600s cap', tiny.pulls < big.pulls,
+  check('a 1ms cap does strictly less search than a 20s cap', tiny.pulls < big.pulls,
     `${tiny.pulls} vs ${big.pulls} pulls`);
 }
 

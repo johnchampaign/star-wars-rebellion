@@ -9383,13 +9383,17 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
       </div>
       <div style={{ fontSize: 12, color: '#aaa' }}>
         <Row label="Leader pool" value={
-          // RAW: assignment is simultaneous and SECRET. While the Assignment
-          // phase is in progress, don't reveal the opponent's pool — its
-          // shrinking would leak which leaders they've committed to missions
-          // before you've locked in your own (player report #87).
-          side !== humanSide && G.phase === 'Assignment'
-            ? '(assigning in secret)'
-            : (f.leaderPool.length ? f.leaderPool.join(', ') : '(empty)')
+          // Assignment is SEQUENTIAL, not secret (rr p.3: "The Rebel player
+          // starts by assigning any of his leaders to missions. When the Rebel
+          // player is finished, the Imperial player assigns any of his leaders
+          // to missions."). Leaders are physical pieces sitting in the open, so
+          // the pool is PUBLIC at all times — and the Imperial player, who
+          // assigns second, is entitled to see what the Rebel committed before
+          // choosing. Hiding it was justified by a comment claiming assignment
+          // is "simultaneous and SECRET", which the rule contradicts; reported
+          // from BGG. The real #87 defect was an ungated unassignLeader (see
+          // phases.ts), not this display.
+          f.leaderPool.length ? f.leaderPool.join(', ') : '(empty)'
         } />
         <Row label="Leaders on board" value={Object.keys(f.leadersOnBoard).length ? Object.entries(f.leadersOnBoard).map(([s, l]) => `${s}:${l.join(',')}`).join(' · ') : '(none)'} />
         {side === 'Rebel' && (
@@ -9405,11 +9409,12 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
           />
         )}
         <Row label="Active missions" value={
-          // Hidden entirely while the opponent is still assigning (#87) —
-          // revealed (as facedown missions) once the Command phase begins.
-          side !== humanSide && G.phase === 'Assignment'
-            ? '(assigning in secret)'
-            : f.leadersOnMissions.length === 0
+          // Visible during Assignment too: the mission card is facedown but the
+          // leaders sit ON TOP of it in the open (rr p.3), so an opponent can
+          // always see WHICH leaders are committed and how many per card — just
+          // not which mission. That is exactly what the facedown branch below
+          // renders, so it needs no Assignment-phase special case.
+          f.leadersOnMissions.length === 0
             ? '(none)'
             : side === humanSide
               // Your own missions: full hover-preview of each card.

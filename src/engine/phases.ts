@@ -860,6 +860,17 @@ export function assignLeader(G: GameState, side: Side, missionId: string, leader
  *  turn it is (it's a take-back, not an action). */
 export function unassignLeader(G: GameState, side: Side, missionId: string): { ok: boolean; reason?: string } {
   if (G.phase !== 'Assignment') return { ok: false, reason: 'wrong-phase' };
+  // Turn-gated, like assignLeader. Assignment is SEQUENTIAL (rr p.3: "The Rebel
+  // player starts by assigning any of his leaders to missions. When the Rebel
+  // player is finished, the Imperial player assigns"), so once you have passed,
+  // your assignment is finished and the opponent's has begun. Without this the
+  // Rebel could keep un-assigning while the Empire assigned — which is what
+  // player #87 reported ("I'm still deploying leaders to mission and I already
+  // see what the empire is doing"). That was read as an information leak and
+  // "fixed" by hiding the opponent's pool during Assignment; the actual defect
+  // was this ungated ACTION. It also let a passed player strand leaders, since
+  // assignLeader IS gated — you could un-assign and then not re-assign.
+  if (G.currentPlayer !== side) return { ok: false, reason: 'not-your-turn' };
   const f = faction(G, side);
   const idx = f.leadersOnMissions.findIndex((m) => m.missionId === missionId);
   if (idx < 0) return { ok: false, reason: 'not-assigned' };
