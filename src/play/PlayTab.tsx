@@ -9,6 +9,7 @@ import { capturePageScreenshot, screenshotAutoCaptureSafe } from './screenshot';
 import { missionTargets, missionLeaderTargets, missionRevealIsPointless } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce, setCommandPolicyOverride } from './randomAI';
 import { buildV2GameLog, buildId } from './logFormat';
+import { nextReportKind } from './reportQueue';
 import { DeployUndoStack, deployStepKey } from './deployUndoStack';
 import { PLANNER_ENABLED, HUNT_OCCUPY_ENABLED } from './empirePlanner';
 import { evalCommandStepDeep } from './boardEval';
@@ -167,12 +168,13 @@ async function logBoardIdentity(): Promise<void> {
 /** One AI-activity line. `missionId` is set for mission runs so the banner can
  *  show the card's rules text on hover (player request: MightyFaben wanted a
  *  reminder of what e.g. "Research and Development" does). */
-type AiActivityLine = { text: string; missionId?: string };
+type AiActivityLine = { text: string; missionId?: string; actionId?: string };
 
 function summarizeAiActions(G: GameState, fromIdx: number, aiSide: Side): AiActivityLine[] {
   const sysName = (id: string) => id === 'rebel-base-space' ? 'the Rebel Base' : (G.catalog.systems[id]?.name ?? id);
   const ldrName = (id: string) => G.catalog.leaders[id]?.name ?? id;
   const misName = (id: string) => G.catalog.missions[id]?.name ?? id;
+  const actName = (id: string) => G.catalog.actions[id]?.name ?? id;
   const out: AiActivityLine[] = [];
   for (let i = fromIdx; i < G.turnLog.length; i++) {
     const e = G.turnLog[i];
@@ -189,6 +191,16 @@ function summarizeAiActions(G: GameState, fromIdx: number, aiSide: Side): AiActi
       });
     } else if (e.kind === 'pass') {
       out.push({ text: 'Passed (done for the round)' });
+    } else if (e.kind === 'action-card-play' || e.kind === 'combat-action-card') {
+      // RAW (Rules Reference, "Action Cards"): "When a player uses an action
+      // card, he flips the card faceup, resolves its ability, and then returns
+      // it to the game box." A played action card is PUBLIC — but until #732
+      // the only surface was the raw JSON log, so opponents never noticed one
+      // had been played. Name the card here; anything the card then SEARCHES
+      // for stays private (RR: a card that fetches a mission does not reveal
+      // it), which the *-applied log redactions already handle.
+      const cardId = (p.cardId ?? p.card) as string | undefined;
+      if (cardId) out.push({ text: `Played action card “${actName(cardId)}”`, actionId: cardId });
     }
   }
   return out.slice(-8); // keep the banner short
@@ -1800,9 +1812,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             </div>
             <div style={{ color: '#cfe2f5', display: 'flex', flexWrap: 'wrap', gap: '2px 10px' }}>
               {aiActivity.map((line, i) => {
-                const card = line.missionId ? G.catalog.missions[line.missionId] : null;
-                // Hover a mission run to read what the card does (e.g. what
-                // "Research and Development" actually resolves).
+                const card = line.missionId ? G.catalog.missions[line.missionId]
+                  : line.actionId ? G.catalog.actions[line.actionId] : null;
+                // Hover a mission run (or a played action card) to read what
+                // the card does (e.g. what "Research and Development" resolves).
                 return (
                   <span key={i}
                     title={card?.rulesText ? `${card.name}: ${card.rulesText}` : undefined}
@@ -2115,9 +2128,11 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           EARLIEST queued report by its seq stamp (turnLog length at queue
           time) — so an AI turn that, say, moved units THEN ran a mission shows
           the move first, and combat shows before a mission that followed it
-          (#178/#193/#220). Ties break by a stable kind priority. Activation
-          reports are only eligible once nothing is mid-resolution, since a
-          combat-triggering activation must surface its combat report first. */}
+          (#178/#193/#220). Ties break by a stable kind priority, except that a
+          combat-starting activation outranks the combat it spawned (#733).
+          Activation reports are only eligible once nothing is mid-resolution,
+          so an activation modal can never sit on top of a live combat's
+          prompts — it surfaces once that combat has fully resolved. */}
       {(() => {
         if (online && !online.yourTurn) return null;
         // A REQUIRED choice is sometimes posted at the same instant a mission/
@@ -2151,15 +2166,13 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         const rr = G.refreshReports?.[0];
         const ar = G.activationReports?.[0];
         const activationEligible = !!ar && !G.pendingMission && !G.pendingCombat && !G.pendingChoice;
-        const candidates: { kind: string; seq: number; prio: number }[] = [];
-        if (cr) candidates.push({ kind: 'combat', seq: cr.seq ?? 0, prio: 0 });
-        if (mr) candidates.push({ kind: 'mission', seq: mr.seq ?? 0, prio: 1 });
-        if (or) candidates.push({ kind: 'objective', seq: or.seq ?? 0, prio: 2 });
-        if (rr) candidates.push({ kind: 'refresh', seq: rr.seq ?? 0, prio: 3 });
-        if (activationEligible) candidates.push({ kind: 'activation', seq: ar!.seq ?? 0, prio: 4 });
-        if (candidates.length === 0) return null;
-        candidates.sort((a, b) => (a.seq - b.seq) || (a.prio - b.prio));
-        switch (candidates[0].kind) {
+        // Ordering rule lives in reportQueue.ts so it can be tested (#733).
+        const next = nextReportKind({
+          combat: cr, mission: mr, objective: or, refresh: rr,
+          activation: activationEligible ? ar : undefined,
+        });
+        if (next === null) return null;
+        switch (next) {
           case 'combat':
             return <CombatReportModal G={G} report={cr!} onDismiss={() => onAckReport('combat')} />;
           case 'mission':

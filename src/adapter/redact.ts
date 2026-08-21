@@ -44,6 +44,16 @@ export const PUBLIC_LOG_KINDS: ReadonlySet<string> = new Set([
   // Missions are public once revealed/resolved. Face-down assignment uses the
   // separate 'mission' / 'assign-leader' / 'choice-request' kinds (NOT listed).
   'reveal-mission', 'mission-roll', 'mission-unopposed', 'mission-discard',
+  // A played action card is faceup — RR "Action Cards": "When a player uses an
+  // action card, he flips the card faceup, resolves its ability, and then
+  // returns it to the game box." Default-deny had been dropping this from the
+  // opponent's view entirely, so an online opponent never learned a card had
+  // been played at all (#732). Only the PLAY is public: whatever the card then
+  // SEARCHES for stays hidden, because those results carry their own
+  // '*-applied' kinds which are (correctly) not listed here — RR: a card that
+  // fetches a mission "does not reveal the mission card to his opponent". A
+  // play that names the still-hidden base is dropped by the base scrub below.
+  'action-card-play',
   // Combat is fully public.
   'combat-begin', 'combat-attack', 'combat-tactic', 'combat-tactic-effect',
   'combat-action-card', 'combat-action-card-applied', 'combat-action-card-effect',
