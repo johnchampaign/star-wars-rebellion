@@ -4322,7 +4322,18 @@ export function resolveBrilliantAdministratorBuildPick(
 /** Catch Them By Surprise: Empire moves units from a chosen source to
  *  Ozzel's system. Transport-validated; source must be adjacent. */
 export function resolveCatchThemBySurpriseMovePick(
-  G: GameState, orders: MoveOrder[]
+  G: GameState, orders: MoveOrder[],
+  // Captive escort (#731). RR lets Imperial units moving out of a system that
+  // holds a captured leader bring the captive along, and the FAQ says so for
+  // card-driven moves explicitly:
+  //   "QQ: Can captured leaders be moved with the 'Independent Operation'
+  //    action card?  AA: No. However, if an Imperial card allows the Imperial
+  //    player to move units to an adjacent system, he can move leaders with
+  //    the units as long as he follows the normal movement rules."
+  // Independent Operation is the ONE carve-out; this card is not it. The
+  // escort rule was built for activateSystem (#595) and never extended here,
+  // so the reporter was offered no captive option at all.
+  bringCapturedLeaderIds: LeaderId[] = [],
 ): { ok: boolean; reason?: string } {
   const choice = G.pendingChoice;
   if (!choice || choice.kind !== 'CatchThemBySurpriseMovePick') return { ok: false, reason: 'no-pending' };
@@ -4340,6 +4351,26 @@ export function resolveCatchThemBySurpriseMovePick(
     }
   }
   const targetSystemId = choice.targetSystemId;
+  // Captive-escort validation — must precede ALL state mutation, same as
+  // activateSystem: a rejected escort must not strand a half-executed move.
+  for (const lid of bringCapturedLeaderIds) {
+    const cap = (G.empire.capturedLeaders ?? []).find((c) => c.leaderId === lid);
+    if (!cap) return { ok: false, reason: 'not-a-captured-leader' };
+    const order = orders.find((o) => o.fromSystemId === cap.systemId);
+    if (!order || order.unitInstanceIds.length === 0) {
+      return { ok: false, reason: 'captive-escort-needs-moving-units' };
+    }
+  }
+  // Relocate escorted captives BEFORE the units move: moveUnit's invariant
+  // sweep auto-rescues a captive the instant its prison empties, so the
+  // captive must already be gone when the last Imperial unit leaves (#595).
+  for (const lid of bringCapturedLeaderIds) {
+    const cap = (G.empire.capturedLeaders ?? []).find((c) => c.leaderId === lid)!;
+    log(G, { kind: 'captured-leader-moved', side: 'Empire', payload: {
+      leaderId: lid, fromSystemId: cap.systemId, toSystemId: targetSystemId,
+    }});
+    cap.systemId = targetSystemId;
+  }
   // Every system this card actually pulled units out of — the defender can't
   // retreat into any of them (RR p.5, #683), not merely the first.
   const usedSources: SystemId[] = [];

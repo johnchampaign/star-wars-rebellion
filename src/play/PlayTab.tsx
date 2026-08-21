@@ -3127,7 +3127,24 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         && G.pendingChoice.side === humanSide && (
         <CatchThemBySurpriseMovePickModal G={G} choice={G.pendingChoice}
           onPick={(orders) => {
-            const r = phases.resolveCatchThemBySurpriseMovePick(G, orders);
+            // Captive escort (#731) — same offer the activate path makes
+            // (#595). The FAQ allows it for any Imperial card that moves units
+            // between adjacent systems; only Independent Operation is carved
+            // out, and this is not that card. Without this the player was
+            // given no captive option at all and the captive was rescued the
+            // moment the prison emptied.
+            const bringCaptives: string[] = [];
+            const sources = new Set(orders.filter((o) => o.unitInstanceIds.length > 0).map((o) => o.fromSystemId));
+            for (const cap of G.empire.capturedLeaders ?? []) {
+              if (!sources.has(cap.systemId)) continue;
+              const name = G.catalog.leaders[cap.leaderId]?.name ?? cap.leaderId;
+              const target = G.pendingChoice?.kind === 'CatchThemBySurpriseMovePick' ? G.pendingChoice.targetSystemId : '';
+              const dest = G.catalog.systems[target]?.name ?? target;
+              if (window.confirm(`Bring the captured ${name} along to ${dest}?\n\n(If all your units leave and the captive stays, they are rescued.)`)) {
+                bringCaptives.push(cap.leaderId);
+              }
+            }
+            const r = phases.resolveCatchThemBySurpriseMovePick(G, orders, bringCaptives);
             if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
             persist(); refresh();
           }} />
