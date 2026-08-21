@@ -87,6 +87,38 @@ const BLEND_WEIGHT: number = (() => {
   return 0;
 })();
 
+/** Weight on the FORFEITED-ROUND charge (SWR_PASS_FORFEIT, default 0.5; 0
+ *  restores the old blindness).
+ *
+ *  RR: a player who passes cannot use his leaders to activate systems or reveal
+ *  missions for the rest of the Command phase. The evaluator did not know that
+ *  — `passedThisCommand` appeared NOWHERE in either eval — so a leader sitting
+ *  in the pool scored exactly the same whether or not its owner had just given
+ *  up the ability to use it. Passing was free.
+ *
+ *  That is the leaf-side half of the pass-with-plays cluster. On #600's board
+ *  (the one Rebel-side report) the depth-2 trace was:
+ *      reveal:sabotage@naboo   heur 37    v1 -233     deep -257
+ *      pass                    heur 0.5   v1 -234.5   deep -240.5
+ *  The reveal LEADS at depth 1 and only loses after the extension — not the
+ *  sampling-noise shape SWR_MCTS_PASS_Z was built for, but a confident
+ *  mispricing.
+ *
+ *  Charged on leaders that the pass STRANDS — still in the pool, or committed
+ *  to a face-down mission that can no longer be revealed. Leaders already on
+ *  the board are not charged: they have acted. It is a TEMPO cost, not a loss —
+ *  the leaders return at Refresh — so the weight is a fraction of their worth,
+ *  not the whole thing. Symmetric: the opponent forfeiting is worth the same
+ *  to you. */
+const PASS_FORFEIT_WEIGHT: number = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    const v = proc?.env?.SWR_PASS_FORFEIT;
+    if (v !== undefined) { const n = parseFloat(v); if (Number.isFinite(n)) return Math.max(0, n); }
+  } catch { /* browser */ }
+  return 0.5;
+})();
+
 /** The leaf evaluator the search policies use. One switch so MCTS and depth-2
  *  stay consistent. Blends the learned and hand-tuned evals per BLEND_WEIGHT. */
 export function leafEvaluate(G: GameState, side: Side): number {
@@ -212,6 +244,21 @@ export function evaluate(G: GameState, side: Side): number {
     return sum;
   };
   v += countLeaders(side) - countLeaders(enemy);
+  // --- Forfeited round (RR: passing costs you the use of your leaders) ---
+  // See PASS_FORFEIT_WEIGHT. Only leaders the pass STRANDS: pooled, or on a
+  // face-down mission that can no longer be revealed this phase.
+  if (PASS_FORFEIT_WEIGHT > 0) {
+    const strandedByPass = (s: Side): number => {
+      if (!(G.passedThisCommand ?? []).includes(s)) return 0;
+      const f = s === 'Rebel' ? G.rebel : G.empire;
+      let sum = 0;
+      for (const lid of f.leaderPool) sum += leaderWorth(G, lid);
+      for (const m of f.leadersOnMissions) for (const lid of m.leaderIds) sum += leaderWorth(G, lid);
+      return sum;
+    };
+    v -= PASS_FORFEIT_WEIGHT * strandedByPass(side);
+    v += PASS_FORFEIT_WEIGHT * strandedByPass(enemy);
+  }
   for (const cl of G.empire.capturedLeaders ?? []) {
     const lid = typeof cl === 'string' ? cl : (cl as { leaderId?: string }).leaderId ?? '';
     const w = leaderWorth(G, lid) * 2;

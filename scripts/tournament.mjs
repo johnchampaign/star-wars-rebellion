@@ -68,7 +68,16 @@ const args = (() => {
   if (out.realistic) {
     out.expansion = true;
     out.fastSearch = true;
-    out.rebelPolicy ??= 'mcts';
+    // The SHIPPED pairing, per side — not "the strongest arm on each side".
+    // PlayTab wires Rebel -> evalCommandStepDeep(g, s, 2) whenever
+    // MCTS_REBEL_ENABLED is false, which is the default everywhere; the harness
+    // exposes that same policy as `eval`. Empire -> mcts (MCTS_ENABLED defaults
+    // ON in the browser). The first cut of this preset set BOTH to mcts, which
+    // made --realistic realistic for the Empire and STRONGER-than-shipped for
+    // the Rebel — so a Rebel-side verdict taken under it was measuring a policy
+    // no player faces. Use --rebel-policy mcts explicitly for the strong-Rebel
+    // bench arm; that is a different question from "what do players face".
+    out.rebelPolicy ??= 'eval';
     out.empirePolicy ??= 'mcts';
   }
   if (!out.out) {
