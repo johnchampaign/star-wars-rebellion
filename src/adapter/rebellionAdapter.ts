@@ -257,11 +257,19 @@ export const rebellionAdapter: GameAdapter<GameState, RebellionAction, Side> = {
     // player until the other finishes setup would mean sitting idle for hours/
     // days, so a side "may act" during Setup whenever it still has its own setup
     // work pending. Normal turn order resumes once Setup completes.
-    if (state.phase === 'Setup') {
-      const deployLeft = state.pendingDeployment?.[actor]?.length ?? 0;
-      const basePickLeft = actor === 'Rebel' && (state.pendingRebelBasePick?.length ?? 0) > 0;
-      return deployLeft > 0 || basePickLeft;
-    }
+    //
+    // "Whenever it still has work pending" was too narrow: the moment you place
+    // your LAST unit, deployLeft hits 0 and this said no — which killed UNDO
+    // exactly when you most want it, since the mistake you want to take back is
+    // usually the one you just made. Worse, canAct also feeds the client's
+    // `yourTurn` flag, so the online shim silently swallowed the undo instead of
+    // reporting a rejection: the button did nothing at all (#736). While Setup
+    // is running, both seats may act. Setup ends the instant both sides finish
+    // (maybeAdvanceFromSetup flips the phase), so this cannot leak into play,
+    // and every setup action re-validates itself in the engine anyway —
+    // setupDeployUnit needs the unit to still be pending, setupUndoDeployUnit
+    // needs it to actually be on the board.
+    if (state.phase === 'Setup') return true;
     return currentActor(state) === actor;
   },
 
