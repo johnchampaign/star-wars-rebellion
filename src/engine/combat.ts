@@ -148,6 +148,12 @@ export function beginCombat(
     // reads false. Liberation (win a ground battle in a subjugated system)
     // needs the at-start value. (Issue #53.)
     systemSubjugatedAtStart: !!G.map.systems[systemId]?.subjugated,
+    // Snapshot the Imperial leaders here at combat START. A beaten Imperial
+    // leader retreats WITH his units, so by the time the combat-objective
+    // check runs the board no longer shows him in the system — which silently
+    // denied Return Of The Jedi to a Rebel who won a battle in Vader's system
+    // and watched Vader flee (#736). Same fix shape as #53 above.
+    imperialLeadersAtStart: [...(G.empire.leadersOnBoard[systemId] ?? [])],
     addedLeaders: [],
     drawnTactics: { side: attackerSide, spaceCount: 0, groundCount: 0 },
     rounds: [], structureDestructions: [],
@@ -966,6 +972,25 @@ export function beginAttack(G: GameState, c: CombatState, side: Side, theater: T
     if (prev.red || prev.black || prev.directHit) cinPrevent = prev;
   }
 
+  // ION CANNON (Rebel faction sheet): "During each space battle step, your
+  // opponent rolls 2 fewer red dice." The structure sits in the GROUND theater
+  // but its ability reduces the opponent's SPACE attack, and it applies every
+  // space battle step (i.e. every combat round), not just round 1. RR
+  // "Structures": "There can be multiple structures of any type(s) in the same
+  // system, and each structure provides its benefit" — so N cannons cut 2N red.
+  // Applied BEFORE the 5-die cap, per RoE p.9. Player report #736 ("the ion
+  // cannon didn't work, the empire rolled 5 dice instead of 4") was right: the
+  // ability was never implemented at all.
+  let ionCannonRedCut = 0;
+  if (theater === 'space') {
+    const cannons = (G.map.systems[c.systemId]?.units ?? [])
+      .filter((u) => u.side === other(side) && u.typeId === 'ion-cannon').length;
+    if (cannons > 0) {
+      ionCannonRedCut = Math.min(2 * cannons, red);
+      red -= ionCannonRedCut;
+    }
+  }
+
   // "According To My Design" (Emperor Palpatine start-of-combat action card):
   // Rebel rolls 1 fewer red die and 2 fewer black dice for the first round
   // of air AND ground combat. Apply BEFORE rolling. Floor at 0 so a small
@@ -1028,6 +1053,15 @@ export function beginAttack(G: GameState, c: CombatState, side: Side, theater: T
   };
   // Surface the dice-reduction in the per-attack tactics log so the player
   // can see why fewer dice rolled than expected.
+  if (ionCannonRedCut > 0) {
+    c.pendingAttack.tacticsPlayed.push({
+      card: 'ion-cannon',
+      detail: `Ion Cannon: −${ionCannonRedCut} red ${side} dice (space)`,
+    });
+    log(G, { kind: 'ion-cannon-applied', side: other(side), payload: {
+      systemId: c.systemId, targetSide: side, round: c.round, reducedRed: ionCannonRedCut,
+    }});
+  }
   if (accordingToMyDesignReduction) {
     c.pendingAttack.tacticsPlayed.push({
       card: 'according-to-my-design',

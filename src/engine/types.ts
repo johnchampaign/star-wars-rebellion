@@ -2023,6 +2023,13 @@ export type CombatReport = {
    *  runs, so the Liberation objective reads this snapshot, not the live
    *  flag. (Issue #53.) Optional for backward-compat with old saved reports. */
   systemSubjugatedAtStart?: boolean;
+  /** Imperial leaders present in the system when combat BEGAN. A losing
+   *  Imperial leader retreats out of the system before the combat-objective
+   *  check runs, so "win a battle in Vader's system" (Return Of The Jedi) has
+   *  to read this snapshot rather than the live board. Same class of bug as
+   *  the Liberation subjugation snapshot above (#736). Optional for
+   *  backward-compat with old saved reports. */
+  imperialLeadersAtStart?: LeaderId[];
   addedLeaders: { side: Side; leaderId: LeaderId; tacticValue: number }[];
   drawnTactics: { side: Side; spaceCount: number; groundCount: number };
   rounds: CombatRoundReport[];

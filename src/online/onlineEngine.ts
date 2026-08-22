@@ -68,7 +68,7 @@ export function makeOnlinePhases(submit: Submit, canSubmit: () => boolean): type
     activateSystem: (_g: any, _s: any, leaderId: any, targetSystemId: any, moveOrders: any = []) => act({ kind: 'activateSystem', leaderId, targetSystemId, moveOrders }),
     revealMission: (_g: any, _s: any, missionId: any, targetSystemId: any, targetLeaderId?: any, assignedLeaderIds?: any) => act({ kind: 'revealMission', missionId, targetSystemId, targetLeaderId, assignedLeaderIds }),
     // Mission resolution
-    resolveOpposition: (_g: any, opposerLeaderId: any) => act({ kind: 'resolveOpposition', opposerLeaderId }),
+    resolveOpposition: (_g: any, opposerLeaderId: any, useSubversion: any) => act({ kind: 'resolveOpposition', opposerLeaderId, useSubversion: !!useSubversion }),
     resolveYodaMissionReroll: (_g: any, rerollIndex: any) => act({ kind: 'resolveYodaMissionReroll', rerollIndex }),
     resolveR2D2MissionFlip: (_g: any, flipIndex: any) => act({ kind: 'resolveR2D2MissionFlip', flipIndex }),
     resolveStolenPlansPick: (_g: any, cardId: any) => act({ kind: 'resolveStolenPlansPick', cardId }),

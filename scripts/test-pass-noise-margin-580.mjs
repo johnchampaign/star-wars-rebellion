@@ -61,7 +61,12 @@ const board = (raw) => {
 // the arm means on this fixture, and seed 3 stopped forfeiting (2/24 -> 1/24
 // reproduce). Seed 11 still does. When this trips again, the message below
 // says how to re-derive; do NOT read a drifted seed as a regression in the fix.
-const REPRO_SEEDS = [11];
+// RE-DERIVED AGAIN 2026-08-22 (was [11], now back to [3]): implementing the
+// Rebel Ion Cannon's dice reduction (#736) changed how space combat resolves
+// inside rollouts, which moved the arm means on this fixture again. Rescanned
+// seeds 1-30 with the floor off: only seed 3 forfeits, and with the floor on it
+// activates — i.e. the fix under test is intact, only the sampling drifted.
+const REPRO_SEEDS = [3];
 const chooseWithSeed = (raw, s) => {
   const g = board(raw);
   AI.seedAI(s); mcts.seedMCTS?.(s);

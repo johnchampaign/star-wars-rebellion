@@ -49,7 +49,12 @@ export type RebellionAction =
   | { kind: 'revealMission'; missionId: string; targetSystemId: SystemId; targetLeaderId?: LeaderId; assignedLeaderIds?: LeaderId[] }
 
   // ---------- Mission resolution (top of the mission flow) ----------
-  | { kind: 'resolveOpposition'; opposerLeaderId: LeaderId | null }
+  // `useSubversion` carries the player's explicit Oppose-vs-Oppose+Subversion
+  // choice. Subversion is a RAW "may" and spends a one-shot card, so it must
+  // never be inferred: omitting it here meant the online path fell through to
+  // the engine's back-compat default (true) and fired Subversion even when the
+  // player pressed plain "Oppose" (#735).
+  | { kind: 'resolveOpposition'; opposerLeaderId: LeaderId | null; useSubversion?: boolean }
   | { kind: 'resolveYodaMissionReroll'; rerollIndex: number | null }
   | { kind: 'resolveR2D2MissionFlip'; flipIndex: number | null }
   | { kind: 'resolveStolenPlansPick'; cardId: string }

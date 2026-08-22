@@ -57,7 +57,7 @@ function dispatch(G: GameState, a: RebellionAction, actor: Side): Result {
     case 'revealMission':      return phases.revealMission(G, actor, a.missionId, a.targetSystemId, a.targetLeaderId, a.assignedLeaderIds);
 
     // ---------- Mission resolution (top of flow) ----------
-    case 'resolveOpposition':        return phases.resolveOpposition(G, a.opposerLeaderId);
+    case 'resolveOpposition':        return phases.resolveOpposition(G, a.opposerLeaderId, a.useSubversion ?? false);
     case 'resolveYodaMissionReroll': return phases.resolveYodaMissionReroll(G, a.rerollIndex);
     case 'resolveR2D2MissionFlip':   return phases.resolveR2D2MissionFlip(G, a.flipIndex);
     case 'resolveStolenPlansPick':   return phases.resolveStolenPlansPick(G, a.cardId);

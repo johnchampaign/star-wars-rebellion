@@ -45,7 +45,7 @@ formats to `{ meta, humanSide, winner, events, snapshots, final }`.
 2. Run `node scripts/gen-log-registry.mjs`, then edit your kind's Description.
 3. `node scripts/test-log-registry.mjs` must pass.
 
-## Kinds (264)
+## Kinds (265)
 
 | Kind | Description | Sample payload | Emitted from |
 |---|---|---|---|
@@ -174,6 +174,7 @@ formats to `{ meta, humanSide, winner, events, snapshots, final }`.
 | `independent-operation-evac` | — | `{"fromSystemId":"mandalore","toSystemId":"corellia","moved":3}` | src/engine/phases.ts |
 | `instance-id-heal` | — | `(not seen in corpus or sample game)` | src/engine/mechanics.ts |
 | `interrogation-droid-named-systems` | — | `{"named":["dagobah","kashyyyk","ryloth"],"note":"One of these contains the Rebel base."}` | src/engine/phases.ts |
+| `ion-cannon-applied` | Rebel Ion Cannon structure cut the opponent's red dice for one space battle step (faction sheet: "your opponent rolls 2 fewer red dice"). `reducedRed` is the actual cut after flooring at the attacker's red pool; multiple cannons stack (#736). | `(not seen in corpus or sample game)` | src/engine/combat.ts |
 | `invariant-violation` | — | `(not seen in corpus or sample game)` | src/engine/mechanics.ts |
 | `it-is-your-destiny-applied` | — | `{"capturedLeader":"jan-dodonna","explanation":"Vader captures a rescuer."}` | src/engine/phases.ts |
 | `it-is-your-destiny-skipped` | — | `(not seen in corpus or sample game)` | src/engine/phases.ts |

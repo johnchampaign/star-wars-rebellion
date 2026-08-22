@@ -377,11 +377,21 @@ export function combatObjectivesTriggered(
   // not just winning the whole combat (same FAQ principle as liberation #567 /
   // #423). rebelWonOverall was too strict and would MISS a valid score when the
   // Empire still held the other theater.
+  // Which Imperial leaders count as "in this system": the live board PLUS the
+  // at-combat-start snapshot PLUS anyone added as the combat leader. A beaten
+  // Imperial leader RETREATS with his units before this check runs, so reading
+  // only the live board denied the objective to a Rebel who won the battle and
+  // made Vader run — the one outcome the card is most obviously about (#736).
   if (has('return-of-the-jedi-3') && rebelWonAnyBattle) {
     const sys = report.systemId;
-    const vaderHere = (G.empire.leadersOnBoard[sys] ?? []).includes('darth-vader');
-    const empHere = (G.empire.leadersOnBoard[sys] ?? []).includes('emperor-palpatine');
-    if (vaderHere || empHere) fired.push('return-of-the-jedi-3');
+    const impHere = new Set<string>([
+      ...(G.empire.leadersOnBoard[sys] ?? []),
+      ...(report.imperialLeadersAtStart ?? []),
+      ...report.addedLeaders.filter((a) => a.side === 'Empire').map((a) => a.leaderId),
+    ]);
+    if (impHere.has('darth-vader') || impHere.has('emperor-palpatine')) {
+      fired.push('return-of-the-jedi-3');
+    }
   }
   // death-star-plans-2 / -3 — "If there is at least 1 fighter after the
   // space battle step, reveal this card to roll 3 dice; on direct-hit
