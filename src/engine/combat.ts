@@ -3042,12 +3042,22 @@ export function resolveCinematicTargetPick(
         return { ok: true }; // paused — player assigns the next point
       }
       // 0–1 targets left → no further choice; auto-assign the remainder.
+      // Each auto-assigned point is LOGGED exactly like a prompted one. Without
+      // this the card reported only the single point the player was asked
+      // about, and every further point landed invisibly — so a second unit died
+      // at end of round with nothing in the log to explain it (player report
+      // #730: "all my space units disappeared"). `auto: true` marks the points
+      // the engine placed because there was no real choice left.
       for (let k = 0; k < remaining; k++) {
         const live = cinematicDealCandidates(G, c, pc.side, pc.theater, plainDeal)
           .filter((id) => !(c.theaterStaged ?? []).includes(id as UnitInstanceId));
         if (live.length === 0) break;
         const d = M.damageUnit(G, live[0], 1);
         if (d) (c.theaterStaged ??= []).push(live[0]);
+        log(G, { kind: 'cinematic-tactic-play', side: pc.side, payload: {
+          cardId: ctx?.cardId, ability: ctx?.useTop ? 'primary' : 'secondary',
+          theater: pc.theater, targetDealt: 1, target: live[0], auto: true,
+        }});
       }
     }
   } else {
