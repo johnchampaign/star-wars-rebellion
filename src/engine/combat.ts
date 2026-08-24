@@ -383,6 +383,15 @@ export function runCombat(G: GameState): void {
         bothSidesHaveTheater(G, c.systemId, 'space') ||
         bothSidesHaveTheater(G, c.systemId, 'ground');
       if (!stillContested) {
+        // …but the RoE Cinematic post-retreat trigger (Rogue One) still has to
+        // fire here. Its condition is "if 1 or more units retreat this round",
+        // and the retreat that satisfies it is usually the very retreat that
+        // empties the system — so this early exit swallowed the rescue every
+        // time it mattered (player report #737: retreated out of Bothawui with
+        // a U-Wing and Wedge stayed captured). May PAUSE for the
+        // rescue/remove-marker choice; the resolver re-enters and, with the
+        // queue entry consumed, falls through to the exit below.
+        if (c.cinematic && resolveCinematicRetreatTriggers(G, c)) return;
         c.retreatStepDoneThisRound = true;
         c.step = 'Ended';
         break;
