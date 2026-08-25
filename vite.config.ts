@@ -127,7 +127,8 @@ function devPlugin() {
           const title = `${titleTag} ${description.split('\n')[0].slice(0, 80) || 'Problem report'}`;
           const sideLine = body.humanSide ? `\n\n**Reporter played: ${body.humanSide}** (AI: ${body.aiSide || (body.humanSide === 'Rebel' ? 'Empire' : 'Rebel')})` : '';
           const sections: string[] = [`${reporterTag}**What happened**\n\n${description}${sideLine}`];
-          sections.push(`**Build / context**\n\n- humanSide: \`${body.humanSide || 'unknown'}\` (AI: \`${body.aiSide || 'unknown'}\`)\n- userAgent: \`${body.userAgent || ''}\`\n- canEncodeState: \`${body.canEncodeState}\`\n- timestamp: \`${body.timestamp || ''}\``);
+          const aiFlag = (v: boolean | undefined) => (v === undefined ? '?' : v ? 'on' : 'off');
+          sections.push(`**Build / context**\n\n- humanSide: \`${body.humanSide || 'unknown'}\` (AI: \`${body.aiSide || 'unknown'}\`)\n- userAgent: \`${body.userAgent || ''}\`\n- canEncodeState: \`${body.canEncodeState}\`\n- build: \`${body.build || 'unknown'}\`\n- gameId: \`${body.gameId || 'unknown'}\`\n- AI config: mcts=\`${aiFlag(body.mctsPolicy)}\` mctsRebel=\`${aiFlag(body.mctsRebel)}\` planner=\`${aiFlag(body.empirePlanner)}\` huntOccupy=\`${aiFlag(body.huntOccupy)}\`\n- timestamp: \`${body.timestamp || ''}\``);
           if (body.turnLog?.length) {
             const tail = body.turnLog.slice(-30).map((e: any) => `t${e.turn} ${e.side || ''} ${e.kind} ${JSON.stringify(e.payload || '')}`.slice(0, 220)).join('\n');
             sections.push(`**Last ${Math.min(30, body.turnLog.length)} log entries**\n\n\`\`\`\n${tail}\n\`\`\``);

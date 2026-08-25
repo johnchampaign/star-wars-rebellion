@@ -11977,6 +11977,11 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
     empirePlanner: PLANNER_ENABLED,
     // Whether the occupy-to-clear hunt economy (base-HUNT fix) was active.
     huntOccupy: HUNT_OCCUPY_ENABLED,
+    // Which search policy drove the AI. MCTS is the browser default, so nearly
+    // every AI-behavior report describes it — the archived game record already
+    // stamped these; the report payload was missing them.
+    mctsPolicy: MCTS_ENABLED,
+    mctsRebel: MCTS_REBEL_ENABLED,
     // Recorded so a bug triager never has to infer it from the outcome.
     humanSide,
     aiSide,

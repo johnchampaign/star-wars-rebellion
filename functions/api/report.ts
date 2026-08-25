@@ -25,6 +25,15 @@ interface ReportBody {
   reporterId?: string;
   humanSide?: string;
   aiSide?: string;
+  // AI-config attribution. Every one of these changes how the AI plays, and the
+  // open report queue is almost entirely AI-behavior reports — without them a
+  // triager cannot tell which AI produced the behavior being described.
+  build?: string;
+  gameId?: string;
+  empirePlanner?: boolean;
+  huntOccupy?: boolean;
+  mctsPolicy?: boolean;
+  mctsRebel?: boolean;
   canEncodeState?: boolean;
   state?: unknown;
   pending?: unknown;
@@ -107,6 +116,9 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     `- humanSide: \`${body.humanSide || 'unknown'}\`  (AI: \`${body.aiSide || 'unknown'}\`)\n` +
     `- userAgent: \`${body.userAgent || ''}\`\n` +
     `- canEncodeState: \`${body.canEncodeState}\`\n` +
+    `- build: \`${body.build || 'unknown'}\`\n` +
+    `- gameId: \`${body.gameId || 'unknown'}\`\n` +
+    `- AI config: ${aiConfigLine(body)}\n` +
     `- timestamp: \`${body.timestamp || ''}\`\n` +
     `- server-stamp: \`${stamp}\``
   );
@@ -169,6 +181,16 @@ export const onRequestPost: PagesFunction<Env> = async (ctx) => {
     return json({ ok: false, error: String(err) }, 502);
   }
 };
+
+
+/** One-line summary of which AI knobs were active for the reported game.
+ *  `undefined` (an older client that doesn't send the flag) renders as `?` so
+ *  it's never confused with a recorded `false`. */
+function aiConfigLine(body: ReportBody): string {
+  const f = (v: boolean | undefined) => (v === undefined ? '?' : v ? 'on' : 'off');
+  return `mcts=\`${f(body.mctsPolicy)}\` mctsRebel=\`${f(body.mctsRebel)}\` ` +
+    `planner=\`${f(body.empirePlanner)}\` huntOccupy=\`${f(body.huntOccupy)}\``;
+}
 
 function ghHeaders(token: string): Record<string, string> {
   return {
