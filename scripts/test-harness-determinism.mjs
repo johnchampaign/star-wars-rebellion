@@ -1,4 +1,4 @@
-// @timeout 600
+// @timeout 300000
 // The tournament harness claimed "paired seeds" for years while a seed did NOT
 // reproduce a game whenever an MCTS arm was in play. Measured 2026-08-21 on two
 // same-config runs (ff3-off vs ff4-off, 26 shared seeds): 0/26 exact replays and

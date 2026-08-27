@@ -28,6 +28,7 @@
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const { register } = await import('tsx/esm/api'); register();
 const codec = await import('../src/engine/codec.ts');
@@ -89,6 +90,15 @@ const passRate = (raw, seeds) => {
 
 console.log('[ #580 — a tie the search cannot resolve must not be broken toward pass ]');
 const raw = load('passivity-580.json');
+
+// Child mode: emit the control measurements under whatever env the parent set.
+// Used to run the negative control with SWR_CONVERT_SUBJUGATED=0 — see below.
+if (process.env.PASS580_CONTROL === '1') {
+  const offC = withPassZ('0', () => REPRO_SEEDS.map((sd) => chooseWithSeed(raw, sd)));
+  const onC = REPRO_SEEDS.map((sd) => chooseWithSeed(raw, sd));
+  console.log(JSON.stringify({ off: offC, on: onC }));
+  process.exit(0);
+}
 {
   const G = board(raw);
   // Pin the shape, so a future engine change that quietly empties this board
@@ -110,26 +120,45 @@ const raw = load('passivity-580.json');
 // fix disabled, then everything below is green for some unrelated reason and
 // would not catch a regression. That is the failure mode this project has been
 // bitten by before, so it is asserted rather than assumed.
-console.log('[ the fixture still reproduces the bug with the fix off (SWR_MCTS_PASS_Z=0) ]');
+// CONTROL RUNS UNDER SWR_CONVERT_SUBJUGATED=0 (2026-08-27). Pricing the
+// conversion of subjugated systems by what it unlocks (#738) gave the Empire a
+// real, well-scored action on THIS board, which collapsed the #580 tie: with the
+// new scoring, 0 of seeds 1-120 forfeit even with the floor OFF, so the control
+// is no longer satisfiable at shipped defaults and every assertion below would
+// have been vacuously green. Rather than delete the guard or pin a seed that no
+// longer reproduces, the control is measured in a child process with the old
+// scoring restored — where seed 3 still forfeits with the floor off and still
+// gets fixed by the floor. That keeps this a real tripwire on the pass floor,
+// which is what the file is for. Do NOT read this as the floor regressing.
+console.log('[ control: with the old loyalty scoring the fixture still reproduces (SWR_CONVERT_SUBJUGATED=0) ]');
 {
-  const off = withPassZ('0', () => REPRO_SEEDS.map((s) => chooseWithSeed(raw, s)));
-  console.log(`    floor off, seeds ${REPRO_SEEDS.join('/')}: ${off.join(', ')}`);
+  // The child prints this file's own header line before it reaches child mode,
+  // so take the LAST line — that is the JSON payload.
+  const out = execFileSync(process.execPath, [fileURLToPath(import.meta.url)], {
+    env: { ...process.env, PASS580_CONTROL: '1', SWR_CONVERT_SUBJUGATED: '0' },
+    encoding: 'utf8',
+  }).trim().split('\n');
+  const ctl = JSON.parse(out[out.length - 1]);
+  console.log(`    floor off, seeds ${REPRO_SEEDS.join('/')}: ${ctl.off.join(', ')}`);
+  console.log(`    floor on,  seeds ${REPRO_SEEDS.join('/')}: ${ctl.on.join(', ')}`);
   check('the pinned seed(s) forfeit the round when the floor is off',
-    off.every((k) => k === 'pass'),
-    `got ${JSON.stringify(off)} — the board drifted; re-derive the seeds with scripts/diag-pass-margin.mjs`);
+    ctl.off.every((k) => k === 'pass'),
+    `got ${JSON.stringify(ctl.off)} — the board drifted; re-derive the seeds with scripts/diag-pass-margin.mjs`);
+  check('and the floor fixes exactly those seeds',
+    ctl.on.every((k) => k !== 'pass'), `got ${JSON.stringify(ctl.on)}`);
 }
 
-console.log('[ and the floor fixes exactly those seeds ]');
+console.log('[ and at SHIPPED defaults the board does not forfeit ]');
 {
-  const on = REPRO_SEEDS.map((s) => chooseWithSeed(raw, s));
-  console.log(`    floor on,  seeds ${REPRO_SEEDS.join('/')}: ${on.join(', ')}`);
-  check('both now play the round instead', on.every((k) => k !== 'pass'),
-    `got ${JSON.stringify(on)}`);
-
   const rate = passRate(raw, 10);
-  console.log(`    and across 10 seeds, passed in ${(100 * rate).toFixed(0)}%`);
-  check('no other seed forfeits either', rate === 0,
+  console.log(`    across 10 seeds, passed in ${(100 * rate).toFixed(0)}%`);
+  check('no seed forfeits either', rate === 0,
     `still passes ${(100 * rate).toFixed(0)}% of the time`);
+  // Informational, not asserted: since #738 this board is no longer even a tie,
+  // so it does not forfeit with the floor off either. If that ever flips back,
+  // the control above is the thing that still holds the line.
+  const rateOff = withPassZ('0', () => passRate(raw, 10));
+  console.log(`    (fyi) with the floor OFF at shipped defaults: ${(100 * rateOff).toFixed(0)}%`);
 }
 
 // Guard against over-correction: the boards that SHOULD still be able to pass,

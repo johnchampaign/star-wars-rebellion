@@ -1,4 +1,4 @@
-// @timeout 120
+// @timeout 60000
 // "I think the rule about 'assigning in secret' might be incorrect." — Daniel
 // Zhou (@danithaca), BGG. He was right, and quoted the rule exactly.
 //

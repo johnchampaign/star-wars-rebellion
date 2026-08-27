@@ -1,3 +1,11 @@
+// @timeout 900000
+// Runs REAL tournament sub-runs (both MCTS arms plus the --realistic preset), so
+// it cannot fit the 180s default budget. Measured 2026-08-27: 254s with
+// SWR_CONVERT_SUBJUGATED=0 and 477s with it on — pricing subjugated-system
+// conversion (#738) roughly doubles the work here, because the Empire ends up
+// holding more converted systems, fielding more units, and therefore searching
+// wider. Budgeted at 900s so a slow machine still has headroom; if this trips,
+// check whether the AI got broader rather than just raising the number again.
 // The MCTS arms of the tournament harness (Rebel AND Empire).
 //
 // Every "re-test against a stronger opponent" note in docs/ab-levers.md needs
