@@ -1538,58 +1538,9 @@ const ACTIVATE_DIVERSITY_ENABLED: boolean = (() => {
   return true;
 })();
 
-/** Retrograde guard for the Empire once the Rebel base is REVEALED
- *  (SWR_RETRO_GUARD=1 for node harnesses; browser `?retro=1` / `?retro=0`).
- *
- *  Four independent playtest reports describe the same move: the base is
- *  exposed, and the Empire activates a system that walks its heavy force the
- *  WRONG WAY down the map.
- *    #722 "the empire knows where the rebel base is located 'endor' - it now
- *         activated a system to move the death star and super star destroyer
- *         in the opposite direction"
- *    #690 "moved Piett and his fleet to toydaria from kessel instead of
- *         saleucami. The rebel base is revealed on mon calamari."
- *    #538 "my base has been revealed for about 3 turns and the empire isn't
- *         moving the death star or big fleets closer ... he did this turn by
- *         moving a fleet from salecumi to kashyyk"
- *
- *  The convergence gradient (revealedBaseDist, +18/+10/+5) scores only the
- *  DESTINATION, so a subjugation or resource bonus on a far system can outbid
- *  it and the executor then happily uses the NEAR-base stack as its source:
- *  force flows outward while the score reads as if it flowed inward. This
- *  prices the direction of travel. For each planned move order, compare the
- *  source's distance-to-base with the destination's and penalize the heavy
- *  units (capitals/stations/mobile ground) that would end up farther away.
- *  Off by default so it can be A/B'd against the shipped behavior. */
-/** Smallest destination distance-from-base the retrograde guard prices. 2 =
- *  the base and its adjacent ring are exempt (see the guard for why); 0 makes
- *  it charge every hop, kept as a knob purely so the two shapes can be A/B'd
- *  from a bench without a rebuild. */
-const RETRO_MIN_DEST_DIST: number = (() => {
-  try {
-    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-    const v = proc?.env?.SWR_RETRO_MIN_DIST;
-    if (v !== undefined && v !== '') { const n = parseInt(v, 10); if (Number.isFinite(n)) return n; }
-  } catch { /* browser: no process */ }
-  return 2;
-})();
-
-const RETROGRADE_GUARD: boolean = (() => {
-  try {
-    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-    if (proc?.env?.SWR_RETRO_GUARD === '1') return true;
-    if (proc?.env?.SWR_RETRO_GUARD === '0') return false;
-  } catch { /* browser: no process */ }
-  try {
-    const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
-    const q = g.location?.search ? new URLSearchParams(g.location.search).get('retro') : null;
-    if (q === '0') g.localStorage?.setItem('swr-retro-guard-off', '1');
-    else if (q === '1') g.localStorage?.removeItem('swr-retro-guard-off');
-    if (g.localStorage?.getItem('swr-retro-guard-off') === '1') return false;
-    if (typeof g.location !== 'undefined') return false; // browser default; flip when benched
-  } catch { /* node without env flag, or storage blocked */ }
-  return false; // node without SWR_RETRO_GUARD: benches opt in explicitly
-})();
+// (SWR_RETRO_GUARD deleted 2026-08-30 — measured inert on 120 reveal replays,
+// 3/120 moves changed, McNemar p=0.51; see #722 and docs/ab-levers.md. The
+// wrong-direction cluster #722/#690/#538 is tracked under #539 instead.)
 
 /** The reveal the COMMAND phase would make for `missionId` — its chosen target
  *  and the score it would attach — or null if the Command phase would generate
@@ -1894,7 +1845,7 @@ export function shouldHoldRevealedBase(G: GameState): boolean {
  *  units the same way the gate scores defenders. */
 /** True when `sysId` holds Empire mobile ground but no Empire ship that could
  *  lift it — the "stranded ground, send a carrier" shape the near-base ferry
- *  bonus rewards. Exempted from the retrograde guard, since collecting a
+ *  bonus rewards. (A deleted retrograde-guard experiment once exempted this path — see #722.) Collecting a
  *  stranded stack necessarily means stepping away from the base first. */
 function isFerryPickup(G: GameState, sysId: SystemId): boolean {
   const ss = G.map.systems[sysId];
@@ -2124,14 +2075,6 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   // from immediate neighbors.
   const revealedBaseDist = (side === 'Empire' && G.rebelBaseRevealed && G.rebelBaseSystemId)
     ? bfsDistances(G, G.rebelBaseSystemId, 4)
-    : null;
-  // Same origin, but unbounded — the 4-hop cap above is deliberate for the
-  // gradient (it should only pull force that is already close), while the
-  // retrograde guard has to compare a SOURCE and a DESTINATION that may both
-  // sit outside it. A capped map would report Infinity for both and silently
-  // score every deep-map move as neutral.
-  const retroBaseDist = (RETROGRADE_GUARD && side === 'Empire' && G.rebelBaseRevealed && G.rebelBaseSystemId)
-    ? bfsDistances(G, G.rebelBaseSystemId, 24)
     : null;
   // Mirror image for the REBEL: once the base is revealed an invasion is
   // imminent, and the expert rushes every outlying unit home to defend. The
@@ -2565,53 +2508,6 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         const dToBase = distFrom(revealedBaseDist, sysId);
         if (dToBase === 2) ts += 10;
         else if (dToBase === 3) ts += 5;
-      }
-      // RETROGRADE GUARD (#722/#690/#538): the gradient above pays for WHERE the
-      // units land; this charges for where they came FROM. Walk the orders the
-      // executor would actually issue and count the heavy units (capitals,
-      // stations, mobile ground — the force that captures a base) whose source
-      // is closer to the exposed base than this destination is. Fighters and
-      // structures are excluded: a lone TIE repositioning is not the blunder
-      // the reports describe, and a structure cannot move anyway.
-      //
-      // The base itself and its adjacent ring are exempt. Massing on a
-      // neighbour IS the approach, and the staging bonus above already governs
-      // it; charging the ring cost two Bespin reveal-replays where the Empire
-      // rallied laterally into it before pushing in (delivered 15 -> 9,
-      // capture -> no capture). Only moves that leave the assault ring pay.
-      //
-      // One legitimate backward move is exempt: the carrier ferry. Empire
-      // ground stranded farther out with no lift is a standing problem the
-      // block below deliberately pays a carrier to go collect, and that pickup
-      // is by definition a step away from the base. Taxing it cost two Bespin
-      // reveal-replays (delivered 15 -> 9, capture lost) with no offsetting
-      // gain, so a destination holding liftable ground and no carrier of its
-      // own is not charged.
-      if (retroBaseDist && distFrom(retroBaseDist, sysId) >= RETRO_MIN_DEST_DIST
-          && !isFerryPickup(G, sysId)) {
-        const dDest = distFrom(retroBaseDist, sysId);
-        let retro = 0;
-        for (const o of plannedHere) {
-          const dSrc = distFrom(retroBaseDist, o.fromSystemId);
-          if (dDest <= dSrc) continue;
-          // Clamp the per-order step so an unreachable system (Infinity on
-          // either side) can't produce a nonsense multiplier.
-          const step = Math.min(dDest - dSrc, 2);
-          const ss2 = G.map.systems[o.fromSystemId];
-          let heavy = 0;
-          for (const uid of o.unitInstanceIds) {
-            const u = ss2?.units.find((x) => x.instanceId === uid);
-            const t = u ? G.catalog.unitTypes[u.typeId] : undefined;
-            if (!t || t.class === 'structure' || t.transport.immobile) continue;
-            if (t.theater === 'ground' || t.class === 'capital' || t.transport.capacity > 0) heavy++;
-          }
-          retro += heavy * step;
-        }
-        // Capped so the guard steers a choice between comparable targets rather
-        // than vetoing the Empire's whole board (the passivity failure mode
-        // this project has fought hardest against — see the Death Star note in
-        // plannedMoveOrders). At 3/point the cap bites at ~5 heavy units.
-        if (retro > 0) ts -= Math.min(retro * 3, 30);
       }
       // Carrier-ferry consolidation (assault logistics, log diagnosis): in lost
       // invasions the Empire has carriers AND ground within ~2 hops of the
