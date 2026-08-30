@@ -122,7 +122,7 @@ running `npm run build`.
 
 ## License
 
-Code is MIT (see `LICENSE` once added). All game content (rules, card text,
+Code is MIT (see [`LICENSE`](LICENSE)). All game content (rules, card text,
 unit names, board art, etc.) belongs to Fantasy Flight Games. This project
 is a non-commercial fan implementation; do not distribute the original game
 assets via this repo.
