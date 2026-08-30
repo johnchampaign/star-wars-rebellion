@@ -907,6 +907,23 @@ export function unassignLeader(G: GameState, side: Side, missionId: string): { o
 
 /** Signal "I'm done assigning". Rebel goes first; once Rebel signals, current
  *  player switches to Empire. Once both have signaled, advance to Command. */
+/** Resignation (#677): ends the game as a win for `side`'s opponent. NOT a
+ *  RAW mechanism — the printed game has no surrender — so the engine only
+ *  provides the ending; the OFFER (AI judges its position hopeless, human
+ *  accepts or declines) lives in the UI layer with src/play/aiResign.ts.
+ *  `reasons` is the detector's explanation, kept in the log for audit. */
+export function resignGame(G: GameState, side: Side, reasons: string[] = []): { ok: boolean; reason?: string } {
+  if (G.isGameOver) return { ok: false, reason: 'game-already-over' };
+  const winner = side === 'Rebel' ? 'Empire' : 'Rebel';
+  G.isGameOver = true;
+  G.winner = winner;
+  G.winReason = 'resignation';
+  G.phase = 'GameOver';
+  log(G, { kind: 'resignation', side, payload: { winner, reasons } });
+  log(G, { kind: 'game-over', payload: { winner, reason: 'resignation' } });
+  return { ok: true };
+}
+
 export function skipAssignment(G: GameState, side: Side): { ok: boolean; reason?: string } {
   if (G.phase !== 'Assignment') return { ok: false, reason: 'wrong-phase' };
   if (G.currentPlayer !== side) return { ok: false, reason: 'not-your-turn' };

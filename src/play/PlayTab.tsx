@@ -35,6 +35,7 @@ const UnitStyleContext = createContext<UnitImageStyle>('token');
 const useUnitStyle = () => useContext(UnitStyleContext);
 import { createGame, resolveExpansion } from '../engine/setup';
 import * as _phases from '../engine/phases';
+import { hopelessFor } from './aiResign';
 import type { MoveOrder } from '../engine/phases';
 import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
 import * as _combat from '../engine/combat';
@@ -472,6 +473,9 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // proper "you won / you lost" dialogue rather than only the easy-to-miss
   // banner. Keyed by a flag the effect resets when a NEW game starts.
   const [gameOverAck, setGameOverAck] = useState(false);
+  /** AI resignation offer (#677): null = not showing; the string[] is the
+   *  detector's reasons, logged with the resignation if accepted. */
+  const [resignOffer, setResignOffer] = useState<string[] | null>(null);
   const aiActivityInitRef = useRef<boolean>(false);
   // Queue of objective cards just drawn (one modal per draw, with the
   // objective's name, art, and rules text). User #39 needed to know which
@@ -1250,6 +1254,27 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   useEffect(() => {
     if (G && !G.isGameOver && gameOverAck) setGameOverAck(false);
   }, [G, G?.isGameOver, gameOverAck]);
+
+  // AI resignation offer (#677). Checked once per ROUND, at the moment the
+  // round rolls over (timeMarker changes), and only for the AI's own side —
+  // the detector is structural and reads only the Empire's public knowledge,
+  // so it cannot leak the hidden base. Offered at most once per game
+  // (localStorage key by gameId survives reloads); declining is final.
+  // Validated against the uploaded archive before shipping: 0 fires across
+  // all 21 games the AI went on to win, offers in ~17% of human wins.
+  useEffect(() => {
+    if (!G || G.isGameOver || online) return;
+    if (G.timeMarker < 5) return;
+    if (resignOffer) return;
+    let gid = '';
+    try { gid = localStorage.getItem(LS_GAME_ID) ?? ''; } catch { /* storage blocked */ }
+    try { if (gid && localStorage.getItem(`rebellion-resign-offered-${gid}`)) return; } catch { /* ditto */ }
+    const v = hopelessFor(G, aiSide);
+    if (!v.hopeless) return;
+    try { if (gid) localStorage.setItem(`rebellion-resign-offered-${gid}`, '1'); } catch { /* ditto */ }
+    setResignOffer(v.reasons);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [G, G?.timeMarker, G?.isGameOver, aiSide, online]);
 
   // (One In A Million auto-skip removed — see the note by the header state.)
 
@@ -2096,6 +2121,51 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           notice={infoNoticeQueue[0]}
           onDismiss={() => setInfoNoticeQueue((q) => q.slice(1))}
         />
+      )}
+
+      {/* AI resignation offer (#677). The AI initiates, the human decides —
+       *  accepting ends the game as a human win (winReason 'resignation');
+       *  declining dismisses it for the rest of this game. */}
+      {resignOffer && G && !G.isGameOver && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: '#1c2128', border: '1px solid #444', borderRadius: 10,
+            padding: '22px 26px', maxWidth: 460, color: '#ddd', boxShadow: '0 8px 40px rgba(0,0,0,0.6)' }}>
+            <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 10 }}>
+              The {aiSide === 'Empire' ? 'Empire' : 'Rebellion'} offers its resignation
+            </div>
+            <div style={{ fontSize: 14, lineHeight: 1.5, marginBottom: 6 }}>
+              &ldquo;I&rsquo;m convinced I&rsquo;m going to lose this game. Will you accept my
+              resignation, or do you want to play it out?&rdquo;
+            </div>
+            <div style={{ fontSize: 12, color: '#889', marginBottom: 16 }}>
+              Accepting ends the game now as your win. Declining plays on to the normal
+              end — this offer won&rsquo;t be repeated.
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setResignOffer(null)}
+                style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #555',
+                  background: 'transparent', color: '#ccc', cursor: 'pointer' }}
+              >
+                Play it out
+              </button>
+              <button
+                onClick={() => {
+                  const reasons = resignOffer;
+                  setResignOffer(null);
+                  phases.resignGame(G, aiSide, reasons ?? []);
+                  persist(); // archives the completed game like any other ending
+                  refresh();
+                }}
+                style={{ padding: '8px 14px', borderRadius: 6, border: '1px solid #7a4',
+                  background: '#2c4a2c', color: '#cfc', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Accept resignation
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {responseNoticeQueue.length > 0 && (

@@ -56,6 +56,14 @@ export function makeOnlinePhases(submit: Submit, canSubmit: () => boolean): type
     // Reports
     acknowledgeReport: (_g: any, reportType: any) => act({ kind: 'acknowledgeReport', reportType }),
     acknowledgeNotices: (_g: any) => act({ kind: 'acknowledgeNotices' }),
+    // AI resignation (#677) is a single-player convenience: online games have
+    // no local AI whose hopelessness the client could judge (the server owns
+    // the state, and an abandoned seat goes through the AI-takeover flow
+    // instead). PlayTab's offer effect already bails when `online`, so this
+    // override exists to satisfy the adapter-coverage tripwire honestly: if
+    // some future path ever calls it online, refuse rather than mutate the
+    // redacted local view (which would desync/soft-lock).
+    resignGame: (_g: any, _s: any, _reasons?: any) => ({ ok: false, reason: 'not-available-online' }),
     // Assignment
     assignLeader: (_g: any, _s: any, missionId: any, leaderIds: any) => act({ kind: 'assignLeader', missionId, leaderIds }),
     unassignLeader: (_g: any, _s: any, missionId: any) => act({ kind: 'unassignLeader', missionId }),
