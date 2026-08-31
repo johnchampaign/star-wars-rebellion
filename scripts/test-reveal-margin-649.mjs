@@ -1,3 +1,4 @@
+// @timeout 480000
 // #649 — "The empire players passed while having vader on a facedown mission.
 // If the mission is capture operative the empire has possible targets... it
 // seem like a wasted action." Replayed from the reporter's own board

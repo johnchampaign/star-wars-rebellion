@@ -24,22 +24,20 @@
 //     that, this fix reintroduced the no-troop waste #647/#666 removed
 //     (measured 0.0 -> 0.4 leader-only activations per game before the guard).
 //
-// STATUS: the lever is OFF by default, so this test OPTS IN via the env var.
-// It is not shipped behaviour yet. Holding the station back shrinks what an
-// activation delivers, and on the #639 duplicate-arm fixture that is enough to
-// make the Empire pass 8% of the time (0% without it) — reproducible. It waits
-// on the scorer pricing an activation by what will actually move, the same
-// divergence #653 fixed for reinforcements. This test exists so the mechanism
-// stays correct and re-measurable in the meantime (docs/ab-levers.md).
+// STATUS: SHIPPED ON by default since 2026-08-31 (John's call on #701, after
+// the passivity cost that blocked it re-measured at 0/60 forfeits — see
+// test-ds-caution-passivity-tripwire, which guards that cost's return). The
+// env pin below is kept anyway so this file tests the mechanism regardless of
+// the shipped default.
 //
-// Run: SWR_DS_CAUTION=1 node scripts/test-death-star-caution-701.mjs
+// Run: node scripts/test-death-star-caution-701.mjs
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
-process.env.SWR_DS_CAUTION = '1'; // opt in: the lever is OFF by default
+process.env.SWR_DS_CAUTION = '1'; // pin ON, independent of the shipped default
 const { register } = await import('tsx/esm/api');
 register();
 

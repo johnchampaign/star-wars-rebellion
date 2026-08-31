@@ -1407,34 +1407,36 @@ const OPPOSE_WITH_IDLE_LEADERS: boolean = (() => {
   return true;
 })();
 
-/** A/B lever: hold the Death Star back instead of sweeping it into reach of
- *  Rebel ships (SWR_DS_CAUTION=1), from playtester report #701.
+/** Hold the Death Star back instead of sweeping it into reach of Rebel ships
+ *  (#701/#708). Default ON since 2026-08-31; SWR_DS_CAUTION=0 restores the old
+ *  sweeping for A/B.
  *
- *  OFF by default, and NOT because it doesn't work — see docs/ab-levers.md.
  *  The station has transport capacity 8, so it classifies as a capital ship and
  *  "bring all capitals" dragged it along with every activation sourced from its
  *  system. It is invulnerable except to a Death Star Plans attempt, so keeping
- *  it out of reach removes the only way it dies.
+ *  it out of reach removes the only way it dies. Mechanism: station moves
+ *  ending in or beside Rebel ships 69/204 (33.8%) -> 5/168 (3.0%) over 60
+ *  games, games affected 61.7% -> 8.3%, and it still moves (168 vs 204). Win
+ *  rate 40.2% -> 40.4% — noise, and self-play under-reads the benefit (the
+ *  heuristic Rebel rarely pursues Death Star Plans; humans do).
  *
- *  Effect is large and the cost looks free: station moves ending in or beside
- *  Rebel ships fall 69/204 (33.8%) -> 5/168 (3.0%) over 60 games, games
- *  affected 61.7% -> 8.3%, stations lost 8.3% -> 6.7%, and it still moves.
- *  Win rate 40.2% -> 40.4% over 1200 expansion games — noise.
- *
- *  BLOCKED ON A PASSIVITY INTERACTION. Holding the station back reduces what an
- *  activation delivers, and on the #639 duplicate-arm fixture that is enough to
- *  make the Empire PASS 8% of the time (0% without it) — reproducible, not
- *  noise. An earlier attempt to instead reject the whole action was far worse
- *  (9 passes in 25, and it broke #649 outright). Passivity is the single most
- *  reported Empire complaint and has cost 43% -> 30% before, so this does not
- *  ship until the scorer knows the station will be held back and prices the
- *  activation on what actually moves — the same scorer/executor divergence
- *  #653 fixed for reinforcements. */
+ *  HISTORY — read before touching. This sat WORKS, BLOCKED from 2026-08-09 to
+ *  2026-08-31: enabling it originally made the Empire forfeit the #639 board
+ *  8% of the time (0% without), and passivity is the most-reported Empire
+ *  complaint, so the trade was refused. Re-measured 2026-08-31: 0/60 forfeits
+ *  with the lever ON (P ≈ 0.007 vs the old 8%) — the cost vanished somewhere in
+ *  three weeks of engine work, UNATTRIBUTED (not the pass floor, not the
+ *  subjugation re-pricing; controls all 0/24). Because the cure is unexplained,
+ *  the regression is guarded: test-ds-caution-passivity-tripwire re-runs the
+ *  #639 forfeit check with this lever pinned ON, so if the old cost sneaks
+ *  back, a test goes red instead of players re-reporting passivity. Shipped on
+ *  John's call (#701, option b: mechanism numbers + tripwire). */
 const DEATH_STAR_CAUTION: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-    return proc?.env?.SWR_DS_CAUTION === '1';
-  } catch { return false; } // browser: no process
+    if (proc?.env?.SWR_DS_CAUTION === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
 })();
 
 /** Opt-out for weighing subjugation targets by resource SHAPE rather than icon
