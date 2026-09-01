@@ -1528,6 +1528,13 @@ export type ChoiceRequest =
         //   - take-it-down: all hits from this card must go to the same target
         //   - onslaught:    hits from this card must go to different targets
         source?: string;
+        // "Target the Star Destroyers" (Wedge): this black hit may ALSO be
+        // assigned to a red-health ship, i.e. the RAW "treat up to 2 of your
+        // black hits as red hits" choice is made by where the attacker
+        // assigns it. Surfaced to the UI so the player can see WHICH black
+        // dice carry the conversion (#741) — otherwise all black dice look
+        // identical and the card appears to do nothing.
+        convertible?: boolean;
       }[];
       // Per-hit list of eligible defender unit instance IDs (already filtered
       // for color matching and "not already staged for destruction"). Same

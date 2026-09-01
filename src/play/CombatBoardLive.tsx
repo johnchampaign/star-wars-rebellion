@@ -1541,6 +1541,20 @@ function AssignDamagePanel({ G, choice, c, assignments, selectedHitIdx, setSelec
           which assigned damage they cancel.
         </div>
       )}
+      {/* "Target the Star Destroyers" (Wedge) — the conversion is made by
+          WHERE these black hits get assigned, so the player has to be able to
+          see which black dice carry it. Without this the card looked inert:
+          every black die looks the same and only two of them highlight a
+          red-health ship (#741). */}
+      {choice.hits.some((h) => h.convertible) && (
+        <div style={{ fontSize: 11, color: '#ffd54a', marginBottom: 6 }}>
+          ⭑ <b>Target the Star Destroyers</b>: the{' '}
+          {choice.hits.filter((h) => h.convertible).length} black{' '}
+          {choice.hits.filter((h) => h.convertible).length === 1 ? 'die' : 'dice'} marked{' '}
+          <b>⭑RED</b> may be assigned to <i>red-health</i> ships (Star Destroyers) as
+          well as black ones. Your other black dice can only hit black-health ships.
+        </div>
+      )}
       {/* Per-source constraint hints. RAW: Take It Down forces both hits to
           one target; Onslaught forces hits to different targets. */}
       {(() => {
@@ -1574,7 +1588,13 @@ function AssignDamagePanel({ G, choice, c, assignments, selectedHitIdx, setSelec
             <button key={i}
               onClick={() => noTargets ? null : setSelectedHitIdx(i)}
               disabled={noTargets}
-              title={assignedTo ? `→ ${unitLabel(assignedTo)}` : (noTargets ? '(no legal target)' : 'Click to select; then click a unit on the board')}
+              title={
+                assignedTo ? `→ ${unitLabel(assignedTo)}`
+                : noTargets ? '(no legal target)'
+                : h.convertible
+                  ? 'Target the Star Destroyers: this black hit may strike a red-health ship too. Click to select; then click a unit on the board'
+                  : 'Click to select; then click a unit on the board'
+              }
               style={{
                 background: '#0c0d10',
                 border: isSelected ? '2px solid #ffd54a' : (assignedTo ? '2px solid #80dc78' : '1px solid #2a2d34'),
@@ -1589,6 +1609,9 @@ function AssignDamagePanel({ G, choice, c, assignments, selectedHitIdx, setSelec
               <Die d={{ color: (h.color ?? 'black') as DieResult['color'], face: h.face }} />
               {srcLabel && (
                 <span style={{ fontSize: 9, color: '#cbc4b0', fontWeight: 700 }}>{srcLabel}</span>
+              )}
+              {h.convertible && (
+                <span style={{ fontSize: 9, color: '#ffd54a', fontWeight: 700 }}>⭑RED</span>
               )}
               {assignedTo && (
                 <span style={{ color: '#80dc78', fontSize: 10 }}>
