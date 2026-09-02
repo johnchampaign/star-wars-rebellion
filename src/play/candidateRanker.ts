@@ -17,7 +17,7 @@ import type { CommandAction } from './randomAI';
 import { candidateFeatures, featureNames, positionContext } from './candidateFeatures';
 import weightsJson from './rankerWeights.json';
 
-interface Weights { names: string[]; mean: number[]; std: number[]; w: number[] }
+interface Weights { names: string[]; mean: number[]; std: number[]; w: number[]; sides?: Side[] }
 const W = weightsJson as unknown as Weights;
 
 export const RANKER_ENABLED: boolean = (() => {
@@ -58,6 +58,11 @@ export function rankerScore(G: GameState, ctx: ReturnType<typeof positionContext
  *  Returns the input untouched when the ranker is off or unusable. */
 export function rankCandidates(G: GameState, side: Side, cands: CommandAction[]): CommandAction[] {
   if (!RANKER_ENABLED || cands.length < 2 || !rankerUsable(G)) return cands;
+  // Only the side(s) the model was trained on. The archive's exact positions
+  // are all human-Rebel so far (the Empire acts second in Command; the v2
+  // replayer will add it) — applying Rebel-learned preferences to the Empire
+  // would be a guess dressed as a prior.
+  if (W.sides && !W.sides.includes(side)) return cands;
   const ctx = positionContext(G, side, cands.length);
   const scored = cands.map((c, i) => ({ c, i, s: rankerScore(G, ctx, c, i) }));
   scored.sort((a, b) => (b.s - a.s) || (a.i - b.i));

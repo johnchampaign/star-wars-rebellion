@@ -32,7 +32,7 @@ const rows = readFileSync(join(ROOT, 'reports', 'human-decisions.jsonl'), 'utf8'
 const same = (ha, c) => ha.kind === 'pass' ? c.kind === 'pass'
   : ha.kind === 'activate-system' ? (c.kind === 'activate' && c.leaderId === ha.leaderId && c.targetSystemId === ha.targetSystemId)
   : (c.kind === 'reveal' && c.missionId === ha.missionId && c.targetSystemId === ha.targetSystemId);
-let names = null; const positions = [];
+let names = null; const positions = []; const sides = new Set();
 for (const r of rows) {
   let G; try { G = codec.decode(r.state, catalog); } catch { continue; }
   AI.seedAI(1);
@@ -41,6 +41,7 @@ for (const r of rows) {
   if (hi < 0) continue; // human's move not generated even at K — unrankable
   if (!names) names = F.featureNames(G);
   const ctx = F.positionContext(G, r.humanSide, cands.length);
+  sides.add(r.humanSide);
   positions.push({ gameId: r.gameId, hi, X: cands.map((c, i) => F.candidateFeatures(G, ctx, c, i)) });
 }
 const hash = (s) => { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h; };
@@ -97,7 +98,7 @@ const top = names.map((nm, d) => [nm, w[d]]).sort((a, b) => Math.abs(b[1]) - Mat
 console.log('\nlargest weights (standardised):'); for (const [nm, v] of top) console.log(`  ${v >= 0 ? '+' : '-'}${Math.abs(v).toFixed(2)}  ${nm}`);
 
 writeFileSync(join(ROOT, 'src', 'play', 'rankerWeights.json'), JSON.stringify({
-  trainedAt: new Date().toISOString(), k: K, epochs: EPOCHS, l2: L2, seed: SEED, names, mean, std, w,
+  trainedAt: new Date().toISOString(), k: K, epochs: EPOCHS, l2: L2, seed: SEED, sides: [...sides].sort(), names, mean, std, w,
   metrics: { heldOut: { positions: test.length, baseline: base, ranker: rk }, trainPositions: train.length },
 }, null, 0) + '\n');
 console.log('\nwrote src/play/rankerWeights.json');

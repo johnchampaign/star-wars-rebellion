@@ -40,7 +40,12 @@ if (process.env.RANKER_TEST_CHILD === '1') {
   const raw = AI.bestCommandAction(G, 'Rebel');
   const ranked = R.rankCandidates(G, 'Rebel', raw);
   const key = (c) => `${c.kind}:${c.missionId ?? c.leaderId ?? ''}@${c.targetSystemId ?? ''}`;
-  console.log(JSON.stringify({ enabled: R.RANKER_ENABLED, usable: R.rankerUsable(G), raw: raw.map(key), ranked: ranked.map(key), k: raw.length }));
+  // Empire side on a real Empire board: must be untouched while the model has no Empire data.
+  const GE = codec.decode(readFileSync(join(ROOT, 'scripts/fixtures/passivity-580.json'), 'utf8'), catalog);
+  GE.passedThisCommand = (GE.passedThisCommand ?? []).filter((x) => x !== 'Empire'); GE.currentPlayer = 'Empire';
+  AI.seedAI(1); const rawE = AI.bestCommandAction(GE, 'Empire'); const rankedE = R.rankCandidates(GE, 'Empire', rawE);
+  console.log(JSON.stringify({ enabled: R.RANKER_ENABLED, usable: R.rankerUsable(G), raw: raw.map(key), ranked: ranked.map(key), k: raw.length,
+    empireUntouched: JSON.stringify(rawE.map(key)) === JSON.stringify(rankedE.map(key)), empireK: rawE.length }));
   process.exit(0);
 }
 
@@ -76,6 +81,8 @@ console.log('[ the lever: off by default, re-orders when on ]');
   check('on: generation widened to K=4 (more candidates than at K=1)', on.k > off.k, `${on.k} vs ${off.k}`);
   check('on: the order actually changes (non-vacuous)', JSON.stringify(on.raw) !== JSON.stringify(on.ranked), 'ranker returned the heuristic order');
   check('on: it is a permutation, not a filter', on.ranked.length === on.raw.length && [...on.ranked].sort().join() === [...on.raw].sort().join());
+  check('on: the Empire is left in heuristic order (model trained on Rebel data only)', on.empireUntouched && on.empireK >= 2, `k=${on.empireK}`);
+  check('weights record the sides they cover', Array.isArray(W.sides) && W.sides.includes('Rebel') && !W.sides.includes('Empire'), JSON.stringify(W.sides));
   const on2 = run({ SWR_RANKER: '1' });
   check('on: deterministic', JSON.stringify(on.ranked) === JSON.stringify(on2.ranked));
 }
