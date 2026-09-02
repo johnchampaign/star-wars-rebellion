@@ -17,6 +17,10 @@ import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i >= 0 ? process.argv[i + 1] : d; };
 const K = Number(arg('--k', 4)), EPOCHS = Number(arg('--epochs', 40)), L2 = Number(arg('--l2', 1e-3)), SEED = Number(arg('--seed', 1));
+// --sides Rebel,Empire : which human sides to train on (default: all in the dataset).
+// Measured 2026-09-02: a joint model HELPS the Rebel (top-1 5.6% -> 29.2%) but not the Empire (14.9% -> 11.9%),
+// whose heuristic already ranks better and whose decisions are more plan-dependent — so ship Rebel-only weights.
+const SIDES = (arg('--sides', '') || '').split(',').filter(Boolean);
 process.env.SWR_CAND_K = String(K); // widen generation before the AI module loads
 
 const { register } = await import('tsx/esm/api'); register();
@@ -28,7 +32,7 @@ const j = (p) => JSON.parse(readFileSync(join(ROOT, 'assets', p), 'utf8'));
 const catalog = setup.buildCatalog({ systems: j('systems.json'), adjacency: j('adjacency.json'), leaders: j('leaders.json'), actions: j('actions.json'), missions: j('missions.json'), objectives: j('objectives.json'), tactics: j('tactics.json'), probes: j('probes.json') });
 
 // ---- build (position → candidates → features, label) ----
-const rows = readFileSync(join(ROOT, 'reports', 'human-decisions.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.quality === 'exact');
+const rows = readFileSync(join(ROOT, 'reports', 'human-decisions.jsonl'), 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((r) => r.quality === 'exact' && (SIDES.length === 0 || SIDES.includes(r.humanSide)));
 const same = (ha, c) => ha.kind === 'pass' ? c.kind === 'pass'
   : ha.kind === 'activate-system' ? (c.kind === 'activate' && c.leaderId === ha.leaderId && c.targetSystemId === ha.targetSystemId)
   : (c.kind === 'reveal' && c.missionId === ha.missionId && c.targetSystemId === ha.targetSystemId);
@@ -42,7 +46,7 @@ for (const r of rows) {
   if (!names) names = F.featureNames(G);
   const ctx = F.positionContext(G, r.humanSide, cands.length);
   sides.add(r.humanSide);
-  positions.push({ gameId: r.gameId, hi, X: cands.map((c, i) => F.candidateFeatures(G, ctx, c, i)) });
+  positions.push({ gameId: r.gameId, side: r.humanSide, hi, X: cands.map((c, i) => F.candidateFeatures(G, ctx, c, i)) });
 }
 const hash = (s) => { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h; };
 const train = positions.filter((p) => (hash(p.gameId + SEED) % 5) !== 0), test = positions.filter((p) => (hash(p.gameId + SEED) % 5) === 0);
@@ -89,6 +93,10 @@ function evalSet(set, scoreFn, label) {
 console.log('\nheld-out (unseen games):');
 const base = evalSet(test, (zv, i) => -i, 'heuristic order (baseline)');
 const rk = evalSet(test, (zv) => dot(w, zv), 'ranker');
+for (const sd of ['Rebel', 'Empire']) {
+  const sub = test.filter((p) => p.side === sd); if (!sub.length) continue;
+  console.log(`held-out, ${sd} only:`); evalSet(sub, (zv, i) => -i, 'heuristic order (baseline)'); evalSet(sub, (zv) => dot(w, zv), 'ranker');
+}
 console.log('train (for overfit check):');
 evalSet(train, (zv, i) => -i, 'heuristic order (baseline)');
 evalSet(train, (zv) => dot(w, zv), 'ranker');

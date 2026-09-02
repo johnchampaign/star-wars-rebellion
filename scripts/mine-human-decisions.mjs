@@ -108,8 +108,48 @@ function answer(G, ev, cur) {
       break;
     }
     case 'ActionCardSystemPick': { const e = find(['place-leader']); return e ? ok(phases.resolveActionCardSystemPick(G, e.payload.systemId)) : 'fail:no-place-leader'; }
+    // ---- Command stage (v2): the AI Rebel's opening reveal before a human Empire acts ----
+    case 'OpposeMission': {
+      // Opposing is recorded as an Empire place-leader right after the choice;
+      // declining is IMPLICIT — the log simply continues with mission-unopposed
+      // or the mission-roll. So: an Empire place-leader before any roll/result
+      // event means oppose with that leader, anything else means decline.
+      for (let k = cur.i; k < ev.length; k++) {
+        const e = ev[k];
+        if (e.kind === 'choice-request') continue;
+        if (e.kind === 'place-leader' && e.side === side) { cur.i = k + 1; return ok(phases.resolveOpposition(G, e.payload.leaderId)); }
+        break; // first substantive event is not an Empire leader placement -> declined
+      }
+      return ok(phases.resolveOpposition(G, null));
+    }
+    case 'UnderTheRadarReturn': {
+      const e = find(['under-the-radar-return', 'under-the-radar-keep-holding']);
+      return e ? ok(phases.resolveUnderTheRadarReturn(G, e.kind === 'under-the-radar-return')) : 'fail:no-utr-record';
+    }
+    case 'BuildFromIconsPick': {
+      const ids = [];
+      for (let k = cur.i; k < ev.length; k++) { const e = ev[k]; if (e.kind === 'build-queue' && e.side === side && !e._used) { ids.push(e.payload.typeId); ev[k] = { ...e, _used: true }; cur.i = k + 1; } else if (ids.length) break; }
+      return ids.length ? ok(phases.resolveBuildFromIconsPick(G, ids)) : 'fail:no-build-record';
+    }
+    case 'DestroyUpToHealth': {
+      const ids = [];
+      for (let k = cur.i; k < ev.length; k++) { const e = ev[k]; if (e.kind === 'destroy-unit' && e.payload?.cause === 'mission-effect' && !e._used) { ids.push(e.payload.unit); ev[k] = { ...e, _used: true }; cur.i = k + 1; } else if (ids.length) break; }
+      return ok(phases.resolveDestroyUpToHealth(G, ids));
+    }
+    case 'RescuerReturn': {
+      const ids = [];
+      for (let k = cur.i; k < ev.length; k++) { const e = ev[k]; if (e.kind === 'leader-retreat' && e.side === side && !e._used) { ids.push(e.payload.leaderId); ev[k] = { ...e, _used: true }; cur.i = k + 1; } else if (ids.length) break; }
+      return ok(phases.resolveRescuerReturn(G, ids));
+    }
+    case 'RegionalAidPick': { const e = find(['gain-loyalty', 'remove-loyalty', 'loyalty-already'], false); return e ? ok(phases.resolveRegionalAidPick(G, e.payload.systemId)) : 'fail:no-aid-record'; }
+    case 'MissionRecruitLeaderPick': { const e = find(['recruit-leader']); return e ? ok(phases.resolveMissionRecruitLeaderPick(G, e.payload.leaderId)) : 'fail:no-recruit-record'; }
+    case 'ArmedCardRevealOffer': { const e = find(['reveal-armed-card', 'armed-reveal-declined']); return e ? ok(phases.resolveArmedCardRevealOffer(G, e.kind === 'reveal-armed-card')) : 'fail:no-armed-record'; }
+    case 'SecretFacilityUnitPick': { const e = find(['deploy']); return e ? ok(phases.resolveSecretFacilityUnitPick(G, e.payload.typeId)) : 'fail:no-facility-record'; }
     default: break;
   }
+  // Command-stage choices with no mapping must NOT be guessed by the AI (the
+  // recorded player chose them); combat choices in particular. Drop the round.
+  if (G.phase === 'Command') return 'fail:unmapped-command-choice:' + pc.kind;
   // Fallback: let the heuristic AI answer; mark approximate.
   bump(stats.fallbackKinds, pc.kind);
   const did = AI.stepOnce(G, side);
@@ -177,6 +217,68 @@ for (const f of files) {
     } catch (x) { failed = true; bump(stats.byFail, 'throw:' + String(x.message).slice(0, 50)); }
     stats.byMonth[month] ??= { rounds: 0, failed: 0 }; stats.byMonth[month].rounds++;
     if (failed || G.phase !== 'Command') { stats.failed++; stats.byMonth[month].failed++; continue; }
+    // v2: a human EMPIRE acts second. Replay the AI Rebel's opening Command
+    // actions (typically one reveal + its opposition/effects) from the log,
+    // verifying mission rolls against the recorded dice, until the Empire is
+    // the current player with nothing pending — that is the human's exact
+    // first-decision state.
+    if (human === 'Empire') {
+      // The Assignment scan stops at the engine's phase change, which is
+      // logged as a `phase: Command` event still AHEAD of the cursor; the
+      // lookahead treats that event as the round boundary, so step past it.
+      for (let k = cur.i; k < Math.min(ev.length, cur.i + 3); k++) { if (ev[k].kind === 'phase' && ev[k].payload?.phase === 'Command') { cur.i = k + 1; break; } }
+      let g2 = 0; let cmdFail = false; let pendingRoll = null;
+      // Dice fidelity: the engine rolls after opposition resolves, so compare
+      // the engine's mission-roll with the recorded one once the reveal is done.
+      const checkRoll = () => {
+        if (!pendingRoll) return;
+        const recRoll = ev.slice(pendingRoll.recIdx, pendingRoll.recIdx + 40).find((x) => x.kind === 'mission-roll' && x.payload?.missionId === pendingRoll.missionId);
+        const engRoll = G.turnLog.slice(pendingRoll.logStart).find((x) => x.kind === 'mission-roll');
+        if (recRoll && engRoll) { stats.rolls = (stats.rolls || 0) + 1; if ((recRoll.payload.attacker?.successes ?? -1) !== (engRoll.payload?.attacker?.successes ?? -2)) { stats.rollMismatch = (stats.rollMismatch || 0) + 1; quality = 'approx'; } }
+        pendingRoll = null;
+      };
+      try {
+        while (!G.isGameOver && g2++ < 200 && !(G.currentPlayer === 'Empire' && !G.pendingChoice)) {
+          if (G.pendingChoice) {
+            const kindBefore = G.pendingChoice.kind;
+            const q = answer(G, ev, cur);
+            if (q.startsWith('fail')) { cmdFail = true; bump(stats.byFail, `Command:${kindBefore}:${q.slice(5)}`); break; }
+            if (q === 'approx') quality = 'approx';
+            continue;
+          }
+          // next recorded Rebel Command action
+          let e = null;
+          for (; cur.i < ev.length; cur.i++) { const x = ev[cur.i]; if (x.side === 'Rebel' && ['reveal-mission', 'activate-system', 'pass'].includes(x.kind)) { e = x; cur.i++; break; } if (x.side === 'Empire' && ['reveal-mission', 'activate-system', 'pass'].includes(x.kind)) break; }
+          if (!e) { cmdFail = true; bump(stats.byFail, 'Command:no-rebel-action-record'); break; }
+          if (e.kind === 'pass') { const r = phases.pass(G, 'Rebel'); if (!r.ok) { cmdFail = true; bump(stats.byFail, 'Command:pass:' + r.reason); break; } continue; }
+          if (e.kind === 'activate-system') {
+            // The move-unit events for this activation precede it in the log
+            // (unconsumed, Rebel side). Group by source into MoveOrders.
+            const orders = new Map();
+            for (let k = cur.i - 2; k >= 0; k--) {
+              const x = ev[k];
+              if (x.kind === 'activate-system' || x.kind === 'reveal-mission' || x.kind === 'phase') break;
+              if (x.kind === 'move-unit' && x.side === 'Rebel' && !x._used && x.payload?.to === e.payload.targetSystemId) {
+                ev[k] = { ...x, _used: true };
+                if (!orders.has(x.payload.from)) orders.set(x.payload.from, []);
+                orders.get(x.payload.from).push(x.payload.unit);
+              }
+            }
+            const mo = [...orders.entries()].map(([fromSystemId, unitInstanceIds]) => ({ fromSystemId, unitInstanceIds }));
+            const r = phases.activateSystem(G, 'Rebel', e.payload.leaderId, e.payload.targetSystemId, mo);
+            if (!r.ok) { cmdFail = true; bump(stats.byFail, 'Command:activate:' + r.reason); break; }
+            continue;
+          }
+          const entry = (G.rebel.leadersOnMissions ?? []).find((m) => m.missionId === e.payload.missionId);
+          if (pendingRoll) { checkRoll(); }
+          pendingRoll = { missionId: e.payload.missionId, logStart: G.turnLog.length, recIdx: cur.i };
+          const r = phases.revealMission(G, 'Rebel', e.payload.missionId, e.payload.targetSystemId, undefined, entry?.leaderIds);
+          if (!r.ok) { cmdFail = true; bump(stats.byFail, 'Command:reveal:' + r.reason); break; }
+        }
+      } catch (x) { cmdFail = true; bump(stats.byFail, 'Command:throw:' + String(x.message).slice(0, 50)); }
+      checkRoll();
+      if (cmdFail || G.isGameOver || G.currentPlayer !== 'Empire' || G.pendingChoice) { stats.failed++; stats.byMonth[month].failed++; continue; }
+    }
     if (quality === 'exact') stats.exact++; else stats.approx++;
     // The human's first Command action of the round.
     const first = ev.find((e) => e.side === human && e.phase === 'Command' && ['activate-system', 'reveal-mission', 'pass'].includes(e.kind));
@@ -196,6 +298,7 @@ for (const f of files) {
 writeFileSync(OUT, out.map((o) => JSON.stringify(o)).join('\n') + '\n');
 console.log(`games ${stats.games}  rounds ${stats.rounds}  replayed to Command: exact ${stats.exact} approx ${stats.approx} failed ${stats.failed}`);
 console.log(`samples (human moves first from an exact/approx state): ${stats.samples}   human action among heuristic candidates: ${stats.matched} (${(100 * stats.matched / Math.max(1, stats.samples)).toFixed(0)}%)   in top-3: ${stats.top3} (${(100 * stats.top3 / Math.max(1, stats.samples)).toFixed(0)}%)`);
+console.log(`mission-roll fidelity: ${stats.rolls||0} compared, ${stats.rollMismatch||0} mismatched`);
 console.log('failures:', stats.byFail);
 console.log('failure rate by log month:', Object.fromEntries(Object.entries(stats.byMonth).sort().map(([m, v]) => [m, `${v.failed}/${v.rounds}`]))); console.log('AI-fallback choice kinds (approx):', stats.fallbackKinds);
 console.log('wrote', OUT, out.length, 'samples');

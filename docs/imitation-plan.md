@@ -171,7 +171,21 @@ replayer's Empire data is the higher-leverage next step.
    run (in flight), then test the ranker as a ROLLOUT/leaf policy and at higher
    budget — a 24-pull search may simply re-find the heuristic's pick — and try
    blending ranker score into the arm prior rather than only re-ordering.
-2. **v2 replayer** for human-Empire decisions (replay the AI Rebel's opening
+2. **v2 replayer — DONE (2026-09-02).** The Command stage replays the AI Rebel's
+   opening actions (reveal → implicit-decline/oppose → mission effects; activations
+   rebuilt from their move-unit events) until the human Empire is to act. Full
+   archive: 2,254 of 2,723 rounds reach an exact/approx first-decision state;
+   **2,251 samples — Rebel 1,146 exact / Empire 821 exact**; replayed mission dice
+   match the recorded dice **33/33**. Coverage (instrument): K=1 Rebel 31% / Empire
+   27% in-candidates; K=4 Rebel 60% / Empire 64%.
+   **Finding: a joint model does not help the Empire.** Held-out by game — Rebel:
+   heuristic top-1 5.6% → ranker 29.2%; **Empire: 14.9% → 11.9%** (top-3 31.7% →
+   32.7%). The Empire's heuristic already ranks its own candidates far better,
+   and its winning moves are the plan-dependent kind (stage-and-strike) a
+   positional ranker cannot see — which is the plan-label step's job. Shipped
+   weights are therefore Rebel-only (`--sides Rebel`: top-1 27.1%, top-3 43.1%,
+   n=144); the Empire data stays in the dataset for step 3.
+2b. **(was: v2 replayer)** for human-Empire decisions (replay the AI Rebel's opening
    actions) → doubles the dataset and covers the side the MCTS plays.
 3. **Plan labels** mined from trajectories (stage-and-strike, consolidate,
    relocate-base first), then the conditional ranker `score(a | pos, plan)`.

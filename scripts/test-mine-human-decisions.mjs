@@ -35,6 +35,17 @@ const exact = Number(m[1] || 0), approx = Number(m[2] || 0), failed = Number(m[3
 console.log(`    exact ${exact} approx ${approx} failed ${failed}`);
 check('most rounds replay EXACTLY (>= 70% of attempted)', exact / Math.max(1, exact + approx + failed) >= 0.7);
 check('at least one sample was written', existsSync(out) && readFileSync(out, 'utf8').trim().length > 0);
+{
+  // v2 (2026-09-02): the Command stage replays the AI Rebel's opening actions
+  // (reveal + opposition + mission effects, activations with their move orders)
+  // so human-EMPIRE first decisions are exact too. Pin that it yields Empire
+  // samples and that replayed mission dice match the recorded dice — the
+  // strongest available proof that the replayed state is the recorded one.
+  const rows = readFileSync(out, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+  check('v2: human-Empire samples are produced', rows.some((r) => r.humanSide === 'Empire' && r.quality === 'exact'));
+  const fid = /mission-roll fidelity: (\d+) compared, (\d+) mismatched/.exec(r.stdout);
+  check('v2: replayed mission rolls match the recorded dice (0 mismatches)', fid && Number(fid[1]) >= 1 && Number(fid[2]) === 0, r.stdout.match(/mission-roll fidelity[^\n]*/)?.[0] ?? 'no fidelity line');
+}
 const rows = existsSync(out) ? readFileSync(out, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [];
 check('samples carry state + human action + candidates + matchIndex',
   rows.length > 0 && rows.every((x) => typeof x.state === 'string' && x.humanAction?.kind && Array.isArray(x.candidates) && typeof x.matchIndex === 'number'));
