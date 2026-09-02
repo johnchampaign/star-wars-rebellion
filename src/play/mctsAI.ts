@@ -36,7 +36,7 @@ import type { GameState, Side, SystemId } from '../engine/types';
 import * as phases from '../engine/phases';
 import { log as logEvent } from '../engine/log';
 import { bestCommandAction, tryCommandAction, stepOnce } from './randomAI';
-import { rankCandidates, rankerPriors, RANKER_PRIOR_W, RANKER_TOPK } from './candidateRanker';
+import { rankCandidates, rankerPriors, RANKER_PRIOR_W, RANKER_TOPK, RANKER_FINAL } from './candidateRanker';
 import { evaluate, leafEvaluate } from './boardEval';
 
 // ---------------------------------------------------------------------------
@@ -583,7 +583,16 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
 
   const alive = arms.filter((x) => !x.dead && x.n > 0);
   if (alive.length === 0) return null; // heuristic takes over
-  alive.sort((x, y) => y.sum / y.n - x.sum / x.n);
+  // Final pick. Arm means tie at the median after ~4 pulls each (gap 0.000,
+  // p75 0.01), so argmax-mean is decided by rollout noise. When a ranker prior
+  // is present, SWR_RANKER_FINAL lets it break those ties (λ blend) or picks
+  // the most-visited arm (standard PUCT). Default: argmax mean, unchanged.
+  const priorOf = (x: (typeof arms)[number]): number => (priors ? priors[arms.indexOf(x)] ?? 0 : 0);
+  if (priors && RANKER_FINAL === 'visits') alive.sort((x, y) => (y.n - x.n) || (y.sum / y.n - x.sum / x.n));
+  else if (priors && typeof RANKER_FINAL === 'number' && RANKER_FINAL > 0) {
+    const lam = RANKER_FINAL;
+    alive.sort((x, y) => (y.sum / y.n + lam * priorOf(y)) - (x.sum / x.n + lam * priorOf(x)));
+  } else alive.sort((x, y) => y.sum / y.n - x.sum / x.n);
   let chosen = alive[0].a;
   // PASS-MARGIN (#580/#581/#516): with ~5-15 pulls per arm and near-binary
   // rollout outcomes (terminal win 1.0 vs horizon-cut ~0.7-0.8), one lucky

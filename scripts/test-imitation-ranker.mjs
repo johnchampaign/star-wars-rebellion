@@ -100,6 +100,8 @@ console.log('[ the MCTS root is wired ]');
   check('the prior steers PULLS: a PUCT term in the selection rule', /RANKER_PRIOR_W \* priors\[arms\.indexOf\(x\)\] \* Math\.sqrt\(pulls \+ 1\) \/ \(1 \+ x\.n\)/.test(src));
   check('and can cut the root to the ranker\'s top-N arms', /RANKER_TOPK > 0 && candidates\.length > RANKER_TOPK/.test(src));
   check('the trace records whether the search followed the prior', /rankerTop:/.test(src));
+  check('the prior can enter the FINAL pick (λ blend or most-visited)', /RANKER_FINAL === 'visits'/.test(src) && /lam \* priorOf\(y\)/.test(src));
+  check('and the default final pick is unchanged (argmax mean)', /else alive\.sort\(\(x, y\) => y\.sum \/ y\.n - x\.sum \/ x\.n\)/.test(src));
   const ai = readFileSync(join(ROOT, 'src/play/randomAI.ts'), 'utf8');
   check('generation width follows the ranker lever', /return RANKER_ENABLED \? 4 : 1;/.test(ai));
 }

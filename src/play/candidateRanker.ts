@@ -52,6 +52,22 @@ export const RANKER_PRIOR_W: number = envNum('SWR_RANKER_PRIOR', 1.0);
  *  each surviving arm gets. */
 export const RANKER_TOPK: number = envNum('SWR_RANKER_TOPK', 0);
 
+/** How the ranker prior enters the FINAL pick (SWR_RANKER_FINAL):
+ *   - a number λ: choose argmax(mean + λ·P). Arm means tie at the median
+ *     (gap 0.000, p75 0.01 at ~4 pulls/arm), so even λ≈0.05 breaks ties by
+ *     the prior while a real rollout win (+0.2) still dominates;
+ *   - 'visits': choose the most-pulled arm (standard PUCT; the prior steers
+ *     visits, so this is the prior's information laundered through pulls).
+ *  Default 0 = unchanged (argmax mean). */
+export const RANKER_FINAL: number | 'visits' = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    const v = proc?.env?.SWR_RANKER_FINAL;
+    if (v === 'visits') return 'visits';
+    const n = Number(v); return Number.isFinite(n) ? n : 0;
+  } catch { return 0; }
+})();
+
 let checkedNames: boolean | null = null;
 /** True when the shipped weights match this catalog's feature layout. */
 export function rankerUsable(G: GameState): boolean {
