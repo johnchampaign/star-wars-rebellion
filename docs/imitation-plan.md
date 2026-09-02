@@ -137,10 +137,26 @@ Three measurements, all from the shipped-pairing traces (Rebel MCTS decisions,
    Recorded in the ledger as a trap, and as evidence that candidate ordering
    has real teeth on the Empire — the v2 replayer's data is where that goes.
 
-Arms measured / in flight (all vs the same OFF, seeds 8900): order-only,
-PUCT prior w=1, prior + top-3 cut, prior w=4, prior + final λ=0.05, prior +
-final by visits; plus a `--deterministic` paired pair (seed 8950). One-table
-comparison lives in the session scratchpad script; results go in the ledger.
+Results (all vs the same OFF at Rebel 55%, seeds 8900, 20/arm, 0 stuck):
+
+| wiring | Rebel | Δpp | E→R / R→E | followed prior |
+|---|---|---|---|---|
+| order only (Rebel) | 50% | −5 | 3/4 | — |
+| PUCT prior w=1 | 55% | 0 | 3/3 | 28% |
+| PUCT prior w=4 | 55% | 0 | 4/4 | 30% |
+| prior + top-3 arm cut | 30% | **−25** | 2/7 | 35% |
+| prior + final λ=0.05 | 40% | −15 | 2/5 | 43% |
+| **prior + final by visits** | **70%** | **+15** | 5/2 | 48% |
+| ranker as rollout policy | 55% | 0 | 5/5 | 31% |
+| deterministic PAIRED, prior w=1 (seed 8950) | 50% vs 50% | 0 | 5/5 | — |
+
+Verdict: the position-level gain is real; through the shipped search it is flat
+in every wiring except "final by visits", and that +15 sits inside the noise
+floor until its paired confirmation lands. Two honest readings: the 24-pull
+fast-search budget is the bottleneck (the browser searches 64 pulls under 8s —
+test the visits build at full budget), and/or the Rebel has little to gain from
+ordering while the Empire demonstrably does (the ungated mirage) — so the v2
+replayer's Empire data is the higher-leverage next step.
 
 ## Next steps, in order
 
