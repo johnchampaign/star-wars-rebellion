@@ -114,8 +114,14 @@ lever off by default, real re-ordering when on, MCTS wiring.
 
 ## Next steps, in order
 
-1. **Ranker end-to-end.** Paired harness A/B (`--realistic --deterministic`)
-   with SWR_RANKER on/off; then a live playtest; then decide the default.
+1. **Ranker end-to-end — first read is FLAT.** 20 games/arm unpaired, Rebel-only
+   ranker: Rebel 55% → 50%; activations 4.4 → 5.25/game. (An ungated first run
+   showed +30pp, entirely from the Rebel-trained model crippling the Empire's
+   ordering — see the ledger row.) Position-level gains are real; whether they
+   survive the search is the open question. Next: the `--deterministic` paired
+   run (in flight), then test the ranker as a ROLLOUT/leaf policy and at higher
+   budget — a 24-pull search may simply re-find the heuristic's pick — and try
+   blending ranker score into the arm prior rather than only re-ordering.
 2. **v2 replayer** for human-Empire decisions (replay the AI Rebel's opening
    actions) → doubles the dataset and covers the side the MCTS plays.
 3. **Plan labels** mined from trajectories (stage-and-strike, consolidate,
