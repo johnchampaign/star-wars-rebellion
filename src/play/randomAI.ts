@@ -35,7 +35,7 @@ import { COST_OBJECTIVES, objectiveProgress, objectiveConditionMet, objectiveRep
 // default → byte-identical to the pre-planner scorer.
 import { derivePlan, planSystemBonus, deployProximityScore, PLANNER_ENABLED, HUNT_OCCUPY_ENABLED, type StrikeFleetPlan } from './empirePlanner';
 import { log as logEvent } from '../engine/log';
-import { isRankerEnabled } from './candidateRanker';
+import { isRankerEnabled, rankCandidates, RANKER_ROLLOUT } from './candidateRanker';
 
 // AI randomness. Defaults to Math.random (live app), but the tournament
 // harness calls seedAI() so AI-vs-AI runs are reproducible per seed — without
@@ -4697,7 +4697,11 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       // Try actions in descending score order, skipping any the engine rejects,
       // so a high-score mission we can't actually reveal no longer forces a
       // pass while feasible lower-score actions go untried (player report #190).
-      const commandActions = bestCommandAction(G, side);
+      // Rollout ranker (SWR_RANKER_ROLLOUT): with the imitation ranker on, the
+      // heuristic — which is also the ROLLOUT policy inside every MCTS search —
+      // tries candidates in ranker order. rankCandidates is a no-op unless the
+      // ranker is on and covers this side, so the default path is untouched.
+      const commandActions = RANKER_ROLLOUT ? rankCandidates(G, side, bestCommandAction(G, side)) : bestCommandAction(G, side);
       // Planner state AT decision time, for the trace (recomputing after the
       // action would describe the post-move board, not what the scorer saw).
       const planAtDecision = side === 'Empire' && PLANNER_ENABLED ? derivePlan(G) : null;

@@ -48,6 +48,13 @@ export const RANKER_T: number = envNum('SWR_RANKER_T', 1.0);
 /** PUCT weight of the ranker prior in the MCTS selection rule
  *  (SWR_RANKER_PRIOR, default 1.0 — only matters when the ranker is on). */
 export const RANKER_PRIOR_W: number = envNum('SWR_RANKER_PRIOR', 1.0);
+/** Use the ranker INSIDE rollouts too (SWR_RANKER_ROLLOUT=1, only with the
+ *  ranker on): the heuristic that plays out each rollout for the covered side
+ *  tries candidates in ranker order instead of heuristic-score order. This
+ *  changes the leaf VALUES every arm is judged by, not just which arm is
+ *  explored — the more powerful use of an imitation model when the root's
+ *  arm means tie. Cost ~0.15 ms per rollout decision. */
+export const RANKER_ROLLOUT: boolean = envNum('SWR_RANKER_ROLLOUT', 0) === 1;
 /** Cut the root to the ranker's top-N arms (SWR_RANKER_TOPK, default 0 = no
  *  cut). With a 24-pull budget and ~6 arms, cutting to 3-4 doubles the pulls
  *  each surviving arm gets. */

@@ -108,6 +108,8 @@ console.log('[ the MCTS root is wired ]');
   const wk = readFileSync(join(ROOT, 'src/play/mctsWorker.ts'), 'utf8');
   check('the worker applies the forwarded flag before searching', /setRankerEnabled\(!!flags\?\.ranker\)/.test(wk));
   const ai = readFileSync(join(ROOT, 'src/play/randomAI.ts'), 'utf8');
+  check('the rollout policy can follow the ranker (SWR_RANKER_ROLLOUT), default off',
+    /RANKER_ROLLOUT \? rankCandidates\(G, side, bestCommandAction\(G, side\)\) : bestCommandAction\(G, side\)/.test(ai));
   check('generation width follows the ranker lever (runtime flag)', /return isRankerEnabled\(\) \? 4 : 1;/.test(ai));
 }
 
