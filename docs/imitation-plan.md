@@ -149,10 +149,13 @@ Results (all vs the same OFF at Rebel 55%, seeds 8900, 20/arm, 0 stuck):
 | **prior + final by visits** | **70%** | **+15** | 5/2 | 48% |
 | ranker as rollout policy | 55% | 0 | 5/5 | 31% |
 | deterministic PAIRED, prior w=1 (seed 8950) | 50% vs 50% | 0 | 5/5 | — |
+| **deterministic PAIRED, final by visits (seed 8950)** | 50% vs 55% | +5 | 2/1 (17 identical) | 48% |
 
 Verdict: the position-level gain is real; through the shipped search it is flat
-in every wiring except "final by visits", and that +15 sits inside the noise
-floor until its paired confirmation lands. Two honest readings: the 24-pull
+in EVERY wiring. The "final by visits" +15 did not survive its paired
+confirmation (3 discordant pairs in 20, McNemar p = 1.0) — it was noise, as
+the measured noise floor predicted. A full-budget pair (64 pulls, what the
+browser runs) is the last check of the budget reading; it is in flight. Two honest readings: the 24-pull
 fast-search budget is the bottleneck (the browser searches 64 pulls under 8s —
 test the visits build at full budget), and/or the Rebel has little to gain from
 ordering while the Empire demonstrably does (the ungated mirage) — so the v2
