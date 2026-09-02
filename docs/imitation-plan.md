@@ -112,6 +112,36 @@ lever off by default, real re-ordering when on, MCTS wiring.
 **Retraining.** `node scripts/mine-human-decisions.mjs && node scripts/train-ranker.mjs`
 — rerun whenever the archive grows; the weights file records its metrics.
 
+## Step 2b — why a good ranker was flat end-to-end, and what was changed
+
+Three measurements, all from the shipped-pairing traces (Rebel MCTS decisions,
+`--realistic` fast-search, 20 games/arm on shared seeds):
+
+1. **Order steered nothing.** `topK` defaults to 12 and only ~6 candidates are
+   offered, so every candidate becomes an arm and gets pulled uniformly. With
+   the ranker on, the search overrode the ranker's #1 pick in 69% of decisions
+   (chose offered-rank #0: 65% off → 31% on) and picked a widened rank-≥4
+   candidate 32% of the time. → `SWR_RANKER_PRIOR`: a PUCT term in the
+   selection rule so the prior steers pulls; `SWR_RANKER_TOPK`: cut the root to
+   the ranker's top-N arms.
+2. **Arm means tie.** Gap between the best and second-best arm mean at the
+   moment of choice: median **0.000**, p75 0.01 (~4 pulls per arm, near-binary
+   rollout outcomes). The final pick was argmax mean, i.e. decided by rollout
+   noise — the prior's information was discarded at the moment it mattered
+   (search followed the prior's top arm in only 28% of decisions even with the
+   PUCT term on). → `SWR_RANKER_FINAL`: λ-blend `mean + λ·P` (λ≈0.05 breaks
+   ties without overriding a real +0.2 rollout win) or most-visited arm.
+3. **The +30pp mirage.** The first, ungated run re-ordered the Empire's
+   candidates with Rebel-trained weights: Rebel 55% → 85% (E→R 7, R→E 1) —
+   entirely the Empire being crippled. Gated to the Rebel: 55% → 50%.
+   Recorded in the ledger as a trap, and as evidence that candidate ordering
+   has real teeth on the Empire — the v2 replayer's data is where that goes.
+
+Arms measured / in flight (all vs the same OFF, seeds 8900): order-only,
+PUCT prior w=1, prior + top-3 cut, prior w=4, prior + final λ=0.05, prior +
+final by visits; plus a `--deterministic` paired pair (seed 8950). One-table
+comparison lives in the session scratchpad script; results go in the ledger.
+
 ## Next steps, in order
 
 1. **Ranker end-to-end — first read is FLAT.** 20 games/arm unpaired, Rebel-only
