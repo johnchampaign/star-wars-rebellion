@@ -31,6 +31,10 @@ export const RANKER_ENABLED: boolean = (() => {
     const q = g.location?.search ? new URLSearchParams(g.location.search).get('ranker') : null;
     if (q === '1') g.localStorage?.setItem('swr-ranker-on', '1');
     if (q === '0') g.localStorage?.removeItem('swr-ranker-on');
+    // The MCTS runs in a web worker, which has neither the page's query string
+    // nor localStorage; PlayTab forwards the flag by appending ?ranker=1 to the
+    // worker's own URL, so honour the param directly as well as the sticky key.
+    if (q === '1') return true;
     if (g.localStorage?.getItem('swr-ranker-on') === '1') return true;
   } catch { /* no localStorage */ }
   return false;

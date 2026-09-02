@@ -36,6 +36,7 @@ const useUnitStyle = () => useContext(UnitStyleContext);
 import { createGame, resolveExpansion } from '../engine/setup';
 import * as _phases from '../engine/phases';
 import { hopelessFor } from './aiResign';
+import { RANKER_ENABLED } from './candidateRanker';
 import type { MoveOrder } from '../engine/phases';
 import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
 import * as _combat from '../engine/combat';
@@ -1145,7 +1146,11 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       if (!canWorker) return null;
       if (!mctsWorkerRef.current) {
         try {
-          const w = new Worker(new URL('./mctsWorker.ts', import.meta.url), { type: 'module' });
+          // Forward main-thread AI flags the worker cannot read for itself (it has
+          // no page query string and no localStorage): the imitation ranker.
+          const workerUrl = new URL('./mctsWorker.ts', import.meta.url);
+          if (RANKER_ENABLED) workerUrl.searchParams.set('ranker', '1');
+          const w = new Worker(workerUrl, { type: 'module' });
           w.onmessage = (ev: MessageEvent<{ id: number; ok: boolean; result?: MctsSearchResult | null; error?: string }>) => {
             if (ev.data.id !== mctsReqIdRef.current) {
               console.log('[mcts-bridge] dropping stale worker reply', ev.data.id);
