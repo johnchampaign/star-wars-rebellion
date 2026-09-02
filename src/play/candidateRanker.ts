@@ -36,6 +36,22 @@ export const RANKER_ENABLED: boolean = (() => {
   return false;
 })();
 
+function envNum(name: string, d: number): number {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    const v = Number(proc?.env?.[name]); return Number.isFinite(v) ? v : d;
+  } catch { return d; }
+}
+/** Softmax temperature for rankerPriors (SWR_RANKER_T). */
+export const RANKER_T: number = envNum('SWR_RANKER_T', 1.0);
+/** PUCT weight of the ranker prior in the MCTS selection rule
+ *  (SWR_RANKER_PRIOR, default 1.0 — only matters when the ranker is on). */
+export const RANKER_PRIOR_W: number = envNum('SWR_RANKER_PRIOR', 1.0);
+/** Cut the root to the ranker's top-N arms (SWR_RANKER_TOPK, default 0 = no
+ *  cut). With a 24-pull budget and ~6 arms, cutting to 3-4 doubles the pulls
+ *  each surviving arm gets. */
+export const RANKER_TOPK: number = envNum('SWR_RANKER_TOPK', 0);
+
 let checkedNames: boolean | null = null;
 /** True when the shipped weights match this catalog's feature layout. */
 export function rankerUsable(G: GameState): boolean {
@@ -52,6 +68,24 @@ export function rankerScore(G: GameState, ctx: ReturnType<typeof positionContext
   let s = 0;
   for (let d = 0; d < W.w.length; d++) s += W.w[d] * ((x[d] - W.mean[d]) / W.std[d]);
   return s;
+}
+
+/** Softmax prior over candidates from the ranker's scores, aligned with the
+ *  input order. null when the ranker is off, unusable on this catalog, or the
+ *  side is not covered by the trained weights. Temperature T (SWR_RANKER_T,
+ *  default 1.0) in standardised-score units: the held-out score gaps between
+ *  the human's pick and the runner-up are O(1), so T=1 gives priors that are
+ *  sharp but not degenerate. */
+export function rankerPriors(G: GameState, side: Side, cands: CommandAction[]): number[] | null {
+  if (!RANKER_ENABLED || cands.length < 2 || !rankerUsable(G)) return null;
+  if (W.sides && !W.sides.includes(side)) return null;
+  const ctx = positionContext(G, side, cands.length);
+  const T = RANKER_T;
+  const sc = cands.map((c, i) => rankerScore(G, ctx, c, i) / T);
+  const m = Math.max(...sc);
+  const ex = sc.map((v) => Math.exp(v - m));
+  const z = ex.reduce((a, b) => a + b, 0);
+  return ex.map((v) => v / z);
 }
 
 /** Re-order candidates by the ranker. Stable on ties (keeps heuristic order).

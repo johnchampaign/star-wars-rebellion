@@ -44,7 +44,9 @@ if (process.env.RANKER_TEST_CHILD === '1') {
   const GE = codec.decode(readFileSync(join(ROOT, 'scripts/fixtures/passivity-580.json'), 'utf8'), catalog);
   GE.passedThisCommand = (GE.passedThisCommand ?? []).filter((x) => x !== 'Empire'); GE.currentPlayer = 'Empire';
   AI.seedAI(1); const rawE = AI.bestCommandAction(GE, 'Empire'); const rankedE = R.rankCandidates(GE, 'Empire', rawE);
+  const pri = R.rankerPriors(G, 'Rebel', raw); const priE = R.rankerPriors(GE, 'Empire', rawE);
   console.log(JSON.stringify({ enabled: R.RANKER_ENABLED, usable: R.rankerUsable(G), raw: raw.map(key), ranked: ranked.map(key), k: raw.length,
+    priors: pri, priorsEmpire: priE, rankedTop: ranked[0] ? key(ranked[0]) : null, priorTop: pri ? key(raw[pri.indexOf(Math.max(...pri))]) : null,
     empireUntouched: JSON.stringify(rawE.map(key)) === JSON.stringify(rankedE.map(key)), empireK: rawE.length }));
   process.exit(0);
 }
@@ -83,6 +85,10 @@ console.log('[ the lever: off by default, re-orders when on ]');
   check('on: it is a permutation, not a filter', on.ranked.length === on.raw.length && [...on.ranked].sort().join() === [...on.raw].sort().join());
   check('on: the Empire is left in heuristic order (model trained on Rebel data only)', on.empireUntouched && on.empireK >= 2, `k=${on.empireK}`);
   check('weights record the sides they cover', Array.isArray(W.sides) && W.sides.includes('Rebel') && !W.sides.includes('Empire'), JSON.stringify(W.sides));
+  check('off: no priors', off.priors === null);
+  check('on: priors form a distribution over the candidates', Array.isArray(on.priors) && on.priors.length === on.k && Math.abs(on.priors.reduce((a, b) => a + b, 0) - 1) < 1e-6 && on.priors.every((p) => p > 0));
+  check('on: the prior\'s top arm is the ranker\'s top candidate', on.priorTop === on.rankedTop, `${on.priorTop} vs ${on.rankedTop}`);
+  check('on: no priors for the Empire (side not covered)', on.priorsEmpire === null);
   const on2 = run({ SWR_RANKER: '1' });
   check('on: deterministic', JSON.stringify(on.ranked) === JSON.stringify(on2.ranked));
 }
@@ -91,6 +97,9 @@ console.log('[ the MCTS root is wired ]');
 {
   const src = readFileSync(join(ROOT, 'src/play/mctsAI.ts'), 'utf8');
   check('rankCandidates wraps bestCommandAction before the topK cut', /rankCandidates\(G, side, bestCommandAction\(G, side\)\)\.slice\(0, conf\.topK\)/.test(src));
+  check('the prior steers PULLS: a PUCT term in the selection rule', /RANKER_PRIOR_W \* priors\[arms\.indexOf\(x\)\] \* Math\.sqrt\(pulls \+ 1\) \/ \(1 \+ x\.n\)/.test(src));
+  check('and can cut the root to the ranker\'s top-N arms', /RANKER_TOPK > 0 && candidates\.length > RANKER_TOPK/.test(src));
+  check('the trace records whether the search followed the prior', /rankerTop:/.test(src));
   const ai = readFileSync(join(ROOT, 'src/play/randomAI.ts'), 'utf8');
   check('generation width follows the ranker lever', /return RANKER_ENABLED \? 4 : 1;/.test(ai));
 }

@@ -36,7 +36,7 @@ import type { GameState, Side, SystemId } from '../engine/types';
 import * as phases from '../engine/phases';
 import { log as logEvent } from '../engine/log';
 import { bestCommandAction, tryCommandAction, stepOnce } from './randomAI';
-import { rankCandidates } from './candidateRanker';
+import { rankCandidates, rankerPriors, RANKER_PRIOR_W, RANKER_TOPK } from './candidateRanker';
 import { evaluate, leafEvaluate } from './boardEval';
 
 // ---------------------------------------------------------------------------
@@ -454,8 +454,22 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
   // are re-ordered by a model of the recorded human decisions BEFORE the topK
   // cut, so the search spends its pulls on what a winning player would look
   // at. Off by default; see docs/imitation-plan.md.
-  const candidates = rankCandidates(G, side, bestCommandAction(G, side)).slice(0, conf.topK);
+  let candidates = rankCandidates(G, side, bestCommandAction(G, side)).slice(0, conf.topK);
   if (candidates.length === 0) return null; // heuristic will pass
+  // Ranker PRIOR (docs/imitation-plan.md). Re-ordering alone was measured
+  // flat end-to-end: topK (12) exceeds the ~6 candidates offered, so every
+  // candidate becomes an arm and gets pulled uniformly — order steered
+  // nothing, and the search overrode the ranker's #1 pick 69% of the time.
+  // A prior has to change WHICH arms get pulls: (a) an optional cut to the
+  // ranker's top-N arms, and (b) a PUCT-style term in the selection rule so
+  // arms the human would favour are explored first and longer. Null when the
+  // ranker is off or does not cover this side (then nothing here applies).
+  let priors = rankerPriors(G, side, candidates);
+  if (priors && RANKER_TOPK > 0 && candidates.length > RANKER_TOPK) {
+    const keep = priors.map((p, i) => [p, i] as const).sort((a, b) => b[0] - a[0]).slice(0, RANKER_TOPK).map((x) => x[1]).sort((a, b) => a - b);
+    candidates = keep.map((i) => candidates[i]);
+    priors = rankerPriors(G, side, candidates);
+  }
   // Nothing to search over — return the only option without burning rollouts.
   if (candidates.length === 1) {
     return { chosen: candidates[0], trace: null };
@@ -512,9 +526,10 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
     let bestU = -Infinity;
     for (const x of arms) {
       if (x.dead) continue;
+      const prior = priors ? RANKER_PRIOR_W * priors[arms.indexOf(x)] * Math.sqrt(pulls + 1) / (1 + x.n) : 0;
       const u = x.n === 0
         ? Infinity
-        : x.sum / x.n + conf.ucbC * Math.sqrt(Math.log(Math.max(2, pulls)) / x.n);
+        : x.sum / x.n + conf.ucbC * Math.sqrt(Math.log(Math.max(2, pulls)) / x.n) + prior;
       if (u > bestU) { bestU = u; arm = x; }
     }
     if (!arm) break;
@@ -756,6 +771,7 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
       alts: alive.filter((x) => x.a !== chosen).slice(0, 5).map((x) => brief(x.a)),
       search: {
         pulls, worlds: worlds.length, ms: Date.now() - t0, heuristicRank: candidates.indexOf(chosen),
+        ...(priors ? { rankerPrior: r3(priors[candidates.indexOf(chosen)] ?? 0), rankerTop: priors.indexOf(Math.max(...priors)) === candidates.indexOf(chosen) } : {}),
         ...(passGuard ? { passGuard: { gap: r3(passGuard.gap), se: r3(passGuard.se), eff: r3(passGuard.eff) } } : {}),
       },
     },
