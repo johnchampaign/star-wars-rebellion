@@ -21,6 +21,20 @@ const K = Number(arg('--k', 4)), EPOCHS = Number(arg('--epochs', 40)), L2 = Numb
 // Measured 2026-09-02: a joint model HELPS the Rebel (top-1 5.6% -> 29.2%) but not the Empire (14.9% -> 11.9%),
 // whose heuristic already ranks better and whose decisions are more plan-dependent — so ship Rebel-only weights.
 const SIDES = (arg('--sides', '') || '').split(',').filter(Boolean);
+// --plans oracle : condition features on the OUTCOME-DERIVED plan label of the round
+//                  (reports/plan-labels.json from label-plans.mjs). Measures the
+//                  ceiling of a plan-conditional ranker; a runtime plan chooser
+//                  is a separate model. Default none = unconditional.
+const PLANS = arg('--plans', 'none');
+// --per-plan : with --plans oracle, train a SEPARATE weight vector per plan label
+//              (a plan one-hot is constant across a position's candidates, so it
+//              cancels in every pairwise difference — a single linear ranker can
+//              only use plans through explicit interactions; per-plan weights are
+//              the full interaction). Evaluated with the oracle label selecting
+//              the model. Measures the ceiling of a plan-conditional ranker.
+const PER_PLAN = process.argv.includes('--per-plan');
+const OUTW = arg('--out', join(ROOT, 'src', 'play', 'rankerWeights.json'));
+const planLabels = PLANS === 'oracle' ? JSON.parse(readFileSync(join(ROOT, 'reports', 'plan-labels.json'), 'utf8')).labels : null;
 process.env.SWR_CAND_K = String(K); // widen generation before the AI module loads
 
 const { register } = await import('tsx/esm/api'); register();
@@ -44,12 +58,21 @@ for (const r of rows) {
   const hi = cands.findIndex((c) => same(r.humanAction, c));
   if (hi < 0) continue; // human's move not generated even at K — unrankable
   if (!names) names = F.featureNames(G);
-  const ctx = F.positionContext(G, r.humanSide, cands.length);
+  const plan = planLabels ? planLabels[`${r.gameId}:${r.turn}`]?.plan : undefined;
+  if (planLabels && !plan) continue; // unlabelled round: skip in oracle mode
+  const ctx = F.positionContext(G, r.humanSide, cands.length, plan);
   sides.add(r.humanSide);
-  positions.push({ gameId: r.gameId, side: r.humanSide, hi, X: cands.map((c, i) => F.candidateFeatures(G, ctx, c, i)) });
+  positions.push({ gameId: r.gameId, side: r.humanSide, plan, hi, X: cands.map((c, i) => F.candidateFeatures(G, ctx, c, i)) });
 }
 const hash = (s) => { let h = 2166136261; for (const ch of s) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h; };
 const train = positions.filter((p) => (hash(p.gameId + SEED) % 5) !== 0), test = positions.filter((p) => (hash(p.gameId + SEED) % 5) === 0);
+if (planLabels) {
+  // plumbing check: how many positions carried a plan, and which
+  const pi = names.findIndex((n) => n === 'planSearch');
+  const dist = {};
+  for (const p of positions) { const on = names.slice(pi, pi + 8).map((n, k) => [n, p.X[0][pi + k]]).filter(([, v]) => v > 0).map(([n]) => n); dist[on[0] ?? 'NONE'] = (dist[on[0] ?? 'NONE'] || 0) + 1; }
+  console.log('plan features present per position:', dist);
+}
 console.log(`positions with the human move generated at K=${K}: ${positions.length}/${rows.length}  (train ${train.length}, held-out ${test.length} by game)`);
 
 // ---- standardise on train ----
@@ -101,12 +124,39 @@ console.log('train (for overfit check):');
 evalSet(train, (zv, i) => -i, 'heuristic order (baseline)');
 evalSet(train, (zv) => dot(w, zv), 'ranker');
 
+// ---- per-plan models (oracle-selected at eval) ----
+if (PER_PLAN && planLabels) {
+  const plans = [...new Set(train.map((p) => p.plan))];
+  const models = {};
+  for (const pl of plans) {
+    const sub = train.filter((p) => p.plan === pl); if (sub.length < 30) continue;
+    const wp = new Array(D).fill(0); let r2 = SEED >>> 0; const rnd = () => { r2 = (r2 * 1664525 + 1013904223) >>> 0; return r2 / 4294967296; };
+    for (let ep = 0; ep < EPOCHS; ep++) {
+      const lr = 0.05 / (1 + ep * 0.1);
+      for (const p of [...sub].sort(() => rnd() - 0.5)) {
+        const fh = p.Z[p.hi];
+        for (let c = 0; c < p.Z.length; c++) { if (c === p.hi) continue; const diff = fh.map((v, d) => v - p.Z[c][d]); const sg = 1 / (1 + Math.exp(-dot(wp, diff))); for (let d = 0; d < D; d++) wp[d] += lr * ((1 - sg) * diff[d] - L2 * wp[d]); }
+      }
+    }
+    models[pl] = wp;
+  }
+  console.log('\nper-plan models (train positions): ' + plans.map((pl) => `${pl}=${train.filter((p) => p.plan === pl).length}`).join(', '));
+  const covered = test.filter((p) => models[p.plan]);
+  console.log('held-out, oracle plan selects the model:');
+  evalSet(covered, (zv, i) => -i, 'heuristic order (baseline)');
+  evalSet(covered, (zv) => dot(w, zv), 'single ranker');
+  let t1 = 0, t3 = 0;
+  for (const p of covered) { const wp = models[p.plan]; const order = p.Z.map((zv, i) => [dot(wp, zv), i]).sort((a, b) => b[0] - a[0]).map((x) => x[1]); const r = order.indexOf(p.hi); if (r === 0) t1++; if (r < 3) t3++; }
+  console.log(`  ${'per-plan rankers (oracle plan)'.padEnd(30)} n=${covered.length}  top-1 ${(100 * t1 / covered.length).toFixed(1)}%  top-3 ${(100 * t3 / covered.length).toFixed(1)}%`);
+  for (const pl of plans) { const sub = covered.filter((p) => p.plan === pl); if (sub.length < 8) continue; const wp = models[pl]; let a = 0, b = 0; for (const p of sub) { const o1 = p.Z.map((zv, i) => [dot(w, zv), i]).sort((x, y) => y[0] - x[0]).map((x) => x[1]).indexOf(p.hi); const o2 = p.Z.map((zv, i) => [dot(wp, zv), i]).sort((x, y) => y[0] - x[0]).map((x) => x[1]).indexOf(p.hi); if (o1 < 3) a++; if (o2 < 3) b++; } console.log(`     ${pl.padEnd(14)} n=${sub.length}  top-3 single ${(100 * a / sub.length).toFixed(0)}%  per-plan ${(100 * b / sub.length).toFixed(0)}%`); }
+}
+
 // ---- top weights, for eyeballing what it learned ----
 const top = names.map((nm, d) => [nm, w[d]]).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 14);
 console.log('\nlargest weights (standardised):'); for (const [nm, v] of top) console.log(`  ${v >= 0 ? '+' : '-'}${Math.abs(v).toFixed(2)}  ${nm}`);
 
-writeFileSync(join(ROOT, 'src', 'play', 'rankerWeights.json'), JSON.stringify({
-  trainedAt: new Date().toISOString(), k: K, epochs: EPOCHS, l2: L2, seed: SEED, sides: [...sides].sort(), names, mean, std, w,
+writeFileSync(OUTW, JSON.stringify({
+  trainedAt: new Date().toISOString(), k: K, epochs: EPOCHS, l2: L2, seed: SEED, plans: PLANS, sides: [...sides].sort(), names, mean, std, w,
   metrics: { heldOut: { positions: test.length, baseline: base, ranker: rk }, trainPositions: train.length },
 }, null, 0) + '\n');
-console.log('\nwrote src/play/rankerWeights.json');
+console.log('\nwrote', OUTW);

@@ -34,7 +34,17 @@ export const BASE_FEATURES = [
   'tgtOwnSpace', 'tgtOwnGround', 'tgtHasEnemy', 'tgtHasOwn', 'tgtEnemyLeader', 'tgtOwnLeader',
   // activate
   'ldrSpace', 'ldrGround', 'adjOwnUnits', 'adjOwnSpace', 'adjOwnGround',
+  // plan (step 3): which intent the round serves. One-hot over the plan
+  // vocabulary plus two interactions that the labels most obviously modulate.
+  // All zero when no plan is supplied, so the unconditional model is the
+  // special case plan = none.
+  'planSearch', 'planStage', 'planStrike', 'planConsolidate',
+  'planObjectiveRun', 'planDevelop', 'planRelocate', 'planDefend',
+  'planXdistBase', 'planXactivate',
 ] as const;
+
+export const PLAN_VOCAB = ['search', 'stage', 'strike', 'consolidate', 'objective-run', 'develop', 'relocate', 'defend'] as const;
+export type Plan = (typeof PLAN_VOCAB)[number];
 
 function bfs(G: GameState, origin: SystemId): Map<string, number> {
   const dist = new Map<string, number>([[origin, 0]]);
@@ -69,9 +79,11 @@ function totalHealth(G: GameState, side: Side): { space: number; ground: number 
 export interface PositionContext {
   side: Side; nCands: number; baseDist: Map<string, number> | null; own: { space: number; ground: number }; enemy: { space: number; ground: number };
   baseRegion: number | undefined; missionIds: string[];
+  /** Optional plan label / chosen plan; undefined = unconditional. */
+  plan?: Plan;
 }
 
-export function positionContext(G: GameState, side: Side, nCands: number): PositionContext {
+export function positionContext(G: GameState, side: Side, nCands: number, plan?: Plan): PositionContext {
   const missionIds = Object.keys(G.catalog.missions).sort();
   const base = G.rebelBaseSystemId;
   return {
@@ -79,7 +91,7 @@ export function positionContext(G: GameState, side: Side, nCands: number): Posit
     baseDist: base && (side === 'Rebel' || G.rebelBaseRevealed) ? bfs(G, base) : null,
     own: totalHealth(G, side), enemy: totalHealth(G, other(side)),
     baseRegion: base ? G.catalog.systems[base]?.region : undefined,
-    missionIds,
+    missionIds, plan,
   };
 }
 
@@ -122,6 +134,11 @@ export function candidateFeatures(G: GameState, ctx: PositionContext, c: Command
   let adjN = 0, adjS = 0, adjG = 0;
   if (c.kind === 'activate' && tgt) for (const nb of G.catalog.adjacency[tgt] ?? []) { const h = healthAt(G, side, nb as SystemId); adjN += h.n; adjS += h.space; adjG += h.ground; }
   push(Math.min(12, adjN) / 12); push(Math.min(30, adjS) / 30); push(Math.min(20, adjG) / 20);
+  // plan
+  for (const pl of PLAN_VOCAB) push(ctx.plan === pl);
+  const distBase = tgt && ctx.baseDist ? Math.min(6, ctx.baseDist.get(tgt) ?? 6) / 6 : 0.5;
+  const aggressive = ctx.plan === 'stage' || ctx.plan === 'strike' || ctx.plan === 'defend';
+  push(aggressive ? distBase : 0); push(aggressive && c.kind === 'activate');
   // mission one-hots
   const mid = c.kind === 'reveal' ? c.missionId : null;
   for (const id of ctx.missionIds) push(mid === id);
