@@ -122,15 +122,15 @@ console.log('\n[ --realistic: one word for the pairing players actually face ]')
     '--max-rounds', '3', '--out', OUT_R, '--realistic',
   ], { cwd: ROOT, encoding: 'utf8', env: { ...process.env } });
   check('realistic run completed', r.status === 0, (r.stderr || r.stdout).slice(-300));
-  // The SHIPPED pairing per side: Rebel=eval(depth2) (PlayTab's default when
-  // MCTS_REBEL_ENABLED is off), Empire=mcts. NOT both-mcts — that was the
-  // first cut, and it made the preset unrealistic for the Rebel half.
+  // The SHIPPED pairing per side. Since 2026-08-31 MCTS_REBEL_ENABLED defaults
+  // ON, so both sides are mcts; the preset tracks PlayTab's defaults (it was
+  // Rebel=eval(depth2) while the depth-2 Rebel was shipped).
   check('summary shows the SHIPPED policy on each side, fast-search, and the preset name',
-    /policies: Rebel=eval\(depth2\) Empire=mcts .*fast-search.*\[--realistic preset\]/.test(r.stdout), r.stdout.slice(0, 260));
+    /policies: Rebel=mcts Empire=mcts .*fast-search.*\[--realistic preset\]/.test(r.stdout), r.stdout.slice(0, 260));
   check('the preset turned Rise of the Empire on by itself', /mode: Rise of the Empire/.test(r.stdout));
   const gr = JSON.parse(readFileSync(join(OUT_R, 'game-0001.json'), 'utf8'));
   check('the game log records both policies, fast, AND realistic=true',
-    gr.policies?.Rebel === 'eval(depth2)' && gr.policies?.Empire === 'mcts' && gr.policies?.search?.fast === true && gr.policies?.realistic === true,
+    gr.policies?.Rebel === 'mcts' && gr.policies?.Empire === 'mcts' && gr.policies?.search?.fast === true && gr.policies?.realistic === true,
     JSON.stringify(gr.policies));
   // Explicit flags must win, so a one-sided arm is still one word away.
   const r1 = spawnSync(process.execPath, [
@@ -138,7 +138,7 @@ console.log('\n[ --realistic: one word for the pairing players actually face ]')
     '--max-rounds', '3', '--out', OUT_R1, '--realistic', '--empire-policy', 'eval',
   ], { cwd: ROOT, encoding: 'utf8', env: { ...process.env } });
   check('an explicit --empire-policy overrides the preset\'s Empire choice',
-    r1.status === 0 && /policies: Rebel=eval\(depth2\) Empire=eval\(depth2\)/.test(r1.stdout), r1.stdout.slice(0, 200));
+    r1.status === 0 && /policies: Rebel=mcts Empire=eval\(depth2\)/.test(r1.stdout), r1.stdout.slice(0, 200));
   for (const d of [OUT_R, OUT_R1]) rmSync(d, { recursive: true, force: true });
 }
 

@@ -1084,15 +1084,13 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // online gate here. Falls back to the heuristic automatically if it throws.
   useEffect(() => {
     if (online) return;
-    // EXPERIMENTAL MCTS-Rebel (?mctsrebel=1, sticky): same determinized search
-    // as the Empire but with NO determinization — the Rebel knows its own
-    // base, so it searches reality. Default remains the depth-2 eval until
-    // the bench + a live playtest say otherwise (Empire-policy protocol).
-    // Runs synchronously for now (same 1-2s the depth-2 costs today); joins
-    // the worker bridge when it earns default-on.
-    setCommandPolicyOverride('Rebel', MCTS_REBEL_ENABLED
-      ? (g, s) => mctsCommandStep(g, s)
-      : (g, s) => evalCommandStepDeep(g, s, 2));
+    // MCTS-Rebel is DEFAULT ON since 2026-08-31 and runs through the worker
+    // bridge below, same as the Empire. This effect only owns the fallback:
+    // `?mctsrebel=0` (sticky) restores the depth-2 eval Rebel that shipped
+    // before — no determinization is needed either way, the Rebel knows its
+    // own base and searches reality.
+    if (MCTS_REBEL_ENABLED) return; // the bridge effect installs the Rebel policy
+    setCommandPolicyOverride('Rebel', (g, s) => evalCommandStepDeep(g, s, 2));
     return () => setCommandPolicyOverride('Rebel', null);
   }, [online]);
 
@@ -1123,7 +1121,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // outside this effect's closure) can recycle a wedged worker too.
   const mctsKillRef = useRef<(() => void) | null>(null);
   useEffect(() => {
-    if (online || !MCTS_ENABLED) return;
+    if (online || (!MCTS_ENABLED && !MCTS_REBEL_ENABLED)) return;
     const canWorker = typeof Worker !== 'undefined';
     // A worker whose search overran the watchdog is NOT idle — it's still
     // grinding, and every message we posted meanwhile is sitting behind it in
@@ -1174,7 +1172,12 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       }
       return mctsWorkerRef.current;
     };
-    setCommandPolicyOverride('Empire', (g, s) => {
+    // One bridge, both sides. Single-player has exactly one AI side, and the
+    // AI loop is sequential, so one pending slot is enough — the decision key
+    // (timeMarker + log length) is unique per decision point regardless of
+    // side. The Rebel joined the bridge on 2026-08-31 when MCTS-Rebel became
+    // the default; the worker itself was always side-agnostic ({codec, side}).
+    const bridgedPolicy = (g: GameState, s: Side): boolean => {
       // Decision identity: timeMarker + log length is unique per decision
       // point (every committed action appends log entries).
       const key = `${g.timeMarker}:${g.turnLog.length}`;
@@ -1209,9 +1212,12 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       aiWaitingRef.current = true;
       aiWaitingSinceRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
       return true; // "thinking" — loop pauses until the worker replies
-    });
+    };
+    if (MCTS_ENABLED) setCommandPolicyOverride('Empire', bridgedPolicy);
+    if (MCTS_REBEL_ENABLED) setCommandPolicyOverride('Rebel', bridgedPolicy);
     return () => {
-      setCommandPolicyOverride('Empire', null);
+      if (MCTS_ENABLED) setCommandPolicyOverride('Empire', null);
+      if (MCTS_REBEL_ENABLED) setCommandPolicyOverride('Rebel', null);
       killWorker();
       mctsKillRef.current = null;
       mctsPendingRef.current = null;

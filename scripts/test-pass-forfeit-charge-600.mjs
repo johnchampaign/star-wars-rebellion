@@ -3,8 +3,10 @@
 //
 // The nine Empire-side siblings were closed by SWR_MCTS_PASS_Z, an
 // effective-margin floor in mctsAI.ts. That fix cannot have touched this one:
-// MCTS_REBEL_ENABLED is OFF by default, so the shipped Rebel runs
-// evalCommandStepDeep depth-2 and never executes the guarded path.
+// at the time MCTS_REBEL_ENABLED was OFF by default, so the shipped Rebel ran
+// evalCommandStepDeep depth-2 and never executed the guarded path. (MCTS-Rebel
+// became the default on 2026-08-31; this test still pins the depth-2 policy
+// directly, which remains the `?mctsrebel=0` fallback and the `eval` bench arm.)
 //
 // Replayed on the reporter's own board (scripts/fixtures/passivity-600.json,
 // extracted from the report's encoded state) the shipped Rebel passed 30/30

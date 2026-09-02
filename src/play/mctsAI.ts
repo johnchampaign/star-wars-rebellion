@@ -63,12 +63,13 @@ export const MCTS_ENABLED: boolean = (() => {
 })();
 
 // ---------------------------------------------------------------------------
-// MCTS-Rebel flag. EXPERIMENTAL, default OFF everywhere: `?mctsrebel=1` opts
-// in for a browser playtest (sticky; `?mctsrebel=0` clears), SWR_MCTS_REBEL=1
-// in node for benches. The Rebel search is the same searchMctsCommand with no
-// determinization (the Rebel knows its own base — worlds = reality). Flip
-// default only after the self-play bench AND a live playtest, same protocol
-// as the Empire policy above.
+// MCTS-Rebel flag. DEFAULT ON since 2026-08-31 (John's call). Before this the
+// shipped Rebel was evalCommandStepDeep depth-2, and the recorded human-vs-AI
+// archive showed why that had to change: the AI Rebel won 0 of its last 53
+// games (3.6% all-time) while the MCTS Empire ran at 7-10%. The Rebel search
+// is the same searchMctsCommand with NO determinization — the Rebel knows its
+// own base, so worlds = reality. `?mctsrebel=0` opts back to the depth-2 eval
+// (sticky; `?mctsrebel=1` clears); SWR_MCTS_REBEL=0/1 for node benches.
 // ---------------------------------------------------------------------------
 export const MCTS_REBEL_ENABLED: boolean = (() => {
   try {
@@ -79,11 +80,11 @@ export const MCTS_REBEL_ENABLED: boolean = (() => {
   try {
     const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
     const q = g.location?.search ? new URLSearchParams(g.location.search).get('mctsrebel') : null;
-    if (q === '1') g.localStorage?.setItem('swr-mcts-rebel-on', '1');
-    if (q === '0') g.localStorage?.removeItem('swr-mcts-rebel-on');
-    if (g.localStorage?.getItem('swr-mcts-rebel-on') === '1') return true;
+    if (q === '0') g.localStorage?.setItem('swr-mcts-rebel-off', '1');
+    if (q === '1') g.localStorage?.removeItem('swr-mcts-rebel-off');
+    if (g.localStorage?.getItem('swr-mcts-rebel-off') === '1') return false;
   } catch { /* no localStorage */ }
-  return false; // default OFF: experimental
+  return true; // default ON (2026-08-31)
 })();
 
 // ---------------------------------------------------------------------------
