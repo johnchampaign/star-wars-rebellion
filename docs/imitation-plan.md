@@ -199,6 +199,19 @@ replayer's Empire data is the higher-leverage next step.
    ranker `score(a | position, plan)` is the next build.
    Plan labels mined from trajectories (stage-and-strike, consolidate,
    relocate-base first), then the conditional ranker `score(a | pos, plan)`.
+   **Measured the same day** (`scripts/label-plans.mjs` labels all 2,723 rounds
+   from outcomes; `train-ranker.mjs --plans oracle [--per-plan]`): conditioning
+   on the ORACLE plan — the ceiling for any runtime plan chooser — does NOT
+   improve ranking. Empire held-out (n=101): heuristic 14.9% / 31.7%, single
+   ranker 15.8% / 35.6%, per-plan rankers 16.8% / 35.6%. Rebel (n=137): single
+   26.3% / 42.3%, per-plan 27.7% / 40.9%. Structural reason: a plan one-hot is
+   constant across a position's candidates and cancels in every pairwise
+   difference (only interactions carry it — hence per-plan models), and those
+   are data-starved at ~110–140 Empire positions per plan. Deeper reading: the
+   plan signal lives in move ORDERS and multi-round consistency, not in which of
+   ~6 root candidates is chosen — the root candidate is too coarse for the
+   Empire's game. That points back at #539 (a stateful plan shaping move
+   orders), not a better root prior.
 4. Round-start plan chooser (learned prior; optional LLM advisor), stateful
    across the round — #539's executor, finally.
 5. Evaluate every step position-level first, then with the deterministic
