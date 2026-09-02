@@ -1146,11 +1146,11 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       if (!canWorker) return null;
       if (!mctsWorkerRef.current) {
         try {
-          // Forward main-thread AI flags the worker cannot read for itself (it has
-          // no page query string and no localStorage): the imitation ranker.
-          const workerUrl = new URL('./mctsWorker.ts', import.meta.url);
-          if (RANKER_ENABLED) workerUrl.searchParams.set('ranker', '1');
-          const w = new Worker(workerUrl, { type: 'module' });
+          // Keep this the LITERAL form — Vite's worker bundling only recognises
+          // `new Worker(new URL('./x', import.meta.url))`; building the URL in a
+          // variable shipped a bundle with no worker chunk. Main-thread flags
+          // the worker cannot read itself travel in the search message instead.
+          const w = new Worker(new URL('./mctsWorker.ts', import.meta.url), { type: 'module' });
           w.onmessage = (ev: MessageEvent<{ id: number; ok: boolean; result?: MctsSearchResult | null; error?: string }>) => {
             if (ev.data.id !== mctsReqIdRef.current) {
               console.log('[mcts-bridge] dropping stale worker reply', ev.data.id);
@@ -1213,7 +1213,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       }
       console.log('[mcts-bridge] search start', key);
       mctsPendingRef.current = { key, done: false, result: null, t0: Date.now() };
-      w.postMessage({ id: ++mctsReqIdRef.current, codec: encode(g), side: s });
+      w.postMessage({ id: ++mctsReqIdRef.current, codec: encode(g), side: s, flags: { ranker: RANKER_ENABLED } });
       aiWaitingRef.current = true;
       aiWaitingSinceRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
       return true; // "thinking" — loop pauses until the worker replies

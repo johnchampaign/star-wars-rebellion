@@ -35,7 +35,7 @@ import { COST_OBJECTIVES, objectiveProgress, objectiveConditionMet, objectiveRep
 // default → byte-identical to the pre-planner scorer.
 import { derivePlan, planSystemBonus, deployProximityScore, PLANNER_ENABLED, HUNT_OCCUPY_ENABLED, type StrikeFleetPlan } from './empirePlanner';
 import { log as logEvent } from '../engine/log';
-import { RANKER_ENABLED } from './candidateRanker';
+import { isRankerEnabled } from './candidateRanker';
 
 // AI randomness. Defaults to Math.random (live app), but the tournament
 // harness calls seedAI() so AI-vs-AI runs are reproducible per seed — without
@@ -130,7 +130,7 @@ const CONVERT_SUBJUGATED: boolean = (() => {
  *  misses are "right mission/leader, DIFFERENT target", because the generator
  *  emitted exactly one target each. MCTS can only choose among candidates, so
  *  this is a hard ceiling on the search regardless of budget. */
-const CAND_K: number = (() => {
+function candK(): number {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
     const v = Number(proc?.env?.SWR_CAND_K);
@@ -139,8 +139,8 @@ const CAND_K: number = (() => {
   // The imitation ranker was trained on K=4 generation and only pays off when
   // the human's move is actually generated (31% at K=1 vs 60% at K=4), so the
   // ranker lever implies width unless SWR_CAND_K says otherwise.
-  return RANKER_ENABLED ? 4 : 1;
-})();
+  return isRankerEnabled() ? 4 : 1;
+}
 
 const DEFEND_CORUSCANT: boolean = (() => {
   try {
@@ -2166,7 +2166,7 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
     // drops targets where the mission would do nothing (e.g. Draw Them Out with
     // an empty Rebel pool, Single Reactor Ignition with no Rebel ground or
     // markers) so the AI doesn't waste it (#276/#277).
-    const reveals = rankedRevealTargets(G, side, am.missionId, baseDist, CAND_K);
+    const reveals = rankedRevealTargets(G, side, am.missionId, baseDist, candK());
     for (const reveal of reveals) {
       actions.push({
         kind: 'reveal',
@@ -3005,12 +3005,13 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
       // Add each eligible leader's next-best (K-1) systems, skipping pairs
       // already proposed, so the search can see the alternative destinations a
       // human picks 74% of the time it disagrees with the argmax.
-      if (CAND_K > 1) {
+      const K = candK();
+      if (K > 1) {
         const have = new Set(actions.filter((a) => a.kind === 'activate').map((a) => `${(a as { leaderId: LeaderId }).leaderId}|${a.targetSystemId}`));
         for (const lid of eligible) {
           let added = 0;
           for (const { sid, ts } of ranked) {
-            if (added >= CAND_K - 1) break;
+            if (added >= K - 1) break;
             const key = `${lid}|${sid}`;
             if (have.has(key)) continue;
             have.add(key); added++;

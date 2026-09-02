@@ -102,8 +102,13 @@ console.log('[ the MCTS root is wired ]');
   check('the trace records whether the search followed the prior', /rankerTop:/.test(src));
   check('the prior can enter the FINAL pick (λ blend or most-visited)', /RANKER_FINAL === 'visits'/.test(src) && /lam \* priorOf\(y\)/.test(src));
   check('and the default final pick is unchanged (argmax mean)', /else alive\.sort\(\(x, y\) => y\.sum \/ y\.n - x\.sum \/ x\.n\)/.test(src));
+  const pt = readFileSync(join(ROOT, 'src/play/PlayTab.tsx'), 'utf8');
+  check('the worker is constructed in the literal form Vite can bundle', /new Worker\(new URL\('\.\/mctsWorker\.ts', import\.meta\.url\), \{ type: 'module' \}\)/.test(pt));
+  check('and the ranker flag travels in the search message', /flags: \{ ranker: RANKER_ENABLED \}/.test(pt));
+  const wk = readFileSync(join(ROOT, 'src/play/mctsWorker.ts'), 'utf8');
+  check('the worker applies the forwarded flag before searching', /setRankerEnabled\(!!flags\?\.ranker\)/.test(wk));
   const ai = readFileSync(join(ROOT, 'src/play/randomAI.ts'), 'utf8');
-  check('generation width follows the ranker lever', /return RANKER_ENABLED \? 4 : 1;/.test(ai));
+  check('generation width follows the ranker lever (runtime flag)', /return isRankerEnabled\(\) \? 4 : 1;/.test(ai));
 }
 
 console.log(fail === 0 ? `\nALL PASS — ${pass} passed, 0 failed` : `\nFAILURES — ${pass} passed, ${fail} failed`);

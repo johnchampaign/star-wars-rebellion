@@ -31,9 +31,6 @@ export const RANKER_ENABLED: boolean = (() => {
     const q = g.location?.search ? new URLSearchParams(g.location.search).get('ranker') : null;
     if (q === '1') g.localStorage?.setItem('swr-ranker-on', '1');
     if (q === '0') g.localStorage?.removeItem('swr-ranker-on');
-    // The MCTS runs in a web worker, which has neither the page's query string
-    // nor localStorage; PlayTab forwards the flag by appending ?ranker=1 to the
-    // worker's own URL, so honour the param directly as well as the sticky key.
     if (q === '1') return true;
     if (g.localStorage?.getItem('swr-ranker-on') === '1') return true;
   } catch { /* no localStorage */ }
@@ -72,6 +69,17 @@ export const RANKER_FINAL: number | 'visits' = (() => {
   } catch { return 0; }
 })();
 
+// The MCTS runs in a web worker, which has neither the page's query string
+// nor localStorage, so the module-load flag above evaluates to OFF there.
+// PlayTab forwards the main-thread decision with every search request and the
+// worker applies it here before searching. (A first attempt appended ?ranker=1
+// to the worker URL — that broke Vite's worker bundling, which only recognises
+// the literal `new Worker(new URL(...))` form, and shipped a build with NO
+// worker chunk. Never construct the worker from a variable URL.)
+let rankerOn: boolean = RANKER_ENABLED;
+export function setRankerEnabled(v: boolean): void { rankerOn = v; }
+export function isRankerEnabled(): boolean { return rankerOn; }
+
 let checkedNames: boolean | null = null;
 /** True when the shipped weights match this catalog's feature layout. */
 export function rankerUsable(G: GameState): boolean {
@@ -97,7 +105,7 @@ export function rankerScore(G: GameState, ctx: ReturnType<typeof positionContext
  *  the human's pick and the runner-up are O(1), so T=1 gives priors that are
  *  sharp but not degenerate. */
 export function rankerPriors(G: GameState, side: Side, cands: CommandAction[]): number[] | null {
-  if (!RANKER_ENABLED || cands.length < 2 || !rankerUsable(G)) return null;
+  if (!isRankerEnabled() || cands.length < 2 || !rankerUsable(G)) return null;
   if (W.sides && !W.sides.includes(side)) return null;
   const ctx = positionContext(G, side, cands.length);
   const T = RANKER_T;
@@ -111,7 +119,7 @@ export function rankerPriors(G: GameState, side: Side, cands: CommandAction[]): 
 /** Re-order candidates by the ranker. Stable on ties (keeps heuristic order).
  *  Returns the input untouched when the ranker is off or unusable. */
 export function rankCandidates(G: GameState, side: Side, cands: CommandAction[]): CommandAction[] {
-  if (!RANKER_ENABLED || cands.length < 2 || !rankerUsable(G)) return cands;
+  if (!isRankerEnabled() || cands.length < 2 || !rankerUsable(G)) return cands;
   // Only the side(s) the model was trained on. The archive's exact positions
   // are all human-Rebel so far (the Empire acts second in Command; the v2
   // replayer will add it) — applying Rebel-learned preferences to the Empire
