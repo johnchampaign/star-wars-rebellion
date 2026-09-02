@@ -1,0 +1,92 @@
+// @timeout 300000
+// The imitation ranker (docs/imitation-plan.md step 2): candidateRanker.ts
+// re-orders the heuristic's Command candidates by a model trained on the
+// recorded human decisions (scripts/train-ranker.mjs), and the MCTS root
+// explores in that order. Default OFF (SWR_RANKER=1 / ?ranker=1).
+//
+// Pins: the shipped weights match this catalog's feature layout (a catalog
+// change must disable, never misalign); the lever really is off by default
+// and really re-orders when on; the recorded held-out metrics beat the
+// heuristic by a margin (so a bad retrain cannot be committed quietly); the
+// MCTS root is wired; and generation width follows the lever.
+//
+// Run: node scripts/test-imitation-ranker.mjs
+import { readFileSync, existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+const { register } = await import('tsx/esm/api'); register();
+const setup = await import('../src/engine/setup.ts');
+const codec = await import('../src/engine/codec.ts');
+const { createGame } = setup;
+const j = (p) => JSON.parse(readFileSync(join(ROOT, 'assets', p), 'utf8'));
+const data = { systems: j('systems.json'), adjacency: j('adjacency.json'), leaders: j('leaders.json'), actions: j('actions.json'), missions: j('missions.json'), objectives: j('objectives.json'), tactics: j('tactics.json'), probes: j('probes.json') };
+const catalog = setup.buildCatalog(data);
+let pass = 0, fail = 0;
+const check = (n, ok, e = '') => { console.log(`  ${ok ? '✓' : '✗'} ${n}${ok ? '' : ' — ' + e}`); ok ? pass++ : fail++; };
+
+// Child mode: report ordering with the lever ON for one position.
+if (process.env.RANKER_TEST_CHILD === '1') {
+  const AI = await import('../src/play/randomAI.ts');
+  const R = await import('../src/play/candidateRanker.ts');
+  // A real mid-game Rebel position with reveals AND activations on offer
+  // (the #600 reporter's board, committed as a fixture). A fresh setup board
+  // has a single candidate and cannot show a re-ordering.
+  const raw0 = readFileSync(join(ROOT, 'scripts/fixtures/passivity-600.json'), 'utf8');
+  const G = codec.decode(raw0, catalog);
+  G.passedThisCommand = (G.passedThisCommand ?? []).filter((x) => x !== 'Rebel'); G.currentPlayer = 'Rebel';
+  AI.seedAI(1);
+  const raw = AI.bestCommandAction(G, 'Rebel');
+  const ranked = R.rankCandidates(G, 'Rebel', raw);
+  const key = (c) => `${c.kind}:${c.missionId ?? c.leaderId ?? ''}@${c.targetSystemId ?? ''}`;
+  console.log(JSON.stringify({ enabled: R.RANKER_ENABLED, usable: R.rankerUsable(G), raw: raw.map(key), ranked: ranked.map(key), k: raw.length }));
+  process.exit(0);
+}
+
+const W = JSON.parse(readFileSync(join(ROOT, 'src/play/rankerWeights.json'), 'utf8'));
+
+console.log('[ the shipped weights match this catalog ]');
+{
+  const F = await import('../src/play/candidateFeatures.ts');
+  const G = createGame(data, { seed: 3, autoSetupUnits: true });
+  const names = F.featureNames(G);
+  check('feature layout unchanged since training', names.length === W.names.length && names.every((n, i) => n === W.names[i]),
+    `${names.length} vs ${W.names.length} features — retrain with scripts/train-ranker.mjs`);
+  check('weights/mean/std are the same length as the names', W.w.length === names.length && W.mean.length === names.length && W.std.length === names.length);
+}
+
+console.log('[ the recorded held-out metrics beat the heuristic by a margin ]');
+{
+  const m = W.metrics?.heldOut;
+  check('held-out set is by unseen games and non-trivial', (m?.positions ?? 0) >= 80, JSON.stringify(m));
+  check('ranker top-3 exceeds heuristic top-3 by at least 15 points', (m?.ranker?.top3 ?? 0) >= (m?.baseline?.top3 ?? 1) + 0.15,
+    `ranker ${((m?.ranker?.top3 ?? 0) * 100).toFixed(1)}% vs baseline ${((m?.baseline?.top3 ?? 0) * 100).toFixed(1)}%`);
+  check('and top-1 at least triples it', (m?.ranker?.top1 ?? 0) >= 3 * (m?.baseline?.top1 ?? 1),
+    `ranker ${((m?.ranker?.top1 ?? 0) * 100).toFixed(1)}% vs baseline ${((m?.baseline?.top1 ?? 0) * 100).toFixed(1)}%`);
+}
+
+console.log('[ the lever: off by default, re-orders when on ]');
+{
+  const run = (env) => JSON.parse(execFileSync(process.execPath, [fileURLToPath(import.meta.url)], { env: { ...process.env, RANKER_TEST_CHILD: '1', ...env }, encoding: 'utf8' }).trim().split('\n').pop());
+  const off = run({ SWR_RANKER: '0' });
+  const on = run({ SWR_RANKER: '1' });
+  check('default: ranker off, candidates untouched', !off.enabled && JSON.stringify(off.raw) === JSON.stringify(off.ranked));
+  check('on: ranker enabled and usable on this catalog', on.enabled && on.usable);
+  check('on: generation widened to K=4 (more candidates than at K=1)', on.k > off.k, `${on.k} vs ${off.k}`);
+  check('on: the order actually changes (non-vacuous)', JSON.stringify(on.raw) !== JSON.stringify(on.ranked), 'ranker returned the heuristic order');
+  check('on: it is a permutation, not a filter', on.ranked.length === on.raw.length && [...on.ranked].sort().join() === [...on.raw].sort().join());
+  const on2 = run({ SWR_RANKER: '1' });
+  check('on: deterministic', JSON.stringify(on.ranked) === JSON.stringify(on2.ranked));
+}
+
+console.log('[ the MCTS root is wired ]');
+{
+  const src = readFileSync(join(ROOT, 'src/play/mctsAI.ts'), 'utf8');
+  check('rankCandidates wraps bestCommandAction before the topK cut', /rankCandidates\(G, side, bestCommandAction\(G, side\)\)\.slice\(0, conf\.topK\)/.test(src));
+  const ai = readFileSync(join(ROOT, 'src/play/randomAI.ts'), 'utf8');
+  check('generation width follows the ranker lever', /return RANKER_ENABLED \? 4 : 1;/.test(ai));
+}
+
+console.log(fail === 0 ? `\nALL PASS — ${pass} passed, 0 failed` : `\nFAILURES — ${pass} passed, ${fail} failed`);
+process.exit(fail === 0 ? 0 : 1);

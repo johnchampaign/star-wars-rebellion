@@ -35,6 +35,7 @@ import { COST_OBJECTIVES, objectiveProgress, objectiveConditionMet, objectiveRep
 // default → byte-identical to the pre-planner scorer.
 import { derivePlan, planSystemBonus, deployProximityScore, PLANNER_ENABLED, HUNT_OCCUPY_ENABLED, type StrikeFleetPlan } from './empirePlanner';
 import { log as logEvent } from '../engine/log';
+import { RANKER_ENABLED } from './candidateRanker';
 
 // AI randomness. Defaults to Math.random (live app), but the tournament
 // harness calls seedAI() so AI-vs-AI runs are reproducible per seed — without
@@ -119,6 +120,26 @@ const CONVERT_SUBJUGATED: boolean = (() => {
     if (proc?.env?.SWR_CONVERT_SUBJUGATED === '0') return false;
   } catch { /* browser: no process */ }
   return true;
+})();
+
+/** Candidate WIDTH (SWR_CAND_K, default 1 = the historical generator). How many
+ *  targets each mission / each leader proposes to the search. Measured on 1,119
+ *  exact Command-start positions from winning human games
+ *  (scripts/eval-candidate-coverage.mjs): at K=1 the human's move is among the
+ *  candidates only 31% of the time — 85% of reveal misses and 74% of activation
+ *  misses are "right mission/leader, DIFFERENT target", because the generator
+ *  emitted exactly one target each. MCTS can only choose among candidates, so
+ *  this is a hard ceiling on the search regardless of budget. */
+const CAND_K: number = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    const v = Number(proc?.env?.SWR_CAND_K);
+    if (Number.isFinite(v) && v >= 1) return Math.floor(v);
+  } catch { /* browser: no process */ }
+  // The imitation ranker was trained on K=4 generation and only pays off when
+  // the human's move is actually generated (31% at K=1 vs 60% at K=4), so the
+  // ranker lever implies width unless SWR_CAND_K says otherwise.
+  return RANKER_ENABLED ? 4 : 1;
 })();
 
 const DEFEND_CORUSCANT: boolean = (() => {
@@ -1591,6 +1612,32 @@ function bestRevealTarget(
   return { targetSystemId, targetScore, revealScore: baseValue + targetScore + 6 };
 }
 
+/** The top-K reveal targets for a mission, best first (K = CAND_K). K=1 is
+ *  exactly bestRevealTarget; higher K lets the search see the alternatives a
+ *  human actually picks. Same legality/pointlessness filters. */
+function rankedRevealTargets(
+  G: GameState, side: Side, missionId: string, baseDist: Map<SystemId, number> | null, k: number,
+): Array<{ targetSystemId: SystemId; targetScore: number; revealScore: number }> {
+  const first = bestRevealTarget(G, side, missionId, baseDist);
+  if (!first) return [];
+  if (k <= 1) return [first];
+  const card = G.catalog.missions[missionId];
+  const targets = missionTargets(G, side, missionId);
+  const candidates = (targets.permissive ? Object.keys(G.map.systems) : targets.systemIds)
+    .filter((sid) => !missionRevealIsPointless(G, side, missionId, sid));
+  const baseValue = missionBaseValue(missionId, side) + missionSituationalAdjust(G, missionId, side);
+  const scored = tieOrdered(G, candidates as SystemId[]).map((sid) => {
+    const targetScore = side === 'Empire'
+      ? empireMissionTargetScore(G, missionId, sid)
+      : rebelMissionTargetScore(G, missionId, sid, baseDist);
+    return { targetSystemId: sid, targetScore, revealScore: baseValue + 6 + targetScore };
+  }).filter((x) => Number.isFinite(x.revealScore)).sort((a, b) => b.revealScore - a.revealScore);
+  void card;
+  const out = [first];
+  for (const x of scored) { if (out.length >= k) break; if (x.targetSystemId !== first.targetSystemId) out.push(x); }
+  return out;
+}
+
 export function __testPlanAssignment(
   G: GameState, side: Side,
 ): Array<{ missionId: string; leaderIds: LeaderId[] }> {
@@ -2119,17 +2166,18 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
     // drops targets where the mission would do nothing (e.g. Draw Them Out with
     // an empty Rebel pool, Single Reactor Ignition with no Rebel ground or
     // markers) so the AI doesn't waste it (#276/#277).
-    const reveal = bestRevealTarget(G, side, am.missionId, baseDist);
-    if (!reveal) continue;
-    actions.push({
-      kind: 'reveal',
-      missionId: am.missionId,
-      targetSystemId: reveal.targetSystemId,
-      // Lock the specific leader NOW for capture-style missions, so the target
-      // can't drift to whoever opposes (RAW: target chosen at perform time).
-      targetLeaderId: captureTargetLeaderId(G, side, am.missionId, reveal.targetSystemId),
-      score: reveal.revealScore,
-    });
+    const reveals = rankedRevealTargets(G, side, am.missionId, baseDist, CAND_K);
+    for (const reveal of reveals) {
+      actions.push({
+        kind: 'reveal',
+        missionId: am.missionId,
+        targetSystemId: reveal.targetSystemId,
+        // Lock the specific leader NOW for capture-style missions, so the target
+        // can't drift to whoever opposes (RAW: target chosen at perform time).
+        targetLeaderId: captureTargetLeaderId(G, side, am.missionId, reveal.targetSystemId),
+        score: reveal.revealScore,
+      });
+    }
   }
 
   // 2) Activating systems. Pre-score each system once (not per-leader) since
@@ -2952,6 +3000,23 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         if (!pick) break;
         taken.add(pick);
         actions.push({ kind: 'activate', leaderId: pick, targetSystemId: sid, score: ts });
+      }
+      // Width (SWR_CAND_K > 1): the pass above gives each leader ONE target.
+      // Add each eligible leader's next-best (K-1) systems, skipping pairs
+      // already proposed, so the search can see the alternative destinations a
+      // human picks 74% of the time it disagrees with the argmax.
+      if (CAND_K > 1) {
+        const have = new Set(actions.filter((a) => a.kind === 'activate').map((a) => `${(a as { leaderId: LeaderId }).leaderId}|${a.targetSystemId}`));
+        for (const lid of eligible) {
+          let added = 0;
+          for (const { sid, ts } of ranked) {
+            if (added >= CAND_K - 1) break;
+            const key = `${lid}|${sid}`;
+            if (have.has(key)) continue;
+            have.add(key); added++;
+            actions.push({ kind: 'activate', leaderId: lid, targetSystemId: sid, score: ts });
+          }
+        }
       }
     }
   }

@@ -36,6 +36,7 @@ import type { GameState, Side, SystemId } from '../engine/types';
 import * as phases from '../engine/phases';
 import { log as logEvent } from '../engine/log';
 import { bestCommandAction, tryCommandAction, stepOnce } from './randomAI';
+import { rankCandidates } from './candidateRanker';
 import { evaluate, leafEvaluate } from './boardEval';
 
 // ---------------------------------------------------------------------------
@@ -449,7 +450,11 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
   const conf = { ...defaultConfig(), ...cfg };
   const t0 = Date.now();
 
-  const candidates = bestCommandAction(G, side).slice(0, conf.topK);
+  // Imitation ranker (candidateRanker.ts): when on, the heuristic's candidates
+  // are re-ordered by a model of the recorded human decisions BEFORE the topK
+  // cut, so the search spends its pulls on what a winning player would look
+  // at. Off by default; see docs/imitation-plan.md.
+  const candidates = rankCandidates(G, side, bestCommandAction(G, side)).slice(0, conf.topK);
   if (candidates.length === 0) return null; // heuristic will pass
   // Nothing to search over — return the only option without burning rollouts.
   if (candidates.length === 1) {
