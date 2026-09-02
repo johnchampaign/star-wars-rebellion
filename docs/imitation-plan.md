@@ -187,7 +187,17 @@ replayer's Empire data is the higher-leverage next step.
    n=144); the Empire data stays in the dataset for step 3.
 2b. **(was: v2 replayer)** for human-Empire decisions (replay the AI Rebel's opening
    actions) → doubles the dataset and covers the side the MCTS plays.
-3. **Plan labels** mined from trajectories (stage-and-strike, consolidate,
+3. **Plan labels** — design input measured 2026-09-02 on the 344 human-Empire
+   games won by base capture (of 362 finished; 8 base-destroyed, 10 rep-time):
+   nearest Imperial GROUND to the eventual base, by rounds before capture —
+   share within 1 hop: T−8 10%, T−6 35%, T−4 52%, T−2 64%, T−1 78%, T−0 99%;
+   median hops 2 until T−4, then 1. The stage-and-strike shape is visible and
+   monotone, so round labels are derivable from outcomes: `strike` (T−1..T−0,
+   force adjacent), `stage` (T−4..T−2, closing on a candidate), `search`
+   (earlier). This is exactly the context the Empire ranker lacked (the joint
+   model went 14.9% → 11.9% top-1 on Empire positions) — the conditional
+   ranker `score(a | position, plan)` is the next build.
+   Plan labels mined from trajectories (stage-and-strike, consolidate,
    relocate-base first), then the conditional ranker `score(a | pos, plan)`.
 4. Round-start plan chooser (learned prior; optional LLM advisor), stateful
    across the round — #539's executor, finally.
