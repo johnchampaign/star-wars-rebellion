@@ -157,8 +157,9 @@ confirmation (3 discordant pairs in 20, McNemar p = 1.0) — it was noise, as
 the measured noise floor predicted. A full-budget pair (64 pulls, what the
 browser runs) came back with the batch's largest signal: **Rebel 35% → 55%**
 (E→R 7 / R→E 3, McNemar p=0.34, follow-rate 61% vs 28–48% at fast-search).
-**Confirmed on fresh seeds: 20% → 55% (p=0.04). Pooled n=40/arm: 28% → 55%,
-+28pp, CI [+7,+48], McNemar p=0.019.** The first replicated end-to-end win in
+**Confirmed on fresh seeds: 20% → 55% (p=0.04); a third pair 45% → 50%. Pooled
+n=60/arm: 33% → 53%, +20pp, CI [+3,+37], McNemar p=0.036.** Honest size:
+~+15–20pp (the two post-selection pairs average +20). The first replicated end-to-end win in
 this plan, and it exists only at the browser's real budget — which resolves the
 batch: the earlier flat results were the fast-search harness, not the ranker.
 If it holds, the shipped configuration to test live is `?ranker=1` with the
