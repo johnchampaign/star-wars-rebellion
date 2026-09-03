@@ -100,13 +100,13 @@ console.log('[ the MCTS root is wired ]');
   check('the prior steers PULLS: a PUCT term in the selection rule', /RANKER_PRIOR_W \* priors\[arms\.indexOf\(x\)\] \* Math\.sqrt\(pulls \+ 1\) \/ \(1 \+ x\.n\)/.test(src));
   check('and can cut the root to the ranker\'s top-N arms', /RANKER_TOPK > 0 && candidates\.length > RANKER_TOPK/.test(src));
   check('the trace records whether the search followed the prior', /rankerTop:/.test(src));
-  check('the prior can enter the FINAL pick (λ blend or most-visited)', /RANKER_FINAL === 'visits'/.test(src) && /lam \* priorOf\(y\)/.test(src));
+  check('the prior can enter the FINAL pick (λ blend or most-visited), read at runtime', /getRankerFinal\(\)/.test(src) && /finalMode === 'visits'/.test(src) && /lam \* priorOf\(y\)/.test(src));
   check('and the default final pick is unchanged (argmax mean)', /else alive\.sort\(\(x, y\) => y\.sum \/ y\.n - x\.sum \/ x\.n\)/.test(src));
   const pt = readFileSync(join(ROOT, 'src/play/PlayTab.tsx'), 'utf8');
   check('the worker is constructed in the literal form Vite can bundle', /new Worker\(new URL\('\.\/mctsWorker\.ts', import\.meta\.url\), \{ type: 'module' \}\)/.test(pt));
-  check('and the ranker flag travels in the search message', /flags: \{ ranker: RANKER_ENABLED \}/.test(pt));
+  check('and the ranker flags travel in the search message', /flags: \{ ranker: RANKER_ENABLED, rankerFinal: RANKER_FINAL \}/.test(pt));
   const wk = readFileSync(join(ROOT, 'src/play/mctsWorker.ts'), 'utf8');
-  check('the worker applies the forwarded flag before searching', /setRankerEnabled\(!!flags\?\.ranker\)/.test(wk));
+  check('the worker applies the forwarded flags before searching', /setRankerEnabled\(!!flags\?\.ranker\)/.test(wk) && /setRankerFinal\(flags\?\.rankerFinal/.test(wk));
   const ai = readFileSync(join(ROOT, 'src/play/randomAI.ts'), 'utf8');
   check('the rollout policy can follow the ranker (SWR_RANKER_ROLLOUT), default off',
     /RANKER_ROLLOUT \? rankCandidates\(G, side, bestCommandAction\(G, side\)\) : bestCommandAction\(G, side\)/.test(ai));

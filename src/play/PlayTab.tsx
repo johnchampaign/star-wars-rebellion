@@ -36,7 +36,7 @@ const useUnitStyle = () => useContext(UnitStyleContext);
 import { createGame, resolveExpansion } from '../engine/setup';
 import * as _phases from '../engine/phases';
 import { hopelessFor } from './aiResign';
-import { RANKER_ENABLED } from './candidateRanker';
+import { RANKER_ENABLED, RANKER_FINAL } from './candidateRanker';
 import type { MoveOrder } from '../engine/phases';
 import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
 import * as _combat from '../engine/combat';
@@ -1213,7 +1213,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       }
       console.log('[mcts-bridge] search start', key);
       mctsPendingRef.current = { key, done: false, result: null, t0: Date.now() };
-      w.postMessage({ id: ++mctsReqIdRef.current, codec: encode(g), side: s, flags: { ranker: RANKER_ENABLED } });
+      w.postMessage({ id: ++mctsReqIdRef.current, codec: encode(g), side: s, flags: { ranker: RANKER_ENABLED, rankerFinal: RANKER_FINAL } });
       aiWaitingRef.current = true;
       aiWaitingSinceRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
       return true; // "thinking" — loop pauses until the worker replies

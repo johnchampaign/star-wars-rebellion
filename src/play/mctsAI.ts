@@ -36,7 +36,7 @@ import type { GameState, Side, SystemId } from '../engine/types';
 import * as phases from '../engine/phases';
 import { log as logEvent } from '../engine/log';
 import { bestCommandAction, tryCommandAction, stepOnce } from './randomAI';
-import { rankCandidates, rankerPriors, RANKER_PRIOR_W, RANKER_TOPK, RANKER_FINAL } from './candidateRanker';
+import { rankCandidates, rankerPriors, RANKER_PRIOR_W, RANKER_TOPK, getRankerFinal } from './candidateRanker';
 import { evaluate, leafEvaluate } from './boardEval';
 
 // ---------------------------------------------------------------------------
@@ -588,9 +588,10 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
   // is present, SWR_RANKER_FINAL lets it break those ties (λ blend) or picks
   // the most-visited arm (standard PUCT). Default: argmax mean, unchanged.
   const priorOf = (x: (typeof arms)[number]): number => (priors ? priors[arms.indexOf(x)] ?? 0 : 0);
-  if (priors && RANKER_FINAL === 'visits') alive.sort((x, y) => (y.n - x.n) || (y.sum / y.n - x.sum / x.n));
-  else if (priors && typeof RANKER_FINAL === 'number' && RANKER_FINAL > 0) {
-    const lam = RANKER_FINAL;
+  const finalMode = getRankerFinal();
+  if (priors && finalMode === 'visits') alive.sort((x, y) => (y.n - x.n) || (y.sum / y.n - x.sum / x.n));
+  else if (priors && typeof finalMode === 'number' && finalMode > 0) {
+    const lam = finalMode;
     alive.sort((x, y) => (y.sum / y.n + lam * priorOf(y)) - (x.sum / x.n + lam * priorOf(x)));
   } else alive.sort((x, y) => y.sum / y.n - x.sum / x.n);
   let chosen = alive[0].a;

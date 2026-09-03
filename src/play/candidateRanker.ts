@@ -67,14 +67,30 @@ export const RANKER_TOPK: number = envNum('SWR_RANKER_TOPK', 0);
  *   - 'visits': choose the most-pulled arm (standard PUCT; the prior steers
  *     visits, so this is the prior's information laundered through pulls).
  *  Default 0 = unchanged (argmax mean). */
-export const RANKER_FINAL: number | 'visits' = (() => {
+export type RankerFinal = number | 'visits';
+function parseFinal(v: string | null | undefined): RankerFinal | null {
+  if (v === 'visits') return 'visits';
+  const n = Number(v); return v != null && v !== '' && Number.isFinite(n) ? n : null;
+}
+export const RANKER_FINAL: RankerFinal = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
-    const v = proc?.env?.SWR_RANKER_FINAL;
-    if (v === 'visits') return 'visits';
-    const n = Number(v); return Number.isFinite(n) ? n : 0;
-  } catch { return 0; }
+    const f = parseFinal(proc?.env?.SWR_RANKER_FINAL); if (f !== null) return f;
+  } catch { /* browser */ }
+  try {
+    // Browser: ?rankerfinal=visits | 0.05 | 0 (sticky; only matters with ?ranker=1).
+    // The strongest measured configuration (2026-09-02, full budget) is visits.
+    const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
+    const q = g.location?.search ? new URLSearchParams(g.location.search).get('rankerfinal') : null;
+    if (q !== null) { if (q === '' || q === '0') g.localStorage?.removeItem('swr-ranker-final'); else g.localStorage?.setItem('swr-ranker-final', q); }
+    const f = parseFinal(q ?? g.localStorage?.getItem('swr-ranker-final')); if (f !== null) return f;
+  } catch { /* no localStorage */ }
+  return 0;
 })();
+// Runtime-settable for the worker (which cannot read the page's flags itself).
+let rankerFinal: RankerFinal = RANKER_FINAL;
+export function setRankerFinal(v: RankerFinal): void { rankerFinal = v; }
+export function getRankerFinal(): RankerFinal { return rankerFinal; }
 
 // The MCTS runs in a web worker, which has neither the page's query string
 // nor localStorage, so the module-load flag above evaluates to OFF there.
