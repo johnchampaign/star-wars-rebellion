@@ -155,7 +155,12 @@ Verdict: the position-level gain is real; through the shipped search it is flat
 in EVERY wiring. The "final by visits" +15 did not survive its paired
 confirmation (3 discordant pairs in 20, McNemar p = 1.0) — it was noise, as
 the measured noise floor predicted. A full-budget pair (64 pulls, what the
-browser runs) is the last check of the budget reading; it is in flight. Two honest readings: the 24-pull
+browser runs) came back with the batch's largest signal: **Rebel 35% → 55%**
+(E→R 7 / R→E 3, McNemar p=0.34, follow-rate 61% vs 28–48% at fast-search).
+Not significant at n=20 and unpaired, but effect and follow-rate both grow with
+budget — a second full-budget pair on fresh seeds is running as confirmation.
+If it holds, the shipped configuration to test live is `?ranker=1` with the
+final pick by visits (needs a browser lever; currently env-only). Two honest readings: the 24-pull
 fast-search budget is the bottleneck (the browser searches 64 pulls under 8s —
 test the visits build at full budget), and/or the Rebel has little to gain from
 ordering while the Empire demonstrably does (the ungated mirage) — so the v2
