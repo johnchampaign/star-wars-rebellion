@@ -206,6 +206,78 @@ Rebel). Attacks into Imperial-held systems: humans make MORE of them (797 vs
 The Empire side's assignment agreement is low (Jaccard 0.26) — an Assignment
 ranker trained on the human Empire's assignments is the natural next build.
 
+## Step 5 — what the shipped policies actually do on real boards (2026-09-04)
+
+Two instruments, both position-level, both run against the SHIPPED policies
+(MCTS budget 64 + ranker) on the exact-state dataset. They answer two long-open
+reports with measurements rather than another round of triage.
+
+### The Rebel opener — #718 part 2, now measurable
+
+`scripts/measure-rebel-opener.mjs` replays the 110 exact turn-1 human-Rebel
+positions and asks each policy what IT would open with from that same board.
+
+| on the same 110 boards | top opener | distinct openers | opens with a move | plays the human's move |
+|---|---|---|---|---|
+| winning human | 23% Build Alliance @ Utapau | 32 | 49% | — |
+| plain heuristic | 18% Sabotage @ Mygeeto | 14 | 0% | 3% |
+| old shipped Rebel (`eval` depth-2) | **56% Build Alliance @ Nal Hutta** | 16 | 6% | 11% |
+| **shipped (mcts + ranker)** | **14% activate @ Rodia** | **40** | 62% | **30%** |
+
+The "single scripted opener" the reporter described is gone — Nal Hutta falls
+56% → 7%, the top opener is down to 14%, and the reveal/activation mix moves
+from 6% activations to 62% (human: 49%). **Utapau is still under-weighted**:
+humans target it turn 1 in 26% of these openings, the shipped Rebel in 12%
+(the old one 19%, the heuristic 5%). So the structural half of #718 part 2 is
+fixed and the preference half is not.
+
+**Caveat that must travel with the 30%:** these positions are inside the
+ranker's training set, so agreement here is IN-SAMPLE and optimistic — the
+held-out-by-game figure for the shipped weights is 27% top-1. The distribution
+claims (concentration, distinct openers, activation share) are far less
+sensitive to that than the agreement figure is.
+
+### The Empire post-reveal cluster — evidence against #539's current scope
+
+The #539 cluster (#538/#690/#708/#722) is filed as a CHOICE failure: "the base
+is revealed and the Empire walks its heavy force the wrong way / activates the
+base space to do nothing." Measured on the 51 exact post-reveal human-Empire
+boards, that symptom does not reproduce as a single-decision failure.
+
+| hops from the revealed base to the chosen target | n | mean | at base | within 1 | ≥3 away |
+|---|---|---|---|---|---|
+| winning human | 51 | 1.75 | 22 | 30 | **20** |
+| shipped Empire | 50 | **0.80** | 28 | 41 | **4** |
+
+The AI aims at the base *more* single-mindedly than a winning human. Applying
+each chosen action and reading the engine's own `unitsMoved`: **mean 11.65
+units per activation, 1 of 46 moved ≤1 unit.** Exact agreement 20% (heuristic
+18%).
+
+`scripts/measure-reveal-force.mjs` then compares the reveal-moment POSITION —
+45 AI-built boards (reveal snapshots from human-Rebel logs, where the Empire is
+the AI) against the same 51 human-built ones. Both put **17%** of Empire mobile
+ground within one hop of the base (5.11 vs 5.92 units, medians 4 vs 5), and the
+AI reaches its reveal a round earlier (6.0 vs 7.1).
+
+**Limits, which are real:** opponent asymmetry (the human-built boards come
+from games against the AI Rebel, the AI-built ones from games against a human
+Rebel — not equally hard positions); selection on won games; and single-decision
+scope, which cannot see the following rounds where a stateful plan would act.
+
+**Reading.** #539 is scoped to fix post-reveal destination choice and pre-reveal
+staging. On real boards the first now measures better than a winning human's and
+the second indistinguishable from one. The unmeasured thing is multi-round
+FOLLOW-THROUGH — whether a massed force arrives and assaults or is peeled apart
+again over the next two rounds. If it does arrive and the Empire still loses,
+#539's premise moves from logistics to assault strength, which is different work.
+
+**Harness gap found in passing:** `scripts/verify-reveal-forward.mjs` installs no
+Command policy override, so it drives the PLAIN HEURISTIC, not the shipped MCTS
+Empire. The "2.33 ground delivered" baseline from 2026-08-27 and the retrograde-
+guard verdict built on it therefore describe a policy no player faces. Worth
+closing regardless of what happens to #539.
+
 ## Next steps, in order
 
 1. **Ranker end-to-end — first read is FLAT.** 20 games/arm unpaired, Rebel-only
