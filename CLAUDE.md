@@ -186,13 +186,12 @@ expected to report **zero** errors; a real typecheck pass once caught a
 report-payload `ReferenceError`, an AI reading a non-existent `G.buildQueue`,
 and a loyalty comparison that never fired.
 
-Known-cosmetic remaining errors live in `src/play` only (UI type-strictness:
-a self-referential `j` initializer, a couple `DieFace`/`UnitImageStyle`
-string-literal narrowings, the `OneInAMillionOffer` prop shape, and the
-captured-leader `Pip` type-predicate generics). None affect runtime; don't
-let them mask a *new* error — diff the list, don't eyeball the count.
+**The baseline is ZERO errors** (re-verified 2026-09-04). The old "9 known-cosmetic
+`src/play` errors" allowance is gone — those were fixed upstream in `ab47f33`
+("restore a green typecheck"). Do not excuse any typecheck error as pre-existing;
+if `npm run typecheck` reports anything, it is yours.
 
-Do **not** "fix" these by adding `@types/node` to the main tsconfig, enabling
+Do **not** "fix" errors by adding `@types/node` to the main tsconfig, enabling
 `tsc -b` in deploy, or bulk-casting to `any`.
 
 ## Architecture quick-reference
