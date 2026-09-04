@@ -20,6 +20,13 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// This pins the LEGACY generator's invariant (one target per leader, distinct
+// across leaders). Since 2026-09-03 the imitation ranker is on by default and
+// deliberately widens the Rebel's generation to K=4 targets per leader — which
+// this invariant would read as "duplicates". The #599 defect was Empire-side
+// (the Empire stays at K=1 either way), and test-cand-width pins that K>1 is a
+// strict superset of the legacy list; so this test runs with the ranker off.
+process.env.SWR_RANKER = '0';
 const { register } = await import('tsx/esm/api'); register();
 const { createGame } = await import('../src/engine/setup.ts');
 const ai = await import('../src/play/randomAI.ts');

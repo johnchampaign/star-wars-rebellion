@@ -23,6 +23,14 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const args = process.argv.slice(2);
 const LIMIT = Number(args[args.indexOf('--limit') + 1] || 0) || Infinity;
 const OUT = args.includes('--out') ? args[args.indexOf('--out') + 1] : join(ROOT, 'reports', 'human-decisions.jsonl');
+// --stage assignment : instead of the first Command decision, emit the exact
+// state at the moment the HUMAN begins assigning (after Refresh; for a human
+// Empire, after the AI Rebel's recorded assignments) plus the human's full
+// assignment set for the round. Feeds the Assignment-phase instrument
+// (#555/#718: the AI Rebel assigns Rapid Mobilization in 79% of rounds; the
+// recorded humans in 19%).
+const STAGE = args.includes('--stage') ? args[args.indexOf('--stage') + 1] : 'command';
+const OUTFILE = args.includes('--out') ? OUT : (STAGE === 'assignment' ? join(ROOT, 'reports', 'human-assignments.jsonl') : OUT);
 
 const { register } = await import('tsx/esm/api'); register();
 const setup = await import('../src/engine/setup.ts');
@@ -193,6 +201,21 @@ for (const f of files) {
           let e = null;
           for (; cur.i < ev.length; cur.i++) { const x = ev[cur.i]; if (['assign-leader', 'unassign-leader', 'skip-assignment'].includes(x.kind) || (x.kind === 'phase' && x.payload?.phase === 'Command')) { e = x; cur.i++; break; } }
           if (!e || e.kind === 'phase') { failed = true; bump(stats.byFail, 'assignment-incomplete'); break; }
+          if (STAGE === 'assignment' && e.side === human && G.currentPlayer === human) {
+            // The human is about to assign: this is the position. Collect the
+            // human's assignment set for the round (final state after undos).
+            cur.i--; // leave the event for the collector below
+            const set = new Map();
+            for (let k = cur.i; k < ev.length; k++) {
+              const x = ev[k]; if (x.side !== human) { if (x.kind === 'phase') break; continue; }
+              if (x.kind === 'assign-leader') set.set(x.payload.missionId, x.payload.leaderIds);
+              else if (x.kind === 'unassign-leader') set.delete(x.payload.missionId);
+              else if (x.kind === 'skip-assignment') break;
+            }
+            out.push({ gameId: gid, turn: t.turn, humanSide: human, quality, stage: 'assignment', state: codec.encode(G),
+              humanAssignments: [...set.entries()].map(([missionId, leaderIds]) => ({ missionId, leaderIds })) });
+            stats.samples++; failed = true; bump(stats.byFail, '(assignment sample emitted)'); break;
+          }
           // The human can take an assignment back (#76 undo) — replay it, or
           // the re-assignment that follows fails as "leader not in pool".
           const r = e.kind === 'assign-leader' ? phases.assignLeader(G, e.side, e.payload.missionId, e.payload.leaderIds)
@@ -295,10 +318,10 @@ for (const f of files) {
       candidates: cands.slice(0, 12).map((c) => ({ kind: c.kind, leaderId: c.leaderId, targetSystemId: c.targetSystemId, missionId: c.missionId, score: c.score })), matchIndex: idx });
   }
 }
-writeFileSync(OUT, out.map((o) => JSON.stringify(o)).join('\n') + '\n');
+writeFileSync(OUTFILE, out.map((o) => JSON.stringify(o)).join('\n') + '\n');
 console.log(`games ${stats.games}  rounds ${stats.rounds}  replayed to Command: exact ${stats.exact} approx ${stats.approx} failed ${stats.failed}`);
 console.log(`samples (human moves first from an exact/approx state): ${stats.samples}   human action among heuristic candidates: ${stats.matched} (${(100 * stats.matched / Math.max(1, stats.samples)).toFixed(0)}%)   in top-3: ${stats.top3} (${(100 * stats.top3 / Math.max(1, stats.samples)).toFixed(0)}%)`);
 console.log(`mission-roll fidelity: ${stats.rolls||0} compared, ${stats.rollMismatch||0} mismatched`);
 console.log('failures:', stats.byFail);
 console.log('failure rate by log month:', Object.fromEntries(Object.entries(stats.byMonth).sort().map(([m, v]) => [m, `${v.failed}/${v.rounds}`]))); console.log('AI-fallback choice kinds (approx):', stats.fallbackKinds);
-console.log('wrote', OUT, out.length, 'samples');
+console.log('wrote', OUTFILE, out.length, 'samples');

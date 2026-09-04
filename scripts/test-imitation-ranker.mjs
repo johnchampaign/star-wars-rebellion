@@ -45,7 +45,7 @@ if (process.env.RANKER_TEST_CHILD === '1') {
   GE.passedThisCommand = (GE.passedThisCommand ?? []).filter((x) => x !== 'Empire'); GE.currentPlayer = 'Empire';
   AI.seedAI(1); const rawE = AI.bestCommandAction(GE, 'Empire'); const rankedE = R.rankCandidates(GE, 'Empire', rawE);
   const pri = R.rankerPriors(G, 'Rebel', raw); const priE = R.rankerPriors(GE, 'Empire', rawE);
-  console.log(JSON.stringify({ enabled: R.RANKER_ENABLED, usable: R.rankerUsable(G), raw: raw.map(key), ranked: ranked.map(key), k: raw.length,
+  console.log(JSON.stringify({ enabled: R.RANKER_ENABLED, final: R.RANKER_FINAL, usable: R.rankerUsable(G), raw: raw.map(key), ranked: ranked.map(key), k: raw.length,
     priors: pri, priorsEmpire: priE, rankedTop: ranked[0] ? key(ranked[0]) : null, priorTop: pri ? key(raw[pri.indexOf(Math.max(...pri))]) : null,
     empireUntouched: JSON.stringify(rawE.map(key)) === JSON.stringify(rankedE.map(key)), empireK: rawE.length }));
   process.exit(0);
@@ -78,9 +78,12 @@ console.log('[ the lever: off by default, re-orders when on ]');
   const run = (env) => JSON.parse(execFileSync(process.execPath, [fileURLToPath(import.meta.url)], { env: { ...process.env, RANKER_TEST_CHILD: '1', ...env }, encoding: 'utf8' }).trim().split('\n').pop());
   const off = run({ SWR_RANKER: '0' });
   const on = run({ SWR_RANKER: '1' });
-  check('default: ranker off, candidates untouched', !off.enabled && JSON.stringify(off.raw) === JSON.stringify(off.ranked));
+  check('SWR_RANKER=0: ranker off, candidates untouched', !off.enabled && JSON.stringify(off.raw) === JSON.stringify(off.ranked));
+  const dflt = run({});
+  check('DEFAULT (no env): ranker ON (John, 2026-09-03 — +20pp pooled at the browser budget)', dflt.enabled === true);
+  check('DEFAULT: final pick by most-visited arm', dflt.final === 'visits', JSON.stringify(dflt.final));
   check('on: ranker enabled and usable on this catalog', on.enabled && on.usable);
-  check('on: generation widened to K=4 (more candidates than at K=1)', on.k > off.k, `${on.k} vs ${off.k}`);
+  check('on: generation widened to K=4 (more candidates than with the ranker off)', on.k > off.k, `${on.k} vs ${off.k}`);
   check('on: the order actually changes (non-vacuous)', JSON.stringify(on.raw) !== JSON.stringify(on.ranked), 'ranker returned the heuristic order');
   check('on: it is a permutation, not a filter', on.ranked.length === on.raw.length && [...on.ranked].sort().join() === [...on.raw].sort().join());
   check('on: the Empire is left in heuristic order (model trained on Rebel data only)', on.empireUntouched && on.empireK >= 2, `k=${on.empireK}`);
@@ -101,7 +104,7 @@ console.log('[ the MCTS root is wired ]');
   check('and can cut the root to the ranker\'s top-N arms', /RANKER_TOPK > 0 && candidates\.length > RANKER_TOPK/.test(src));
   check('the trace records whether the search followed the prior', /rankerTop:/.test(src));
   check('the prior can enter the FINAL pick (λ blend or most-visited), read at runtime', /getRankerFinal\(\)/.test(src) && /finalMode === 'visits'/.test(src) && /lam \* priorOf\(y\)/.test(src));
-  check('and the default final pick is unchanged (argmax mean)', /else alive\.sort\(\(x, y\) => y\.sum \/ y\.n - x\.sum \/ x\.n\)/.test(src));
+  check('argmax-mean remains the fallback final pick when no prior is present', /else alive\.sort\(\(x, y\) => y\.sum \/ y\.n - x\.sum \/ x\.n\)/.test(src));
   const pt = readFileSync(join(ROOT, 'src/play/PlayTab.tsx'), 'utf8');
   check('the worker is constructed in the literal form Vite can bundle', /new Worker\(new URL\('\.\/mctsWorker\.ts', import\.meta\.url\), \{ type: 'module' \}\)/.test(pt));
   check('and the ranker flags travel in the search message', /flags: \{ ranker: RANKER_ENABLED, rankerFinal: RANKER_FINAL \}/.test(pt));
@@ -110,7 +113,7 @@ console.log('[ the MCTS root is wired ]');
   const ai = readFileSync(join(ROOT, 'src/play/randomAI.ts'), 'utf8');
   check('the rollout policy can follow the ranker (SWR_RANKER_ROLLOUT), default off',
     /RANKER_ROLLOUT \? rankCandidates\(G, side, bestCommandAction\(G, side\)\) : bestCommandAction\(G, side\)/.test(ai));
-  check('generation width follows the ranker lever (runtime flag)', /return isRankerEnabled\(\) \? 4 : 1;/.test(ai));
+  check('generation width follows the ranker, only for sides it covers', /return rankerCoversSide\(side\) \? 4 : 1;/.test(ai));
 }
 
 console.log(fail === 0 ? `\nALL PASS — ${pass} passed, 0 failed` : `\nFAILURES — ${pass} passed, ${fail} failed`);

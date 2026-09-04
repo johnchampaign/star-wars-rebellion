@@ -41,8 +41,11 @@ if (process.env.CAND_CHILD === '1') {
   }
   console.log(JSON.stringify(out)); process.exit(0);
 }
-const run = (k) => {
-  const env = { ...process.env, CAND_CHILD: '1' }; if (k) env.SWR_CAND_K = String(k); else delete env.SWR_CAND_K;
+// Since 2026-09-03 the imitation ranker is ON by default and IMPLIES K=4, so
+// "legacy" is now K unset WITH the ranker off (SWR_RANKER=0); the true default
+// (no env at all) is the widened generator and is checked as such below.
+const run = (k, extra = { SWR_RANKER: '0' }) => {
+  const env = { ...process.env, CAND_CHILD: '1', ...extra }; if (k) env.SWR_CAND_K = String(k); else delete env.SWR_CAND_K;
   const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], { env, encoding: 'utf8' });
   const lines = r.stdout.trim().split('\n'); return JSON.parse(lines[lines.length - 1]);
 };
@@ -50,7 +53,12 @@ const key = (a) => `${a.kind}|${a.leaderId ?? ''}|${a.missionId ?? ''}|${a.targe
 const unset = run(null), k1 = run(1), k3 = run(3);
 
 console.log('[ K unset is the legacy generator, and K=1 is identical to it ]');
-check('unset == K=1 on every board (same list, same order, same scores)', JSON.stringify(unset) === JSON.stringify(k1));
+check('unset == K=1 on every board (same list, same order, same scores) — with the ranker off', JSON.stringify(unset) === JSON.stringify(k1));
+{
+  const dflt = run(null, {}); // no env at all: the shipped default
+  const wider = Object.keys(k1).every((key) => dflt[key].length >= k1[key].length) && Object.keys(k1).some((key) => dflt[key].length > k1[key].length);
+  check('the shipped DEFAULT (ranker on) generates a wider list than legacy', wider);
+}
 let boards = 0, superset = true, preserved = true, wider = false, sameK1AsLegacy = true;
 for (const b of Object.keys(k1)) {
   boards++;

@@ -162,12 +162,49 @@ n=60/arm: 33% → 53%, +20pp, CI [+3,+37], McNemar p=0.036.** Honest size:
 ~+15–20pp (the two post-selection pairs average +20). The first replicated end-to-end win in
 this plan, and it exists only at the browser's real budget — which resolves the
 batch: the earlier flat results were the fast-search harness, not the ranker.
-If it holds, the shipped configuration to test live is `?ranker=1` with the
-final pick by visits (needs a browser lever; currently env-only). Two honest readings: the 24-pull
+**Shipped ON by default 2026-09-03 (John's call)** — ranker + final pick by
+most-visited arm is now the AI Rebel everyone faces; `?ranker=0` /
+`?rankerfinal=0` opt out (sticky). The archive records the flags per game, so
+the live human-vs-AI record is the ongoing instrument. Two related decisions
+the same day: the harness gained a `--verdict` tier (full search budget) after
+fast-search hid this effect, and the in-game log became turn-filterable and
+pageable (#740) so players can verify earlier battles themselves. Two honest readings: the 24-pull
 fast-search budget is the bottleneck (the browser searches 64 pulls under 8s —
 test the visits build at full budget), and/or the Rebel has little to gain from
 ordering while the Empire demonstrably does (the ungated mirage) — so the v2
 replayer's Empire data is the higher-leverage next step.
+
+## Step 4 — the Assignment phase, from the same data (2026-09-03)
+
+The ranker never touched Assignment (the override is consulted only in Command).
+Two long-open "not a real problem" reports (#555, #718) both said the AI Rebel
+plays Rapid Mobilization every turn. `mine-human-decisions --stage assignment`
+now emits the exact state at the moment the human begins assigning plus their
+final assignment set (871 rounds from 150 games; 335 exact human-Rebel), and
+`eval-assignment-agreement.mjs` runs the heuristic's planner on those same
+positions:
+
+| on the same positions | human | heuristic before | after |
+|---|---|---|---|
+| Rapid Mobilization assigned | 15% | **66%** | **17%** |
+| … with the base hidden | — | 65% | 15% |
+| Sabotage | 83% | 71% | 73% |
+| Hidden Fleet | 2% | 11% | 6% |
+| mission-set agreement (Jaccard) | — | 0.52 | 0.58 |
+
+Cause: the RM discipline gate's "massing" branch counted Empire ground within
+two hops, true in 67% of hidden-base positions. Humans' RM rate barely tracks
+that count; a hidden base is treated as safe unless the threat is one hop away.
+Fixed (`SWR_RM_GATE`), base values calibrated (`SWR_ASSIGN_CALIB`).
+
+Two more claims from those reports, measured: humans open turn 1 with an
+activation (Rodia/Saleucami 16% each) or Build Alliance @ Utapau (16%); the old
+AI Rebel opened Build Alliance @ Nal Hutta 46% — a single scripted opener
+(#718 part 2 confirmed; now a Command-phase question for the ranker+MCTS
+Rebel). Attacks into Imperial-held systems: humans make MORE of them (797 vs
+305) but the AI's are less productive (59% vs 48% yield nothing that round).
+The Empire side's assignment agreement is low (Jaccard 0.26) — an Assignment
+ranker trained on the human Empire's assignments is the natural next build.
 
 ## Next steps, in order
 

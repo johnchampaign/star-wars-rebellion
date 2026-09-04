@@ -139,7 +139,18 @@ console.log('\n[ --realistic: one word for the pairing players actually face ]')
   ], { cwd: ROOT, encoding: 'utf8', env: { ...process.env } });
   check('an explicit --empire-policy overrides the preset\'s Empire choice',
     r1.status === 0 && /policies: Rebel=mcts Empire=eval\(depth2\)/.test(r1.stdout), r1.stdout.slice(0, 200));
-  for (const d of [OUT_R, OUT_R1]) rmSync(d, { recursive: true, force: true });
+  // --verdict: the same shipped pairing at the FULL search budget (the measurement
+  // tier that caught the +20pp the fast-search screen had reported as flat).
+  const OUT_V = join(ROOT, 'tournament-logs', '_test-arm-verdict');
+  const rv = spawnSync(process.execPath, [
+    join(ROOT, 'scripts', 'tournament.mjs'), '--games', '1', '--seed', '9001',
+    '--max-rounds', '2', '--out', OUT_V, '--verdict',
+  ], { cwd: ROOT, encoding: 'utf8', env: { ...process.env } });
+  check('--verdict run completed', rv.status === 0, (rv.stderr || rv.stdout).slice(-300));
+  check('--verdict summary says full search and names the tier', /policies: Rebel=mcts Empire=mcts \[full search\] \[--verdict preset: full budget\]/.test(rv.stdout), rv.stdout.slice(0, 200));
+  const gv = JSON.parse(readFileSync(join(OUT_V, 'game-0001.json'), 'utf8'));
+  check('the game log records tier=verdict and fast=false', gv.policies?.tier === 'verdict' && gv.policies?.search?.fast === false, JSON.stringify(gv.policies));
+  for (const d of [OUT_R, OUT_R1, OUT_V]) rmSync(d, { recursive: true, force: true });
 }
 
 for (const d of [OUT_H, OUT_M]) rmSync(d, { recursive: true, force: true });

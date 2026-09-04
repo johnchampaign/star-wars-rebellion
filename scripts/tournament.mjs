@@ -22,7 +22,7 @@ const args = (() => {
   const a = process.argv.slice(2);
   // maxRounds defaults to 16 — the real length of the time track. (It was 8,
   // which force-ended healthy games early and inflated "max-rounds-reached".)
-  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16, expansion: false, rebelPolicy: null, empirePolicy: null, fastSearch: false, realistic: false, deterministic: false };
+  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16, expansion: false, rebelPolicy: null, empirePolicy: null, fastSearch: false, realistic: false, verdict: false, deterministic: false };
   for (let i = 0; i < a.length; i++) {
     const k = a[i];
     if (k === '--games') out.games = parseInt(a[++i], 10);
@@ -65,10 +65,18 @@ const args = (() => {
     // Explicit flags still win — `--realistic --empire-policy heuristic` gives
     // a one-sided arm — and the summary line says which preset was in force.
     else if (k === '--realistic') out.realistic = true;
+    else if (k === '--verdict') { out.realistic = true; out.verdict = true; }
   }
   if (out.realistic) {
     out.expansion = true;
-    out.fastSearch = true;
+    // MEASUREMENT TIERS (John, 2026-09-03). --realistic = SCREENING: the shipped
+    // pairing at fast-search (24 pulls, ~50s/game). --verdict = the same pairing
+    // at the FULL search budget the browser runs (64 pulls, 8s cap, ~4-6 min/game).
+    // Fast-search reported nine ranker wirings as flat that the full budget then
+    // measured at +20pp pooled (docs/ab-levers.md, SWR_RANKER) — so a screening
+    // result within about ±10pp is NOT a verdict; confirm it here before it goes
+    // in the ledger as one. The ledger tags each row [screen] or [verdict].
+    out.fastSearch = !out.verdict;
     // The SHIPPED pairing, per side — whatever PlayTab wires by default. Since
     // 2026-08-31 that is mcts on BOTH sides (MCTS_REBEL_ENABLED flipped on;
     // before that the Rebel was evalCommandStepDeep depth-2, exposed here as
@@ -156,7 +164,7 @@ const rebelPolicyName = await installPolicy('Rebel', args.rebelPolicy);
 const empirePolicyName = await installPolicy('Empire', args.empirePolicy);
 if (rebelPolicyName || empirePolicyName) {
   const prof = args.fastSearch ? ' [fast-search: budget 24 / horizon 2 — NOT the shipped strength]' : ' [full search]';
-  const preset = args.realistic ? ' [--realistic preset]' : '';
+  const preset = args.verdict ? ' [--verdict preset: full budget]' : args.realistic ? ' [--realistic preset]' : '';
   const det = args.deterministic ? ' [deterministic: seed reproduces the game]' : '';
   console.log(`policies: Rebel=${rebelPolicyName ?? 'heuristic'} Empire=${empirePolicyName ?? 'heuristic'}${prof}${preset}${det}`);
   if (mctsMod && !args.deterministic) {
@@ -351,6 +359,7 @@ for (let i = 0; i < args.games; i++) {
         ? { budget: Number(process.env.SWR_MCTS_BUDGET ?? 64), horizon: Number(process.env.SWR_MCTS_HORIZON ?? 4), fast: !!args.fastSearch }
         : null,
       realistic: !!args.realistic,
+      tier: args.verdict ? 'verdict' : (args.fastSearch ? 'screen' : 'full'),
       // Whether a seed reproduces this game. Analysis that pairs two arms by
       // seed is only valid when BOTH were run with this true.
       deterministic: !!args.deterministic,

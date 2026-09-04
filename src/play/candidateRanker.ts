@@ -28,13 +28,17 @@ export const RANKER_ENABLED: boolean = (() => {
   } catch { /* browser */ }
   try {
     const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
+    // DEFAULT ON since 2026-09-03 (John's call): at the browser's real search
+    // budget, ranker + final-by-visits measured Rebel 33% -> 53% pooled over
+    // n=60/arm (CI [+3,+37], McNemar p=0.036, replicated on fresh seeds).
+    // ?ranker=0 opts out (sticky); ?ranker=1 clears the opt-out.
     const q = g.location?.search ? new URLSearchParams(g.location.search).get('ranker') : null;
-    if (q === '1') g.localStorage?.setItem('swr-ranker-on', '1');
-    if (q === '0') g.localStorage?.removeItem('swr-ranker-on');
-    if (q === '1') return true;
-    if (g.localStorage?.getItem('swr-ranker-on') === '1') return true;
+    if (q === '0') g.localStorage?.setItem('swr-ranker-off', '1');
+    if (q === '1') g.localStorage?.removeItem('swr-ranker-off');
+    if (q === '0') return false;
+    if (g.localStorage?.getItem('swr-ranker-off') === '1') return false;
   } catch { /* no localStorage */ }
-  return false;
+  return true;
 })();
 
 function envNum(name: string, d: number): number {
@@ -82,10 +86,12 @@ export const RANKER_FINAL: RankerFinal = (() => {
     // The strongest measured configuration (2026-09-02, full budget) is visits.
     const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
     const q = g.location?.search ? new URLSearchParams(g.location.search).get('rankerfinal') : null;
-    if (q !== null) { if (q === '' || q === '0') g.localStorage?.removeItem('swr-ranker-final'); else g.localStorage?.setItem('swr-ranker-final', q); }
+    if (q !== null) { if (q === '') g.localStorage?.removeItem('swr-ranker-final'); else g.localStorage?.setItem('swr-ranker-final', q); }
     const f = parseFinal(q ?? g.localStorage?.getItem('swr-ranker-final')); if (f !== null) return f;
   } catch { /* no localStorage */ }
-  return 0;
+  // DEFAULT 'visits' since 2026-09-03 — the measured configuration (see
+  // RANKER_ENABLED). ?rankerfinal=0 restores argmax-mean (sticky).
+  return 'visits';
 })();
 // Runtime-settable for the worker (which cannot read the page's flags itself).
 let rankerFinal: RankerFinal = RANKER_FINAL;
@@ -102,6 +108,12 @@ export function getRankerFinal(): RankerFinal { return rankerFinal; }
 let rankerOn: boolean = RANKER_ENABLED;
 export function setRankerEnabled(v: boolean): void { rankerOn = v; }
 export function isRankerEnabled(): boolean { return rankerOn; }
+/** Does the shipped model cover this side? Width (K=4 generation) and the
+ *  ranker itself apply only where the model ranks — the Empire keeps the
+ *  legacy generator until it has its own validated weights. */
+export function rankerCoversSide(side: Side): boolean {
+  return rankerOn && (!W.sides || W.sides.includes(side));
+}
 
 let checkedNames: boolean | null = null;
 /** True when the shipped weights match this catalog's feature layout. */

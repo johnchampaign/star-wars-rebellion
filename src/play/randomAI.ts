@@ -35,7 +35,7 @@ import { COST_OBJECTIVES, objectiveProgress, objectiveConditionMet, objectiveRep
 // default → byte-identical to the pre-planner scorer.
 import { derivePlan, planSystemBonus, deployProximityScore, PLANNER_ENABLED, HUNT_OCCUPY_ENABLED, type StrikeFleetPlan } from './empirePlanner';
 import { log as logEvent } from '../engine/log';
-import { isRankerEnabled, rankCandidates, RANKER_ROLLOUT } from './candidateRanker';
+import { rankerCoversSide, rankCandidates, RANKER_ROLLOUT } from './candidateRanker';
 
 // AI randomness. Defaults to Math.random (live app), but the tournament
 // harness calls seedAI() so AI-vs-AI runs are reproducible per seed — without
@@ -130,7 +130,7 @@ const CONVERT_SUBJUGATED: boolean = (() => {
  *  misses are "right mission/leader, DIFFERENT target", because the generator
  *  emitted exactly one target each. MCTS can only choose among candidates, so
  *  this is a hard ceiling on the search regardless of budget. */
-function candK(): number {
+function candK(side: Side): number {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
     const v = Number(proc?.env?.SWR_CAND_K);
@@ -138,9 +138,33 @@ function candK(): number {
   } catch { /* browser: no process */ }
   // The imitation ranker was trained on K=4 generation and only pays off when
   // the human's move is actually generated (31% at K=1 vs 60% at K=4), so the
-  // ranker lever implies width unless SWR_CAND_K says otherwise.
-  return isRankerEnabled() ? 4 : 1;
+  // ranker implies width — but only for a side it actually ranks. Widening
+  // the Empire without a ranker to order the extra targets broke two Empire
+  // tripwires (a quiet Coruscant no longer bottom-ranked among duplicates;
+  // #639's distinct-target invariant) for no measured benefit.
+  return rankerCoversSide(side) ? 4 : 1;
 }
+
+/** Rapid Mobilization's hidden-base "massing" signal counts Empire ground
+ *  within ONE hop (default) instead of two (SWR_RM_GATE=0). See the RM block in
+ *  missionSituationalAdjust for the measurement. */
+/** Rebel Assignment base-value calibration toward the recorded humans
+ *  (Sabotage up, Hidden Fleet down); SWR_ASSIGN_CALIB=0 restores the old values. */
+const ASSIGN_CALIB: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_ASSIGN_CALIB === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
+const RM_GATE_ONE_HOP: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_RM_GATE === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
 
 const DEFEND_CORUSCANT: boolean = (() => {
   try {
@@ -365,12 +389,17 @@ function missionBaseValue(missionId: string, side: Side): number {
     'oversee-project': 8,
     'superlaser-online': 10,
     // Subjugation / sabotage
-    'sabotage': 6,
+    // MEASURED 2026-09-03 on 335 exact human-Rebel Assignment positions (the
+    // #555/#718 instrument, scripts/eval-assignment-agreement.mjs): recorded
+    // humans assign Sabotage in 83% of rounds, the heuristic in 71% on the same
+    // positions; Hidden Fleet human 2% vs heuristic 11%. SWR_ASSIGN_CALIB=0
+    // restores 6 / 8.
+    'sabotage': ASSIGN_CALIB ? 8 : 6,
   };
   const rebelValues: Record<string, number> = {
     // Defensive / base protection
     'hit-and-run': 9,
-    'hidden-fleet': 8,
+    'hidden-fleet': ASSIGN_CALIB ? 5 : 8,
     'demolition': 8,
     // Diplomacy / loyalty (user emphasized)
     'wookie-uprising': 12,
@@ -533,8 +562,17 @@ function missionSituationalAdjust(G: GameState, missionId: string, side: Side): 
       //    a preemptive relocation is reasonable, but not urgent (+2).
       //  - otherwise the hidden base is safe → don't burn the slot; the Rebel
       //    should spend it on loyalty/economy (-14, net negative → planner skips).
+      // MEASURED 2026-09-03 on 328 exact hidden-base positions from the archive
+      // (#555/#718, "plays Rapid Mobilization every turn"): the massing branch
+      // (>=2 Empire mobile ground within 2 hops) was TRUE in 67% of them — the
+      // Empire garrisons everywhere — so RM scored 11 and the planner assigned
+      // it in 66% of those rounds where the recorded humans assigned it in 15%.
+      // And the humans' RM rate barely tracks that count (12-21% from 0 to 6+
+      // units within 2 hops): a hidden base is treated as safe unless the
+      // threat is IMMINENT. So the massing signal is now ground within ONE hop.
+      // SWR_RM_GATE=0 restores the 2-hop branch for A/B.
       if (G.rebelBaseRevealed) adj += 20;
-      else if (empireProximityToBase(G) >= 2) adj += 2;
+      else if (RM_GATE_ONE_HOP ? empireProximityToBase(G, 1) >= 2 : empireProximityToBase(G) >= 2) adj += 2;
       else adj -= 14;
     }
     // ECONOMY (divergence harness): the AI Rebel gained loyalty 43% less per
@@ -598,12 +636,12 @@ function distFrom(map: Map<string, number>, target: SystemId): number {
 
 /** Count Empire units within 2 hops of the Rebel base. Used by Rebel AI
  *  to detect base threat. */
-function empireProximityToBase(G: GameState): number {
+function empireProximityToBase(G: GameState, hops = 2): number {
   if (!G.rebelBaseSystemId) return 0;
-  const dist = bfsDistances(G, G.rebelBaseSystemId, 2);
+  const dist = bfsDistances(G, G.rebelBaseSystemId, hops);
   let count = 0;
   for (const [sysId, d] of dist) {
-    if (d > 2) continue;
+    if (d > hops) continue;
     // Count only the Empire's mobile GROUND force — that's what captures a base.
     // Counting every nearby ship/fighter made the Rebel flag a "threat" almost
     // every turn (the Empire is everywhere), so it relocated its base constantly
@@ -2166,7 +2204,7 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
     // drops targets where the mission would do nothing (e.g. Draw Them Out with
     // an empty Rebel pool, Single Reactor Ignition with no Rebel ground or
     // markers) so the AI doesn't waste it (#276/#277).
-    const reveals = rankedRevealTargets(G, side, am.missionId, baseDist, candK());
+    const reveals = rankedRevealTargets(G, side, am.missionId, baseDist, candK(side));
     for (const reveal of reveals) {
       actions.push({
         kind: 'reveal',
@@ -3005,7 +3043,7 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
       // Add each eligible leader's next-best (K-1) systems, skipping pairs
       // already proposed, so the search can see the alternative destinations a
       // human picks 74% of the time it disagrees with the argmax.
-      const K = candK();
+      const K = candK(side);
       if (K > 1) {
         const have = new Set(actions.filter((a) => a.kind === 'activate').map((a) => `${(a as { leaderId: LeaderId }).leaderId}|${a.targetSystemId}`));
         for (const lid of eligible) {

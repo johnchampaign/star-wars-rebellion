@@ -11961,24 +11961,46 @@ const OPPONENT_SECRET_KINDS = new Set<string>([
 const COUNT_ONLY_KINDS = new Set<string>(['draw-action', 'draw-mission', 'draw-objective', 'draw-probe']);
 
 function LogPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
+  // #740 (John's option b): the log used to show only the newest 100 entries —
+  // less than one turn — so a player could not check what happened in an
+  // earlier battle ("did that Star Destroyer die, or retreat?"). The whole
+  // turnLog is retained; this pane now filters by turn and pages further back.
+  const [logTurn, setLogTurn] = useState<number | 'all'>('all');
+  const [logWindow, setLogWindow] = useState(100);
   // Pre-filter to count what's actually visible (so the header count
   // matches what the player sees).
-  const visible = G.turnLog.filter((e) => (
+  const visibleAll = G.turnLog.filter((e) => (
     OWNER_ONLY_KINDS.has(e.kind) ? e.side === humanSide : !ONSCREEN_HIDDEN_KINDS.has(e.kind)
   ));
+  const visible = logTurn === 'all' ? visibleAll : visibleAll.filter((e) => e.turn === logTurn);
+  const turns = Array.from(new Set(G.turnLog.map((e) => e.turn))).sort((a, b) => a - b);
+  const shown = visible.slice(-logWindow);
   return (
     <div style={{
       background: '#15171c', borderRadius: 4, padding: 12, marginTop: 12,
       maxHeight: 240, overflowY: 'auto',
     }}>
-      <div style={{ fontSize: 13, color: '#aaa', marginBottom: 6 }}>
-        Log ({visible.length} entries shown; {G.turnLog.length - visible.length} private hidden)
+      <div style={{ fontSize: 13, color: '#aaa', marginBottom: 6, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span>Log ({shown.length} of {visible.length} shown; {G.turnLog.length - visibleAll.length} private hidden)</span>
+        <select
+          value={String(logTurn)}
+          onChange={(ev) => { setLogTurn(ev.target.value === 'all' ? 'all' : Number(ev.target.value)); setLogWindow(100); }}
+          title="Show one turn's events, or all turns"
+          style={{ background: '#222', color: '#ccc', border: '1px solid #444', borderRadius: 3, fontSize: 11 }}
+        >
+          <option value="all">all turns</option>
+          {turns.map((t) => <option key={t} value={String(t)}>turn {t}</option>)}
+        </select>
+        {shown.length < visible.length && (
+          <button onClick={() => setLogWindow((w) => w + 200)} style={{ fontSize: 11, padding: '1px 6px', cursor: 'pointer' }} title="Show earlier entries">
+            show earlier ({visible.length - shown.length} more)
+          </button>
+        )}
       </div>
       <div style={{ fontFamily: 'monospace', fontSize: 11 }}>
-        {/* Newest-first: show the most recent 100 entries with the latest at
-            the top (player request — easier to see what just happened without
-            scrolling to the bottom). */}
-        {visible.slice(-100).reverse().map((entry, i) => {
+        {/* Newest-first (player request — easier to see what just happened
+            without scrolling to the bottom); page backwards with the button. */}
+        {shown.reverse().map((entry, i) => {
           const redacted = ONSCREEN_REDACTED_KINDS.has(entry.kind)
             || (!!entry.side && entry.side !== humanSide && OPPONENT_SECRET_KINDS.has(entry.kind));
           const countOnly = COUNT_ONLY_KINDS.has(entry.kind);
