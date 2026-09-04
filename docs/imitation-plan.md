@@ -304,6 +304,17 @@ closing regardless of what happens to #539.
    n=144); the Empire data stays in the dataset for step 3.
 2b. **(was: v2 replayer)** for human-Empire decisions (replay the AI Rebel's opening
    actions) → doubles the dataset and covers the side the MCTS plays.
+2c. **Empire Assignment calibration (2026-09-04, `SWR_EMPIRE_CALIB`).** The
+   assignment instrument regenerated over the whole archive gives **1,314 Rebel /
+   1,150 Empire exact Assignment positions**. The Empire planner agreed with the
+   humans at Jaccard 0.26 (Rebel 0.57): it over-assigned probe pulls (Gather
+   Intel 73% of rounds vs the humans' 24%), never valued the unlisted diplomacy
+   missions (Message from High Command: humans 74%, AI 11%), committed pool−3
+   leaders where humans keep ≈56% back, and gated Construct Death Star on a
+   factory RAW never requires. `calibrate-assignment-values.mjs` fits the base
+   values to the human marginals (split by game); with the scaled reserve and the
+   RAW DS gate: **0.26 → 0.34** (held-out 0.264 → 0.337). Ledger row has the
+   numbers; win-rate screen recorded there.
 3. **Plan labels** — design input measured 2026-09-02 on the 344 human-Empire
    games won by base capture (of 362 finished; 8 base-destroyed, 10 rep-time):
    nearest Imperial GROUND to the eventual base, by rounds before capture —

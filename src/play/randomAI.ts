@@ -158,6 +158,24 @@ const ASSIGN_CALIB: boolean = (() => {
   return true;
 })();
 
+/** Empire Assignment calibration toward the recorded humans (2026-09-04,
+ *  scripts/calibrate-assignment-values.mjs on 1150 exact human-Empire
+ *  Assignment positions, split by game): (1) mission base values fitted so the
+ *  planner's per-mission assignment rates match the humans' on the same
+ *  positions (holdout mission-set agreement 0.26 -> 0.33); (2) the leader
+ *  reserve scales with the pool — humans keep ~56% of their leaders for the
+ *  Command phase (pool 8: keep 4.5, the AI kept 3); (3) Construct Death Star is
+ *  gated on a Death Star Under Construction being in supply, not on owning a
+ *  factory (RAW: it goes straight onto the build queue). SWR_EMPIRE_CALIB=0
+ *  restores the old values, the flat reserve of 3, and the factory gate. */
+const EMPIRE_CALIB: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_EMPIRE_CALIB === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
 const RM_GATE_ONE_HOP: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
@@ -358,11 +376,47 @@ function aiRebelSetupDeploy(G: GameState): boolean {
 // phase to do exploration + invasion (was 2; 3 lets Empire run multiple
 // activations per turn even after recruiting picks up additional leaders).
 const EMPIRE_RESERVE_LEADERS = 3;
+/** Calibrated reserve: the recorded human Empires assign 1.3 / 2.3 / 2.8 / 3.3 /
+ *  3.5 / 4.0 leaders from pools of 4..9 — i.e. they keep about 56% back for
+ *  the Command phase, never fewer than 3 — where the flat reserve assigned
+ *  pool-3 (up to 5.3 from a pool of 9). */
+function empireReserveLeaders(pool: number): number {
+  return EMPIRE_CALIB ? Math.max(EMPIRE_RESERVE_LEADERS, Math.round(pool * 0.56)) : EMPIRE_RESERVE_LEADERS;
+}
 
 /** Static-ish strategic value of attempting a mission, before situational
  *  modifiers. Higher = AI cares more about this mission. */
+/** Fitted 2026-09-04 (see EMPIRE_CALIB). Human% / heuristic% on the same
+ *  positions after the fit are in docs/ab-levers.md; the big moves: Lure of the
+ *  Dark Side 9->17 (humans 53%, AI 16%), Gather Intel 15->8.6 (humans 24%, AI
+ *  73%), Message from High Command / Display of Power / Fear Will Keep Them in
+ *  Line up from the 5 default (humans 74% / 60% / 78%), Oversee Project 8->5
+ *  (humans 26%, AI 61%), Research & Development 13->8.7. Fitted at 0.1
+ *  resolution on purpose: rounding to halves tied nine missions at 8.5 and the
+ *  greedy planner's agreement fell from 0.345 to 0.247. Unlisted missions keep
+ *  the default 5. */
+const EMPIRE_VALUES_CALIBRATED: Record<string, number> = {
+  // probe pulls
+  'gather-intel': 8.6, 'research-and-development': 8.7, 'probe-droid-initiative': 5.1, 'long-range-probe': 5,
+  'homing-beacon': 5.9, 'intercept-transmissions': 5.7,
+  // captures / captive plays
+  'capture-rebel-operative': 8.6, 'detained': 4.7, 'carbon-freezing': 8.9, 'lure-of-the-dark-side': 17.2,
+  'make-an-example': 9.1, 'interrogation': 6.2, 'retrieve-the-plans': 7.4, 'break-their-will': 7.2,
+  'hunt-them-down': 5.2, 'secure-the-plans': 5.1, 'stolen-intel': 5.1,
+  // loyalty / diplomacy
+  'rule-by-fear': 8.7, 'trade-negotiations': 8.6, 'fear-will-keep-them-in-line': 8.7, 'message-from-high-command': 9.1,
+  'display-of-power': 8.7, 'imperial-propaganda': 7, 'discredit-rebellion': 4.9, 'subversion-new': 4.4,
+  'subversion-original': 5.1, 'planetary-conquest': 5.2, 'draw-them-out': 4.5, 'were-the-bait': 7.3,
+  'exploit-weakness': 6.7,
+  // projects / builds
+  'construct-death-star': 16.7, 'construct-factory': 7.1, 'construct-super-star-destroyer': 8.5, 'oversee-project': 5.1,
+  'superlaser-online': 11.3, 'interdictor-development': 8, 'deployment': 8.6, 'address-delays': 5.7,
+  'single-reactor-ignition': 5.9, 'double-our-efforts': 5, 'secret-weapons-research': 5.1, 'imperial-promotion': 4.9,
+  'imperial-might': 4.9,
+};
+
 function missionBaseValue(missionId: string, side: Side): number {
-  const empireValues: Record<string, number> = {
+  const empireValues: Record<string, number> = EMPIRE_CALIB ? EMPIRE_VALUES_CALIBRATED : {
     // Probe-card pulls — narrowing base. Bumped: human Empire wins
     // showed running probe-draw missions twice in T1 + T2 is critical
     // to set up subjugation-search later. These should beat almost
@@ -427,7 +481,18 @@ function missionBaseValue(missionId: string, side: Side): number {
     'rapid-mobilization': 9,
   };
   const table = side === 'Empire' ? empireValues : rebelValues;
+  const ov = MISSION_VALUE_OVERRIDE[side];
+  if (ov && missionId in ov) return ov[missionId];
   return table[missionId] ?? 5;
+}
+
+/** Calibration hook (scripts/calibrate-assignment-values.mjs): replace base
+ *  values per side at runtime so the planner can be re-run on the stored human
+ *  positions with a candidate table. Never set in the game. */
+const MISSION_VALUE_OVERRIDE: Record<Side, Record<string, number> | null> = { Empire: null, Rebel: null };
+export function __testMissionBaseValue(missionId: string, side: Side): number { return missionBaseValue(missionId, side); }
+export function __setMissionValueOverride(side: Side, table: Record<string, number> | null): void {
+  MISSION_VALUE_OVERRIDE[side] = table;
 }
 
 /** Skill-fit of a single leader for a single mission. Returns 0 if the
@@ -533,7 +598,13 @@ function missionSituationalAdjust(G: GameState, missionId: string, side: Side): 
       const empireFactories = Object.values(G.map.systems).some(
         (ss) => ss.units.some((u) => u.side === 'Empire' && u.typeId === 'construction-yard')
       );
-      if (!empireFactories) adj -= 8;
+      if (EMPIRE_CALIB) {
+        // RAW: "Gain 1 Death Star Under Construction in this system and place 1
+        // Death Star on space 3 of the build queue" — no factory involved. The
+        // only real precondition is a DSUC left in supply; the old factory gate
+        // skipped a mission the recorded humans assign in 39% of rounds held.
+        if (unitsAvailableInSupply(G, 'death-star-under-construction') < 1) adj -= 20;
+      } else if (!empireFactories) adj -= 8;
       // Already revealed once → don't re-reveal.
       const alreadyRevealed = G.turnLog.some((e) =>
         e.kind === 'reveal-mission' && e.payload?.missionId === 'construct-death-star'
@@ -1820,7 +1891,7 @@ function planAssignment(G: GameState, side: Side): Array<{ missionId: string; le
     const available = (f.leaderPool as LeaderId[]).filter((lid) => !usedLeaders.has(lid));
     if (available.length === 0) break;
     // Empire reserve: stop if we'd leave fewer than EMPIRE_RESERVE_LEADERS in pool.
-    if (side === 'Empire' && f.leaderPool.length - usedLeaders.size <= EMPIRE_RESERVE_LEADERS) break;
+    if (side === 'Empire' && f.leaderPool.length - usedLeaders.size <= empireReserveLeaders(f.leaderPool.length)) break;
     // REBEL STRIKE RESERVE (the alpha-strike prerequisite). Activating a system
     // needs a leader from the POOL, but the planner happily committed all 4 to
     // missions — measured leaderPool=0 / activate-actions=0 at Command, which

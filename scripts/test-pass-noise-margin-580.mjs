@@ -120,9 +120,26 @@ const raw = load('passivity-580.json');
 // than a pinned seed: any single seed's behaviour is coupled to everything the
 // heuristic does inside a rollout, but "some seed forfeits with the floor off,
 // none with it on" is the actual claim this file exists to pin.
+// 2026-09-04: SWR_EMPIRE_CALIB (the Empire's Assignment phase recalibrated to
+// the recorded humans — fewer leaders committed, Gather Intel no longer the
+// runaway top value) changed what the Empire does in every rollout round after
+// this one, and the tie collapsed again: 0/10 seeds forfeit with the floor off
+// at shipped defaults. Rather than lose the control, it runs in a child with
+// the pre-calibration Assignment (SWR_EMPIRE_CALIB=0) — the same move this file
+// made for #738. The claim it pins is unchanged: a search that rates pass above
+// every alternative on this board forfeits without the floor and does not with
+// it; the "floor on" arm below still runs at shipped defaults.
+if (process.env.PASS580_CHILD === '1') {
+  console.log(JSON.stringify({ rateOff: withPassZ('0', () => passRate(raw, 10)) }));
+  process.exit(0);
+}
 console.log('[ control: with the floor OFF, this board still forfeits sometimes ]');
 {
-  const rateOff = withPassZ('0', () => passRate(raw, 10));
+  const { execFileSync } = await import('node:child_process');
+  const child = JSON.parse(execFileSync(process.execPath, [fileURLToPath(import.meta.url)],
+    { env: { ...process.env, PASS580_CHILD: '1', SWR_EMPIRE_CALIB: '0' }, encoding: 'utf8' }).trim().split('\n').pop());
+  const rateOff = child.rateOff;
+  console.log('    (control arm runs with SWR_EMPIRE_CALIB=0 — see the note above)');
   console.log(`    floor off: passed in ${(100 * rateOff).toFixed(0)}% of 10 seeds`);
   check('at least one seed forfeits with the floor off (the bug still exists to fix)',
     rateOff > 0,

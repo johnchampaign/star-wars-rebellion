@@ -135,6 +135,14 @@ console.log('\n[ control: when only Palpatine can do the job, he still goes ]');
       if (G.catalog.leaders[p] && intelOf(G, p) === 0 && !keep.includes(p)) keep.push(p);
     }
     G.empire.leaderPool = keep;
+    // Since SWR_EMPIRE_CALIB (2026-09-04) the Empire keeps ~56% of its pool back
+    // for the Command phase and Gather Intel is no longer the runaway top value,
+    // so with the full starting hand the planner may legitimately spend its one
+    // or two slots on Rule by Fear / Capture with the padding leaders and hold
+    // Palpatine for activations — which is what the recorded humans do. The
+    // control's question is narrower: when the ONLY mission on offer needs him,
+    // is he still sent? So the hand is just Gather Intel here.
+    G.empire.missionHand = ['gather-intel'];
     if (!keep.includes('emperor-palpatine') || keep.length <= 3) continue;
     if (keep.some((lid) => lid !== 'emperor-palpatine' && intelOf(G, lid) > 0)) continue;
     tried++;
