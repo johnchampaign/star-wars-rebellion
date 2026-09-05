@@ -296,11 +296,15 @@ function missionExtraAttackerDice(G: GameState, missionId: string, targetSystemI
   return 0;
 }
 
-/** Does the mission's rulesText say "count all skill icons during this attempt"? */
-function missionCountsAllSkills(G: GameState, missionId: string): boolean {
+/** Does the mission's rulesText say to count ALL skill icons? Three cards do:
+ *  Interrogation Droid and Lure of the Dark Side ("Count all skill icons during
+ *  this attempt") and Make an Example ("Count all skill icons; the captured
+ *  leader is eliminated"). #744: the match used to require the "during this
+ *  attempt" tail, so Jabba's Make an Example rolled diplomacy only. */
+export function missionCountsAllSkills(G: GameState, missionId: string): boolean {
   const card = G.catalog.missions[missionId];
   if (!card) return false;
-  return card.rulesText.toLowerCase().includes('count all skill icons during this attempt');
+  return card.rulesText.toLowerCase().includes('count all skill icons');
 }
 
 const STARTING_HAND_LIMIT = 10;

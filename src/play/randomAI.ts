@@ -176,6 +176,26 @@ const EMPIRE_CALIB: boolean = (() => {
   return true;
 })();
 
+/** Assault sizing for the REVEALED base (#538/#539 follow-through, 2026-09-05).
+ *  Measured on the 43 real reveals: 21 heuristic assaults on the base, 17 of
+ *  them arrived with ONE ground unit (E2 vs R15-56 strength) and failed; the
+ *  captures came at ground-strength ratio >= 1.0 with ~10 units. Two causes:
+ *  (1) plannedMoveOrders loads fighters into carrier capacity BEFORE ground, so
+ *  the transports fill with TIEs and the troops stay behind; (2) the assault
+ *  bonus counted ground merely PRESENT at adjacent systems, not what the move
+ *  would deliver. With this on: ground loads first when the target is the
+ *  revealed base, and the assault bonus is gated on the DELIVERED ground
+ *  strength vs the Rebel ground at the base (>= 1.0 assault, >= 0.7 maybe,
+ *  else stage). SWR_ASSAULT_SIZING=1/0. Default OFF until the rig measures it. */
+const ASSAULT_SIZING: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_ASSAULT_SIZING === '1') return true;
+    if (proc?.env?.SWR_ASSAULT_SIZING === '0') return false;
+  } catch { /* browser: no process */ }
+  return false;
+})();
+
 const RM_GATE_ONE_HOP: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
@@ -502,8 +522,9 @@ function leaderSkillFit(G: GameState, leaderId: LeaderId, missionId: string): nu
   const card = G.catalog.missions[missionId];
   const leader = G.catalog.leaders[leaderId];
   if (!card || !leader || !card.skill) return 0;
-  // Mission counts-all-skills special-case (rare).
-  const countsAll = card.id === 'interrogation-droid' || card.id === 'lure-of-the-dark-side';
+  // Mission counts-all-skills special-case: same rule as the engine's attempt
+  // resolution (#744 — Make an Example counts all icons too).
+  const countsAll = card.rulesText.toLowerCase().includes('count all skill icons');
   if (countsAll) {
     const sk = leader.skills;
     return (sk.diplomacy ?? 0) + (sk.intel ?? 0) + (sk.specOps ?? 0) + (sk.logistics ?? 0);
@@ -2181,13 +2202,25 @@ function plannedMoveOrders(
     const fightersToBring: typeof mine = [];
     const groundToBring: typeof mine = [];
     let used = 0;
+    // Assault sizing: the revealed base is taken on the ground, so troops get
+    // the carrier capacity first and fighters ride on what is left.
+    const groundFirst = ASSAULT_SIZING && side === 'Empire'
+      && G.rebelBaseRevealed && targetSystemId === G.rebelBaseSystemId;
+    if (groundFirst) {
+      for (const u of groundCandidates) {
+        if (used >= capacity) break;
+        groundToBring.push(u); used++;
+      }
+    }
     for (const u of fighters) {
       if (used >= capacity) break;
       fightersToBring.push(u); used++;
     }
-    for (const u of groundCandidates) {
-      if (used >= capacity) break;
-      groundToBring.push(u); used++;
+    if (!groundFirst) {
+      for (const u of groundCandidates) {
+        if (used >= capacity) break;
+        groundToBring.push(u); used++;
+      }
     }
     // If no capacity-providing ships present, skip non-capital units
     // entirely (engine would reject). Could still send capital-ship-
@@ -2641,7 +2674,25 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
           const t = G.catalog.unitTypes[u.typeId];
           if (u.side === 'Rebel' && t?.theater === 'ground') rebelGroundDef++;
         }
-        if (empireGroundAvail >= rebelGroundDef + 2) ts += 28;   // clear ground edge → assault
+        if (ASSAULT_SIZING) {
+          // What the move DELIVERS (plannedUnits is the executor's own answer)
+          // plus what already stands there, in strength, against every Rebel
+          // ground unit the assault has to destroy (structures included).
+          const gStr = (u: { typeId: string }) => unitStrength(G, u);
+          let delivered = 0;
+          for (const u of sys.units) if (u.side === 'Empire' && isMobileGround(u.typeId)) delivered += gStr(u);
+          for (const u of plannedUnits) if (isMobileGround(u.typeId)) delivered += gStr(u);
+          let rebelGroundStr = 0;
+          for (const u of sys.units) {
+            const t = G.catalog.unitTypes[u.typeId];
+            if (u.side === 'Rebel' && t?.theater === 'ground') rebelGroundStr += gStr(u);
+          }
+          const ratio = rebelGroundStr > 0 ? delivered / rebelGroundStr : (delivered > 0 ? 99 : 0);
+          if (delivered === 0) ts -= 12;          // no ground → never gift the leader
+          else if (ratio >= 1.0) ts += 28;        // the force that captures
+          else if (ratio >= 0.7) ts += 14;        // close — a coin flip
+          else ts += 2;                           // undersized → stage instead
+        } else if (empireGroundAvail >= rebelGroundDef + 2) ts += 28;   // clear ground edge → assault
         else if (empireGroundAvail > rebelGroundDef) ts += 14;   // slight edge → maybe
         else if (empireGroundAvail >= 1) ts += 2;                // some ground, not enough → weak
         else ts -= 12;                                           // no ground → never gift the leader

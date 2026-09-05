@@ -107,7 +107,7 @@ console.log('[ the MCTS root is wired ]');
   check('argmax-mean remains the fallback final pick when no prior is present', /else alive\.sort\(\(x, y\) => y\.sum \/ y\.n - x\.sum \/ x\.n\)/.test(src));
   const pt = readFileSync(join(ROOT, 'src/play/PlayTab.tsx'), 'utf8');
   check('the worker is constructed in the literal form Vite can bundle', /new Worker\(new URL\('\.\/mctsWorker\.ts', import\.meta\.url\), \{ type: 'module' \}\)/.test(pt));
-  check('and the ranker flags travel in the search message', /flags: \{ ranker: RANKER_ENABLED, rankerFinal: RANKER_FINAL \}/.test(pt));
+  check('and the ranker flags travel in the search message', /flags: \{ ranker: RANKER_ENABLED, rankerFinal: RANKER_FINAL\b/.test(pt));
   const wk = readFileSync(join(ROOT, 'src/play/mctsWorker.ts'), 'utf8');
   check('the worker applies the forwarded flags before searching', /setRankerEnabled\(!!flags\?\.ranker\)/.test(wk) && /setRankerFinal\(flags\?\.rankerFinal/.test(wk));
   const ai = readFileSync(join(ROOT, 'src/play/randomAI.ts'), 'utf8');

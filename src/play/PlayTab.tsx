@@ -13,7 +13,7 @@ import { nextReportKind } from './reportQueue';
 import { DeployUndoStack, deployStepKey } from './deployUndoStack';
 import { PLANNER_ENABLED, HUNT_OCCUPY_ENABLED } from './empirePlanner';
 import { evalCommandStepDeep } from './boardEval';
-import { mctsCommandStep, commitMctsCommand, MCTS_ENABLED, MCTS_REBEL_ENABLED, type MctsSearchResult } from './mctsAI';
+import { mctsCommandStep, commitMctsCommand, MCTS_ENABLED, MCTS_REBEL_ENABLED, POSTREVEAL_HEURISTIC, type MctsSearchResult } from './mctsAI';
 import { recordPlay } from 'digital-boardgame-framework';
 import { TERRITORIES, territoryFill } from '../data/territories';
 import {
@@ -1213,7 +1213,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       }
       console.log('[mcts-bridge] search start', key);
       mctsPendingRef.current = { key, done: false, result: null, t0: Date.now() };
-      w.postMessage({ id: ++mctsReqIdRef.current, codec: encode(g), side: s, flags: { ranker: RANKER_ENABLED, rankerFinal: RANKER_FINAL } });
+      w.postMessage({ id: ++mctsReqIdRef.current, codec: encode(g), side: s, flags: { ranker: RANKER_ENABLED, rankerFinal: RANKER_FINAL, postReveal: POSTREVEAL_HEURISTIC } });
       aiWaitingRef.current = true;
       aiWaitingSinceRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
       return true; // "thinking" — loop pauses until the worker replies

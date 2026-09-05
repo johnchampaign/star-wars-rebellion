@@ -12,7 +12,7 @@
 import { loadAllForEngine } from '../data/loadAssets';
 import { buildCatalog } from '../engine/setup';
 import { decode } from '../engine/codec';
-import { searchMctsCommand } from './mctsAI';
+import { searchMctsCommand, setPostRevealHeuristic } from './mctsAI';
 import { setRankerEnabled, setRankerFinal } from './candidateRanker';
 import type { GameCatalog, Side } from '../engine/types';
 
@@ -20,13 +20,14 @@ let catalogPromise: Promise<GameCatalog> | null = null;
 const getCatalog = (): Promise<GameCatalog> =>
   (catalogPromise ??= loadAllForEngine().then((d) => buildCatalog(d)));
 
-interface SearchRequest { id: number; codec: string; side: Side; flags?: { ranker?: boolean; rankerFinal?: number | 'visits' } }
+interface SearchRequest { id: number; codec: string; side: Side; flags?: { ranker?: boolean; rankerFinal?: number | 'visits'; postReveal?: boolean } }
 
 self.onmessage = async (ev: MessageEvent<SearchRequest>) => {
   const { id, codec, side, flags } = ev.data;
   try {
     setRankerEnabled(!!flags?.ranker); // main-thread flags the worker cannot read itself
     setRankerFinal(flags?.rankerFinal ?? 0);
+    setPostRevealHeuristic(!!flags?.postReveal);
     const catalog = await getCatalog();
     const G = decode(codec, catalog);
     const result = searchMctsCommand(G, side);

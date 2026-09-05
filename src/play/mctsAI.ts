@@ -240,6 +240,35 @@ export function baseCandidates(G: GameState): SystemId[] {
 // Side lesson baked into the bench: single-run replay counts swing 5-13 on
 // seed alone — always compare multi-seed (--ai-seed).
 // ---------------------------------------------------------------------------
+/** Post-reveal policy switch (#538/#539 follow-through, 2026-09-05). On the 43
+ *  real base reveals in the archive the plain heuristic Empire converted 12/43
+ *  and the MCTS Empire 7/43 (paired 6-1 against the search). With this on, the
+ *  Empire's Command decisions go to the heuristic once the base is revealed —
+ *  searchMctsCommand declines, and every caller (harness, main thread, worker
+ *  bridge) already falls back to the heuristic on a declined search.
+ *  SWR_POSTREVEAL_HEURISTIC=1/0 in scripts; ?postreveal=1/0 in the browser
+ *  (sticky). Default OFF until the rig measures it. */
+export const POSTREVEAL_HEURISTIC: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_POSTREVEAL_HEURISTIC === '1') return true;
+    if (proc?.env?.SWR_POSTREVEAL_HEURISTIC === '0') return false;
+  } catch { /* browser */ }
+  try {
+    const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
+    const q = g.location?.search ? new URLSearchParams(g.location.search).get('postreveal') : null;
+    if (q === '1') g.localStorage?.setItem('swr-postreveal-heuristic', '1');
+    if (q === '0') g.localStorage?.removeItem('swr-postreveal-heuristic');
+    if (q === '1') return true;
+    if (g.localStorage?.getItem('swr-postreveal-heuristic') === '1') return true;
+  } catch { /* no localStorage */ }
+  return false;
+})();
+let postRevealHeuristic: boolean = POSTREVEAL_HEURISTIC;
+/** Worker-side setter (the worker cannot read the main thread's query/localStorage). */
+export function setPostRevealHeuristic(on: boolean): void { postRevealHeuristic = on; }
+export function isPostRevealHeuristic(): boolean { return postRevealHeuristic; }
+
 const BELIEF_ENABLED: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
@@ -446,6 +475,8 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
   if (searching) return null;
   if (G.isGameOver || G.phase !== 'Command' || G.currentPlayer !== side) return null;
   if (G.pendingChoice || G.pendingMission || G.pendingCombat) return null;
+  // Post-reveal switch: a declined search is the heuristic's turn (see above).
+  if (postRevealHeuristic && side === 'Empire' && G.rebelBaseRevealed) return null;
 
   const conf = { ...defaultConfig(), ...cfg };
   const t0 = Date.now();
