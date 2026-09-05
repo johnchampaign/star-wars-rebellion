@@ -82,6 +82,26 @@ function missionDieScore(face: string): number {
  *    Special during mission = 2 successes.
  *    Blank = 0.
  *  Per RR p.6 Component Limitations: 5 red + 5 black max per mission. */
+/** The colour pool a mission roll of `n` dice (of which `minor` come from
+ *  minor skill icons) will use, in roll order: red, then black, then green.
+ *  Split out of rollMissionDice because the pre-roll One In A Million offer
+ *  (#564) has to show the pool BEFORE any die is rolled — this consumes no
+ *  RNG, so computing it never perturbs the roll that follows. */
+function missionDiceColors(
+  G: GameState, n: number, minor: number,
+): ('red' | 'black' | 'green')[] {
+  const minorRolled = G.expansion?.enabled ? minor : 0;
+  const greenCount = Math.min(minorRolled, 3);
+  const major = Math.max(0, n - minorRolled);
+  const red = Math.min(major, 5);
+  const black = Math.min(Math.max(0, major - 5), 5);
+  const colors: ('red' | 'black' | 'green')[] = [];
+  for (let i = 0; i < red; i++) colors.push('red');
+  for (let i = 0; i < black; i++) colors.push('black');
+  for (let i = 0; i < greenCount; i++) colors.push('green');
+  return colors;
+}
+
 function rollMissionDice(
   G: GameState, n: number, minor: number, _side: Side, _systemId: SystemId,
 ): { successes: number; faces: string[]; colors: ('red' | 'black' | 'green')[] } {
@@ -95,25 +115,9 @@ function rollMissionDice(
   // inflating the major-die count). The red+black split covers only the
   // non-minor dice: the true major icons plus any extra-die bonuses
   // (e.g. Subversion).
-  const minorRolled = G.expansion?.enabled ? minor : 0;
-  const greenCount = Math.min(minorRolled, 3);
-  const major = Math.max(0, n - minorRolled);
-  const red = Math.min(major, 5);
-  const black = Math.min(Math.max(0, major - 5), 5);
+  const colors = missionDiceColors(G, n, minor);
   const faces: string[] = [];
-  const colors: ('red' | 'black' | 'green')[] = [];
-  for (let i = 0; i < red; i++) {
-    const r = rollDie(G.rng, 'red');
-    faces.push(r.face); colors.push('red');
-  }
-  for (let i = 0; i < black; i++) {
-    const r = rollDie(G.rng, 'black');
-    faces.push(r.face); colors.push('black');
-  }
-  for (let i = 0; i < greenCount; i++) {
-    const r = rollDie(G.rng, 'green');
-    faces.push(r.face); colors.push('green');
-  }
+  for (const color of colors) faces.push(rollDie(G.rng, color).face);
   // Yoda ring is no longer auto-applied here. Mission-side Yoda is offered
   // as a player choice in resolveOpposition (mirrors the combat-side
   // YodaReroll pause). Combat-side Yoda is handled in combat.ts.
@@ -1803,8 +1807,21 @@ function finishOpposition(G: GameState, pm: MissionResolution, subversionBonus: 
     // RoE Subversion adds 1 die to the opposition. Counted as a major die
     // (red/black per the standard split).
     const opposerDice = oppSkillSplit.major + oppSkillSplit.minor + subversionBonus;
+    // One In A Million pre-roll pause (#564, re-reported as #743). The card
+    // replaces up to two of the Rebel's dice with faces of their choice
+    // INSTEAD of rolling them, so the decision has to be offered before any
+    // die exists. Mirrors the Wookie Guardian pause above: the resolver
+    // stashes the placed dice and re-enters finishOpposition.
+    if (maybePostMissionOneInAMillion(G, pm, c.opposerSide, subversionBonus, {
+      attackerDice, attMinor: attSkillSplit.minor,
+      opposerDice, oppMinor: oppSkillSplit.minor,
+    })) {
+      return { ok: true };
+    }
     const att = rollMissionDice(G, attackerDice, attSkillSplit.minor, pm.resolverSide, pm.targetSystemId);
     const opp = rollMissionDice(G, opposerDice, oppSkillSplit.minor, c.opposerSide, pm.targetSystemId);
+    // Place the dice the Rebel chose not to roll (One In A Million).
+    applyMissionOimPicks(G, pm, c.opposerSide, att, opp);
     const portrait = portraitBonus(G, pm.missionId, pm.leaderIds as LeaderId[]);
 
     // R2-D2 mission-flip pause point. If Empire rolled (resolver OR opposer)
@@ -2074,41 +2091,99 @@ function maybePostMissionR2D2(G: GameState, pm: MissionResolution): boolean {
   return true;
 }
 
-/** Post the mission-context One In A Million choice if eligible. Eligibility:
- *  Luke or Wedge is on the Rebel side, the card is in the Rebel's hand, AND
- *  the Rebel-side roll has at least one die to set. */
-function maybePostMissionOneInAMillion(G: GameState, pm: MissionResolution): boolean {
-  if (!G.rebel.actionHand.includes('one-in-a-million')) return false;
-  // Find which side is Rebel.
-  const rebelRole: 'attacker' | 'opposer' = pm.resolverSide === 'Rebel' ? 'attacker' : 'opposer';
-  // Check Luke or Wedge participation. For the attacker, use pm.leaderIds.
-  // For the opposer, look up leaders at the target system + check if pool
-  // opposer (sent during OpposeMission) is luke/wedge — those went into pm
-  // via... hmm, we don't have an explicit "opposerLeaderIds" on pm.
-  // Use a simpler check: Luke or Wedge present in Rebel's leadersOnBoard at
-  // the target system. (For attacker, they'd already be there too.)
+/** Which side of a mission roll the Rebel is on, or null if neither
+ *  (Rebel-vs-Rebel can't happen, but the roll is written symmetrically). */
+function rebelRoleInMissionRoll(
+  pm: MissionResolution, opposerSide: Side,
+): 'attacker' | 'opposer' | null {
+  if (pm.resolverSide === 'Rebel') return 'attacker';
+  if (opposerSide === 'Rebel') return 'opposer';
+  return null;
+}
+
+/** RR p.2 (Action Cards): "Action cards used during a mission or combat can
+ *  only be used if one of the leaders shown on the card is already in the
+ *  system in which the mission or combat is occurring." One In A Million
+ *  shows Luke and Wedge. */
+function oimLeaderInMission(
+  G: GameState, pm: MissionResolution, rebelRole: 'attacker' | 'opposer',
+): boolean {
+  const isOim = (l: string) =>
+    l === 'luke-skywalker' || l === 'luke-skywalker-jedi' || l === 'wedge-antilles';
   const here = G.rebel.leadersOnBoard[pm.targetSystemId] ?? [];
-  const lukeOrWedgeHere = here.some((l) => l === 'luke-skywalker' || l === 'luke-skywalker-jedi' || l === 'wedge-antilles');
-  const lukeOrWedgeAttacker = rebelRole === 'attacker'
-    && (pm.leaderIds as LeaderId[]).some((l) => l === 'luke-skywalker' || l === 'luke-skywalker-jedi' || l === 'wedge-antilles');
-  if (!lukeOrWedgeHere && !lukeOrWedgeAttacker) return false;
-  const stash = pm.r2d2Pending;
-  if (!stash) return false;
-  const faces = rebelRole === 'attacker' ? stash.attFaces : stash.oppFaces;
-  const colors = rebelRole === 'attacker' ? stash.attColors : stash.oppColors;
-  if (faces.length === 0) return false;
+  if (here.some(isOim)) return true;
+  return rebelRole === 'attacker' && (pm.leaderIds as LeaderId[]).some(isOim);
+}
+
+/** Post the mission-context One In A Million choice if eligible, BEFORE the
+ *  dice are rolled (#564: "instead of rolling up to two dice, place them on
+ *  the table showing results of your choice" — the decision is made blind).
+ *  Eligibility: the card is in the Rebel's hand, Luke or Wedge is in the
+ *  mission system, and the Rebel's side of the roll has at least one die.
+ *
+ *  Until #743 this offer existed only as a POST-roll window reachable from
+ *  the Yoda / R2-D2 continuation paths, so on an ordinary opposed roll — no
+ *  ring, no astromech — the card was never offered at all. */
+function maybePostMissionOneInAMillion(
+  G: GameState, pm: MissionResolution, opposerSide: Side, subversionBonus: number,
+  pool: { attackerDice: number; attMinor: number; opposerDice: number; oppMinor: number },
+): boolean {
+  if (pm.oimOffered) return false;
+  if (!G.rebel.actionHand.includes('one-in-a-million')) return false;
+  const rebelRole = rebelRoleInMissionRoll(pm, opposerSide);
+  if (!rebelRole) return false;
+  if (!oimLeaderInMission(G, pm, rebelRole)) return false;
+  const colors = rebelRole === 'attacker'
+    ? missionDiceColors(G, pool.attackerDice, pool.attMinor)
+    : missionDiceColors(G, pool.opposerDice, pool.oppMinor);
+  if (colors.length === 0) return false;
+  pm.oimOffered = true;
+  // Stash so the resolver can resume the roll (same contract as the Wookie
+  // Guardian pause, which recomputes everything else from pm).
+  pm.oppositionSubversionBonus = subversionBonus;
   G.pendingChoice = {
     kind: 'OneInAMillionOffer',
     side: 'Rebel',
     context: 'mission',
+    preRoll: true,
     rebelRoleInRoll: rebelRole,
-    faces: [...faces],
+    // Placeholders — the dice have not been rolled. Renderers key on preRoll.
+    faces: colors.map(() => 'blank'),
     colors: [...colors],
   };
   log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-    kind: 'OneInAMillionOffer', context: 'mission', rebelRole, dice: faces.length,
+    kind: 'OneInAMillionOffer', context: 'mission', preRoll: true,
+    rebelRole, dice: colors.length,
   }});
   return true;
+}
+
+/** Overwrite the dice the Rebel chose to PLACE rather than roll. Called right
+ *  after the roll on the re-entry pass; a no-op when the card wasn't played. */
+function applyMissionOimPicks(
+  G: GameState, pm: MissionResolution, opposerSide: Side,
+  att: { successes: number; faces: string[] },
+  opp: { successes: number; faces: string[] },
+): void {
+  const picks = pm.oimPicks;
+  if (!picks || picks.length === 0) return;
+  const rebelRole = rebelRoleInMissionRoll(pm, opposerSide);
+  if (!rebelRole) return;
+  const roll = rebelRole === 'attacker' ? att : opp;
+  for (const p of picks) {
+    if (p.index >= 0 && p.index < roll.faces.length) roll.faces[p.index] = p.face;
+  }
+  roll.successes = successesFromFaces(roll.faces);
+  log(G, { kind: 'one-in-a-million-applied', side: 'Rebel', payload: {
+    context: 'mission', rebelRole, picks,
+    explanation: `One In A Million — placed ${picks.length} of the Rebel's mission dice ` +
+                 `instead of rolling them.`,
+  }});
+  noteIntervention(G, pm,
+    `Rebel played One In A Million: placed ${picks.length} of the ` +
+    `${rebelRole === 'attacker' ? 'attacker' : 'opposer'}'s dice instead of rolling them.`,
+  );
+  pm.oimPicks = undefined;
 }
 
 /** Continue mission resolution from the stash. Called by both Yoda and
@@ -2122,8 +2197,6 @@ function continueMissionFromStash(G: GameState, pm: MissionResolution): void {
   // Try R2-D2 (won't post if Yoda already used; the R2-D2 path checks
   // its own conditions).
   if (maybePostMissionR2D2(G, pm)) return;
-  // One In A Million: Rebel may set up to 2 dice faces.
-  if (maybePostMissionOneInAMillion(G, pm)) return;
   // All pause points cleared. Finalize the roll.
   const c = { skill: G.catalog.missions[pm.missionId]?.skill ?? '', opposerSide: pm.resolverSide === 'Rebel' ? 'Empire' as Side : 'Rebel' as Side };
   finalizeMissionRoll(
@@ -2229,8 +2302,6 @@ export function resolveR2D2MissionFlip(G: GameState, flipIndex: number | null): 
     log(G, { kind: 'r2d2-skipped', side: 'Rebel', payload: { context: 'mission', systemId: pm.targetSystemId } });
   }
   G.pendingChoice = undefined;
-  // After R2-D2, check One In A Million before finalizing.
-  if (maybePostMissionOneInAMillion(G, pm)) return { ok: true };
   const c = { skill: G.catalog.missions[pm.missionId]?.skill ?? '', opposerSide: pm.resolverSide === 'Rebel' ? 'Empire' as Side : 'Rebel' as Side };
   finalizeMissionRoll(
     G, pm, c, c.skill,
@@ -3616,83 +3687,43 @@ function continueAfterRingTrigger(G: GameState, pm: MissionResolution): void {
   }
 }
 
-/** One In A Million (mission context): Rebel sets up to 2 dice faces to
- *  results of choice. `picks` is an array of { index, face } objects;
- *  empty array = skip without discarding. */
+/** One In A Million (mission context, pre-roll): the Rebel places up to 2 of
+ *  their own mission dice showing faces of their choice INSTEAD of rolling
+ *  them. `picks` is an array of { index, face }; an empty array declines and
+ *  keeps the card. Either way the roll then proceeds — this resumes
+ *  finishOpposition, which rolls the pool and applies the placed dice. */
 export function resolveOneInAMillionMission(
   G: GameState, picks: { index: number; face: string }[]
 ): { ok: boolean; reason?: string } {
   const pc = G.pendingChoice;
   if (!pc || pc.kind !== 'OneInAMillionOffer' || pc.context !== 'mission') return { ok: false, reason: 'no-pending' };
   const pm = G.pendingMission;
-  if (!pm || !pm.r2d2Pending) return { ok: false, reason: 'no-stash' };
-  const stash = pm.r2d2Pending;
+  if (!pm) return { ok: false, reason: 'no-mission' };
   if (picks.length > 2) return { ok: false, reason: 'too-many-picks' };
   const validFaces = new Set(['blank', 'hit', 'direct-hit']);
+  const seen = new Set<number>();
+  for (const p of picks) {
+    if (seen.has(p.index)) return { ok: false, reason: 'dup-index' };
+    seen.add(p.index);
+    if (!validFaces.has(p.face)) return { ok: false, reason: `bad-face:${p.face}` };
+    if (p.index < 0 || p.index >= pc.colors.length) return { ok: false, reason: `bad-index:${p.index}` };
+  }
   if (picks.length > 0) {
-    const seen = new Set<number>();
-    for (const p of picks) {
-      if (seen.has(p.index)) return { ok: false, reason: 'dup-index' };
-      seen.add(p.index);
-      if (!validFaces.has(p.face)) return { ok: false, reason: `bad-face:${p.face}` };
-    }
-    const facesArr = pc.rebelRoleInRoll === 'attacker' ? stash.attFaces : stash.oppFaces;
-    for (const p of picks) {
-      if (p.index < 0 || p.index >= facesArr.length) return { ok: false, reason: `bad-index:${p.index}` };
-    }
-    // Apply.
-    for (const p of picks) facesArr[p.index] = p.face;
-    if (pc.rebelRoleInRoll === 'attacker') {
-      stash.attSuccesses = successesFromFaces(stash.attFaces);
-    } else {
-      stash.oppSuccesses = successesFromFaces(stash.oppFaces);
-    }
-    // Discard the card.
+    // Spend the card now — the placement is committed before the dice exist,
+    // so there is no "see the roll, then decide" window.
     const i = G.rebel.actionHand.indexOf('one-in-a-million');
     if (i >= 0) {
       G.rebel.actionHand.splice(i, 1);
       G.rebel.actionDiscard.push('one-in-a-million');
     }
-    log(G, { kind: 'one-in-a-million-applied', side: 'Rebel', payload: {
-      context: 'mission', rebelRole: pc.rebelRoleInRoll, picks,
-      explanation: `One In A Million — set ${picks.length} dice to chosen faces.`,
-    }});
-    noteIntervention(G, pm,
-      `Rebel played One In A Million: reset ${picks.length} of the ${pc.rebelRoleInRoll === 'attacker' ? 'attacker' : 'opposer'}'s dice to chosen faces.`,
-    );
+    pm.oimPicks = picks.map((p) => ({ index: p.index, face: p.face }));
   } else {
+    pm.oimPicks = undefined;
     log(G, { kind: 'one-in-a-million-skipped', side: 'Rebel', payload: { context: 'mission' } });
   }
   G.pendingChoice = undefined;
-  // Finalize the roll.
-  const c = { skill: G.catalog.missions[pm.missionId]?.skill ?? '', opposerSide: pm.resolverSide === 'Rebel' ? 'Empire' as Side : 'Rebel' as Side };
-  finalizeMissionRoll(
-    G, pm, c, c.skill,
-    stash.attDice, stash.opposerDice,
-    stash.attFaces, stash.oppFaces,
-    stash.attSuccesses, stash.oppSuccesses,
-    stash.portrait, stash.oppLeaderIds,
-    stash.attColors, stash.oppColors,
-  );
-  pm.r2d2Pending = undefined;
-  if (maybePostMissionRingTrigger(G, pm)) return { ok: true };
-  if (pm.stage === 'effect') {
-    runMissionEffect(G, pm.resolverSide, pm.missionId, pm.targetSystemId, pm.leaderIds as LeaderId[], pm.targetLeaderId, pm.successMargin);
-    if (G.pendingChoice) return { ok: true };
-    discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
-    G.pendingMission = undefined;
-    if (!G.isGameOver) advanceCommandTurn(G);
-  } else if (pm.stage === 'failed') {
-    // Post Bounty fires on a failed Rebel mission regardless of which path
-    // finalized the failure (opposed roll / reroll / ring trigger) (#437).
-    if (maybePostBountyOffer(G, pm.resolverSide, pm.missionId, pm.leaderIds as LeaderId[])) {
-      return { ok: true };
-    }
-    discardOrReturnMission(G, pm.resolverSide, pm.missionId, pm.stage);
-    G.pendingMission = undefined;
-    if (!G.isGameOver) advanceCommandTurn(G);
-  }
-  return { ok: true };
+  // Resume the opposition roll. pm.oimOffered stops it re-asking.
+  return finishOpposition(G, pm, pm.oppositionSubversionBonus ?? 0);
 }
 
 /** Noble Sacrifice: Rebel chooses to eliminate captured Obi-Wan for +1 rep,

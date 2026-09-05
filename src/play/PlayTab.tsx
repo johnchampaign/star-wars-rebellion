@@ -14303,7 +14303,7 @@ function DetainedTargetPickModal({
 function OneInAMillionMissionModal({
   choice, onSubmit,
 }: {
-  choice: { faces: string[]; colors: readonly string[]; rebelRoleInRoll: 'attacker' | 'opposer' };
+  choice: { faces: string[]; colors: readonly string[]; rebelRoleInRoll: 'attacker' | 'opposer'; preRoll?: boolean };
   onSubmit: (picks: { index: number; face: string }[]) => void;
 }) {
   const [picks, setPicks] = useState<Map<number, string>>(new Map());
@@ -14332,9 +14332,22 @@ function OneInAMillionMissionModal({
         padding: 20, maxWidth: 580, width: '92%',
         boxShadow: '0 8px 32px rgba(0,0,0,0.7)',
       }}>
-        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>One In A Million — set dice</h3>
+        <h3 style={{ color: '#aae0ff', marginTop: 0 }}>
+          One In A Million — {choice.preRoll ? 'place dice' : 'set dice'}
+        </h3>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
-          Discard One In A Million to set up to 2 of your dice ({choice.rebelRoleInRoll}) to faces of your choice.
+          {choice.preRoll ? (
+            <>
+              You're about to roll {choice.colors.length} {choice.colors.length === 1 ? 'die' : 'dice'}
+              {' '}as the {choice.rebelRoleInRoll}. Play the card now to <b>place up to 2 of them</b>{' '}
+              showing results of your choice <i>instead of</i> rolling them; the rest roll normally.
+              <div style={{ color: '#888', fontSize: 11, marginTop: 4 }}>
+                ⚠ One-time use. You decide before seeing the roll — that's the card.
+              </div>
+            </>
+          ) : (
+            <>Discard One In A Million to set up to 2 of your dice ({choice.rebelRoleInRoll}) to faces of your choice.</>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
           {choice.faces.map((face, i) => {
@@ -14344,19 +14357,31 @@ function OneInAMillionMissionModal({
                 background: '#0c0d10', border: `2px solid ${overridden ? '#80dc78' : '#2a2d34'}`,
                 borderRadius: 4, padding: '4px 6px', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11,
               }}>
-                <div style={{
-                  width: 22, height: 22, background: dieBg(choice.colors[i]),
-                  border: '1px solid #000', borderRadius: 3,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 14, fontWeight: 700, color: face === 'blank' ? '#555' : '#fff',
-                }}>
-                  {dieGlyph(face)}
-                </div>
+                {choice.preRoll ? (
+                  // Unrolled: show the die COLOUR only, no face — the whole
+                  // point is that the Rebel hasn't seen a result yet.
+                  <div title="not yet rolled" style={{
+                    width: 22, height: 22, borderRadius: 3, border: '1px dashed #777',
+                    background: choice.colors[i] === 'red' ? '#5a2020'
+                      : choice.colors[i] === 'green' ? '#1f4a24' : '#222',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    color: '#999', fontSize: 12,
+                  }}>?</div>
+                ) : (
+                  <div style={{
+                    width: 22, height: 22, background: dieBg(choice.colors[i]),
+                    border: '1px solid #000', borderRadius: 3,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 14, fontWeight: 700, color: face === 'blank' ? '#555' : '#fff',
+                  }}>
+                    {dieGlyph(face)}
+                  </div>
+                )}
                 <span style={{ color: '#888' }}>→</span>
                 <select value={overridden ?? ''} onChange={(e) => setFace(i, e.target.value || null)}
                   style={{ background: '#0c0d10', color: '#e8e8ea', border: '1px solid #555', fontSize: 11 }}
                 >
-                  <option value="">(keep)</option>
+                  <option value="">{choice.preRoll ? '(roll it)' : '(keep)'}</option>
                   <option value="blank">blank</option>
                   <option value="hit">hit ✓</option>
                   <option value="direct-hit">direct-hit ✶</option>

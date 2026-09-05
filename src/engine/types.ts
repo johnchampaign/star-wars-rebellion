@@ -2115,6 +2115,12 @@ export type MissionResolution = {
   // resume the opposition roll (finishOpposition).
   wookieOffered?: boolean;
   oppositionSubversionBonus?: number;
+  // One In A Million (pre-roll, #564/#743): set once the offer has been made
+  // for this mission so a resumed opposition doesn't re-ask. `oimPicks` holds
+  // the dice the Rebel chose to PLACE instead of rolling; finishOpposition
+  // applies them to the Rebel side of the roll on re-entry.
+  oimOffered?: boolean;
+  oimPicks?: { index: number; face: string }[];
   /** Human-readable notes accumulated during reveal/oppose for response-card
    *  triggers (Undercover, Blindside, Wookie Guardian, etc.). Copied into the
    *  MissionResolutionReport when the report is pushed. */

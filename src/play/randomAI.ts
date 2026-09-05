@@ -3777,6 +3777,17 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       const picks = haveHit ? [] : [{ index: indexed[0].i, face: 'direct-hit' }];
       return combat.resolveDsPlansOneInAMillion(G, picks).ok;
     }
+    if (c.preRoll && c.context === 'mission') {
+      // PRE-ROLL mission (#743): unrolled dice, so the decision is blind. A
+      // one-shot card is worth spending on a thin roll — with 2 dice or fewer
+      // two placed direct-hits turn a coin flip into a near-certain success.
+      // On a fat pool the roll is likely to win anyway; keep the card.
+      const n = Math.min(2, c.colors.length);
+      const picks = c.rebelRoleInRoll === 'attacker' && c.colors.length <= 2
+        ? Array.from({ length: n }, (_, i) => ({ index: i, face: 'direct-hit' }))
+        : [];
+      return phases.resolveOneInAMillionMission(G, picks).ok;
+    }
     if (c.preRoll) {
       // PRE-ROLL (#564): the dice are unrolled, so ranking faces is meaningless.
       // Blind, the card is worth its most on the roll that matters most —
