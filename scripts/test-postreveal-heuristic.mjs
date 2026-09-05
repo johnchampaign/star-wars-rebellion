@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHILD = process.env.PR_CHILD === '1';
-if (!CHILD) process.env.SWR_POSTREVEAL_HEURISTIC = '1';
+if (!CHILD) process.env.SWR_POSTREVEAL_HEURISTIC = '1'; // explicit, so the test does not depend on the default
 process.env.SWR_MCTS_BUDGET = '4'; process.env.SWR_MCTS_MS = '600000';
 const { register } = await import('tsx/esm/api'); register();
 const { createGame } = await import('../src/engine/setup.ts');

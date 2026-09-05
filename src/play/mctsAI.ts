@@ -246,8 +246,11 @@ export function baseCandidates(G: GameState): SystemId[] {
  *  Empire's Command decisions go to the heuristic once the base is revealed —
  *  searchMctsCommand declines, and every caller (harness, main thread, worker
  *  bridge) already falls back to the heuristic on a declined search.
- *  SWR_POSTREVEAL_HEURISTIC=1/0 in scripts; ?postreveal=1/0 in the browser
- *  (sticky). Default OFF until the rig measures it. */
+ *  SWR_POSTREVEAL_HEURISTIC=1/0 in scripts; ?postreveal=0 opts out in the
+ *  browser (sticky; ?postreveal=1 clears it). DEFAULT ON since 2026-09-05: on
+ *  the same 43 boards the switch captured 12/43 (the heuristic's own 12/43)
+ *  against the shipped search's 7/43 — paired, 5 boards captured only with the
+ *  switch and 0 only without it. */
 export const POSTREVEAL_HEURISTIC: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
@@ -257,12 +260,12 @@ export const POSTREVEAL_HEURISTIC: boolean = (() => {
   try {
     const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
     const q = g.location?.search ? new URLSearchParams(g.location.search).get('postreveal') : null;
-    if (q === '1') g.localStorage?.setItem('swr-postreveal-heuristic', '1');
-    if (q === '0') g.localStorage?.removeItem('swr-postreveal-heuristic');
-    if (q === '1') return true;
-    if (g.localStorage?.getItem('swr-postreveal-heuristic') === '1') return true;
+    if (q === '0') g.localStorage?.setItem('swr-postreveal-off', '1');
+    if (q === '1') g.localStorage?.removeItem('swr-postreveal-off');
+    if (q === '0') return false;
+    if (g.localStorage?.getItem('swr-postreveal-off') === '1') return false;
   } catch { /* no localStorage */ }
-  return false;
+  return true;
 })();
 let postRevealHeuristic: boolean = POSTREVEAL_HEURISTIC;
 /** Worker-side setter (the worker cannot read the main thread's query/localStorage). */
