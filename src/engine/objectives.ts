@@ -323,10 +323,19 @@ export function combatObjectivesTriggered(
   // cinematic-combat kills, so a theater won purely via advanced tactic cards
   // didn't register — Decisive Victory never fired after winning both battles in
   // a cinematic combat (player report #383).
+  // ...but the destroyed-unit fallback OVER-fires: a cinematic tactic card can
+  // destroy a ground unit during the SPACE step, and RR p.4 is explicit that a
+  // battle step is resolved only when both factions have units in the theater.
+  // A Rebel who won a space battle at a system with no Imperial troops was
+  // scoring Decisive Victory for a ground battle that never happened (#746). So
+  // prefer the engine's own record of which battle steps ran, and keep the old
+  // heuristic only for reports saved before that field existed.
   const foughtIn = (theater: import('./types').Theater) =>
-    report.rounds.some((r) => r.attacks.some((a) => a.theater === theater && a.damageApplied > 0))
-    || sumDestroyedHp(G, report, 'Empire', theater) > 0
-    || sumDestroyedHp(G, report, 'Rebel', theater) > 0;
+    report.theatersFought
+      ? report.theatersFought.includes(theater)
+      : report.rounds.some((r) => r.attacks.some((a) => a.theater === theater && a.damageApplied > 0))
+        || sumDestroyedHp(G, report, 'Empire', theater) > 0
+        || sumDestroyedHp(G, report, 'Rebel', theater) > 0;
 
   // Per-theater "won the battle" test (FFG FAQ p.6): winning a space OR ground
   // *battle* means the Rebel cleared the enemy from a theater a battle was

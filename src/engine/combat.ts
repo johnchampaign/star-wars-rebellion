@@ -710,6 +710,12 @@ function runTheater(G: GameState, c: CombatState, theater: Theater): void {
     c.activeTheater = theater;
     c.theaterStaged = [];
     c.theaterAttackersDone = [];
+    // Record that a battle step genuinely ran here. The callers gate this on
+    // bothSidesHaveTheater, so reaching this point IS the RAW definition of "a
+    // battle was fought in this theater" — which is what combat objectives such
+    // as Decisive Victory need to read (#746).
+    c.report.theatersFought ??= [];
+    if (!c.report.theatersFought.includes(theater)) c.report.theatersFought.push(theater);
     // Find or create this round's report bucket.
     let idx = c.report.rounds.findIndex((r) => r.round === c.round);
     if (idx < 0) {

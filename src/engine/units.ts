@@ -76,7 +76,12 @@ export const UNIT_TYPES: UnitType[] = [
   }),
   I({
     id: 'death-star-under-construction', name: 'Death Star Under Construction', theater: 'space', class: 'station', tier: 'square',
-    health: { color: 'red', value: 4 },
+    // BLACK 4, not red — verified against images/ReferenceEmpire2P.png, where
+    // the DSUC health pip is the black/gear icon (the Star Destroyer's red-4
+    // pip on the same mat is visibly a red circle). It was 'red' here, which
+    // made the DSUC immune to ordinary hits and killable only by direct
+    // hits — far too durable in the opening turns (#747, #749).
+    health: { color: 'black', value: 4 },
     attack: { red: 0, black: 0, green: 0 },
     transport: { capacity: 0, restriction: false, immobile: true }, // rr p.6
     buildResource: 3, supplyCount: 1,

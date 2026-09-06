@@ -1397,7 +1397,12 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
   const label = (cid: string) => G.catalog.tactics[cid]?.name ?? cid;
 
   const digInSacrifice = (usePaid && paid && sacrifice) ? sacrifice : null;
-  const playFree = !!(useFree && free && free !== digInSacrifice);
+  // Spending a Defensive Formation on the Dig In / Outmaneuver discard consumes
+  // only ONE copy — with a second copy in hand the free block is still playable
+  // (#750). Compare by COPY COUNT, not by card id (both copies share an id).
+  const freeCopies = free ? choice.hand.filter((x) => x === free).length : 0;
+  const freeSpentOnSacrifice = !!(free && digInSacrifice === free && freeCopies < 2);
+  const playFree = !!(useFree && free && !freeSpentOnSacrifice);
   const blocks: string[] = [];
   const sacs: string[] = [];
   if (playFree && free) blocks.push(free);
@@ -1424,11 +1429,11 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
             <input
               type="checkbox"
               checked={playFree}
-              disabled={usePaid && sacrifice === free}
+              disabled={freeSpentOnSacrifice}
               onChange={(e) => setUseFree(e.target.checked)}
             />
             <CardHover G={G} cardId={free}>{label(free)}</CardHover>{' '}
-            {usePaid && sacrifice === free ? `(discarded for ${paid ? label(paid) : 'block'})` : '(free block 1)'}
+            {freeSpentOnSacrifice ? `(discarded for ${paid ? label(paid) : 'block'})` : '(free block 1)'}
           </label>
         )}
         {paid && (
@@ -1456,7 +1461,9 @@ function DefenderTacticsPanel({ G, choice, onPersist }: {
                 onChange={(e) => setSacrifice(e.target.value)}
                 style={{ background: '#0c0d10', color: '#fff', border: '1px solid #555', padding: '2px 4px', fontSize: 11 }}
               >
-                {sacrificeCandidates.map((cid) => (
+                {/* The <select> value is a card ID, so two copies of the same
+                    card are one indistinguishable option — list it once. */}
+                {[...new Set(sacrificeCandidates)].map((cid) => (
                   <option key={cid} value={cid}>{label(cid)}</option>
                 ))}
               </select>

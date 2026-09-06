@@ -5279,7 +5279,13 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
   // including a Defensive Formation you'd otherwise have played for a free
   // block. (#122: the sacrifice list wrongly excluded the free-block card, so
   // a hand of [Dig In, Defensive Formation] couldn't play Dig In at all.)
-  const sacrificeCandidates = choice.hand.filter((cid) => cid !== paidBlock);
+  // Remove only ONE copy of the played card — a SECOND copy of Dig In /
+  // Outmaneuver is a legal sacrifice (#565).
+  const sacrificeCandidates = (() => {
+    const rest = [...choice.hand];
+    if (paidBlock) { const i = rest.indexOf(paidBlock); if (i >= 0) rest.splice(i, 1); }
+    return rest;
+  })();
 
   const [useFree, setUseFree] = useState(false);
   const [usePaid, setUsePaid] = useState(false);
@@ -5288,7 +5294,12 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
   const cardLabel = (cid: string) => G.catalog.tactics[cid]?.name ?? cid;
   // A card spent as the Dig In sacrifice can't ALSO be played as a free block.
   const digInSacrifice = (usePaid && paidBlock && sacrifice) ? sacrifice : null;
-  const playFree = !!(useFree && freeBlock && freeBlock !== digInSacrifice);
+  // ...but only ONE copy of it. Holding two Defensive Formations, you may
+  // discard one for Dig In / Outmaneuver AND play the other free (#750), so
+  // compare by COPY COUNT — both copies share a single card id.
+  const freeCopies = freeBlock ? choice.hand.filter((x) => x === freeBlock).length : 0;
+  const freeSpentOnSacrifice = !!(freeBlock && digInSacrifice === freeBlock && freeCopies < 2);
+  const playFree = !!(useFree && freeBlock && !freeSpentOnSacrifice);
   const blockCards: string[] = [];
   const sacrifices: string[] = [];
   if (playFree && freeBlock) blockCards.push(freeBlock);
@@ -5324,13 +5335,13 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
         {freeBlock && (
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6,
             padding: 6, background: '#1f2128', borderRadius: 4, cursor: 'pointer' }}>
-            <input type="checkbox" checked={useFree}
-              disabled={usePaid && sacrifice === freeBlock}
+            <input type="checkbox" checked={playFree}
+              disabled={freeSpentOnSacrifice}
               onChange={(e) => setUseFree(e.target.checked)} />
             <span style={{ color: '#fff', fontSize: 13 }}>
               <strong>{cardLabel(freeBlock)}</strong>
               <span style={{ color: '#aaa', marginLeft: 6 }}>
-                — block 1 (free){usePaid && sacrifice === freeBlock ? ' — spent on Dig In' : ''}
+                — block 1 (free){freeSpentOnSacrifice ? ` — spent on ${paidBlock ? cardLabel(paidBlock) : 'the paid block'}` : ''}
               </span>
             </span>
           </label>
@@ -5367,7 +5378,9 @@ function CombatDefenderTacticsModal({ G, choice, onSubmit }: {
                   onChange={(e) => setSacrifice(e.target.value)}
                   style={{ background: '#2a2c33', color: '#fff', border: '1px solid #555', padding: '2px 6px' }}
                 >
-                  {sacrificeCandidates.map((cid) => (
+                  {/* Two copies of a card are one indistinguishable option
+                      (the value is the card id) — list it once. */}
+                  {[...new Set(sacrificeCandidates)].map((cid) => (
                     <option key={cid} value={cid}>{cardLabel(cid)}</option>
                   ))}
                 </select>

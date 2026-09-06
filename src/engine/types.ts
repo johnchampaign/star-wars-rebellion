@@ -2039,6 +2039,14 @@ export type CombatReport = {
   imperialLeadersAtStart?: LeaderId[];
   addedLeaders: { side: Side; leaderId: LeaderId; tacticValue: number }[];
   drawnTactics: { side: Side; spaceCount: number; groundCount: number };
+  /** Theaters in which a battle step was actually resolved. RR p.4: "Players
+   *  only resolve this step if both factions have ships/ground units in the
+   *  system" — so a space/ground BATTLE happens only when both sides had units
+   *  there. Objectives that say "win a space battle and a ground battle" have
+   *  to read this rather than infer a battle from a destroyed unit: a cinematic
+   *  tactic card can kill a ground unit during the SPACE step with no ground
+   *  battle ever fought (#746). Optional for backward-compat with old reports. */
+  theatersFought?: Theater[];
   rounds: CombatRoundReport[];
   structureDestructions: { side: Side; typeIds: string[] }[];
   // Units destroyed during retreat (no-transport drops + units explicitly
