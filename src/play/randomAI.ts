@@ -225,6 +225,20 @@ const UNBIASED_TIEBREAK: boolean = (() => {
   return true;
 })();
 
+/** Opt-out for the Rebel rout guard (SWR_REBEL_ROUT=0). Default ON. The Rebel
+ *  branch of the activation scorer had a winnable-attack BONUS but no
+ *  losing-attack PENALTY — the mirror of the Empire's #653 guard was never
+ *  added — so a target could enter the candidate list on positional value
+ *  alone while the force we could actually deliver was routed. Off restores
+ *  the old behaviour so the change stays measurable. */
+const REBEL_ROUT_GUARD: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_REBEL_ROUT === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
 function tieKey(G: GameState, id: string): number {
   if (!UNBIASED_TIEBREAK) return 0; // all keys equal → first-wins, the old behaviour
   let h = ((G.rng?.state ?? 0) ^ 0x9e3779b9) >>> 0;
@@ -1050,9 +1064,31 @@ export function empireMissionTargetScore(G: GameState, missionId: string, target
   // on arbitrary Imperial systems, ignoring sabotaged ones where it would ALSO
   // clear the sabotage that's choking that system's production. Prefer a
   // high-resource Imperial system, and strongly prefer a sabotaged one.
-  if (missionId === 'construct-factory') {
-    s += resourceWeight * 3;
-    if (sysState?.sabotage) s += 25;
+  // ADDRESS DELAYS and CONSTRUCT FACTORY are the same effect — "Place units on
+  // the build queue using this system's resource icons and number" — so they
+  // want the same target: the Imperial system whose icons buy the most. Only
+  // Construct Factory adds "if there is a sabotage marker in this system, remove
+  // the marker before resolving", which is why it alone carries the +25 (#468).
+  //
+  // Address Delays had NO target score at all: every legal system read 0, so the
+  // AI resolved it wherever the tie-break landed and loaded the build queue off
+  // whatever system sorted first. That is player report #748 — "bad resource
+  // management in the beginning, where the imperials screwed up the most
+  // important task of building a strong army ... at the end of the game, I had
+  // more square-level ships than the imperials, which should never ever occur"
+  // — and the Empire was holding TWO Address Delays in that game's hand.
+  //
+  // Weighted by SHAPE, not icon count: a square builds a capital ship or an
+  // AT-AT, a triangle a fighter or a trooper, so "2 resources" can mean very
+  // different armies. bestCommandAction already prices systems this way for the
+  // same reason (#694, jocke01's Kashyyyk-over-Mon-Calamari subjugation); the
+  // mission scorer was still counting icons flat, which for a BUILD mission is
+  // the one place the distinction matters most.
+  if (missionId === 'construct-factory' || missionId === 'address-delays') {
+    const buildWeight = (sys.resources ?? []).reduce((a, r) =>
+      a + (r.shape === 'square' ? 3 : r.shape === 'circle' ? 2 : 1), 0);
+    s += buildWeight * 3;
+    if (missionId === 'construct-factory' && sysState?.sabotage) s += 25;
   }
   // Imperial Propaganda flips every Rebel-loyal system in the target's REGION to
   // neutral — so its value scales with how many Rebel-loyal systems that region
@@ -3009,6 +3045,45 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
           // telegraph its location.
           ts += 4 + (def?.resources?.length ?? 0);
         }
+      }
+      // ROUT GUARD — the missing half of the Rebel attack gate (player report
+      // #752: "the rebel ai really starts doing weird things, attacked my star
+      // destroyer or similar strong fleets (assault carrier plus ties, etc)
+      // with 1 or 2 x-wings now 3 times or so").
+      //
+      // The block above only ever REWARDED a winnable attack (+12 when the
+      // Rebel outweighs the defender 1.2x). Nothing penalised an unwinnable
+      // one, so an Imperial-loyal system scored +3 on loyalty alone, cleared
+      // the `ts > 0` cutoff and entered the candidate list — where MCTS then
+      // picked it. Replaying the reporter's board: Corellia held 7 Imperial
+      // units (strength 16) behind Piett; the Rebel could deliver one X-wing
+      // (strength 2) from Sullust; Corellia scored +3 and was chosen. The
+      // Empire has had exactly this guard since #653; this is the same rule,
+      // side-generic at last.
+      //
+      // Two deliberate narrowings keep the blast radius small:
+      //  • `!hasOwnUnits` — this fires only on a pure ATTACK into a system we
+      //    hold nothing in. Reinforcing or defending a contested system (the
+      //    revealed-base stand included) is untouched.
+      //  • the force counted is `plannedUnits`, what the executor would really
+      //    move, not every Rebel unit parked next door — the same correction
+      //    #653 made for the Empire. An adjacency estimate would have read the
+      //    reporter's Corellia as 4 rather than 2 and still called it a rout,
+      //    but on a bigger board it is exactly how a one-ship attack sneaks
+      //    past a gate that thinks a whole neighbouring fleet is coming.
+      // Unlike the bonuses above this runs whether or not the base is revealed:
+      // post-reveal the Rebel branch has no attack scoring at all, so a
+      // hopeless assault there was even likelier to be the top activation.
+      if (REBEL_ROUT_GUARD && hasEnemyUnits && !hasOwnUnits) {
+        const str = (u: { typeId: string }): number => {
+          const t = G.catalog.unitTypes[u.typeId];
+          return t ? ((t.attack.red ?? 0) + (t.attack.black ?? 0) + (t.attack.green ?? 0) + (t.health?.value ?? 0)) : 0;
+        };
+        let impHere = 0;
+        for (const u of sys.units) if (u.side === 'Empire') impHere += str(u);
+        let rebBring = 0;
+        for (const u of plannedUnits) rebBring += str(u);
+        if (impHere > 0 && rebBring < impHere * 0.6) hopelessAttack = true;
       }
     }
     if (hasOwnUnits && side === 'Rebel') ts += 1;
