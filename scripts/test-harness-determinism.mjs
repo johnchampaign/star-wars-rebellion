@@ -30,6 +30,11 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // Keep the search cheap: this test is about REPRODUCIBILITY, not strength.
+// The fixture (#600) is a REVEALED-base Empire board. Since SWR_POSTREVEAL_HEURISTIC
+// (default ON, 2026-09-05) the search declines such boards on purpose and the
+// heuristic plays them — 0 pulls, which is not what this file measures. It pins
+// the seeding of the SEARCH, so run it with the switch off.
+process.env.SWR_POSTREVEAL_HEURISTIC ??= '0';
 process.env.SWR_MCTS_BUDGET ??= '24';
 process.env.SWR_MCTS_HORIZON ??= '2';
 

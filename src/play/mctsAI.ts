@@ -268,6 +268,32 @@ export const POSTREVEAL_HEURISTIC: boolean = (() => {
   return true;
 })();
 let postRevealHeuristic: boolean = POSTREVEAL_HEURISTIC;
+
+/** Saturation guard (#752, 2026-09-08). Late in a game the self-play rollouts
+ *  can all end the same way — in the #752 log every Rebel arm from turn 7 on
+ *  had mean EXACTLY 1.0 (every rollout a Rebel clock win) — so the final pick
+ *  by visits/mean is decided by prior and noise: a score-3 activation beat a
+ *  score-12 one and a lone X-wing attacked Corellia. When the live arms carry
+ *  no signal, the heuristic's own ordering decides. SWR_MCTS_SATURATION=0 off. */
+const SATURATION_GUARD: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_MCTS_SATURATION === '0') return false;
+  } catch { /* browser */ }
+  return true;
+})();
+export const SATURATION_EPS = 0.02;
+/** The arm the guard would pick, or null when the arms still disagree (or the
+ *  guard is off). Exported for tests. Pass is never the fallback while an
+ *  actionable arm exists. */
+export function saturatedPick<T extends { a: { kind: string; score: number }; n: number; sum: number }>(alive: T[]): T | null {
+  if (!SATURATION_GUARD || alive.length < 2) return null;
+  const means = alive.map((x) => x.sum / x.n);
+  if (Math.max(...means) - Math.min(...means) >= SATURATION_EPS) return null;
+  const acts = alive.filter((x) => x.a.kind !== 'pass');
+  const pool = acts.length ? acts : alive;
+  return pool.reduce((b, x) => (x.a.score > b.a.score ? x : b), pool[0]);
+}
 /** Worker-side setter (the worker cannot read the main thread's query/localStorage). */
 export function setPostRevealHeuristic(on: boolean): void { postRevealHeuristic = on; }
 export function isPostRevealHeuristic(): boolean { return postRevealHeuristic; }
@@ -629,6 +655,8 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
     alive.sort((x, y) => (y.sum / y.n + lam * priorOf(y)) - (x.sum / x.n + lam * priorOf(x)));
   } else alive.sort((x, y) => y.sum / y.n - x.sum / x.n);
   let chosen = alive[0].a;
+  const sat = saturatedPick(alive);
+  if (sat) chosen = sat.a;
   // PASS-MARGIN (#580/#581/#516): with ~5-15 pulls per arm and near-binary
   // rollout outcomes (terminal win 1.0 vs horizon-cut ~0.7-0.8), one lucky
   // rollout swings an arm's mean by more than the whole field's spread —
@@ -817,6 +845,7 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
         pulls, worlds: worlds.length, ms: Date.now() - t0, heuristicRank: candidates.indexOf(chosen),
         ...(priors ? { rankerPrior: r3(priors[candidates.indexOf(chosen)] ?? 0), rankerTop: priors.indexOf(Math.max(...priors)) === candidates.indexOf(chosen) } : {}),
         ...(passGuard ? { passGuard: { gap: r3(passGuard.gap), se: r3(passGuard.se), eff: r3(passGuard.eff) } } : {}),
+        ...(sat ? { saturated: true } : {}),
       },
     },
   };

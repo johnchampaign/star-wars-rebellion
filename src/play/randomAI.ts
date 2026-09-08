@@ -239,8 +239,8 @@ const REBEL_ROUT_GUARD: boolean = (() => {
   return true;
 })();
 
-/** Opt-IN for the sabotage-clearing assignment bump (SWR_SABOTAGE_CLEAR=1).
- *  Default OFF — see the A/B at the bottom of this note. A Rebel sabotage marker stops the Empire BUILDING or DEPLOYING
+/** Sabotage-clearing assignment bump. DEFAULT ON since 2026-09-08 (SWR_SABOTAGE_CLEAR=0
+ *  opts out), calibrated to the recorded human Empires — see the bottom of this note. A Rebel sabotage marker stops the Empire BUILDING or DEPLOYING
  *  in that system (mission text: "it prevents the Empire from building or
  *  deploying units in this system"; phases.ts skips a sabotaged system when it
  *  collects build icons), so a marker on an Imperial-loyal populous system is a
@@ -280,9 +280,10 @@ const REBEL_ROUT_GUARD: boolean = (() => {
 const SABOTAGE_CLEAR_BUMP: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_SABOTAGE_CLEAR === '0') return false;
     if (proc?.env?.SWR_SABOTAGE_CLEAR === '1') return true;
   } catch { /* browser: no process */ }
-  return false;
+  return true;
 })();
 
 function tieKey(G: GameState, id: string): number {
@@ -663,7 +664,16 @@ function sabotageChokeWeight(G: GameState): number {
  *  the Dark Side (17.2) — losing two production sites really should be the
  *  Empire's top assignment — while a single 1-triangle world (weight 1 -> +1.5)
  *  stays a rounding error and does not hijack the slot. */
-const SABOTAGE_CLEAR_CAP = 10;
+const SABOTAGE_CLEAR_CAP: number = (() => {
+  try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_SABOTAGE_CLEAR_CAP; if (v) return Number(v); } catch { /* browser */ }
+  return 10;
+})();
+/** Points of assignment value per unit of choke weight (square 3 / circle 2 /
+ *  triangle 1). Tunable for the position instrument (SWR_SABOTAGE_CLEAR_MULT). */
+const SABOTAGE_CLEAR_MULT: number = (() => {
+  try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_SABOTAGE_CLEAR_MULT; if (v) return Number(v); } catch { /* browser */ }
+  return 0.6;
+})();
 
 /** A mission's situational adjustment: amplify or suppress based on board
  *  state. E.g. capture missions are worthless if Empire already holds a
@@ -684,9 +694,18 @@ function missionSituationalAdjust(G: GameState, missionId: string, side: Side): 
     // late, with the deck spent and the Empire's factories choked. Suppressing
     // it on the probe reading alone is what kept the Empire from ever assigning
     // a leader to the only mission that clears its own production block.
-    const probeSuppressed = (m: string) =>
-      probeKinds.has(m) && !(m === 'research-and-development' && choke > 0);
-    if (probeSuppressed(missionId) && G.rebelBaseRevealed) adj -= 8;
+    // The probe-deck damping stays on R&D even when choked. CALIBRATED
+    // 2026-09-08 on the 64 exact human-Empire Assignment positions with a
+    // square-icon world choked: the humans assign R&D in 64% of them (43% when
+    // nothing is choked); lifting the damping put the heuristic at 100% for
+    // ANY bump size, while damping kept + 0.6/weight lands at 67% (the
+    // post-reveal −8 below is the one exception).
+    const probeSuppressed = (m: string) => probeKinds.has(m);
+    // Once the base is revealed a probe pull is worth nothing, but R&D's other
+    // half — clearing a sabotage marker — still is, so that −8 is carved out
+    // while a choke stands (the reporter's Corellia sat choked to the end).
+    if (probeSuppressed(missionId) && G.rebelBaseRevealed
+      && !(missionId === 'research-and-development' && choke > 0)) adj -= 8;
     // WEAKNESS 1 (log analysis, 13-game corpus): in 3/3 losses, Empire spent
     // ~85% of revealed missions on probe-pull. Once probe info has already
     // narrowed the candidate set, more probes have sharply diminishing value
@@ -719,7 +738,7 @@ function missionSituationalAdjust(G: GameState, missionId: string, side: Side): 
     // Weighted by what is actually behind the block, so a choked square-icon
     // world (a Star Destroyer / AT-AT site) outranks a choked triangle one.
     if (choke > 0 && (missionId === 'research-and-development' || missionId === 'construct-factory')) {
-      adj += Math.min(SABOTAGE_CLEAR_CAP, choke * 1.5);
+      adj += Math.min(SABOTAGE_CLEAR_CAP, choke * SABOTAGE_CLEAR_MULT);
     }
     // WEAKNESS 4: construct-death-star revealed in losses but never used.
     // Damp the score when (a) no factory exists yet (can't build anyway)
