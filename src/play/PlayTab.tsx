@@ -12,6 +12,7 @@ import { buildV2GameLog, buildId } from './logFormat';
 import { nextReportKind } from './reportQueue';
 import { DeployUndoStack, deployStepKey } from './deployUndoStack';
 import { PLANNER_ENABLED, HUNT_OCCUPY_ENABLED } from './empirePlanner';
+import { SABOTAGE_CLEAR_BUMP } from './randomAI';
 import { evalCommandStepDeep } from './boardEval';
 import { mctsCommandStep, commitMctsCommand, MCTS_ENABLED, MCTS_REBEL_ENABLED, POSTREVEAL_HEURISTIC, type MctsSearchResult } from './mctsAI';
 import { recordPlay } from 'digital-boardgame-framework';
@@ -1653,6 +1654,18 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
               letterSpacing: 0.5, background: '#15243a', border: '1px solid #37a', color: '#6bf',
             }}>
               HUNT OCCUPY ON
+            </span>
+          )}
+          {!SABOTAGE_CLEAR_BUMP && (
+            // Playtest attribution (#748), inverted because this lever is
+            // default ON: the badge marks the BASELINE arm (?sabotage=0), so a
+            // comparison game is never mistaken for a normal one. The flag is
+            // stamped into the uploaded log either way.
+            <span title="Sabotage-clearing assignment bump DISABLED (?sabotage=1 to turn back on, then reload)" style={{
+              marginLeft: 8, padding: '1px 8px', borderRadius: 10, fontSize: 11, fontWeight: 700,
+              letterSpacing: 0.5, background: '#2a2410', border: '1px solid #a83', color: '#fc6',
+            }}>
+              SABOTAGE CLEARING OFF
             </span>
           )}
         </span>
@@ -12093,6 +12106,10 @@ function ReportProblemModal({ G, screenshotBase64, onClose }: {
     empirePlanner: PLANNER_ENABLED,
     // Whether the occupy-to-clear hunt economy (base-HUNT fix) was active.
     huntOccupy: HUNT_OCCUPY_ENABLED,
+    // Whether the sabotage-clearing assignment bump (#748) was active — it
+    // changes which missions the Empire assigns leaders to, so a report about
+    // Imperial production needs to say which arm it came from.
+    sabotageClear: SABOTAGE_CLEAR_BUMP,
     // Which search policy drove the AI. MCTS is the browser default, so nearly
     // every AI-behavior report describes it — the archived game record already
     // stamped these; the report payload was missing them.
@@ -12935,7 +12952,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
   const allGames = (() => {
     try {
       const raw = localStorage.getItem(LS_HISTORY);
-      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; mctsPolicy?: boolean; mctsRebel?: boolean; build?: string }>) : [];
+      return raw ? (JSON.parse(raw) as Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; sabotageClear?: boolean; mctsPolicy?: boolean; mctsRebel?: boolean; build?: string }>) : [];
     } catch { return []; }
   })();
   const games = allGames.filter((g) => !uploadedIds.has(g.encodedAt));
@@ -12990,6 +13007,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
               : g.mctsPolicy === true ? 'mcts' : g.mctsPolicy === false ? 'heuristic' : 'unknown',
             empirePlanner: g.empirePlanner,
             huntOccupy: g.huntOccupy,
+            sabotageClear: g.sabotageClear,
             mctsPolicy: g.mctsPolicy,
             mctsRebel: g.mctsRebel,
           } : undefined,
@@ -13025,6 +13043,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
           gameId: (() => { try { return localStorage.getItem(LS_GAME_ID) || undefined; } catch { return undefined; } })(),
           empirePlanner: PLANNER_ENABLED,
           huntOccupy: HUNT_OCCUPY_ENABLED,
+          sabotageClear: SABOTAGE_CLEAR_BUMP,
           mctsPolicy: MCTS_ENABLED,
           codec: inProgressCodec,
           source: 'browser-in-progress',
@@ -16530,7 +16549,7 @@ function RetrieveThePlansPickModal({
 function archiveCompletedGame(G: GameState): void {
   try {
     const raw = localStorage.getItem(LS_HISTORY);
-    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; mctsPolicy?: boolean; mctsRebel?: boolean; build?: string }> =
+    const history: Array<{ encodedAt: string; winner?: string; winReason?: string; codec: string; humanSide?: string; gameId?: string; empirePlanner?: boolean; huntOccupy?: boolean; sabotageClear?: boolean; mctsPolicy?: boolean; mctsRebel?: boolean; build?: string }> =
       raw ? JSON.parse(raw) : [];
     // A game can END mid-resolution: a reputation-time win fires on the time
     // track while a combat choice is still queued, so G.isGameOver is true but
@@ -16581,6 +16600,7 @@ function archiveCompletedGame(G: GameState): void {
       // value would misattribute playtest games when mining logs.
       empirePlanner: PLANNER_ENABLED,
       huntOccupy: HUNT_OCCUPY_ENABLED,
+      sabotageClear: SABOTAGE_CLEAR_BUMP,
       mctsPolicy: MCTS_ENABLED,
       mctsRebel: MCTS_REBEL_ENABLED,
       // Same rule for the BUILD: the bundle loaded at page load is the code

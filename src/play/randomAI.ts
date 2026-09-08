@@ -273,16 +273,37 @@ const REBEL_ROUT_GUARD: boolean = (() => {
  *  reputation-time (78% of games), not for want of Star Destroyers. So the
  *  bench can see this lever's cost and structurally cannot see its benefit.
  *
- *  Hence DEFAULT OFF pending a human playtest: the reporters describing the
- *  symptom face a human Rebel who sabotages the Empire's one square-icon world
- *  on turn 1 and leaves it there, which is not what the AI Rebel does. Ledger
- *  row in docs/ab-levers.md. */
-const SABOTAGE_CLEAR_BUMP: boolean = (() => {
+ *  That is why it first shipped OFF (5e20426). The evidence that turned it ON
+ *  came from the POSITION instrument instead (0875bc4,
+ *  scripts/eval-sabotage-clear.mjs): across 1,150 exact human-Empire Assignment
+ *  positions the recorded humans assign R&D in 43% of rounds with nothing
+ *  choked and 64% with a square-icon Imperial world choked — they visibly react
+ *  to the choke, and the heuristic now tracks that (67% square-choked / 70%
+ *  unchoked) instead of being flat. Ledger row in docs/ab-levers.md.
+ *
+ *  BROWSER OPT-OUT: `?sabotage=0` turns it off and STICKS (localStorage), so a
+ *  baseline comparison game survives reloads without re-typing the query
+ *  string; `?sabotage=1` clears the opt-out. Same shape as `?planner=0` /
+ *  `?hunt=0` / `?postreveal=0`. The value is stamped into the report payload
+ *  and the archived game record as `sabotageClear`, because a live read is only
+ *  possible if the log says which arm produced it — proving a flag was on after
+ *  the fact otherwise takes decision-trace forensics (the lesson from the first
+ *  planner playtest). Exported for those call sites and the dev flag badge. */
+export const SABOTAGE_CLEAR_BUMP: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
     if (proc?.env?.SWR_SABOTAGE_CLEAR === '0') return false;
     if (proc?.env?.SWR_SABOTAGE_CLEAR === '1') return true;
   } catch { /* browser: no process */ }
+  try {
+    const g = globalThis as { location?: { search?: string }; localStorage?: { getItem(k: string): string | null; setItem(k: string, v: string): void; removeItem(k: string): void } };
+    const q = g.location?.search ? new URLSearchParams(g.location.search).get('sabotage') : null;
+    if (q === '0') g.localStorage?.setItem('swr-sabotage-clear-off', '1');
+    if (q === '1') g.localStorage?.removeItem('swr-sabotage-clear-off');
+    if (q === '0') return false;
+    if (q === '1') return true;
+    if (g.localStorage?.getItem('swr-sabotage-clear-off') === '1') return false;
+  } catch { /* no localStorage */ }
   return true;
 })();
 
