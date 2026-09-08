@@ -239,6 +239,52 @@ const REBEL_ROUT_GUARD: boolean = (() => {
   return true;
 })();
 
+/** Opt-IN for the sabotage-clearing assignment bump (SWR_SABOTAGE_CLEAR=1).
+ *  Default OFF — see the A/B at the bottom of this note. A Rebel sabotage marker stops the Empire BUILDING or DEPLOYING
+ *  in that system (mission text: "it prevents the Empire from building or
+ *  deploying units in this system"; phases.ts skips a sabotaged system when it
+ *  collects build icons), so a marker on an Imperial-loyal populous system is a
+ *  standing tax on Imperial production for as long as it sits there.
+ *
+ *  The TARGETING layer already knew this — empireMissionTargetScore gives R&D
+ *  and Construct Factory +25 for a sabotaged system (#199/#468). The ASSIGNMENT
+ *  layer did not: missionBaseValue is board-blind, so R&D sat at its calibrated
+ *  8.7 whether or not a marker was choking the Empire's only square-icon world,
+ *  and it lost the slot to Lure of the Dark Side (17.2) / Construct Death Star
+ *  (16.7). The +25 aim was never given a leader to aim.
+ *
+ *  MEASURED over 191 archived games with turn snapshots (2026-09-08): 177 of
+ *  them had an Imperial build system choked at some point, 65% of all
+ *  turn-starts had at least one, 12.2% of the Empire's visible build icons were
+ *  lost to sabotage (577 of them SQUARE — Star Destroyers and AT-ATs, ~3 lost
+ *  square builds per game), and a choke persisted a mean of 2.6 consecutive
+ *  turn-starts (max 9; 43% lasted three or more). Player report #748 describes
+ *  exactly this outcome from the table: "it had only one SD on the board ... at
+ *  the end of the game I had more square-level ships than the imperials".
+ *
+ *  A/B, 300 self-play games per arm at two seeds (2026-09-08), Empire win /
+ *  base-found:
+ *      seed 4242   ON 22.3% / 51.3%   OFF 25.0% / 54.0%
+ *      seed  777   ON 28.7% / 54.7%   OFF 27.0% / 55.7%
+ *      pooled      ON 25.5% / 53.0%   OFF 26.0% / 54.8%
+ *  The win rate is flat (the sign flips between seeds, so -2.7pp at 4242 is
+ *  noise), but base-found is down ~1.8pp in BOTH arms — the leader slot R&D
+ *  takes is one the hunt was spending, and in self-play the Empire loses on
+ *  reputation-time (78% of games), not for want of Star Destroyers. So the
+ *  bench can see this lever's cost and structurally cannot see its benefit.
+ *
+ *  Hence DEFAULT OFF pending a human playtest: the reporters describing the
+ *  symptom face a human Rebel who sabotages the Empire's one square-icon world
+ *  on turn 1 and leaves it there, which is not what the AI Rebel does. Ledger
+ *  row in docs/ab-levers.md. */
+const SABOTAGE_CLEAR_BUMP: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_SABOTAGE_CLEAR === '1') return true;
+  } catch { /* browser: no process */ }
+  return false;
+})();
+
 function tieKey(G: GameState, id: string): number {
   if (!UNBIASED_TIEBREAK) return 0; // all keys equal → first-wins, the old behaviour
   let h = ((G.rng?.state ?? 0) ^ 0x9e3779b9) >>> 0;
@@ -592,22 +638,61 @@ function empireHoldingCapture(G: GameState): boolean {
   return (G.empire.capturedLeaders ?? []).some((c) => c.ring === 'captured');
 }
 
+/** Total Imperial production currently choked by Rebel sabotage markers, in the
+ *  same shape-weighted units the build scorers use (square 3 / circle 2 /
+ *  triangle 1 — a square builds a Star Destroyer or an AT-AT, a triangle a TIE
+ *  or a stormtrooper). Only counts systems a sabotage-clearing mission could
+ *  legally target: both Research & Development ("any system that has Imperial
+ *  loyalty") and Construct Factory ("any Imperial system") require Imperial
+ *  loyalty, and a remote system has no build icons to choke. */
+function sabotageChokeWeight(G: GameState): number {
+  let w = 0;
+  for (const [sid, ss] of Object.entries(G.map.systems)) {
+    if (!ss.sabotage || ss.destroyed) continue;
+    if (ss.loyalty !== 'imperial') continue;
+    const def = G.catalog.systems[sid];
+    if (!def || def.isRemote) continue;
+    for (const r of def.resources ?? []) {
+      w += r.shape === 'square' ? 3 : r.shape === 'circle' ? 2 : 1;
+    }
+  }
+  return w;
+}
+
+/** Cap on the sabotage-clearing bump. 10 lets TWO choked worlds outrank Lure of
+ *  the Dark Side (17.2) — losing two production sites really should be the
+ *  Empire's top assignment — while a single 1-triangle world (weight 1 -> +1.5)
+ *  stays a rounding error and does not hijack the slot. */
+const SABOTAGE_CLEAR_CAP = 10;
+
 /** A mission's situational adjustment: amplify or suppress based on board
  *  state. E.g. capture missions are worthless if Empire already holds a
  *  captured leader; probe missions are worthless once base is revealed. */
 function missionSituationalAdjust(G: GameState, missionId: string, side: Side): number {
   let adj = 0;
   if (side === 'Empire') {
+    // Standing tax the Rebel's sabotage markers are levying on Imperial
+    // production right now. Read once — it gates the probe suppression below as
+    // well as the clearing bump.
+    const choke = SABOTAGE_CLEAR_BUMP ? sabotageChokeWeight(G) : 0;
     const captureKinds = new Set(['capture-rebel-operative', 'collect-bounty', 'detained']);
     if (captureKinds.has(missionId) && empireHoldingCapture(G)) adj -= 10;
     const probeKinds = new Set(['gather-intel', 'research-and-development']);
-    if (probeKinds.has(missionId) && G.rebelBaseRevealed) adj -= 8;
+    // R&D is suppressed here as a PROBE mission — but the card is a choice, and
+    // its other half ("remove a sabotage marker from this system and draw 1
+    // project card") is worth most exactly when the probe half is worth least:
+    // late, with the deck spent and the Empire's factories choked. Suppressing
+    // it on the probe reading alone is what kept the Empire from ever assigning
+    // a leader to the only mission that clears its own production block.
+    const probeSuppressed = (m: string) =>
+      probeKinds.has(m) && !(m === 'research-and-development' && choke > 0);
+    if (probeSuppressed(missionId) && G.rebelBaseRevealed) adj -= 8;
     // WEAKNESS 1 (log analysis, 13-game corpus): in 3/3 losses, Empire spent
     // ~85% of revealed missions on probe-pull. Once probe info has already
     // narrowed the candidate set, more probes have sharply diminishing value
     // — the AI should pivot to invasion-support (rule-by-fear, builds, captures).
     // Halve probe value once probe deck is ≥60% depleted OR candidate set ≤8.
-    if (probeKinds.has(missionId) && !G.rebelBaseRevealed) {
+    if (probeSuppressed(missionId) && !G.rebelBaseRevealed) {
       const probeHand = G.empire.probeHand ?? [];
       const probeDeck = G.probeDeck ?? [];
       const totalProbes = probeHand.length + probeDeck.length;
@@ -623,6 +708,18 @@ function missionSituationalAdjust(G: GameState, missionId: string, side: Side): 
         candidates++;
       }
       if (flippedRatio >= 0.6 || candidates <= 8) adj -= 8;
+    }
+    // SABOTAGE CLEARING (#748, and #199/#468 from the target side). A sabotage
+    // marker stops the Empire building or deploying in that system, so it is a
+    // per-round tax on Imperial production that persists until cleared — and
+    // 43% of them sat for three or more consecutive turns because nothing ever
+    // put a leader on the mission that removes them. empireMissionTargetScore
+    // already aims R&D and Construct Factory at the sabotaged system (+25); this
+    // is the missing half, the assignment value that gets them a leader to aim.
+    // Weighted by what is actually behind the block, so a choked square-icon
+    // world (a Star Destroyer / AT-AT site) outranks a choked triangle one.
+    if (choke > 0 && (missionId === 'research-and-development' || missionId === 'construct-factory')) {
+      adj += Math.min(SABOTAGE_CLEAR_CAP, choke * 1.5);
     }
     // WEAKNESS 4: construct-death-star revealed in losses but never used.
     // Damp the score when (a) no factory exists yet (can't build anyway)

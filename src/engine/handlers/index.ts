@@ -135,7 +135,18 @@ const sabotage: EffectHandler = (G, ctx) => {
   if (!sysId) return true;
   const ss = G.map.systems[sysId];
   if (!ss) return true;
-  const placeMarker = () => { if (!ss.sabotage) ss.sabotage = true; };
+  // Log from HERE, not from each call site: the two common paths (base game,
+  // and RoE on a populous system with no Shield Bunker) placed the marker
+  // silently, so 'sabotage-place-marker' only ever fired on the rare
+  // bunker-present branch that routes through resolveSabotageChoice. The board
+  // drew the marker either way, but the event log never said it had been
+  // placed — 14 logged placements against 1351 logged removals across the
+  // archive — which also silently broke any analysis counting them.
+  const placeMarker = () => {
+    if (ss.sabotage) return; // already sabotaged; RAW allows only one marker
+    ss.sabotage = true;
+    log(G, { kind: 'sabotage-place-marker', side: 'Rebel', payload: { systemId: sysId } });
+  };
   // Base game: "place a sabotage marker in this system" (any system).
   if (!G.expansion?.enabled) {
     placeMarker();
