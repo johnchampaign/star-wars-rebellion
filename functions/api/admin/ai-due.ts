@@ -8,16 +8,24 @@
 // CLOSED — see requireAdmin. This surface exposes UNREDACTED state (base
 // location, hands), which is why it must only ever be reached by the trusted
 // worker, never a browser.
-import { makeAdminDeps, requireAdmin, listAiDueGames, json, fail, type Env } from '../../_lib/gameServer';
+import { makeAdminDeps, makeAdminStore, requireAdmin, listAiDueGames, listAiDueRefs, json, fail, type Env } from '../../_lib/gameServer';
 
+// Response is REFS ONLY — { gameId, actor } — no turn, no snapshot. The worker
+// fetches each game's snapshot from /api/admin/ai-snapshot (one per request).
+// Returning up to 8 raw snapshots here meant ~1.6 MB through JSON.parse and
+// JSON.stringify per poll, which is what tripped the per-request CPU limit.
 const handler: PagesFunction<Env> = async (ctx) => {
   try {
     const { request, env } = ctx;
     const denied = requireAdmin(request, env);
     if (denied) return denied;
-    const { store, codec, supabase } = await makeAdminDeps(request, env);
-    const games = await listAiDueGames(store, codec, supabase);
-    return json({ games });
+    const { supabase } = makeAdminStore(env);          // no catalog build
+    const refs = await listAiDueRefs(supabase);
+    if (refs) return json({ games: refs });
+    // Flag column unavailable: capped decode scan (needs the codec → catalog).
+    const deps = await makeAdminDeps(request, env);
+    const games = await listAiDueGames(deps.store, deps.codec);
+    return json({ games: games.map(({ gameId, actor }) => ({ gameId, actor })) });
   } catch (e) {
     return fail(e);
   }

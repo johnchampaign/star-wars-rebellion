@@ -589,6 +589,35 @@ export function raceTimeout<T>(p: Promise<T> | PromiseLike<T>, ms: number, label
   ]);
 }
 
+/** Store + client only — NO catalog build. ai-due / ai-snapshot never decode a
+ *  snapshot, yet makeAdminDeps fetched and parsed the whole data bundle on every
+ *  cold start to build one; that plus shipping 8 raw ~170 KB snapshots through
+ *  JSON.parse/stringify per poll is what kept ai-due tripping Cloudflare's
+ *  per-request CPU limit (1102 → 503) on ~1 in 8 polls for a month. */
+export function makeAdminStore(env: Env): { store: SnapshotStore; supabase: SupabaseClient } {
+  const supabase = getSupabase(env);
+  return { store: new SupabaseStore(supabase), supabase };
+}
+
+export interface AiDueRef { gameId: string; actor: Side; }
+
+/** Flag-only list: which games have an AI seat on the clock. ONE indexed query,
+ *  no snapshots — the worker then fetches each snapshot with
+ *  GET /api/admin/ai-snapshot?gameId=, one per request, so no single request
+ *  ever carries more than one snapshot. Returns null if the flag column is
+ *  unavailable (caller falls back to the capped decode scan). */
+export async function listAiDueRefs(supabase: SupabaseClient): Promise<AiDueRef[] | null> {
+  const { data, error } = await raceTimeout(
+    supabase.from('swr_turn_notify').select('game_id, actor').eq('actor_is_ai', true).limit(AI_DUE_LIMIT),
+    7000, 'flag-query',
+  );
+  if (error || !data) {
+    if (error) console.warn(`[ai-due] flag query failed (actor_is_ai column?): ${error.message}`);
+    return null;
+  }
+  return data.filter((r) => r.actor).map((r) => ({ gameId: r.game_id as string, actor: r.actor as Side }));
+}
+
 export async function listAiDueGames(
   store: SnapshotStore, codec: Codec<GameState>, supabase?: SupabaseClient,
 ): Promise<AiDueGame[]> {

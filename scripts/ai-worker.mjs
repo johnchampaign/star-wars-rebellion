@@ -101,17 +101,25 @@ async function tick() {
   const games = due.body.games ?? [];
   for (const g of games) {
     try {
+      // Server now returns refs only ({ gameId, actor }); fetch the snapshot per
+      // game. Older servers still inline it — use that when present.
+      let turn = g.turn, raw = g.snapshot;
+      if (raw == null) {
+        const s = await api(`/api/admin/ai-snapshot?gameId=${encodeURIComponent(g.gameId)}`, { method: 'GET' });
+        if (s.status !== 200) { console.warn(`[ai-worker] ai-snapshot ${s.status} for ${g.gameId}: ${JSON.stringify(s.body).slice(0, 120)}`); continue; }
+        turn = s.body.turn; raw = s.body.snapshot;
+      }
       // Deterministic per (game, turn) so a retry recomputes identically.
-      seedAI((hashStr(g.gameId) ^ (g.turn * 2654435761)) >>> 0);
-      const state = codec.decode(strip(g.snapshot));
+      seedAI((hashStr(g.gameId) ^ (turn * 2654435761)) >>> 0);
+      const state = codec.decode(strip(raw));
       const actor = rebellionAdapter.currentActor(state);
       if (!actor || !state.aiSides?.includes(actor)) continue; // stale flag — already moved
       if (!computeAiTurn(state)) continue;
       const snapshot = prefix + codec.encode(state);
       const res = await api('/api/admin/ai-move', {
-        method: 'POST', body: JSON.stringify({ gameId: g.gameId, baseTurn: g.turn, snapshot }),
+        method: 'POST', body: JSON.stringify({ gameId: g.gameId, baseTurn: turn, snapshot }),
       });
-      if (res.status === 200) console.log(`[ai-worker] moved ${g.gameId} (${actor}) turn ${g.turn}→${g.turn + 1}`);
+      if (res.status === 200) console.log(`[ai-worker] moved ${g.gameId} (${actor}) turn ${turn}→${turn + 1}`);
       else if (res.status === 409) console.log(`[ai-worker] ${g.gameId} already advanced (409) — skipping`);
       else console.warn(`[ai-worker] ai-move ${res.status} for ${g.gameId}: ${JSON.stringify(res.body).slice(0, 120)}`);
     } catch (e) { console.warn(`[ai-worker] error on ${g.gameId}:`, e?.message); }
