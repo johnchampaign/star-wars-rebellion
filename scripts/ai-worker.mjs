@@ -95,34 +95,50 @@ async function api(path, init) {
   }
 }
 
+// One snapshot fetch PER AI TURN, not per poll. `since` (the server's
+// turn-start stamp) identifies the turn; once a game has been evaluated for a
+// given `since` — moved, already advanced, or judged not actionable (a stale
+// flag) — it is skipped until `since` changes. Re-checked anyway every
+// RECHECK_MS as a backstop, and after RETRY_MS following an error. Before this,
+// ~6 stale-flagged games were re-fetched every 5 s: ~100k requests/day, which
+// is the Cloudflare free plan's entire daily budget.
+const RECHECK_MS = 30 * 60_000;
+const RETRY_MS = 60_000;
+const seen = new Map(); // gameId → { since, until }
+
 async function tick() {
   const due = await api('/api/admin/ai-due', { method: 'GET' });
   if (due.status !== 200) { console.warn(`[ai-worker] ai-due ${due.status}: ${JSON.stringify(due.body).slice(0, 120)}`); return; }
   const games = due.body.games ?? [];
+  const now = Date.now();
+  for (const id of seen.keys()) if (!games.some((g) => g.gameId === id)) seen.delete(id); // no longer due → forget
   for (const g of games) {
+    const s = g.since ? seen.get(g.gameId) : null;
+    if (s && s.since === g.since && now < s.until) continue;
+    const settle = (ms) => { if (g.since) seen.set(g.gameId, { since: g.since, until: Date.now() + ms }); };
     try {
-      // Server now returns refs only ({ gameId, actor }); fetch the snapshot per
-      // game. Older servers still inline it — use that when present.
+      // Server returns refs only ({ gameId, actor, since }); fetch the snapshot
+      // per game. Older servers still inline it — use that when present.
       let turn = g.turn, raw = g.snapshot;
       if (raw == null) {
         const s = await api(`/api/admin/ai-snapshot?gameId=${encodeURIComponent(g.gameId)}`, { method: 'GET' });
-        if (s.status !== 200) { console.warn(`[ai-worker] ai-snapshot ${s.status} for ${g.gameId}: ${JSON.stringify(s.body).slice(0, 120)}`); continue; }
+        if (s.status !== 200) { console.warn(`[ai-worker] ai-snapshot ${s.status} for ${g.gameId}: ${JSON.stringify(s.body).slice(0, 120)}`); settle(RETRY_MS); continue; }
         turn = s.body.turn; raw = s.body.snapshot;
       }
       // Deterministic per (game, turn) so a retry recomputes identically.
       seedAI((hashStr(g.gameId) ^ (turn * 2654435761)) >>> 0);
       const state = codec.decode(strip(raw));
       const actor = rebellionAdapter.currentActor(state);
-      if (!actor || !state.aiSides?.includes(actor)) continue; // stale flag — already moved
-      if (!computeAiTurn(state)) continue;
+      if (!actor || !state.aiSides?.includes(actor)) { settle(RECHECK_MS); continue; } // stale flag — already moved
+      if (!computeAiTurn(state)) { settle(RECHECK_MS); continue; }
       const snapshot = prefix + codec.encode(state);
       const res = await api('/api/admin/ai-move', {
         method: 'POST', body: JSON.stringify({ gameId: g.gameId, baseTurn: turn, snapshot }),
       });
-      if (res.status === 200) console.log(`[ai-worker] moved ${g.gameId} (${actor}) turn ${turn}→${turn + 1}`);
-      else if (res.status === 409) console.log(`[ai-worker] ${g.gameId} already advanced (409) — skipping`);
-      else console.warn(`[ai-worker] ai-move ${res.status} for ${g.gameId}: ${JSON.stringify(res.body).slice(0, 120)}`);
-    } catch (e) { console.warn(`[ai-worker] error on ${g.gameId}:`, e?.message); }
+      if (res.status === 200) { console.log(`[ai-worker] moved ${g.gameId} (${actor}) turn ${turn}→${turn + 1}`); settle(RECHECK_MS); }
+      else if (res.status === 409) { console.log(`[ai-worker] ${g.gameId} already advanced (409) — skipping`); settle(RECHECK_MS); }
+      else { console.warn(`[ai-worker] ai-move ${res.status} for ${g.gameId}: ${JSON.stringify(res.body).slice(0, 120)}`); settle(RETRY_MS); }
+    } catch (e) { console.warn(`[ai-worker] error on ${g.gameId}:`, e?.message); settle(RETRY_MS); }
   }
 }
 

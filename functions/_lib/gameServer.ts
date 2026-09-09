@@ -599,7 +599,12 @@ export function makeAdminStore(env: Env): { store: SnapshotStore; supabase: Supa
   return { store: new SupabaseStore(supabase), supabase };
 }
 
-export interface AiDueRef { gameId: string; actor: Side; }
+/** `since` is swr_turn_notify.started_at — it changes exactly when a seat's turn
+ *  begins, so the worker can treat (gameId, since) as "this AI turn" and fetch
+ *  the snapshot ONCE per turn rather than on every 5-second poll. Without it the
+ *  per-game snapshot fetches alone ran ~100k requests/day — the free plan's
+ *  whole daily budget. */
+export interface AiDueRef { gameId: string; actor: Side; since?: string; }
 
 /** Flag-only list: which games have an AI seat on the clock. ONE indexed query,
  *  no snapshots — the worker then fetches each snapshot with
@@ -608,14 +613,17 @@ export interface AiDueRef { gameId: string; actor: Side; }
  *  unavailable (caller falls back to the capped decode scan). */
 export async function listAiDueRefs(supabase: SupabaseClient): Promise<AiDueRef[] | null> {
   const { data, error } = await raceTimeout(
-    supabase.from('swr_turn_notify').select('game_id, actor').eq('actor_is_ai', true).limit(AI_DUE_LIMIT),
+    supabase.from('swr_turn_notify').select('game_id, actor, started_at').eq('actor_is_ai', true).limit(AI_DUE_LIMIT),
     7000, 'flag-query',
   );
   if (error || !data) {
     if (error) console.warn(`[ai-due] flag query failed (actor_is_ai column?): ${error.message}`);
     return null;
   }
-  return data.filter((r) => r.actor).map((r) => ({ gameId: r.game_id as string, actor: r.actor as Side }));
+  return data.filter((r) => r.actor).map((r) => ({
+    gameId: r.game_id as string, actor: r.actor as Side,
+    ...(r.started_at ? { since: String(r.started_at) } : {}),
+  }));
 }
 
 export async function listAiDueGames(
