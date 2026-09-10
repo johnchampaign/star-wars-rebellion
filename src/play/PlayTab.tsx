@@ -11986,6 +11986,24 @@ const OPPONENT_SECRET_KINDS = new Set<string>([
  *  never the payload. (Player point: card-draw counts are public info.) */
 const COUNT_ONLY_KINDS = new Set<string>(['draw-action', 'draw-mission', 'draw-objective', 'draw-probe']);
 
+/** One Long Range Probe answer, in words. The Empire paid a mission for this,
+ *  so it reads as a sentence and a "yes" is coloured like the alarm it is. */
+function ProbeResultEntry({ G, payload }: {
+  G: GameState;
+  payload: { systemId?: string; isBase?: boolean };
+}) {
+  const name = payload.systemId
+    ? (G.catalog.systems[payload.systemId]?.name ?? payload.systemId)
+    : 'that system';
+  return (
+    <span style={{ color: payload.isBase ? '#ff6b6b' : '#888', marginLeft: 4, fontWeight: payload.isBase ? 700 : 400 }}>
+      {payload.isBase
+        ? `the Rebel base IS at ${name}`
+        : `the Rebel base is NOT at ${name}`}
+    </span>
+  );
+}
+
 function LogPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
   // #740 (John's option b): the log used to show only the newest 100 entries —
   // less than one turn — so a player could not check what happened in an
@@ -12045,6 +12063,11 @@ function LogPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
                 <MissionRollEntry payload={entry.payload as MissionRollPayload} side={entry.side} />
               ) : entry.kind === 'combat-attack' && entry.payload ? (
                 <CombatAttackEntry payload={entry.payload as CombatAttackPayload} />
+              ) : entry.kind === 'probe-result' && entry.payload ? (
+                // Long Range Probe's answer (#756: "at least show that
+                // information in the Log"). Spelled out rather than dumped as
+                // a JSON payload — it's the whole point of the mission.
+                <ProbeResultEntry G={G} payload={entry.payload as { systemId?: string; isBase?: boolean }} />
               ) : entry.kind === 'interrogation-reveal' && entry.payload ? (
                 // Card names, not ids — this is intel the player reads (#620).
                 <span style={{ color: '#ffd54a', marginLeft: 4 }}>

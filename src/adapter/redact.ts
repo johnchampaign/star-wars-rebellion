@@ -75,12 +75,28 @@ export const PUBLIC_LOG_KINDS: ReadonlySet<string> = new Set([
   'refresh-retrieve', 'sabotage-removed', 'death-star-completed',
 ]);
 
+/** Log kinds whose payload a side PAID for and must be able to read back, even
+ *  though it names the still-hidden Rebel base. The base scrub below is a blunt
+ *  substring match, so without this exemption a SUCCESSFUL Long Range Probe was
+ *  the one outcome the Empire never got told about: "the Rebel player must tell
+ *  you if the Rebel base is in this system" (assets/missions.json), and the yes
+ *  answer names the base — so the Empire's own log entry was dropped, leaving
+ *  only `mission-unopposed` + `mission-discard` and no answer anywhere in the
+ *  interface (#756). A miss survived the scrub, so only a correct guess was
+ *  silently swallowed. Exempt ONLY entries tagged with the VIEWER'S OWN side:
+ *  the Empire chose that system itself, so this can never tell them anything
+ *  the card doesn't already grant. */
+const OWN_INTEL_KINDS: ReadonlySet<string> = new Set([
+  'probe-result', // Long Range Probe's yes/no answer.
+]);
+
 /** Per-entry log redaction (replaces the old wipe-the-whole-log stopgap). An
  *  entry is kept if it's a PUBLIC_LOG_KINDS event OR it's tagged with the
  *  viewer's OWN side (their own private actions — e.g. their own draws — which
  *  they already know). Everything else is dropped (default-deny). Then, while
  *  the Rebel base is hidden from this viewer, drop any surviving entry that
- *  names the secret base system or the Rebel-Base staging space. */
+ *  names the secret base system or the Rebel-Base staging space — except the
+ *  viewer's own paid-for intel (OWN_INTEL_KINDS). */
 function redactLog(
   log: GameState['turnLog'], viewer: Side | null, baseHidden: boolean, baseSystemId: string | undefined,
 ): GameState['turnLog'] {
@@ -88,7 +104,7 @@ function redactLog(
   for (const e of log) {
     const own = viewer != null && (e as { side?: Side }).side === viewer;
     if (!own && !PUBLIC_LOG_KINDS.has(e.kind)) continue;
-    if (baseHidden) {
+    if (baseHidden && !(own && OWN_INTEL_KINDS.has(e.kind))) {
       const s = JSON.stringify(e);
       if (s.includes('rebel-base') || (baseSystemId && s.includes(baseSystemId))) continue;
     }

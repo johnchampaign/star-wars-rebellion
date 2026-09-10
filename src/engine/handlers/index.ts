@@ -543,7 +543,10 @@ const imperialPropaganda: EffectHandler = (G, ctx) => {
 /** "If successful, the Rebel player must tell you if the Rebel base is in
  *  this system." Surfaces the yes/no to the Empire via a modal notice, and on
  *  a "no" rules the system out (yellow searched marker). RAW: this does NOT
- *  reveal the base — the Empire just learns the answer. */
+ *  reveal the base — the Empire just learns the answer.
+ *  The notice is tagged 'Empire' (#756): an untagged notice pops for BOTH seats
+ *  online, and whichever seat dismisses it first clears it for the other — so
+ *  the Rebel could wipe the Empire's own probe answer before the Empire saw it. */
 const longRangeProbe: EffectHandler = (G, ctx) => {
   const sysId = ctx.targetSystemId;
   if (!sysId) return true;
@@ -554,13 +557,15 @@ const longRangeProbe: EffectHandler = (G, ctx) => {
   }});
   if (isBase) {
     pushNotice(G, `lrp-${sysId}-t${G.timeMarker}`, 'Long Range Probe',
-      `The Rebel base IS at ${sysName}! (Move units there to capture it — it isn't revealed yet.)`);
+      `The Rebel base IS at ${sysName}! (Move units there to capture it — it isn't revealed yet.)`,
+      'Empire');
   } else {
     // Rule it out — same knowledge as a "no" probe card. Shows as a yellow X.
     if (!G.empireSearchedRuledOut) G.empireSearchedRuledOut = [];
     if (!G.empireSearchedRuledOut.includes(sysId)) G.empireSearchedRuledOut.push(sysId);
     pushNotice(G, `lrp-${sysId}-t${G.timeMarker}`, 'Long Range Probe',
-      `The Rebel base is NOT at ${sysName}. Marked as ruled out on the map.`);
+      `The Rebel base is NOT at ${sysName}. Marked as ruled out on the map.`,
+      'Empire');
   }
   return true;
 };
