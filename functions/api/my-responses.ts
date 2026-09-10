@@ -16,6 +16,42 @@ interface Env {
   SWR_BUGREPORT_REPO?: string;
 }
 
+/** GitHub `author_association` values that mean "someone who speaks for this
+ *  project". Anything else is a member of the public. */
+const MAINTAINER_ASSOCIATIONS = new Set(['OWNER', 'COLLABORATOR', 'MEMBER']);
+
+export interface IssueComment {
+  body: string;
+  user?: { login?: string; type?: string } | null;
+  author_association?: string;
+  created_at: string;
+}
+
+/** The comment shown back to the player as "our response", or null.
+ *
+ *  SECURITY (#758): this text is rendered INSIDE THE GAME to the person who
+ *  filed the report, as though the project had written it. Anyone with a GitHub
+ *  account can comment on a public issue, so selecting "the newest comment"
+ *  handed an arbitrary stranger a channel straight to our players — and it was
+ *  live: an unaffiliated account posted a (fabricated) "technical proposal" on
+ *  #758 itself. Only a maintainer's own words qualify now.
+ *
+ *  Fails CLOSED: with no maintainer comment this returns null and the client
+ *  (PlayTab's `.filter((r) => r.response && ...)`) simply shows no modal.
+ *  Hiding/minimising a comment on GitHub does NOT remove it from the REST
+ *  listing we read, so moderation is not a substitute for this filter. */
+export function pickResolutionComment(comments: IssueComment[], ownerLogin: string): string | null {
+  const owner = ownerLogin.toLowerCase();
+  const candidates = comments
+    .filter((c) => c.user?.type !== 'Bot')
+    // Screenshot commits are auto-posted alongside a report, never a response.
+    .filter((c) => !/^Screenshot for problem report/.test(c.body))
+    .filter((c) => MAINTAINER_ASSOCIATIONS.has(String(c.author_association ?? '').toUpperCase())
+      || (!!owner && (c.user?.login ?? '').toLowerCase() === owner))
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
+  return candidates.length > 0 ? candidates[0].body : null;
+}
+
 export const onRequestGet: PagesFunction<Env> = async (ctx) => {
   const { request, env } = ctx;
   const url = new URL(request.url);
@@ -67,19 +103,9 @@ export const onRequestGet: PagesFunction<Env> = async (ctx) => {
           { headers: ghHeaders(token) },
         );
         if (cResp.ok) {
-          const comments: Array<{
-            body: string; user: { login: string; type: string }; created_at: string;
-          }> = await cResp.json();
-          // Take the most recent comment that ISN'T a screenshot-attached
-          // commit notification or a bot post. Most resolution comments
-          // are posted by the maintainer when closing.
-          const candidates = comments
-            .filter((c) => c.user?.type !== 'Bot')
-            .filter((c) => !/^Screenshot for problem report/.test(c.body))
-            .sort((a, b) => (a.created_at < b.created_at ? 1 : -1));
-          if (candidates.length > 0) {
-            response = candidates[0].body;
-          }
+          const comments: IssueComment[] = await cResp.json();
+          // The maintainer's most recent comment — see pickResolutionComment.
+          response = pickResolutionComment(comments, repo.split('/')[0] ?? '');
         }
       }
       out.push({
