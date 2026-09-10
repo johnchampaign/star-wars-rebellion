@@ -596,6 +596,22 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
   if (!G.pendingDeployment) return { ok: false, reason: 'no-pending-deployment' };
   const remaining = G.pendingDeployment[side];
 
+  // Nothing left to place for this side: the press is a no-op, so say so
+  // instead of recording a fresh setup-auto-fill entry (#757 — a player kept
+  // clicking "auto-fill remaining" and watched the log fill with phantom
+  // turn-1 actions). Re-run the advance check first (it is idempotent) so a
+  // Setup waiting only on the other side's placement or the base pick can
+  // still unstick; report ok only if that actually moved the game on. The
+  // AI's Setup step returns this ok flag too, so the old always-true answer
+  // let a stuck Setup spin the AI loop forever.
+  if (remaining.length === 0) {
+    const phaseBefore = G.phase;
+    const playerBefore = G.currentPlayer;
+    maybeAdvanceFromSetup(G);
+    if (G.phase !== phaseBefore || G.currentPlayer !== playerBefore) return { ok: true };
+    return { ok: false, reason: 'nothing-to-auto-fill' };
+  }
+
   if (side === 'Empire') {
     const imperialSystems = Object.entries(G.map.systems)
       .filter(([, ss]) => ss.loyalty === 'imperial' || ss.subjugated)

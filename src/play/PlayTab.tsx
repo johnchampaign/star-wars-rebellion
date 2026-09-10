@@ -1549,8 +1549,13 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
 
   const onSetupAutoFill = (side: Side) => {
     if (!G) return;
-    if (canEncode(G)) setupUndoStackRef.current.push(encode(G));
-    phases.setupAutoFill(G, side);
+    // Snapshot BEFORE the fill so it can be undone — and drop the snapshot
+    // again if the fill did nothing (#757: repeated presses once everything is
+    // placed used to stack up undo entries that restored an identical board).
+    const snapshot = canEncode(G) ? encode(G) : null;
+    if (snapshot) setupUndoStackRef.current.push(snapshot);
+    const r = phases.setupAutoFill(G, side);
+    if (!r.ok && snapshot) setupUndoStackRef.current.pop();
     persist();
     refresh();
   };
@@ -1743,11 +1748,25 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             Supply
           </button>
           <button className="tab-button" onClick={startNew}>New game</button>
-          {G.phase === 'Setup' && (
-            <button className="tab-button" onClick={() => onSetupAutoFill(G.currentPlayer)}>
-              {G.currentPlayer} auto-fill remaining
-            </button>
-          )}
+          {G.phase === 'Setup' && (() => {
+            // #757: the button used to stay live after every unit was placed,
+            // so extra presses just padded the log. Show what's actually left
+            // and go dead at zero.
+            const left = G.pendingDeployment?.[G.currentPlayer]?.length ?? 0;
+            return (
+              <button
+                className="tab-button"
+                disabled={left === 0}
+                onClick={() => onSetupAutoFill(G.currentPlayer)}
+                style={left === 0 ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+                title={left === 0
+                  ? `${G.currentPlayer} has no units left to place — that side's setup is done.`
+                  : `Place ${G.currentPlayer}'s remaining ${left} unit${left === 1 ? '' : 's'} automatically`}
+              >
+                {G.currentPlayer} auto-fill remaining{left > 0 ? ` (${left})` : ''}
+              </button>
+            );
+          })()}
           {G.phase === 'Assignment' && G.currentPlayer === humanSide && (
             <>
               {(() => {
