@@ -217,7 +217,25 @@ function playOne(seed) {
   // Main loop: drive both AIs until game over or we hit the step cap.
   let steps = 0;
   const STEP_CAP = 200000;
+  // Rebel objective-ladder instrument (2026-09-10): the Refresh-timing
+  // objectives are won by board counts, so record them at the turn-8 start
+  // (the archive's comparison point: human Rebel 8.9 loyal / 5.1 systems with
+  // a unit / 1.5 Imperial systems with a unit or marker / 3.6 markers; AI
+  // Rebel 6.9 / 3.3 / 0.4 / 1.7) and again at the end.
+  const ladder = (g) => {
+    let loyal = 0, withUnit = 0, impWithUnitOrSab = 0, markers = 0;
+    for (const [sid, ss] of Object.entries(g.map.systems)) {
+      const d = g.catalog.systems[sid]; const hasR = (ss.units ?? []).some((u) => u.side === 'Rebel');
+      if (ss.loyalty === 'rebel') loyal++;
+      if (hasR && d && !d.isRemote) withUnit++;
+      if (ss.loyalty === 'imperial' && d && !d.isRemote && (hasR || ss.sabotage)) impWithUnitOrSab++;
+      if (ss.sabotage) markers++;
+    }
+    return { loyal, withUnit, impWithUnitOrSab, markers };
+  };
+  let ladder8 = null;
   while (!G.isGameOver && steps < STEP_CAP) {
+    if (!ladder8 && G.timeMarker >= 8) ladder8 = ladder(G);
     // Whichever side has an action (current player or owes a pending choice).
     const side = G.currentPlayer;
     const did = aiStep(G, side);
@@ -245,6 +263,8 @@ function playOne(seed) {
     rounds: G.timeMarker,
     reputationMarker: G.reputationMarker,
     scoredObjectives: (G.rebel.scoredObjectives ?? []).length,
+    scoredByStage: (G.rebel.scoredObjectives ?? []).reduce((acc, o) => { const id = typeof o === 'string' ? o : o?.id ?? o?.objectiveId; const st = G.catalog.objectives[id]?.stage ?? 0; acc[st] = (acc[st] ?? 0) + 1; return acc; }, {}),
+    ladder8: ladder8 ?? ladder(G), ladderEnd: ladder(G),
     rebelBaseRevealed: G.rebelBaseRevealed,
     capturedLeaders: (G.empire.capturedLeaders ?? []).length,
     steps,
@@ -289,6 +309,7 @@ function computeEmpireMetrics(G) {
 
 // Run the tournament.
 const stats = {
+  scoredByStage: {}, ladder8: { loyal: 0, withUnit: 0, impWithUnitOrSab: 0, markers: 0 },
   games: 0,
   rebelWins: 0,
   empireWins: 0,
@@ -320,6 +341,8 @@ for (let i = 0; i < args.games; i++) {
   const seed = args.seed * 1000 + i;
   const r = playOne(seed);
   stats.games++;
+  for (const [k, v] of Object.entries(r.scoredByStage ?? {})) stats.scoredByStage[k] = (stats.scoredByStage[k] ?? 0) + v;
+  for (const k of Object.keys(stats.ladder8)) stats.ladder8[k] += r.ladder8?.[k] ?? 0;
   if (r.result === 'Rebel') stats.rebelWins++;
   else if (r.result === 'Empire') stats.empireWins++;
   else stats.stuck++;
@@ -395,7 +418,8 @@ console.log(`Empire wins:            ${stats.empireWins} (${(100 * stats.empireW
 console.log(`Stuck:                  ${stats.stuck} (${(100 * stats.stuck / stats.games).toFixed(1)}%)`);
 console.log(`Max-rounds reached:     ${stats.maxRoundsReached}`);
 console.log(`Avg rounds per game:    ${(stats.totalRounds / stats.games).toFixed(1)}`);
-console.log(`Avg Rebel objectives:   ${(stats.totalObjectives / stats.games).toFixed(2)}`);
+console.log(`Avg Rebel objectives:   ${(stats.totalObjectives / stats.games).toFixed(2)}  (by stage 1/2/3: ${[1, 2, 3].map((k) => ((stats.scoredByStage[k] ?? 0) / stats.games).toFixed(2)).join(' / ')})`);
+console.log(`Rebel ladder @turn 8:   loyal ${(stats.ladder8.loyal / stats.games).toFixed(1)}  systems with a unit ${(stats.ladder8.withUnit / stats.games).toFixed(1)}  Imperial w/ unit or marker ${(stats.ladder8.impWithUnitOrSab / stats.games).toFixed(1)}  markers ${(stats.ladder8.markers / stats.games).toFixed(1)}   (archive: human Rebel 8.9 / 5.1 / 1.5 / 3.6, AI Rebel 6.9 / 3.3 / 0.4 / 1.7)`);
 console.log(`Avg steps per game:     ${(stats.totalSteps / stats.games).toFixed(0)}`);
 console.log(`Avg ms per game:        ${(stats.totalElapsedMs / stats.games).toFixed(0)}`);
 console.log('');

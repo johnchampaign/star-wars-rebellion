@@ -317,6 +317,18 @@ spread and pressure: units out of the base into loyal and Imperial systems, and
 more sabotage. That is a scoring lever, judged by these counts in self-play
 plus the win rate, not by imitation.
 
+**Addendum, same day — the lever (`SWR_REBEL_SPREAD`) measured flat and stays
+OFF** (ledger row). The instructive number was the control arm: against the AI
+Empire the AI Rebel already posts the human Rebel's ladder at turn 8 (9.0 loyal /
+4.0 systems with a unit / 3.5 markers vs the archive's 8.9 / 5.1 / 3.6). The
+archive's AI-Rebel deficit (6.9 / 3.3 / 1.7) is what a HUMAN Empire's pressure
+does to it — subjugations, hunted stacks, cleared markers — not a scoring
+shortfall the Rebel can fix by wanting objectives more. Both Rebel-side
+imitation and the spread lever were therefore aimed at the wrong variable; the
+gap to chase is how the AI Rebel survives and keeps spreading under a human
+Empire's pressure, which self-play cannot stage and only the archive's
+human-Empire games can show.
+
 ## Next steps, in order
 
 1. **Ranker end-to-end — first read is FLAT.** 20 games/arm unpaired, Rebel-only

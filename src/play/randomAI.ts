@@ -225,6 +225,29 @@ const UNBIASED_TIEBREAK: boolean = (() => {
   return true;
 })();
 
+/** Rebel spread-and-pressure (SWR_REBEL_SPREAD=1; default OFF until the
+ *  tournament instrument judges it). John's option 1 for the objective ladder,
+ *  2026-09-10. Measured on the archive (turn-8 means, human Rebel vs AI Rebel):
+ *  systems with a Rebel unit 5.1 vs 3.3, Imperial systems with a Rebel unit or
+ *  sabotage marker 1.5 vs 0.4, sabotage markers 3.6 vs 1.7, Rebel-loyal
+ *  systems 8.9 vs 6.9 — while the AI holds MORE objectives in hand (6.0 vs
+ *  4.5). The Refresh-timing objectives (Establish Outposts 5 systems with a
+ *  unit, Defend the People 4 loyal systems with a unit, Cut Supply Lines 3
+ *  Imperial systems with a unit or marker, Uprising 9 loyal) are won by board
+ *  accumulation, so this rewards, WHILE such a card is in hand: activations
+ *  that put a unit into an empty system the card counts, and Sabotage on an
+ *  unmarked Imperial world. Objective-aware imitation measured flat first
+ *  (docs/imitation-plan.md step 6) — this is a scoring lever judged by those
+ *  counts in self-play, not by the human moves. */
+const REBEL_SPREAD: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_REBEL_SPREAD === '1') return true;
+    if (proc?.env?.SWR_REBEL_SPREAD === '0') return false;
+  } catch { /* browser: no process */ }
+  return false;
+})();
+
 /** Opt-out for the Rebel rout guard (SWR_REBEL_ROUT=0). Default ON. The Rebel
  *  branch of the activation scorer had a winnable-attack BONUS but no
  *  losing-attack PENALTY — the mirror of the Empire's #653 guard was never
@@ -1472,6 +1495,15 @@ export function rebelMissionTargetScore(
     const specOpsHere = empLeadersHere.some(
       (lid) => (G.catalog.leaders[lid]?.skills?.specOps ?? 0) > 0);
     s += specOpsHere ? -3 : 4;
+    // Spread-and-pressure (SWR_REBEL_SPREAD): a marker on an unmarked Imperial
+    // world also counts toward Cut Supply Lines (3 Imperial systems with a
+    // Rebel unit or a marker) and sets up Seize Control (win a battle in a
+    // marked system) while those cards are in hand.
+    if (REBEL_SPREAD && !sysState?.sabotage && sysState?.loyalty === 'imperial' && !sysDef.isRemote) {
+      const hand = G.rebel.objectiveHand ?? [];
+      if (hand.includes('cut-supply-lines-1')) s += 8;
+      if (hand.includes('seize-control-2') && sysState.units.some((u) => u.side === 'Empire')) s += 4;
+    }
   }
   // Plan the Assault commits Rebel ships from the base into a SPACE BATTLE at the
   // target. Only worth it if those ships can win — playtester saw the AI throw a
@@ -3181,6 +3213,24 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
           // the Empire) — only force already away from the base, to not
           // telegraph its location.
           ts += 4 + (def?.resources?.length ?? 0);
+        }
+        // Spread-and-pressure (SWR_REBEL_SPREAD): an empty system this card
+        // counts, reachable now, is worth a leader while the card is in hand —
+        // more so the closer the count is to the threshold.
+        if (REBEL_SPREAD && !hasEnemyUnits && !hasOwnUnits && bringable > 0 && !def?.isRemote
+            && rebelObjHand.length > 0 && dFromBase >= 1) {
+          const has = (id: string) => rebelObjHand.includes(id);
+          let sysWithUnit = 0, loyalWithUnit = 0, impWithUnitOrSab = 0;
+          for (const [sid2, ss2] of Object.entries(G.map.systems)) {
+            const hasR = (ss2.units ?? []).some((u) => u.side === 'Rebel');
+            if (hasR) { sysWithUnit++; if (ss2.loyalty === 'rebel') loyalWithUnit++; }
+            if (ss2.loyalty === 'imperial' && (hasR || ss2.sabotage) && !G.catalog.systems[sid2]?.isRemote) impWithUnitOrSab++;
+          }
+          const near = (have: number, need: number) => have >= need ? 0 : (need - have <= 2 ? 10 : 6);
+          if (has('establish-outposts-3')) ts += near(sysWithUnit, 5);
+          if (has('defend-the-people-1') && sys.loyalty === 'rebel') ts += near(loyalWithUnit, 4);
+          if (has('cut-supply-lines-1') && sys.loyalty === 'imperial') ts += near(impWithUnitOrSab, 3);
+          if (has('threaten-the-core-1') && (sysId === 'coruscant' || (G.catalog.adjacency['coruscant'] ?? []).includes(sysId))) ts += 6;
         }
       }
       // ROUT GUARD — the missing half of the Rebel attack gate (player report
