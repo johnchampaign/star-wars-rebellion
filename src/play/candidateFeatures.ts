@@ -42,6 +42,90 @@ export const BASE_FEATURES = [
   'planObjectiveRun', 'planDevelop', 'planRelocate', 'planDefend',
   'planXdistBase', 'planXactivate',
 ] as const;
+// NOT in the vector (measured 2026-09-10, John's option 1 for the Rebel
+// objective ladder): eight objective-relevance features built from
+// objectiveMatches() below — combat/presence/loyalty/sabotage/rescue match
+// counts, reputation at stake, stage-3 share. Same split, Rebel only: held-out
+// top-1 27.5% without → 26.8% with; on the 47 held-out positions where some
+// candidate advanced an objective, 48.9% → 53.2% (two positions). And only
+// ~20% of the humans' moves advance an in-hand objective at all — covered or
+// not by the heuristic's candidates (23% / 20%), so the candidate ceiling is
+// not objective-shaped either. The ladder is won by board accumulation
+// (loyalty counts, unit presence), not by targeted moves. The helper stays as
+// a measurement tool; adding it to the vector would only invalidate the
+// shipped weights for nothing.
+
+/** Which in-hand Rebel objectives a candidate action plausibly advances. Cheap
+ *  condition reads keyed on the card ids in assets/objectives.json; a mapping,
+ *  not a planner. Returns per-family match counts and the reputation at stake. */
+/** Trainer A/B switch: SWR_OBJ_FEATURES=0 zeroes the objective features so the
+ *  same split can be trained with and without them. Runtime never sets it. */
+const OBJ_FEATURES: boolean = (() => {
+  try { return (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_OBJ_FEATURES !== '0'; } catch { return true; }
+})();
+export function objectiveMatches(G: GameState, side: Side, c: CommandAction): { combat: number; presence: number; loyalty: number; sabotage: number; rescue: number; rep: number; stage3Held: number; matchedStage3: number } {
+  const out = { combat: 0, presence: 0, loyalty: 0, sabotage: 0, rescue: 0, rep: 0, stage3Held: 0, matchedStage3: 0 };
+  if (!OBJ_FEATURES || side !== 'Rebel') return out;
+  const hand = G.rebel.objectiveHand ?? [];
+  if (hand.length === 0 || c.kind === 'pass') return out;
+  const tgt = c.targetSystemId as SystemId | undefined;
+  const ss = tgt ? G.map.systems[tgt] : undefined; const sd = tgt ? G.catalog.systems[tgt] : undefined;
+  const units = ss?.units ?? [];
+  const imp = units.filter((u) => u.side === 'Empire');
+  const hp = (pred: (t: { theater: string; typeId?: string; health: { value: number } }, u: { typeId: string }) => boolean) =>
+    imp.reduce((a, u) => { const t = G.catalog.unitTypes[u.typeId]; return t && pred(t, u) ? a + t.health.value : a; }, 0);
+  const impGroundHp = hp((t) => t.theater === 'ground');
+  const impShipHp = hp((t) => t.theater === 'space');
+  const hasSD = imp.some((u) => u.typeId === 'star-destroyer' || u.typeId === 'super-star-destroyer');
+  const rebelUnitHere = units.some((u) => u.side === 'Rebel');
+  const empLeaders = tgt ? (G.empire.leadersOnBoard[tgt] ?? []) : [];
+  const m = c.kind === 'reveal' ? G.catalog.missions[c.missionId] : undefined;
+  const LOYALTY_MISSIONS = new Set(['build-alliance', 'establish-trade-relations', 'support-of-mon-calamari', 'wookie-uprising', 'regional-aid', 'ignite-rebellion', 'public-uprising', 'aggressive-negotiations']);
+  const SABOTAGE_MISSIONS = new Set(['sabotage', 'plant-explosives', 'covert-operation']);
+  const RESCUE_MISSIONS = new Set(['daring-rescue', 'critical-rescue', 'for-the-greater-good']);
+  const isAttack = c.kind === 'activate' && imp.length > 0;
+  const isLoyaltyReveal = !!m && LOYALTY_MISSIONS.has(m.id);
+  const coruscantAdj = new Set(['coruscant', ...(G.catalog.adjacency['coruscant'] ?? [])]);
+  const rebelLoyalCount = Object.values(G.map.systems).filter((x) => x.loyalty === 'rebel').length;
+  const regionAllRebel = (region: number | undefined) => region === undefined ? false
+    : Object.entries(G.map.systems).filter(([id]) => G.catalog.systems[id]?.region === region && !G.catalog.systems[id]?.isRemote)
+      .every(([, x]) => x.loyalty === 'rebel');
+  for (const oid of hand) {
+    const card = G.catalog.objectives[oid]; if (!card) continue;
+    const rep = card.reputation ?? 1;
+    let hit = false;
+    switch (oid) {
+      case 'crippling-blow-1': hit = isAttack && impGroundHp >= 3; break;
+      case 'rebel-assault-1': hit = isAttack && hasSD; break;
+      case 'major-victory-3': hit = isAttack && impShipHp >= 3; break;
+      case 'decisive-victory-1': hit = isAttack && impGroundHp > 0 && impShipHp > 0; break;
+      case 'liberation-2': hit = isAttack && !!ss?.subjugated && impGroundHp > 0; break;
+      case 'seize-control-2': hit = isAttack && !!ss?.sabotage; break;
+      case 'raid-imperial-factory-3': hit = isAttack && !!sd?.resources?.some((r) => r.shape === 'square'); break;
+      case 'return-of-the-jedi-3': hit = isAttack && (empLeaders.includes('darth-vader') || empLeaders.includes('emperor-palpatine')); break;
+      case 'defend-the-people-1': hit = c.kind === 'activate' && ss?.loyalty === 'rebel' && !rebelUnitHere; break;
+      case 'establish-outposts-3': hit = c.kind === 'activate' && !rebelUnitHere && !sd?.isRemote; break;
+      case 'cut-supply-lines-1': hit = (c.kind === 'activate' && ss?.loyalty === 'imperial' && !rebelUnitHere) || (!!m && SABOTAGE_MISSIONS.has(m.id) && ss?.loyalty === 'imperial' && !ss?.sabotage); break;
+      case 'threaten-the-core-1': hit = c.kind === 'activate' && !!tgt && coruscantAdj.has(tgt); break;
+      case 'heart-of-the-empire-2': hit = c.kind === 'activate' && tgt === 'coruscant' && imp.length === 0; break;
+      case 'regional-support-1': hit = isLoyaltyReveal && !!sd && !regionAllRebel(sd.region); break;
+      case 'support-of-the-hutts-1': hit = isLoyaltyReveal && !!sd && sd.region === G.catalog.systems['nal-hutta']?.region; break;
+      case 'popular-support-2': hit = isLoyaltyReveal && rebelLoyalCount < 6; break;
+      case 'uprising-3': hit = isLoyaltyReveal && rebelLoyalCount < 9; break;
+      case 'leave-no-one-behind-2': hit = !!m && RESCUE_MISSIONS.has(m.id) && (G.empire.capturedLeaders?.length ?? 0) > 0; break;
+      default: hit = false;
+    }
+    if (card.stage === 3) out.stage3Held++;
+    if (!hit) continue;
+    out.rep += rep; if (card.stage === 3) out.matchedStage3++;
+    if (['crippling-blow-1', 'rebel-assault-1', 'major-victory-3', 'decisive-victory-1', 'liberation-2', 'seize-control-2', 'raid-imperial-factory-3', 'return-of-the-jedi-3'].includes(oid)) out.combat++;
+    else if (['defend-the-people-1', 'establish-outposts-3', 'threaten-the-core-1', 'heart-of-the-empire-2'].includes(oid) || (oid === 'cut-supply-lines-1' && c.kind === 'activate')) out.presence++;
+    else if (oid === 'cut-supply-lines-1') out.sabotage++;
+    else if (oid === 'leave-no-one-behind-2') out.rescue++;
+    else out.loyalty++;
+  }
+  return out;
+}
 
 export const PLAN_VOCAB = ['search', 'stage', 'strike', 'consolidate', 'objective-run', 'develop', 'relocate', 'defend'] as const;
 export type Plan = (typeof PLAN_VOCAB)[number];

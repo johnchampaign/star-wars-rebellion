@@ -278,6 +278,45 @@ Empire. The "2.33 ground delivered" baseline from 2026-08-27 and the retrograde-
 guard verdict built on it therefore describe a policy no player faces. Worth
 closing regardless of what happens to #539.
 
+## Step 6 — objective-aware imitation: measured FLAT (2026-09-10)
+
+John's option 1 for the Rebel objective ladder (humans score a stage-3 objective
+in **40%** of games, the AI in **8%**; stage-2 at a quarter of the human rate).
+Eight objective-relevance features (`objectiveMatches()` in
+`candidateFeatures.ts`: does this candidate advance an in-hand objective —
+combat / presence / loyalty / sabotage / rescue families, reputation at stake,
+stage-3 share) were trained on the same split, Rebel only, `SWR_OBJ_FEATURES=0`
+as the control:
+
+| held-out (142 positions, unseen games) | top-1 | top-3 |
+|---|---|---|
+| heuristic order | 5.6% | 12.7% |
+| ranker without objective features | 27.5% | 43.0% |
+| ranker with objective features | 26.8% | 42.3% |
+
+On the 47 held-out positions where some candidate advanced an objective: 48.9% →
+53.2% (two positions). Not a ceiling problem either: only ~20% of the humans'
+moves advance an in-hand objective by the mapping, covered or not by the
+heuristic's candidates (23% / 20%). The helper and its test stay as measurement
+tools; the shipped feature vector is unchanged.
+
+**Where the ladder is actually lost** — turn-start means from the archive,
+human Rebel (n≈160–207 per turn) vs AI Rebel (n≈63–217):
+
+| turn 8 | Rebel-loyal systems | systems with a Rebel unit | Imperial systems with Rebel unit/sabotage | sabotage markers | objectives in hand |
+|---|---|---|---|---|---|
+| human Rebel | 8.9 | 5.1 | 1.5 | 3.6 | 4.5 |
+| AI Rebel | 6.9 | 3.3 | 0.4 | 1.7 | 6.0 |
+
+The Refresh-timing objectives are won by board ACCUMULATION — Uprising needs 9
+loyal systems, Establish Outposts 5 systems with a Rebel unit, Cut Supply Lines
+3 Imperial systems with a Rebel unit or sabotage — and the AI Rebel accumulates
+less of every one of those counts while holding MORE objectives in hand (it
+draws them and cannot cash them). So the fix is not "aim at objectives", it is
+spread and pressure: units out of the base into loyal and Imperial systems, and
+more sabotage. That is a scoring lever, judged by these counts in self-play
+plus the win rate, not by imitation.
+
 ## Next steps, in order
 
 1. **Ranker end-to-end — first read is FLAT.** 20 games/arm unpaired, Rebel-only
