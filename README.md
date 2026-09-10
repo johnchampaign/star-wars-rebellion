@@ -144,3 +144,10 @@ please don't expect it to land as-is.
 **The whole codebase is MIT-licensed** — fork it and do whatever you want: change
 the rules, reskin it, build and ship your own version. No permission needed; that's
 the point of the license.
+
+**Building a bot or a bridge?** There's a hosted HTTP API for online games —
+create a game, fetch a seat's redacted view, submit actions, chat — so an
+external client (a Discord bot, say) can run games without reimplementing the
+rules or the hidden-information handling, and picks up engine fixes for free.
+See [`docs/bot-integration.md`](docs/bot-integration.md). Non-commercial use
+only, same as the rest of the project.
