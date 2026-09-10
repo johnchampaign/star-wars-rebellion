@@ -789,7 +789,7 @@
       "isAttempt": false,
       "leaderPortrait": null,
       "effectKey": "interdictor-development",
-      "rulesText": "Resolve in a system that contains an Imperial unit, no Rebel units, and no sabotage marker. Place 1 Interdictor on build space 2. If 2 leaders are assigned, place on space 1 and return the card.",
+      "rulesText": "Resolve in any Imperial system that has a blue square resource icon. Place 1 Interdictor on space 2 of the build queue. If 2 leaders are assigned to this mission, place the Interdictor on space 1 instead and return this card to your hand.",
       "image": "Interdictor Deployment_p.png",
       "set": "rote",
       "projectCopies": 2
