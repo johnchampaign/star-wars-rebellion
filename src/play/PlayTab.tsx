@@ -1627,29 +1627,50 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   };
 
   // Undo the most recent human setup placement (or auto-fill).
+  // The snapshot stack lives only in memory, so a page reload empties it — and
+  // mobile browsers reload a backgrounded tab all the time. With the stack gone
+  // Undo and Reset silently did nothing (#785). Fall back to the log: pull back
+  // the side's most recent setup placement that is still on the board.
   const onSetupUndo = () => {
     const Gc = gameRef.current;
     if (!Gc) return;
     const snap = setupUndoStackRef.current.pop();
-    if (!snap) return;
-    gameRef.current = decode(snap, Gc.catalog);
+    if (snap) {
+      gameRef.current = decode(snap, Gc.catalog);
+    } else {
+      const last = lastSetupPlacement(Gc, setupSide(Gc));
+      if (!last) return;
+      phases.setupUndoDeployUnit(Gc, last.side, last.typeId, last.systemId);
+    }
     persist();
     refresh();
   };
 
   // Reset all of the human's setup placements back to before the first one.
+  // confirmAdvisory, not bare confirm(): when Chrome suppresses dialogs,
+  // confirm() returns false instantly and the reset never happened (#785, #779).
   const onSetupReset = () => {
     const Gc = gameRef.current;
     if (!Gc) return;
     const stack = setupUndoStackRef.current;
-    if (stack.length === 0) return;
-    if (!confirm('Reset your setup? This clears all the units you\'ve placed so far and starts your deployment over.')) return;
-    const baseline = stack[0];
-    setupUndoStackRef.current = [];
-    gameRef.current = decode(baseline, Gc.catalog);
+    const side = setupSide(Gc);
+    if (stack.length === 0 && setupPlacedUnits(Gc, side).length === 0) return;
+    if (!confirmAdvisory('Reset your setup? This clears all the units you\'ve placed so far and starts your deployment over.')) return;
+    if (stack.length > 0) {
+      const baseline = stack[0];
+      setupUndoStackRef.current = [];
+      gameRef.current = decode(baseline, Gc.catalog);
+    } else {
+      // Stack lost to a reload: pull every placed unit of this side back.
+      for (const u of setupPlacedUnits(Gc, side)) {
+        phases.setupUndoDeployUnit(Gc, side, u.typeId, u.systemId);
+      }
+    }
     persist();
     refresh();
   };
+  // The side whose setup panel is showing (mirrors the SetupPanel `side` prop).
+  const setupSide = (Gc: GameState): Side => (online ? humanSide : Gc.currentPlayer);
 
   // ---------- Render ----------
 
@@ -2014,7 +2035,8 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           onUndo={onSetupUndo}
           onUndoUnit={onSetupUndoUnit}
           onReset={onSetupReset}
-          undoCount={setupUndoStackRef.current.length}
+          undoCount={setupUndoStackRef.current.length
+            || setupPlacedUnits(G, online ? humanSide : G.currentPlayer).length}
         />
       )}
 
@@ -10076,6 +10098,38 @@ function RebelBasePickPanel({ G, onPick }: { G: GameState; onPick: (sysId: strin
 // Setup Panel — choose where to deploy starting units
 // ============================================================================
 
+/** Every unit `side` currently has on the board during Setup — at this point
+ *  the only units on the board are setup placements. */
+function setupPlacedUnits(G: GameState, side: Side): { typeId: string; systemId: string }[] {
+  if (G.phase !== 'Setup') return [];
+  const out: { typeId: string; systemId: string }[] = [];
+  for (const u of G.map.rebelBaseSpace.units) {
+    if (u.side === side) out.push({ typeId: u.typeId, systemId: 'rebel-base-space' });
+  }
+  for (const [sid, ss] of Object.entries(G.map.systems)) {
+    for (const u of ss.units) if (u.side === side) out.push({ typeId: u.typeId, systemId: sid });
+  }
+  return out;
+}
+
+/** The side's most recent setup placement that is still on the board, read
+ *  from the log (used when the in-memory undo stack was lost to a reload). */
+function lastSetupPlacement(G: GameState, side: Side): { side: Side; typeId: string; systemId: string } | null {
+  if (G.phase !== 'Setup') return null;
+  const log = G.turnLog ?? [];
+  for (let i = log.length - 1; i >= 0; i--) {
+    const e = log[i];
+    if (e.kind !== 'setup-deploy' || e.side !== side) continue;
+    const p = e.payload as { typeId?: string; systemId?: string; unit?: string } | undefined;
+    if (!p?.typeId || !p.systemId) continue;
+    const dest = p.systemId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[p.systemId];
+    const still = dest?.units.some((u) => u.side === side
+      && (p.unit ? u.instanceId === p.unit : u.typeId === p.typeId));
+    if (still) return { side, typeId: p.typeId, systemId: p.systemId };
+  }
+  return null;
+}
+
 function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onUndoUnit, onReset, undoCount }: {
   G: GameState;
   side: Side;
@@ -10678,7 +10732,11 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass, onRevealBase }: {
                       a.sysName.localeCompare(b.sysName) || a.leaderName.localeCompare(b.leaderName))
                     .map((t) => (
                       <option key={`${t.systemId}|${t.leaderId}`} value={`${t.systemId}|${t.leaderId}`}>
-                        {t.sysName} — {t.leaderName}
+                        {/* Leader first: with two Rebel leaders in one system the
+                            old "System — Leader" label read like a system pick,
+                            and the player didn't notice they were choosing WHICH
+                            leader to capture (#782). */}
+                        {t.leaderName} (at {t.sysName})
                       </option>
                     ))}
                 </select>

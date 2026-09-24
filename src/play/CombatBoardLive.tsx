@@ -2029,7 +2029,7 @@ function MoreDangerousTheaterPanel({ G, choice, onPersist }: {
   return (
     <div>
       <div style={{ fontSize: 13, marginBottom: 6 }}>
-        <b>{card?.name ?? choice.cardId}:</b> {verb} — your choice.
+        <b><CardHover G={G} cardId={choice.cardId}>{card?.name ?? choice.cardId}</CardHover>:</b> {verb} — your choice.
       </div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
         <button
@@ -2070,7 +2070,7 @@ function MoreDangerousRetrievePanel({ G, choice, onPersist }: {
   return (
     <div>
       <div style={{ fontSize: 13, marginBottom: 6 }}>
-        <b>{G.catalog.actions[choice.cardId]?.name ?? choice.cardId}:</b> pick {choice.count} of your
+        <b><CardHover G={G} cardId={choice.cardId}>{G.catalog.actions[choice.cardId]?.name ?? choice.cardId}</CardHover>:</b> pick {choice.count} of your
         discarded {choice.theater} tactic cards to return to your deck.
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
@@ -2078,7 +2078,8 @@ function MoreDangerousRetrievePanel({ G, choice, onPersist }: {
           <button key={i} onClick={() => toggle(i)}
             style={{ ...btn(sel.includes(i) ? '#80dc78' : '#888'),
               background: sel.includes(i) ? 'rgba(60,110,60,0.4)' : undefined }}>
-            {G.catalog.tactics[cid]?.name ?? cid}
+            {/* Hover a candidate to read what it does before retrieving it (#783). */}
+            <CardHover G={G} cardId={cid}>{G.catalog.tactics[cid]?.name ?? cid}</CardHover>
           </button>
         ))}
       </div>
