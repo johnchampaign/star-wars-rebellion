@@ -2009,7 +2009,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         masks={masksRef.current}
         humanSide={humanSide}
         eliminatedSystemIds={
-          probeHover && humanSide === 'Empire' && !G.rebelBaseRevealed
+          probeHover && humanSide === 'Empire'
             ? empireRuledOutSystems(G)
             : null
         }
@@ -8593,24 +8593,17 @@ function setupRemovedSystems(G: GameState): Set<string> {
 function EmpireProbeAnalysisPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
   if (humanSide !== 'Empire') return null;
   if (G.phase === 'Setup') return null;
-  // Once the base is REVEALED there is nothing left to deduce, and the stale
-  // probe read-out actively misleads: the "still possible" list can legitimately
-  // fall to nothing (every remaining deck system is also Imperial-held), which
-  // reads as "the game lost the base" (player report #780). Say where it is.
-  if (G.rebelBaseRevealed) {
-    const here = G.catalog.systems[G.rebelBaseSystemId]?.name ?? G.rebelBaseSystemId;
-    return (
-      <div style={{
-        margin: '8px 0', background: '#13151a', border: '1px solid #2a2d34',
-        borderRadius: 6, padding: '6px 12px', fontSize: 12, color: '#cfd2d6',
-      }}>
-        <b style={{ color: '#aae0ff' }}>Base search — complete.</b>{' '}
-        The Rebel base is revealed at <b style={{ color: '#7be08a' }}>{here}</b>, so the probe
-        deduction is switched off. If the Rebels establish a new base it goes back
-        under cover and this analysis returns.
-      </div>
-    );
-  }
+  // Once the base is REVEALED the search for it is over, but the probe read-out
+  // still matters: a NEW base (Rapid Mobilization) must be drawn from the probe
+  // deck, so the systems whose probes are still in the deck are exactly where
+  // the Rebels could relocate (player report #786). Keep the panel, say where
+  // the base is, and relabel it as relocation analysis. (#780: the old wording
+  // read as "the game lost the base"; the yellow "searched" map overlay is
+  // what emptied the map and stays off while revealed.)
+  const revealed = G.rebelBaseRevealed;
+  const revealedAt = revealed
+    ? (G.catalog.systems[G.rebelBaseSystemId]?.name ?? G.rebelBaseSystemId)
+    : null;
   const ruledOut = empireRuledOutSystems(G);
   const setupRuledOut = setupRemovedSystems(G);
   const name = (sid: string) => G.catalog.systems[sid]?.name ?? sid;
@@ -8624,6 +8617,9 @@ function EmpireProbeAnalysisPanel({ G, humanSide }: { G: GameState; humanSide: S
     if (!regions.has(region)) regions.set(region, { possible: [], ruledIn: [] });
     const bucket = regions.get(region)!;
     if (setupRuledOut.has(s.id)) continue; // shown in the separate setup list
+    // The revealed base is named in the header; its probe is faceup on the
+    // "Rebel Base" space, not in the deck, so it isn't a relocation site.
+    if (revealed && s.id === G.rebelBaseSystemId) continue;
     if (ruledOut.has(s.id)) bucket.ruledIn.push(s.id);
     else bucket.possible.push(s.id);
   }
@@ -8637,9 +8633,18 @@ function EmpireProbeAnalysisPanel({ G, humanSide }: { G: GameState; humanSide: S
       borderRadius: 6, padding: '6px 12px',
     }}>
       <summary style={{ cursor: 'pointer', fontSize: 12, color: '#aae0ff', fontWeight: 600 }}>
-        Base search — probe analysis by region
+        {revealed
+          ? <>Rebel base revealed at {revealedAt} — possible relocation sites</>
+          : 'Base search — probe analysis by region'}
       </summary>
       <div style={{ fontSize: 12, marginTop: 8, color: '#cfd2d6' }}>
+        {revealed && (
+          <div style={{ marginBottom: 8 }}>
+            The base is at <b style={{ color: '#7be08a' }}>{revealedAt}</b>. The Rebels can still
+            move it with <i>Rapid Mobilization</i>, but a new base has to come from the probe
+            deck — so it can only go to a <b style={{ color: '#7be08a' }}>green</b> system below.
+          </div>
+        )}
         <div style={{ color: '#888', marginBottom: 8 }}>
           <b style={{ color: '#7be08a' }}>Green</b> = still possible (probe in deck);{' '}
           <span style={{ color: '#777' }}>grey = ruled out by a drawn probe</span>.
@@ -8738,12 +8743,14 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
   // knowledge of which sectors the base ISN'T in via the probe deck. Show
   // the same overlay as hovering the probe deck. (Only fires for Empire
   // players because the Rebel knows exactly where their own base is.)
-  // ...and only while the base is still HIDDEN. Crossing the map off for a
-  // search that already finished left the Empire staring at a board with no
-  // "possible" systems on it at all while the base sat revealed (#780).
+  // The red probe X's stay on after a reveal: a new base (Rapid Mobilization)
+  // is drawn from the probe deck, so they mark where it CAN'T relocate (#786).
+  // The yellow "searched" layer is only a hidden-base deduction (an occupied
+  // system would have revealed it) and does not constrain a relocation, so it
+  // goes off while revealed — it is what emptied the map in #780.
   const baseSearchLive = humanSide === 'Empire' && !G.rebelBaseRevealed;
   const baseHoverEliminated: Set<string> | null =
-    ((hoverRebelBase && !suppressBaseHover) || pinProbeOverlay) && baseSearchLive
+    ((hoverRebelBase && !suppressBaseHover) || pinProbeOverlay) && humanSide === 'Empire'
       ? empireRuledOutSystems(G)
       : null;
   // Effective eliminated set is the union of the probe-deck hover and
@@ -8758,7 +8765,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
   // "Searched" ruled-out systems (subjugated / Imperial-loyal since the base's
   // last placement) — shown yellow, distinct from the red probe X's. Same
   // hover/pin gating as the probe overlay.
-  const showOverlay = !!effectiveEliminated || (((hoverRebelBase && !suppressBaseHover) || pinProbeOverlay) && baseSearchLive);
+  const showOverlay = !!effectiveEliminated || (((hoverRebelBase && !suppressBaseHover) || pinProbeOverlay) && humanSide === 'Empire');
   const effectiveSearched: Set<string> | null =
     showOverlay && baseSearchLive
       ? empireSearchedSystems(G)
