@@ -1769,7 +1769,10 @@ export function resolveCombatAttackerTactics(
     .filter((u) => !stagedSet.has(u.instanceId));
   // Unstoppable Assault: defender forfeits the block window this attack.
   const blocked = c.flags?.cannotBlockUntilStepEnd?.[defenderSide] ?? false;
-  if (incomingHits === 0 || liveTargets.length === 0 || blocked) {
+  // CINEMATIC combat has no response window (#787): the base tactic deck is
+  // off, so the defender's hand is always empty and the window was a pure
+  // hand-off — one extra wait per attack, painful in async online play.
+  if (incomingHits === 0 || liveTargets.length === 0 || blocked || c.cinematic) {
     // Skip defender-tactics window; finalise this attack with zero blocks.
     if (blocked) {
       log(G, { kind: 'combat-tactic-effect', side: pa.side, payload: { effect: 'unstoppable-assault-prevents-block' } });
