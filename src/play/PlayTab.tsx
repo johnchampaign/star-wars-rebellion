@@ -142,6 +142,50 @@ function getReporterId(): string {
 // archiveCompletedGame also sheds oldest-first on quota errors as a backstop.
 const HISTORY_CAP = 10;
 
+/** encodedAt stamps of archived games already sent by "Upload logs". */
+function readUploadedIds(): Set<string> {
+  try { return new Set(JSON.parse(localStorage.getItem(LS_UPLOADED) || '[]') as string[]); }
+  catch { return new Set<string>(); }
+}
+
+/** localStorage.setItem that makes room when storage is full (#784).
+ *  archiveCompletedGame packs finished games right up to the quota, and after
+ *  that every write that GROWS storage fails silently — the resume save stops
+ *  updating (a phone reload then brings back an older board, or none), and New
+ *  game can't record its id or side. The in-progress game matters more than an
+ *  archive whose only reader is the uploader, so on a refused write shed
+ *  archived games — already-uploaded ones first, then oldest first — and retry.
+ *  Returns whether the write landed. */
+function lsSetMakingRoom(key: string, value: string): boolean {
+  try { localStorage.setItem(key, value); return true; } catch { /* full — make room */ }
+  if (key === LS_HISTORY) return false;
+  let history: Array<{ encodedAt?: string }> = [];
+  try { history = JSON.parse(localStorage.getItem(LS_HISTORY) || '[]'); } catch { return false; }
+  if (!Array.isArray(history)) return false;
+  const uploaded = readUploadedIds();
+  // History is newest-first, so walk from the end for oldest-first.
+  const oldestFirst = history.map((_, i) => history.length - 1 - i);
+  const shedOrder = [
+    ...oldestFirst.filter((i) => uploaded.has(history[i]?.encodedAt ?? '')),
+    ...oldestFirst.filter((i) => !uploaded.has(history[i]?.encodedAt ?? '')),
+  ];
+  const dropped = new Set<number>();
+  for (const i of shedOrder) {
+    dropped.add(i);
+    const kept = history.filter((_, j) => !dropped.has(j));
+    try {
+      if (kept.length > 0) localStorage.setItem(LS_HISTORY, JSON.stringify(kept));
+      else localStorage.removeItem(LS_HISTORY);
+    } catch { continue; }
+    try {
+      localStorage.setItem(key, value);
+      console.warn(`[storage] made room for ${key} by dropping ${dropped.size} archived game(s)`);
+      return true;
+    } catch { /* still full — shed another */ }
+  }
+  return false;
+}
+
 function sideColor(s: Side): string {
   return s === 'Rebel' ? '#aae0ff' : '#ffaaaa';
 }
@@ -620,8 +664,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   const toggleImages = () => {
     setImagesOff((v) => {
       const next = !v;
-      if (next) localStorage.setItem('rebellion-images-off', '1');
-      else localStorage.removeItem('rebellion-images-off');
+      try {
+        if (next) lsSetMakingRoom('rebellion-images-off', '1');
+        else localStorage.removeItem('rebellion-images-off');
+      } catch { /* storage blocked — the toggle still applies this session */ }
       return next;
     });
   };
@@ -643,7 +689,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   });
   const updateSidePref = (p: SidePref) => {
     setSidePref(p);
-    localStorage.setItem(LS_SIDE_PREF, p);
+    lsSetMakingRoom(LS_SIDE_PREF, p);
   };
   // Best-effort games-played counter from the shared hub. Display-only; a
   // failed/slow fetch just leaves it hidden and never affects play.
@@ -772,7 +818,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         lastAiProgressRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
         try {
           const Gf = gameRef.current;
-          if (Gf && canEncode(Gf)) localStorage.setItem(LS_CURRENT, encodeForResume(Gf));
+          if (Gf && canEncode(Gf)) lsSetMakingRoom(LS_CURRENT, encodeForResume(Gf));
         } catch { /* ignore */ }
         setTick((t) => t + 1);
       }
@@ -906,8 +952,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         // Resume save on every action — strip the heavy per-turn snapshots
         // (they're only for the end-of-game upload) so this stays fast even
         // late-game. archiveCompletedGame() below keeps the full encode().
-        localStorage.setItem(LS_CURRENT, encodeForResume(G));
-        setHasSaved(true);
+        if (lsSetMakingRoom(LS_CURRENT, encodeForResume(G))) setHasSaved(true);
       }
       // If game ended, also push to history.
       if (G.isGameOver) {
@@ -983,13 +1028,15 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     setLeaderRescuedQueue([]);
     setInfoNoticeQueue([]);
     // Honor the player's side preference (resolved above as newHuman).
-    localStorage.setItem(LS_HUMAN_SIDE, newHuman);
+    // Storage writes can fail when localStorage is full (#784: that aborted New
+    // game part-way and the new game kept the previous game's id). The game
+    // itself never depends on them, so never let one throw out of here.
+    lsSetMakingRoom(LS_HUMAN_SIDE, newHuman);
     // Mint the per-game id (log-format v2): links this game's play log,
     // problem reports, and save. Client-side on purpose — the engine stays
     // identity-free (deterministic, codec untouched).
-    try {
-      localStorage.setItem(LS_GAME_ID, `g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
-    } catch { /* quota/private mode — id is best-effort */ }
+    // lsSetMakingRoom never throws; the id stays best-effort (private mode).
+    lsSetMakingRoom(LS_GAME_ID, `g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`);
     setHumanSide(newHuman);
     persist();
     refresh();
@@ -1070,9 +1117,14 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       const obj = JSON.parse(decodeURIComponent(escape(atob(raw.trim())))) as { codec?: string; humanSide?: string };
       if (!obj?.codec) throw new Error('not a game code');
       const human: Side = obj.humanSide === 'Empire' ? 'Empire' : 'Rebel';
-      localStorage.setItem(LS_HUMAN_SIDE, human);
+      lsSetMakingRoom(LS_HUMAN_SIDE, human);
       setHumanSide(human);
-      localStorage.setItem(LS_CURRENT, obj.codec);
+      // resumeSaved() reads LS_CURRENT back, so a refused write would silently
+      // resume whatever older save was there instead of the imported game.
+      if (!lsSetMakingRoom(LS_CURRENT, obj.codec)) {
+        alert('This browser\'s storage is full, so the game could not be imported. Try clearing site data for this page.');
+        return;
+      }
       resumeSaved(); // decodes LS_CURRENT into the live game
     } catch (e) {
       alert(`That doesn't look like a valid game code: ${String(e)}`);
@@ -13145,10 +13197,7 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
   // Games we've already uploaded (by their unique encodedAt) — so we never
   // re-send them and the player isn't told a pile of logs were "redundant"
   // (player report #125).
-  const uploadedIds = (() => {
-    try { return new Set(JSON.parse(localStorage.getItem(LS_UPLOADED) || '[]') as string[]); }
-    catch { return new Set<string>(); }
-  })();
+  const uploadedIds = readUploadedIds();
   // Read archived games out of localStorage; only offer the ones not yet sent.
   const allGames = (() => {
     try {
@@ -13268,10 +13317,16 @@ function UploadLogsDialog({ onClose }: { onClose: () => void }) {
       const body = await res.json() as { uploaded: number; deduped: number; failed: number };
       setStatus({ kind: 'done', uploaded: body.uploaded, deduped: body.deduped, failed: body.failed });
       // Remember every completed game we just sent so we don't offer it again.
+      // Then drop them from the archive: its only reader is this dialog, which
+      // never offers an uploaded game again, and keeping them packed the
+      // storage full so the in-progress save stopped updating (#784).
       try {
         const next = new Set(uploadedIds);
         for (const g of games) next.add(g.encodedAt);
-        localStorage.setItem(LS_UPLOADED, JSON.stringify([...next]));
+        const remaining = allGames.filter((g) => !next.has(g.encodedAt));
+        if (remaining.length > 0) localStorage.setItem(LS_HISTORY, JSON.stringify(remaining));
+        else localStorage.removeItem(LS_HISTORY);
+        lsSetMakingRoom(LS_UPLOADED, JSON.stringify([...next]));
       } catch { /* ignore */ }
     } catch (e) {
       setStatus({ kind: 'error', message: String(e) });
@@ -16792,6 +16847,10 @@ function archiveCompletedGame(G: GameState): void {
     // snapshot (post-game state is more settled — report queues drained).
     const dupIdx = gameId ? history.findIndex((h) => h.gameId === gameId) : -1;
     if (dupIdx >= 0) history.splice(dupIdx, 1);
+    // Games already uploaded have no further reader here — don't let them hold
+    // quota the next game's resume save will need (#784).
+    const uploaded = readUploadedIds();
+    for (let i = history.length - 1; i >= 0; i--) if (uploaded.has(history[i].encodedAt)) history.splice(i, 1);
     history.unshift({
       encodedAt: new Date().toISOString(),
       winner: G.winner,
