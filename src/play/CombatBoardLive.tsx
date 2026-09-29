@@ -2507,8 +2507,6 @@ function CinematicRerollPanel({ G, choice, onPersist }: {
     if (!r.ok) alert(`Cannot resolve: ${r.reason}`);
     onPersist();
   };
-  const faceGlyph = (f: string) =>
-    f === 'blank' ? '–' : f === 'hit' ? '◆' : f === 'direct-hit' ? '◆◆' : f === 'special' ? '★' : f;
   return (
     <div>
       <div style={{ fontSize: 13, marginBottom: 6 }}>
@@ -2519,16 +2517,13 @@ function CinematicRerollPanel({ G, choice, onPersist }: {
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
         {choice.faces.map((f, i) => {
           const on = sel.includes(i);
-          // Green is an explicit RoE die colour, not the catch-all; an unknown
-          // colour falls through to magenta so it's visibly wrong, not fake-green.
-          const col = choice.colors[i] === 'red' ? '#c0392b'
-            : choice.colors[i] === 'black' ? '#444'
-            : choice.colors[i] === 'green' ? '#3a7d3a' : '#d000d0';
+          // Same Die as the attack rolls around it (#788): a separate glyph set
+          // here made a hit look like a different face than it did a moment ago.
           return (
-            <button key={i} onClick={() => toggle(i)}
-              style={{ ...btn(on ? '#ffd54a' : '#777'), minWidth: 40, borderColor: col,
+            <button key={i} onClick={() => toggle(i)} title={`${choice.colors[i]} ${f}`}
+              style={{ ...btn(on ? '#ffd54a' : '#777'), padding: 4,
                 outline: on ? '2px solid #ffd54a' : 'none' }}>
-              {faceGlyph(f)}
+              <Die d={{ color: choice.colors[i], face: f as DieFace }} />
             </button>
           );
         })}
