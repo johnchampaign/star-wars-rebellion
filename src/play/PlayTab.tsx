@@ -15,7 +15,7 @@ import { PLANNER_ENABLED, HUNT_OCCUPY_ENABLED } from './empirePlanner';
 import { SABOTAGE_CLEAR_BUMP, MISSION_ODDS_GATE, BUILD_YIELD_TARGETING } from './randomAI';
 import { evalCommandStepDeep } from './boardEval';
 import { mctsCommandStep, commitMctsCommand, MCTS_ENABLED, MCTS_REBEL_ENABLED, POSTREVEAL_HEURISTIC, type MctsSearchResult } from './mctsAI';
-import { recordPlay } from 'digital-boardgame-framework';
+import { recordPlay, recordFinish } from 'digital-boardgame-framework';
 import { TERRITORIES, territoryFill } from '../data/territories';
 import {
   loadVmodFromFile, getVmodMeta, clearVmodCache, preloadAllBlobUrls,
@@ -533,6 +533,11 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // proper "you won / you lost" dialogue rather than only the easy-to-miss
   // banner. Keyed by a flag the effect resets when a NEW game starts.
   const [gameOverAck, setGameOverAck] = useState(false);
+  /** Play-counter finish beacon: armed when a local game is started (or an
+   *  UNFINISHED save is resumed/imported), fired once on the transition into
+   *  G.isGameOver, then disarmed — so re-renders, post-game persists, and
+   *  reloading a finished game never re-fire it. */
+  const finishArmedRef = useRef(false);
   /** AI resignation offer (#677): null = not showing; the string[] is the
    *  detector's reasons, logged with the resignation if accepted. */
   const [resignOffer, setResignOffer] = useState<string[] | null>(null);
@@ -1018,6 +1023,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     // human takes one side, the engine AI plays the other). Fire one beacon per
     // game START — never per move or page load. recordPlay never throws/blocks.
     recordPlay('rebellion', 'ai');
+    finishArmedRef.current = true;
     // New game: nothing scored yet, but reset the seen-cursor to be safe.
     seenObjectiveLogIdxRef.current = 0;
     aiActivitySeenIdxRef.current = 0;
@@ -1051,6 +1057,9 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       const fresh = createGame(dataRef.current, { seed: 1 });
       const restored = decode(raw, fresh.catalog);
       gameRef.current = restored;
+      // A resumed in-progress game can still finish here and count as
+      // finished; an already-finished one must never re-fire the beacon.
+      finishArmedRef.current = !restored.isGameOver;
       // Resumed game: don't re-announce historical objective scores — fast-
       // forward the seen-cursor to the current end of log. Anything that
       // happens AFTER this point will pop the notice modal as expected.
@@ -1332,6 +1341,19 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   useEffect(() => {
     if (G && !G.isGameOver && gameOverAck) setGameOverAck(false);
   }, [G, G?.isGameOver, gameOverAck]);
+
+  // Play-counter finish beacon (local vs-AI only; online finishes are fired by
+  // the server's GameServer playBeacon). Same mode as the start beacon in
+  // startNew ('ai' — the local build is always human-vs-AI); outcome is the
+  // human's result. Fires once per game via finishArmedRef. Unconditional
+  // hook — must run before any early return.
+  useEffect(() => {
+    if (online || !G || !G.isGameOver || !finishArmedRef.current) return;
+    finishArmedRef.current = false;
+    // The engine has no draws (G.winner is a Side once the game is over).
+    const outcome = !G.winner ? undefined : G.winner === humanSide ? 'win' : 'loss';
+    recordFinish('rebellion', 'ai', outcome ? { outcome } : {});
+  }, [online, G, G?.isGameOver, G?.winner, humanSide]);
 
   // AI resignation offer (#677). Checked once per ROUND, at the moment the
   // round rolls over (timeMarker changes), and only for the AI's own side —
