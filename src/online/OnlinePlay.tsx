@@ -32,6 +32,14 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
     useGame<GameState, RebellionAction>(client, { pollMs: 8000 });
   const [busy, setBusy] = useState(false);
   const [actErr, setActErr] = useState<string | null>(null);
+  // Setup is concurrent, so the server keeps `yourTurn` true for BOTH seats
+  // until setup ends (that is what keeps setup undo alive, #736). Once your own
+  // forces are placed, though, "Your turn" reads as "there is still something
+  // for you to do" — #789 went hunting for a confirm button. Only the labels
+  // change; `yourTurn` still flows to the board untouched.
+  const setupWaiting = !!view && !gameOver && view.phase === 'Setup' && (you === 'Rebel' || you === 'Empire')
+    && (view.pendingDeployment?.[you]?.length ?? 0) === 0
+    && !(you === 'Rebel' && (view.pendingRebelBasePick?.length ?? 0) > 0);
   const [oppAbandoned, setOppAbandoned] = useState(false);
 
   // Re-sync immediately whenever the tab regains focus/visibility. Browsers
@@ -192,7 +200,7 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
         </div>
         <div><b>Phase:</b> {view.phase} &nbsp; <b>Turn marker:</b> {view.timeMarker}/{view.trackLength} &nbsp; <b>Reputation:</b> {view.reputationMarker}</div>
         <div><b>Move #:</b> {turn} &nbsp; {gameOver ? <span style={{ color: '#f88' }}>Game over{view.winner ? ` — ${view.winner} wins` : ''}</span>
-          : <b style={{ color: yourTurn ? '#80dc78' : '#e0b84f' }}>{yourTurn ? 'Your turn' : 'Waiting for opponent…'}</b>}</div>
+          : <b style={{ color: yourTurn && !setupWaiting ? '#80dc78' : '#e0b84f' }}>{setupWaiting ? 'Your setup is done — waiting for opponent…' : yourTurn ? 'Your turn' : 'Waiting for opponent…'}</b>}</div>
         </div>
         {you && <ChatPanel gameId={gameId} token={token} you={you as Side} />}
       </div>
@@ -221,7 +229,9 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
           Per-control submit wiring is the next step (#110). */}
       <div style={{ ...card, padding: 0, overflow: 'auto' }}>
         <div style={{ padding: '8px 12px', color: '#aab', fontSize: 12, borderBottom: '1px solid #333' }}>
-          {yourTurn ? 'Your turn — play directly on the board below.' : 'Opponent’s turn — board is read-only until they move.'}
+          {setupWaiting
+            ? 'Your forces are placed — the game starts when your opponent finishes setting up.'
+            : yourTurn ? 'Your turn — play directly on the board below.' : 'Opponent’s turn — board is read-only until they move.'}
         </div>
         {/* Fully interactive at the DOM level so read-only features (probe
             overlays, hover-enlarge, info panels, tooltips) work whether or not

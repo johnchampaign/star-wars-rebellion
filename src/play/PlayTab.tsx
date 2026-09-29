@@ -676,7 +676,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       return next;
     });
   };
-  const [humanSide, setHumanSide] = useState<Side>(() => {
+  const [humanSideState, setHumanSide] = useState<Side>(() => {
     // Online: the server seat is authoritative and already known at mount
     // (OnlinePlay only renders us once `view`/`you` have loaded). Never let a
     // stale localStorage side (e.g. from a prior game where you were the Empire)
@@ -686,6 +686,12 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     const stored = localStorage.getItem(LS_HUMAN_SIDE);
     return stored === 'Rebel' || stored === 'Empire' ? stored : 'Rebel';
   });
+  // Online, the seat is the ONLY truth — derived, not stored. The state above
+  // could still be overwritten mid-game: the single-player "New game" button was
+  // shown online, and pressing it set the side from the local preference, so an
+  // Empire seat read "you are Rebel (AI: Empire)" and was offered the Rebel's
+  // setup panel (#789).
+  const humanSide: Side = online?.you === 'Rebel' || online?.you === 'Empire' ? online.you : humanSideState;
   // Player's preference for next new game: Rebel / Empire / Random. Persisted
   // so the choice survives reload. "Random" rolls 50/50 on startNew.
   const [sidePref, setSidePref] = useState<SidePref>(() => {
@@ -998,7 +1004,9 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   }, [refresh]);
 
   const startNew = useCallback(() => {
-    if (!dataRef.current) return;
+    // Single-player only. Online, the board is the server's view and a local
+    // game would only corrupt the side label (#789).
+    if (online || !dataRef.current) return;
     const trimmed = seed.trim();
     const s = trimmed === '' ? Math.floor(Math.random() * 1e9) : Number(trimmed);
     if (Number.isNaN(s)) return;
@@ -1046,7 +1054,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     setHumanSide(newHuman);
     persist();
     refresh();
-  }, [seed, refresh, persist, sidePref, expansionPref]);
+  }, [online, seed, refresh, persist, sidePref, expansionPref]);
 
   const resumeSaved = useCallback(() => {
     const raw = localStorage.getItem(LS_CURRENT);
@@ -1116,6 +1124,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   }, [humanSide]);
 
   const importGameCode = useCallback(() => {
+    if (online) return; // single-player only (#789)
     const raw = window.prompt('Paste a game code (from "export game" on another device):');
     if (!raw) return;
     try {
@@ -1761,14 +1770,20 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <h2 style={{ margin: 0 }}>Play</h2>
         <span style={{ color: '#888', fontSize: 13 }}>
           Round {G.timeMarker} · {G.phase} ·{' '}
-          <span style={{ color: sideColor(G.currentPlayer), fontWeight: 600 }}>
-            {G.currentPlayer}'s turn
-          </span>{' '}
+          {online && G.phase === 'Setup' ? (
+            // Online setup is concurrent (both seats place at once), so naming
+            // one side's "turn" contradicted the "Your turn" banner (#789).
+            <span style={{ fontWeight: 600 }}>both sides deploy</span>
+          ) : (
+            <span style={{ color: sideColor(G.currentPlayer), fontWeight: 600 }}>
+              {G.currentPlayer}'s turn
+            </span>
+          )}{' '}
           · Reputation {G.reputationMarker} ·{' '}
           <span style={{ color: sideColor(humanSide), fontWeight: 600 }}>
             you are {humanSide}
           </span>{' '}
-          <span style={{ color: '#888' }}>(AI: {aiSide})</span>
+          <span style={{ color: '#888' }}>{online ? `(opponent: ${aiSide})` : `(AI: ${aiSide})`}</span>
           {PLANNER_ENABLED && (
             // Playtest attribution (#539): the strike-fleet planner flag is on
             // (?planner=1). Visible so a playtest game is never mistaken for a
@@ -1836,12 +1851,19 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           <button className="tab-button" onClick={() => setShowTacticKey(true)} title="Show every tactic card and how the tactic decks work">
             tactic key
           </button>
-          <button className="tab-button" onClick={exportGameCode} title="Copy a code for this game so you can continue it on another device/browser">
-            export game
-          </button>
-          <button className="tab-button" onClick={importGameCode} title="Load a game from a code exported on another device/browser">
-            import game
-          </button>
+          {/* Export/import move a SINGLE-PLAYER save between devices. Online the
+              game already lives on the server (the seat link is the way to move
+              devices), and the board here is a redacted view (#789). */}
+          {!online && (
+            <>
+              <button className="tab-button" onClick={exportGameCode} title="Copy a code for this game so you can continue it on another device/browser">
+                export game
+              </button>
+              <button className="tab-button" onClick={importGameCode} title="Load a game from a code exported on another device/browser">
+                import game
+              </button>
+            </>
+          )}
           <button className="tab-button" onClick={toggleUnitStyle} title="Toggle between Vassal mini photos and reference-sheet silhouettes">
             units: {unitStyle}
           </button>
@@ -1899,23 +1921,30 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
             title="See how many of each unit type are left in the supply">
             Supply
           </button>
-          <button className="tab-button" onClick={startNew}>New game</button>
+          {/* Single-player only: online, a new game is made from the lobby, and
+              this button used to flip the side label mid-game (#789). */}
+          {!online && <button className="tab-button" onClick={startNew}>New game</button>}
           {G.phase === 'Setup' && (() => {
             // #757: the button used to stay live after every unit was placed,
             // so extra presses just padded the log. Show what's actually left
             // and go dead at zero.
-            const left = G.pendingDeployment?.[G.currentPlayer]?.length ?? 0;
+            // Online, setup is concurrent and each seat places only its OWN
+            // forces, so the button is always yours — not whoever the engine's
+            // currentPlayer happens to name (#789: an Empire seat saw "Rebel
+            // auto-fill remaining (13)").
+            const who: Side = online ? humanSide : G.currentPlayer;
+            const left = G.pendingDeployment?.[who]?.length ?? 0;
             return (
               <button
                 className="tab-button"
                 disabled={left === 0}
-                onClick={() => onSetupAutoFill(G.currentPlayer)}
+                onClick={() => onSetupAutoFill(who)}
                 style={left === 0 ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
                 title={left === 0
-                  ? `${G.currentPlayer} has no units left to place — that side's setup is done.`
-                  : `Place ${G.currentPlayer}'s remaining ${left} unit${left === 1 ? '' : 's'} automatically`}
+                  ? `${who} has no units left to place — that side's setup is done.`
+                  : `Place ${who}'s remaining ${left} unit${left === 1 ? '' : 's'} automatically`}
               >
-                {G.currentPlayer} auto-fill remaining{left > 0 ? ` (${left})` : ''}
+                {who} auto-fill remaining{left > 0 ? ` (${left})` : ''}
               </button>
             );
           })()}
@@ -2099,6 +2128,20 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <RebelBasePickPanel G={G} onPick={onPickRebelBase} />
       )}
 
+      {/* Online: once your own forces are placed the setup panel goes away,
+          and there is nothing to confirm — the game starts by itself when the
+          other side finishes. Say so, instead of leaving the player hunting for
+          a "done" button (#789). */}
+      {online && G.phase === 'Setup' && !G.isGameOver && G.pendingDeployment
+        && (G.pendingDeployment[humanSide]?.length ?? 0) === 0
+        && !(humanSide === 'Rebel' && G.pendingRebelBasePick) && (
+        <div style={{ margin: '8px 0', padding: '10px 14px', borderRadius: 6, background: '#16181d', border: `1px solid ${sideColor(humanSide)}` }}>
+          <b style={{ color: sideColor(humanSide) }}>Your forces are deployed.</b>{' '}
+          {(G.pendingDeployment[otherSide(humanSide)]?.length ?? 0) > 0
+            ? `Waiting for the ${otherSide(humanSide)} player to finish placing theirs. There is nothing to confirm; the game starts automatically when they are done.`
+            : 'Setup is finishing.'}
+        </div>
+      )}
       {G.phase === 'Setup' && !G.isGameOver && G.pendingDeployment
         && (online ? (G.pendingDeployment[humanSide]?.length ?? 0) > 0 : true) && (
         <SetupPanel
