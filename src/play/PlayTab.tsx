@@ -8181,12 +8181,13 @@ function EnlargedSector({ G, system }: { G: GameState; system: System }) {
   );
 }
 
-function EnlargedRebelBase({ G, rect }: { G: GameState; rect: MaskRect }) {
+function EnlargedRebelBase({ G }: { G: GameState }) {
   const unitStyle = useUnitStyle();
   const VIEW_W = 352;
-  // Position: the rebel-base box is on the left side of the board, so show panel on right.
-  const onLeftHalf = rect.x < NATIVE_W / 2;
-  const positionStyle: React.CSSProperties = onLeftHalf ? { right: 6 } : { left: 6 };
+  // #791: pinned to the top-right of the SCREEN, not of the board. Anchored to
+  // the board it sat on Ryloth/Geonosis and hid the probe X's the base hover
+  // exists to show; fixed to the viewport, scrolling the page slides the map
+  // out from under it. High zIndex so it also shows over the map-pick modal.
 
   const units = G.map.rebelBaseSpace.units;
   const leaders = G.rebel.leadersOnBoard['rebel-base-space'] ?? [];
@@ -8195,8 +8196,9 @@ function EnlargedRebelBase({ G, rect }: { G: GameState; rect: MaskRect }) {
   return (
     <div
       style={{
-        position: 'absolute', top: 6, ...positionStyle,
-        width: VIEW_W,
+        position: 'fixed', top: 8, right: 8, zIndex: 6000,
+        width: VIEW_W, maxWidth: 'calc(100vw - 16px)',
+        maxHeight: 'calc(100dvh - 16px)', overflow: 'hidden',
         background: '#0c0d10',
         border: '2px solid #aae0ff',
         borderRadius: 4, padding: 10,
@@ -9455,7 +9457,7 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
 
       {/* Enlarged sector preview, fixed top-right of the board */}
       {hoverSystem && <EnlargedSector G={G} system={hoverSystem} />}
-      {hoverRebelBase && rebelBaseRect && <EnlargedRebelBase G={G} rect={rebelBaseRect} />}
+      {hoverRebelBase && rebelBaseRect && <EnlargedRebelBase G={G} />}
       {hoverBuildKind && <EnlargedBuildQueue G={G} kind={hoverBuildKind} />}
 
       {/* Legend */}
