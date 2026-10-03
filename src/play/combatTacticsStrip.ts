@@ -56,6 +56,7 @@ export function playedTacticsFor(turnLog: readonly LogEntry[], systemId: string)
         cardId?: string; ability?: 'primary' | 'secondary';
         dealt?: number; targetDealt?: number; condDealt?: number; destroyed?: string;
         prevent?: { red?: number; black?: number; directHit?: number }; extra?: boolean; gained?: string;
+        resolveFirst?: Side;
       };
       if (!p.cardId) continue; // the 'gained a unit' variant names no card
       const bits: string[] = [];
@@ -69,6 +70,10 @@ export function playedTacticsFor(turnLog: readonly LogEntry[], systemId: string)
         if (pv) bits.push(`prevent ${pv}`);
       }
       if (p.extra) bits.push('+card');
+      // "The Imperials resolve their attacks first" (Draw Their Fire etc.) — the
+      // AI's attack then lands with no pause, so without this a player can't
+      // tell the order flipped (#795).
+      if (p.resolveFirst) bits.push(`${p.resolveFirst} attacks first`);
       out.push({ side: e.side as Side, card: p.cardId, note: bits.join(' · ') || undefined });
     }
   }

@@ -51,6 +51,7 @@ const fixture = {
     { kind: 'draw-mission', side: 'Empire', payload: { missionId: 'EMPIRESECRET-d' } }, // Empire's own draw → kept for Empire, dropped for Rebel
     { kind: 'draw-mission', side: 'Rebel', payload: { missionId: 'REBELSECRET-d' } },   // Rebel's own draw → kept for Rebel, dropped for Empire
     { kind: 'combat-begin', payload: { systemId: BASE } },                              // public KIND but names the hidden base → scrubbed for Empire
+    { kind: 'cinematic-tactic-play', side: 'Rebel', payload: { cardId: 'cin-rebel-space-escort', ability: 'primary', theater: 'space' } }, // revealed card → public (#794)
   ],
   rebel: faction('Rebel', 'REBELSECRET'),
   empire: faction('Empire', 'EMPIRESECRET'),
@@ -68,6 +69,7 @@ check('log drops the codec/state snapshot', !e.turnLog.some((x) => x.kind === 's
 check('log drops the base pick (Empire)', !e.turnLog.some((x) => x.kind === 'pick-rebel-base'));
 check('log drops opponent private draw (Empire)', !e.turnLog.some((x) => JSON.stringify(x).includes('REBELSECRET')));
 check('log keeps own private draw (Empire)', e.turnLog.some((x) => JSON.stringify(x).includes('EMPIRESECRET-d')));
+check('log keeps opponent revealed cinematic tactic (Empire, #794)', e.turnLog.some((x) => x.kind === 'cinematic-tactic-play' && x.side === 'Rebel'));
 check('log scrubs base-named public event (Empire)', !e.turnLog.some((x) => x.kind === 'combat-begin'));
 check('probe deck masked (count kept)', e.probeDeck.length === 3 && e.probeDeck.every((x) => x === HIDDEN));
 check('rebel mission hand masked (count kept)', e.rebel.missionHand.length === 1 && e.rebel.missionHand.every((x) => x === HIDDEN));

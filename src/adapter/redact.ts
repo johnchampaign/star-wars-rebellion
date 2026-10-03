@@ -60,6 +60,13 @@ export const PUBLIC_LOG_KINDS: ReadonlySet<string> = new Set([
   'combat-add-leader', 'combat-add-leader-declined', 'combat-retreat',
   'combat-retreat-decline', 'combat-end', 'combat-stalemate-end',
   'combat-structure-destroy', 'combat-structure-survive', 'leader-retreat',
+  // Cinematic tactic cards are chosen face down but REVEALED together before
+  // anything resolves (RoE p.9), and these kinds are only logged at or after
+  // that reveal. Default-deny was dropping them, so an online player's "Tactics
+  // played" strip never showed the opponent's card (#794).
+  'cinematic-tactic-play', 'cinematic-tactic-cancelled', 'cinematic-tactic-no-ability',
+  'cinematic-reroll', 'cinematic-prevent-applied', 'cinematic-remove-damage',
+  'cinematic-shield-absorb',
   'destroy-unit', 'assault-destroy', 'destroy-up-to-health',
   // Loyalty / subjugation / reputation.
   'gain-loyalty', 'lose-loyalty', 'remove-loyalty', 'subjugated',

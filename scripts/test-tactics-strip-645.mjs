@@ -100,6 +100,13 @@ console.log('\n[ 2. the derivation itself, on a hand-built log ]');
   check('the card-less "gained" variant is skipped, not rendered as an id', strip.length === 3, JSON.stringify(strip));
   check('nothing after combat-end leaks in', !strip.some((s) => s.card === 'AFTER-THE-END'));
   check('a different system\'s combat window yields nothing', playedTacticsFor(log, 'hoth').length === 0);
+
+  // #795: Draw Their Fire's bottom flips who attacks first; the strip must say so.
+  const dtf = playedTacticsFor([
+    { kind: 'combat-begin', payload: { systemId: 'dagobah' } },
+    { kind: 'cinematic-tactic-play', side: 'Rebel', payload: { cardId: 'cin-rebel-space-draw-their-fire', ability: 'secondary', resolveFirst: 'Empire' } },
+  ], 'dagobah');
+  check('a resolve-first play names who attacks first (#795)', dtf[0]?.note === 'bottom · Empire attacks first', dtf[0]?.note);
 }
 
 console.log(fail === 0 ? `\nALL PASS — ${pass} passed, 0 failed` : `\nFAILURES — ${pass} passed, ${fail} failed`);
