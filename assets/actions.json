@@ -548,7 +548,7 @@
         "jabba"
       ],
       "effectKey": "post-bounty",
-      "rulesText": "Use after a leader fails a mission in this leader's system. Attach a bounty ring to 1 un-ringed leader. When that leader is captured, Rebels lose 1 reputation.",
+      "rulesText": "Use after any leader fails a mission in this leader's system. Attach the bounty ring to any Rebel leader that does not have a ring in this system. When that leader is captured, the Rebels lose 1 reputation.",
       "image": "Post Bounty.png",
       "set": "rote"
     },

@@ -604,14 +604,14 @@ export type ChoiceRequest =
       viaRecruit?: boolean;
     }
   | {
-      // Post Bounty (Empire/Jabba, RoE Special): after a Rebel mission fails,
-      // may discard this card to attach a bounty ring to one of the Rebel
-      // leaders that attempted it. If the bountied leader is later captured,
-      // Rebels lose 1 reputation.
+      // Post Bounty (Empire/Jabba, RoE Special): after any mission fails in
+      // Jabba's system, may discard this card to attach a bounty ring to an
+      // un-ringed Rebel leader in that system (#792). If the bountied leader is
+      // later captured, Rebels lose 1 reputation.
       kind: 'PostBountyOffer';
       side: Side; // 'Empire'
       missionId: string;
-      candidates: LeaderId[]; // Rebel leaders that attempted the failed mission (un-ringed)
+      candidates: LeaderId[]; // un-ringed Rebel leaders in the failed mission's system
     }
   | {
       // Ambitions of Power (Empire/Motti or Jabba, RoE Special): when the

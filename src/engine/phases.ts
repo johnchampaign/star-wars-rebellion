@@ -1749,16 +1749,16 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
   return { ok: true };
 }
 
-/** RoE "Post Bounty" (Empire/Jabba): after a Rebel mission FAILS, the Empire
- *  may discard the card to attach a bounty ring to one of the Rebel leaders who
- *  attempted it. Posts the PostBountyOffer choice (pausing the failure cleanup)
+/** RoE "Post Bounty" (Empire/Jabba): after ANY mission fails in Jabba's
+ *  system, the Empire may discard the card to attach a bounty ring to an
+ *  un-ringed Rebel leader in that system. Posts the PostBountyOffer choice (pausing the failure cleanup)
  *  and returns true when offered; resolvePostBountyOffer then runs the shared
  *  discard/advance tail. Shared by BOTH failure paths — the unopposed reveal
  *  (continueRevealAfterSpecialOffer) and the opposed roll (resolveOpposition),
  *  which previously lacked the hook (#437). */
 /** Exported for tests (#681). */
 export function maybePostBountyOffer(
-  G: GameState, resolverSide: Side, missionId: string, leaderIds: LeaderId[],
+  G: GameState, resolverSide: Side, missionId: string, _leaderIds: LeaderId[],
 ): boolean {
   // RAW: "Use after a leader fails a mission in THIS leader's system." Post Bounty
   // shows Jabba and doesn't move him, so (per the general action-card rule) Jabba
@@ -1766,8 +1766,16 @@ export function maybePostBountyOffer(
   const targetSystemId = G.pendingMission?.targetSystemId;
   const jabbaHere = !!targetSystemId
     && (G.empire.leadersOnBoard[targetSystemId] ?? []).includes('jabba' as LeaderId);
+  // The printed card (images/Post Bounty.png): "Use after ANY leader fails a
+  // mission in this leader's system. Attach the bounty ring to any REBEL leader
+  // that does not have a ring IN THIS SYSTEM." Our transcription had dropped
+  // both qualifiers, and the engine read it as "after a REBEL mission fails,
+  // bounty one of its resolvers" — so Jabba's own failed Imperial Propaganda,
+  // opposed by Ackbar, offered nothing (#792). Either side's failed mission
+  // triggers it, and the targets are the Rebel leaders standing in the system
+  // (resolvers of a failed Rebel mission, or the opposers of a failed Imperial
+  // one).
   if (!(G.expansion?.enabled
-      && resolverSide === 'Rebel'
       && G.empire.actionHand.includes('post-bounty')
       && jabbaHere
       && !G.pendingChoice)) return false;
@@ -1777,7 +1785,7 @@ export function maybePostBountyOffer(
   // her anyway (#681). A droid ring makes a leader ringed for exactly this kind
   // of clause; it is the same DROID_RINGS set the droid-ring cards test against
   // for their own "non-ringed leader" requirement, so the two now agree.
-  const candidates = leaderIds.filter((lid) => {
+  const candidates = (G.rebel.leadersOnBoard[targetSystemId] ?? []).filter((lid) => {
     const att = G.leaderAttachments?.[lid] ?? [];
     return !att.includes('bounty') && !DROID_RINGS.some((r) => att.includes(r));
   });
@@ -1789,7 +1797,7 @@ export function maybePostBountyOffer(
     candidates,
   };
   log(G, { kind: 'choice-request', side: 'Empire', payload: {
-    kind: 'PostBountyOffer', missionId, candidates: candidates.length,
+    kind: 'PostBountyOffer', missionId, candidates: candidates.length, failedBy: resolverSide,
   }});
   return true;
 }

@@ -5,6 +5,9 @@
 // droid ring was still offered. The reporter had R2-D2 attached to Leia and the
 // Empire bountied her anyway.
 //
+// #792 corrected the card text from the scan ("any Rebel leader that does not
+// have a ring in this system") and made the candidates the Rebel leaders
+// standing in the system, so offer() now places them there.
 // Run: node scripts/test-post-bounty-unringed-681.mjs
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -43,16 +46,17 @@ function board(seed, rings = {}) {
 }
 /** Offer Post Bounty against `leaderIds`; returns the posted candidate list. */
 function offer(G, leaderIds, missionId = 'infiltration') {
+  for (const lid of leaderIds) if (!(G.rebel.leadersOnBoard[SYS] ?? []).includes(lid)) M.placeLeader(G, 'Rebel', lid, SYS);
   G.pendingMission = { missionId, targetSystemId: SYS, side: 'Rebel' };
   const posted = phases.maybePostBountyOffer(G, 'Rebel', missionId, leaderIds);
   return { posted, candidates: G.pendingChoice?.kind === 'PostBountyOffer' ? G.pendingChoice.candidates : null };
 }
 
-console.log('\n[ the card text still says un-ringed ]');
+console.log('\n[ the card text still excludes ringed leaders ]');
 {
   const G = board(681);
   const txt = (G.catalog.actions['post-bounty']?.rulesText ?? '').toLowerCase();
-  check('rulesText says un-ringed', /un-?ringed/.test(txt), txt);
+  check('rulesText says the leader must not have a ring', /does not have a ring/.test(txt), txt);
 }
 
 console.log('\n[ #681 a leader wearing a droid ring is not a candidate ]');

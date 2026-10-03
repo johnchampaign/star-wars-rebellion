@@ -5,7 +5,7 @@
 // server view (instead of OWNING a local engine) is the larger follow-on
 // (PlayTab currently constructs its own engine state).
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   useGame, useMessages, useIdentity, SignInBar,
   type MessagingClientApi, type ChatMessage,
@@ -30,6 +30,12 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
   // Poll every 8s — quick enough to feel live, gentle on the Supabase free tier.
   const { view, yourTurn, turn, gameOver, you, ranked, submit, loading, error, refresh } =
     useGame<GameState, RebellionAction>(client, { pollMs: 8000 });
+  // The game's chat, for the downloadable log (#796).
+  const fetchChat = useCallback(async () => {
+    const r = await fetch(`/api/games/${encodeURIComponent(gameId)}/chat?t=${encodeURIComponent(token)}`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json() as Promise<ChatMessage[]>;
+  }, [gameId, token]);
   const [busy, setBusy] = useState(false);
   const [actErr, setActErr] = useState<string | null>(null);
   // Setup is concurrent, so the server keeps `yourTurn` true for BOTH seats
@@ -239,7 +245,7 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
             SUBMITS an action when it's your turn, so stray board-action clicks on
             the opponent's turn no-op silently instead of being server-rejected. */}
         <div>
-          <PlayTab online={{ view, you: you as Side | null, yourTurn, submit }} />
+          <PlayTab online={{ view, you: you as Side | null, yourTurn, submit, fetchChat }} />
         </div>
       </div>
 

@@ -9,6 +9,7 @@ import { capturePageScreenshot, screenshotAutoCaptureSafe } from './screenshot';
 import { missionTargets, missionLeaderTargets, missionRevealIsPointless } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce, setCommandPolicyOverride } from './randomAI';
 import { buildV2GameLog, buildId } from './logFormat';
+import { buildReadableLog, type LogVisibility, type ExportChatMessage } from './logExport';
 import { nextReportKind } from './reportQueue';
 import { DeployUndoStack, deployStepKey } from './deployUndoStack';
 import { PLANNER_ENABLED, HUNT_OCCUPY_ENABLED } from './empirePlanner';
@@ -430,6 +431,8 @@ export type PlayTabOnlineMode = {
   you: Side | null;
   yourTurn: boolean;
   submit: (action: RebellionAction) => Promise<void>;
+  /** The game's chat, for the downloadable log (#796). */
+  fetchChat?: () => Promise<ExportChatMessage[]>;
 };
 
 export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {}) {
@@ -1755,6 +1758,27 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // The side whose setup panel is showing (mirrors the SetupPanel `side` prop).
   const setupSide = (Gc: GameState): Side => (online ? humanSide : Gc.currentPlayer);
 
+  // Download the game as readable text (#796): same visibility as the on-screen
+  // log, plus the chat for online games. Works mid-game and at game end.
+  const downloadLog = async () => {
+    const Gd = gameRef.current;
+    if (!Gd) return;
+    let chat: ExportChatMessage[] | null = null;
+    let chatError: string | undefined;
+    if (online?.fetchChat) {
+      try { chat = await online.fetchChat(); } catch (e) { chatError = String(e); }
+    }
+    const text = buildReadableLog(Gd, { humanSide, vis: logVisibility(humanSide), online: !!online, chat, chatError });
+    const url = URL.createObjectURL(new Blob([text], { type: 'text/plain;charset=utf-8' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rebellion-game-log-${new Date().toISOString().slice(0, 10)}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   // ---------- Render ----------
 
   return (
@@ -2038,6 +2062,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           humanSide={humanSide}
           onDismiss={() => setGameOverAck(true)}
           onUploadLogs={() => { setGameOverAck(true); setShowUploadLogs(true); }}
+          onDownloadLog={() => void downloadLog()}
         />
       )}
 
@@ -2221,7 +2246,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <FactionPanel G={G} side="Empire" humanSide={humanSide} />
       </div>
 
-      <LogPanel G={G} humanSide={humanSide} />
+      <LogPanel G={G} humanSide={humanSide} onDownload={() => void downloadLog()} />
 
       {/* All modal/overlay layers live in this wrapper. "Peek board" sets
           display:none on it so the map behind shows through; display:contents
@@ -12281,6 +12306,23 @@ const OPPONENT_SECRET_KINDS = new Set<string>([
  *  never the payload. (Player point: card-draw counts are public info.) */
 const COUNT_ONLY_KINDS = new Set<string>(['draw-action', 'draw-mission', 'draw-objective', 'draw-probe']);
 
+/** The on-screen log's visibility rules, shared with the downloadable log
+ *  (#796) so the export can never show a player more than the panel does. */
+function logVisibility(humanSide: Side): LogVisibility {
+  return {
+    visible: (e) => (OWNER_ONLY_KINDS.has(e.kind) ? e.side === humanSide : !ONSCREEN_HIDDEN_KINDS.has(e.kind)),
+    redacted: (e) => ONSCREEN_REDACTED_KINDS.has(e.kind)
+      || (!!e.side && e.side !== humanSide && OPPONENT_SECRET_KINDS.has(e.kind))
+      // The opening 'setup' entry records `baseSystem` (the base, or the first
+      // base candidate while the Rebel is still choosing). Single-player has no
+      // server-side log scrub, so an Empire player could read it straight off
+      // the log panel — and the #796 download would copy it. Found while
+      // building that download; the rest of the entry is public board state.
+      || (e.kind === 'setup' && humanSide === 'Empire'),
+    countOnly: (e) => COUNT_ONLY_KINDS.has(e.kind),
+  };
+}
+
 /** One Long Range Probe answer, in words. The Empire paid a mission for this,
  *  so it reads as a sentence and a "yes" is coloured like the alarm it is. */
 function ProbeResultEntry({ G, payload }: {
@@ -12299,7 +12341,7 @@ function ProbeResultEntry({ G, payload }: {
   );
 }
 
-function LogPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
+function LogPanel({ G, humanSide, onDownload }: { G: GameState; humanSide: Side; onDownload?: () => void }) {
   // #740 (John's option b): the log used to show only the newest 100 entries —
   // less than one turn — so a player could not check what happened in an
   // earlier battle ("did that Star Destroyer die, or retreat?"). The whole
@@ -12308,9 +12350,8 @@ function LogPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
   const [logWindow, setLogWindow] = useState(100);
   // Pre-filter to count what's actually visible (so the header count
   // matches what the player sees).
-  const visibleAll = G.turnLog.filter((e) => (
-    OWNER_ONLY_KINDS.has(e.kind) ? e.side === humanSide : !ONSCREEN_HIDDEN_KINDS.has(e.kind)
-  ));
+  const vis = logVisibility(humanSide);
+  const visibleAll = G.turnLog.filter(vis.visible);
   const visible = logTurn === 'all' ? visibleAll : visibleAll.filter((e) => e.turn === logTurn);
   const turns = Array.from(new Set(G.turnLog.map((e) => e.turn))).sort((a, b) => a - b);
   const shown = visible.slice(-logWindow);
@@ -12335,14 +12376,19 @@ function LogPanel({ G, humanSide }: { G: GameState; humanSide: Side }) {
             show earlier ({visible.length - shown.length} more)
           </button>
         )}
+        {onDownload && (
+          <button onClick={onDownload} style={{ fontSize: 11, padding: '1px 6px', cursor: 'pointer' }}
+            title="Save the whole game so far as a readable text file (the chat too, in online games)">
+            Download log
+          </button>
+        )}
       </div>
       <div style={{ fontFamily: 'monospace', fontSize: 11 }}>
         {/* Newest-first (player request — easier to see what just happened
             without scrolling to the bottom); page backwards with the button. */}
         {shown.reverse().map((entry, i) => {
-          const redacted = ONSCREEN_REDACTED_KINDS.has(entry.kind)
-            || (!!entry.side && entry.side !== humanSide && OPPONENT_SECRET_KINDS.has(entry.kind));
-          const countOnly = COUNT_ONLY_KINDS.has(entry.kind);
+          const redacted = vis.redacted(entry);
+          const countOnly = vis.countOnly(entry);
           const drawCount = countOnly ? ((entry.payload as { count?: number } | undefined)?.count ?? 1) : 0;
           return (
             <div key={i} style={{ color: entry.side ? sideColor(entry.side) : '#aaa', marginBottom: entry.kind === 'mission-roll' ? 6 : 1 }}>
@@ -15347,7 +15393,7 @@ function PostBountyOfferModal({
         <h3 style={{ color: '#ffaaaa', marginTop: 0 }}>Post Bounty — bounty a Rebel leader?</h3>
         <div style={{ color: '#aaa', fontSize: 12, marginBottom: 10 }}>
           <i>{missionName}</i> just failed. Discard <i>Post Bounty</i> to attach a bounty ring to one of
-          the Rebel leaders who attempted it — when that leader is captured, the Rebels lose 1 reputation:
+          the Rebel leaders in that system without a ring — when that leader is captured, the Rebels lose 1 reputation:
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
           {choice.candidates.map((lid) => {
@@ -16539,13 +16585,14 @@ function ContingencyPlanPickModal({
 }
 
 function GameOverModal({
-  winner, winReason, humanSide, onDismiss, onUploadLogs,
+  winner, winReason, humanSide, onDismiss, onUploadLogs, onDownloadLog,
 }: {
   winner: Side | null;
   winReason: string | null;
   humanSide: Side;
   onDismiss: () => void;
   onUploadLogs: () => void;
+  onDownloadLog: () => void;
 }) {
   const won = winner != null && winner === humanSide;
   // Plain-language explanation of HOW the game ended.
@@ -16594,6 +16641,10 @@ function GameOverModal({
           <button className="tab-button" onClick={onUploadLogs} style={{ padding: '8px 20px' }}
             title="Send this game's log to the developer to help improve the AI and catch bugs">
             Upload game log
+          </button>
+          <button className="tab-button" onClick={onDownloadLog} style={{ padding: '8px 20px' }}
+            title="Save the whole game as a readable text file to keep (the chat too, in online games)">
+            Download game log
           </button>
         </div>
         <div style={{ fontSize: 11, color: '#8a8d92', marginTop: 12, lineHeight: 1.4 }}>
