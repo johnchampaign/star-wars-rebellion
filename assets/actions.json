@@ -387,7 +387,7 @@
         "luke-skywalker"
       ],
       "effectKey": "",
-      "rulesText": "After a successful mission, search the mission deck for \"Seek Yoda\" or \"Daring Rescue\" card.",
+      "rulesText": "After you succeed at a mission in this leader's system, search your mission deck for the \"Seek Yoda,\" \"Daring Rescue,\" or \"Critical Rescue\" card and place it in your hand. Then shuffle your mission deck.",
       "image": "ActionCardRebelSonOfSkywalker.png"
     },
     {

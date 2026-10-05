@@ -819,8 +819,15 @@ export function setSeatMissionSet(
 }
 
 /** Whose turn it is, derived from a ViewResult (2-player). */
-export function currentActorOf(v: { you?: string; yourTurn: boolean; gameOver: boolean }): Side | null {
+export function currentActorOf(v: { you?: string; yourTurn: boolean; gameOver: boolean; view?: GameState }): Side | null {
   if (v.gameOver || !v.you) return null;
+  // Setup is concurrent: canAct (and so yourTurn) is true for BOTH seats for
+  // the whole phase (#736 setup undo), so yourTurn can't say whose clock it
+  // is. Reading it here booked the human as the actor after they finished
+  // placing, the AI-due flag never went up, and the AI worker never deployed
+  // the AI seat's forces (#797). Ask the state itself instead — phase and
+  // currentPlayer survive redaction.
+  if (v.view?.phase === 'Setup') return rebellionAdapter.currentActor(v.view);
   const you = v.you as Side;
   return v.yourTurn ? you : you === 'Rebel' ? 'Empire' : 'Rebel';
 }

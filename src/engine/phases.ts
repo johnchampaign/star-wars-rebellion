@@ -3821,8 +3821,13 @@ export function maybePostMissionRingTrigger(G: GameState, pm: MissionResolution)
     // in deck. The expansion mission deck swaps Daring Rescue for its RoE
     // equivalent, Critical Rescue, so accept that id too — otherwise only Seek
     // Yoda was ever offered in an expansion game (#296).
+    // The printed card: "After you succeed at a mission in this leader's
+    // SYSTEM" — Luke only has to be standing in the mission's system, not be
+    // one of the leaders who resolved it (#798).
     const hasSoS = G.rebel.actionHand.includes('son-of-skywalker');
-    const lukePresent = (pm.leaderIds as LeaderId[]).some((l) => l === 'luke-skywalker' || l === 'luke-skywalker-jedi');
+    const isLuke = (l: LeaderId) => l === 'luke-skywalker' || l === 'luke-skywalker-jedi';
+    const lukePresent = (pm.leaderIds as LeaderId[]).some(isLuke)
+      || (G.rebel.leadersOnBoard[pm.targetSystemId] ?? []).some(isLuke);
     if (hasSoS && lukePresent) {
       const sosCandidates = G.rebel.missionDeck.filter(
         (mid) => mid === 'seek-yoda' || mid === 'daring-rescue' || mid === 'critical-rescue');
@@ -4345,6 +4350,8 @@ export function resolveSonOfSkywalkerOffer(G: GameState, missionIdOrNull: string
     const j = G.rebel.missionDeck.indexOf(missionIdOrNull);
     if (j >= 0) G.rebel.missionDeck.splice(j, 1);
     G.rebel.missionHand.push(missionIdOrNull);
+    // "...and place it in your hand. Then shuffle your mission deck."
+    G.rebel.missionDeck = shuffle(G.rng, G.rebel.missionDeck);
     log(G, { kind: 'son-of-skywalker-applied', side: 'Rebel', payload: {
       pulledMissionId: missionIdOrNull,
     }});
