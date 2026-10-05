@@ -4017,7 +4017,7 @@ function maybePostDeathStarPlansChoice(G: GameState, c: CombatState): void {
       G,
       `dsp-no-fighter-${c.systemId}-t${G.timeMarker}`,
       'Death Star Plans — no fighter left to make the run',
-      'Death Star Plans needs at least 1 of your FIGHTERS (X-Wing or Y-Wing) still alive when the space battle step ends. Capital ships don\'t qualify, however many survive, and destroying the Death Star\'s escorts doesn\'t help if your fighters die doing it. The card stays in your hand — the window is re-checked after the space step of every round.',
+      'Death Star Plans needs at least 1 of your FIGHTERS (X-Wing, Y-Wing or U-Wing) still alive when the space battle step ends. Capital ships don\'t qualify, however many survive, and destroying the Death Star\'s escorts doesn\'t help if your fighters die doing it. The card stays in your hand — the window is re-checked after the space step of every round.',
       'Rebel',
     );
     return;

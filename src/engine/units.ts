@@ -230,7 +230,11 @@ export const UNIT_TYPES: UnitType[] = [
   // Stats transcribed from images/ReferenceRebel2P.png. Setup quantities
   // are from StarWarsRebellion_v2.5.pdf p.8.
   R({
-    id: 'u-wing', name: 'U-Wing', theater: 'space', class: 'capital', tier: 'triangle',
+    // A FIGHTER, not a capital ship: RR "Fighters" — "A ship that has a black
+    // health value is a fighter." It counts for Death Star Plans and fighter
+    // comparisons, and can't be picked by "deal N damage to a capital ship"
+    // (#799). Its transport capacity doesn't change that.
+    id: 'u-wing', name: 'U-Wing', theater: 'space', class: 'fighter', tier: 'triangle',
     health: { color: 'black', value: 1 },
     attack: { red: 0, black: 0, green: 1 },
     // Per the reference mat the U-Wing carries a transport-capacity-1 badge

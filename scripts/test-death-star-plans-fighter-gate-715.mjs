@@ -10,8 +10,8 @@
 //    card to roll 3 dice. If you roll a direct hit, play this card and destroy
 //    a Death Star in this system. Otherwise return this card to your hand."
 //
-// So the gate is a surviving Rebel fighter (X-Wing / Y-Wing — the only two
-// Rebel unit types with class 'fighter'), NOT "the Death Star is the last ship
+// So the gate is a surviving Rebel fighter (X-Wing, Y-Wing, or the RoE U-Wing
+// — any black-health ship, per RR "Fighters"; #799), NOT "the Death Star is the last ship
 // standing". Capital ships don't qualify no matter how many are left, and
 // clearing the escorts is irrelevant if the fighters died doing it.
 //
@@ -99,6 +99,25 @@ console.log('\n[ the card fires when a Rebel FIGHTER survives the space step ]')
   // Y-Wing is the other Rebel fighter — same class, must behave identically.
   const { G } = atSpaceStepEnd(716, [{ instanceId: 'yw1', typeId: 'y-wing', side: 'Rebel', damage: 0 }]);
   check('a Y-Wing qualifies too', offered(G), `pendingChoice=${G.pendingChoice?.kind}`);
+}
+{
+  // #799: the U-Wing has a black health value, so RR "Fighters" makes it a
+  // fighter even though it carries a ground unit. It used to be filed as a
+  // capital ship and silently failed the gate.
+  const { G } = atSpaceStepEnd(799, [
+    { instanceId: 'uw1', typeId: 'u-wing', side: 'Rebel', damage: 0 },
+    { instanceId: 'cc1', typeId: 'corellian-corvette', side: 'Rebel', damage: 0 },
+  ]);
+  check('a U-Wing qualifies too (#799)', offered(G), `pendingChoice=${G.pendingChoice?.kind}`);
+}
+console.log('\n[ #799 every black-health ship is a fighter, every red-health ship is not ]');
+{
+  const G = createGame(data, { seed: 1 });
+  const space = Object.values(G.catalog.unitTypes).filter((t) => t.theater === 'space'
+    && t.class !== 'station' && t.health?.color);
+  const wrong = space.filter((t) => (t.health.color === 'black') !== (t.class === 'fighter'))
+    .map((t) => `${t.id}:${t.health.color}/${t.class}`);
+  check('class matches RR "Fighters" / "Capital Ships" for every ship', wrong.length === 0, wrong.join(', '));
 }
 
 console.log('\n[ #715 capital ships alone do NOT qualify — the reported case ]');
