@@ -45,6 +45,10 @@ function setup(cinematic, seed) {
     expansion: { enabled: true, cinematicCombat: cinematic } });
   for (let i=0;i<6;i++) M.deployUnit(G,'Rebel','x-wing','felucia'); // black attack
   M.deployUnit(G,'Empire','tie-fighter','felucia'); // black health, 1 hp
+  // A second TIE gives every hit two legal targets. With one, the assignment
+  // is forced and the engine applies it without a prompt (#793), so there'd
+  // be no window to overdamage in.
+  M.deployUnit(G,'Empire','tie-fighter','felucia');
   combat.beginCombat(G,'Rebel','naboo','felucia');
   return G;
 }

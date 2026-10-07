@@ -114,6 +114,7 @@ formats to `{ meta, humanSide, winner, events, snapshots, final }`.
 | `combat-action-card-not-implemented` | — | `(not seen in corpus or sample game)` | src/engine/combat.ts |
 | `combat-add-leader` | — | `{"leaderId":"jan-dodonna","tacticValue":3}` | src/engine/combat.ts |
 | `combat-add-leader-declined` | — | `{}` | src/engine/combat.ts |
+| `combat-assign-forced` | Every hit had at most one legal target, so the engine applied the damage assignment without prompting (#793). | `{"theater":"space","hits":2,"blocksApplied":0}` | src/engine/combat.ts |
 | `combat-attack` | One attack roll (theater, dice faces, attacker count). | `{"theater":"space","dice":[{"color":"red","face":"blank"},{"color":"black","face":"blank"}],"attackers":1}` | src/engine/combat.ts |
 | `combat-begin` | Combat starts. A base assault also writes the base-assault snapshot. | `{"systemId":"mygeeto","attackerSide":"Rebel","cinematic":true}` | src/engine/combat.ts |
 | `combat-blocks-removed` | RR p.5 step 4: after the attacker assigns every hit, the defender's blocks remove that many of the assigned damages (greedily, where they save a unit). | `{"theater":"space","blocks":1,"removed":1,"perUnit":{"s100026":1}}` | src/engine/combat.ts |

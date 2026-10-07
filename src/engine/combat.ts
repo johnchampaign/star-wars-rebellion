@@ -9,7 +9,7 @@
 
 import type {
   GameState, Side, SystemId, UnitInstance, UnitInstanceId, Theater, DieColor, DieResult,
-  CombatState, CombatReport, CombatAttackReport, LeaderId,
+  CombatState, CombatReport, CombatAttackReport, LeaderId, ChoiceRequest,
 } from './types';
 import * as M from './mechanics';
 import * as objectives from './objectives';
@@ -2001,9 +2001,27 @@ function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): vo
     return;
   }
 
-  // Pause for the attacker to pick targets per hit.
   pa.phase = 'awaitingDamageAssignment';
   pa.pendingAssignment = { blocksApplied, applicableHits };
+
+  // A prompt with only one possible answer is not a decision (#793): when
+  // every hit has at most one legal target, apply that assignment instead of
+  // pausing. Targets and blocks are public, so answering instantly leaks
+  // nothing — unlike a tactic-card window, whose "nothing playable" reflects
+  // the hidden hand and stays a prompt. Skipped if the forced picks would
+  // break a card's target rule (e.g. two Onslaught hits, one target).
+  if (targetsByHit.every((t) => t.length <= 1)) {
+    const forced = targetsByHit.map((t) => t[0] ?? null);
+    if (!assignmentError(applicableHits, targetsByHit, forced)) {
+      log(G, { kind: 'combat-assign-forced', side: pa.side, payload: {
+        theater: pa.theater, hits: applicableHits.length, blocksApplied,
+      }});
+      applyDamageAssignment(G, c, pa, forced);
+      return;
+    }
+  }
+
+  // Pause for the attacker to pick targets per hit.
   G.pendingChoice = {
     kind: 'CombatAssignDamage',
     side: pa.side,
@@ -2034,9 +2052,24 @@ export function resolveCombatAssignDamage(
     return { ok: false, reason: 'no-choice' };
   }
   const choice = G.pendingChoice;
-  if (assignments.length !== choice.hits.length) {
-    return { ok: false, reason: 'assignment-count-mismatch' };
-  }
+  const bad = assignmentError(choice.hits, choice.targetsByHit, assignments);
+  if (bad) return { ok: false, reason: bad };
+  applyDamageAssignment(G, c, pa, assignments);
+  G.pendingChoice = undefined;
+  runCombat(G);
+  return { ok: true };
+}
+
+type AssignableHit = Extract<ChoiceRequest, { kind: 'CombatAssignDamage' }>['hits'][number];
+
+/** Why `assignments` is not a legal answer to a damage-assignment prompt, or
+ *  null when it is. Shared by the resolver and the forced-assignment path in
+ *  finalizeAttack, so an auto-applied assignment obeys the same card rules. */
+function assignmentError(
+  hits: AssignableHit[], targetsByHit: string[][], assignments: (string | null)[]
+): string | null {
+  if (assignments.length !== hits.length) return 'assignment-count-mismatch';
+  const choice = { hits, targetsByHit };
 
   // RAW: per-card target constraints on bonus-damage hits.
   //   take-it-down: all hits from this card must hit the SAME target.
@@ -2056,11 +2089,11 @@ export function resolveCombatAssignDamage(
     if (src.includes('take-it-down')) {
       const first = real[0];
       if (!real.every((p) => p === first)) {
-        return { ok: false, reason: `take-it-down-requires-same-target:${src}` };
+        return `take-it-down-requires-same-target:${src}`;
       }
     } else if (src.includes('onslaught')) {
       if (new Set(real).size !== real.length) {
-        return { ok: false, reason: `onslaught-requires-different-targets:${src}` };
+        return `onslaught-requires-different-targets:${src}`;
       }
     }
     // critical-hit / bombardment: no constraint (single hit or generic)
@@ -2071,16 +2104,26 @@ export function resolveCombatAssignDamage(
     const target = assignments[i];
     if (target === null) continue;
     if (!choice.targetsByHit[i].includes(target)) {
-      return { ok: false, reason: `illegal-target-at-hit-${i}:${target}` };
+      return `illegal-target-at-hit-${i}:${target}`;
     }
   }
+  return null;
+}
 
+/** Apply a validated damage assignment: the defender's blocks cancel assigned
+ *  damage, the rest lands, and the attack is recorded and closed out. Does NOT
+ *  resume combat — the resolver does that; finalizeAttack's caller does it for
+ *  the forced path. */
+function applyDamageAssignment(
+  G: GameState, c: CombatState, pa: NonNullable<CombatState['pendingAttack']>,
+  assignments: (string | null)[],
+): void {
   // RR p.5 step 4 (Block Damage): the DEFENDER now removes one assigned damage
   // per block from his own units. He'd obviously spend them where they save a
   // unit, so cancel greedily: cheapest rescue first, tie-broken toward the
   // beefier unit, then dump any leftover blocks on the most-damaged survivors.
   const cancelsLeft = new Map<string, number>();
-  const blocks = pa.pendingAssignment.blocksApplied;
+  const blocks = pa.pendingAssignment!.blocksApplied;
   if (blocks > 0) {
     const assignedCount = new Map<string, number>();
     for (const t of assignments) {
@@ -2151,12 +2194,9 @@ export function resolveCombatAssignDamage(
     }
   }
 
-  pushAttackReport(G, c, pa.pendingAssignment.blocksApplied, damageApplied);
+  pushAttackReport(G, c, pa.pendingAssignment!.blocksApplied, damageApplied);
   c.theaterAttackersDone!.push(pa.side);
   c.pendingAttack = undefined;
-  G.pendingChoice = undefined;
-  runCombat(G);
-  return { ok: true };
 }
 
 /** Helper: build the CombatAttackReport for the just-finished attack and
@@ -2470,6 +2510,12 @@ function applyStartOfCombatActionCardEffect(G: GameState, c: CombatState, side: 
         log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'no-effect (no Rebel ships)' } });
         return;
       }
+      if (candidates.length === 1) {
+        // Only one legal target — not a decision, so no prompt (#793).
+        destroyViaCombatCard(G, c, candidates[0], 'fully-operational');
+        log(G, { kind: 'combat-action-card-effect', side, payload: { card: 'fully-operational', destroyed: candidates[0] } });
+        return;
+      }
       G.pendingChoice = {
         kind: 'FullyOperationalTargetPick',
         side, systemId: c.systemId, candidates,
@@ -2487,6 +2533,12 @@ function applyStartOfCombatActionCardEffect(G: GameState, c: CombatState, side: 
         .map((u) => u.instanceId);
       if (candidates.length === 0) {
         log(G, { kind: 'combat-action-card-effect', side, payload: { card: cardId, applied: 'no-effect (no structures)' } });
+        return;
+      }
+      if (candidates.length === 1) {
+        // Only one legal target — not a decision, so no prompt (#793).
+        destroyViaCombatCard(G, c, candidates[0], 'target-the-generator');
+        log(G, { kind: 'combat-action-card-effect', side, payload: { card: 'target-the-generator', destroyed: candidates[0] } });
         return;
       }
       G.pendingChoice = {
