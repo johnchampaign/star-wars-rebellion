@@ -2179,6 +2179,12 @@ export type LogEntry = {
   side?: Side;
   kind: string;
   payload?: Record<string, unknown>;
+  /** Wall-clock time (epoch ms) the entry was recorded in a real game (#796).
+   *  Stamped by the HOST after a move — the online server, or the single-player
+   *  page when it saves — never by the engine, which stays clock-free so
+   *  replays, tests and AI search are exactly repeatable. Absent on entries
+   *  written before this existed, and on simulated games. */
+  at?: number;
 };
 
 export type SeededRngState = { state: number };

@@ -8,6 +8,7 @@
 // hidden kinds omitted, an opponent's secrets "(private)", draws as counts),
 // and online games get the chat appended.
 // Run: node scripts/test-log-export-796.mjs
+process.env.TZ = 'UTC'; // the download prints local time; pin it for the checks
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -67,11 +68,38 @@ check('with that rule the setup line names no base', !!setupEntry && readableEnt
 console.log('[ online: chat is included ]');
 const online = buildReadableLog(G, { humanSide: HUMAN, vis, online: true, chat: [{ seat: 'Rebel', body: 'Endor. How appropriate.', at: '2026-10-02T10:00:00.000Z' }] });
 check('the opponent is "another player"', online.includes('Opponent: the Rebel (another player).'));
-check('the chat section lists the message', /=== Chat ===\n\[2026-10-02 10:00\] Rebel: Endor\. How appropriate\./.test(online));
+check('the chat section lists the message, timed like the log', /=== Chat ===\n\[Oct 2, 10:00\] Rebel: Endor\. How appropriate\./.test(online), online.split('=== Chat ===')[1]);
 const broken = buildReadableLog(G, { humanSide: HUMAN, vis, online: true, chatError: 'HTTP 500' });
 check('a chat that will not load says so instead of failing', broken.includes('(chat could not be loaded: HTTP 500)'));
 const local = buildReadableLog(G, { humanSide: HUMAN, vis });
 check('a local game has no chat section', !local.includes('=== Chat ==='));
+
+console.log('[ timestamps (#796 follow-up: "add timestamps for each log entry") ]');
+{
+  const { stampLogFrom } = await import('../src/engine/log.ts');
+  const { rebellionAdapter } = await import('../src/adapter/rebellionAdapter.ts');
+  check('the engine on its own never stamps a time (replays and AI search stay repeatable)', G.turnLog.every((e) => e.at === undefined));
+  const H = createGame(data, { seed: 797, autoSetupUnits: true });
+  const before = H.turnLog.length;
+  const r = rebellionAdapter.tryApplyAction(H, { kind: 'skipAssignment' }, H.currentPlayer);
+  check('an online move goes through', r.ok, r.reason);
+  const added = r.state.turnLog.slice(before);
+  check('its new log entries carry the time', added.length > 0 && added.every((e) => typeof e.at === 'number' && Math.abs(e.at - Date.now()) < 60_000), JSON.stringify(added.map((e) => e.at)));
+  check('earlier entries are not back-dated', r.state.turnLog.slice(0, before).every((e) => e.at === undefined));
+  check('the input state is untouched', H.turnLog.every((e) => e.at === undefined));
+  const K = createGame(data, { seed: 798, autoSetupUnits: true });
+  K.turnLog[0].at = 1;
+  stampLogFrom(K, 0, 5);
+  check('an entry that already has a time keeps it', K.turnLog[0].at === 1 && K.turnLog[1].at === 5);
+  const T = createGame(data, { seed: 799, autoSetupUnits: true });
+  stampLogFrom(T, 0, Date.UTC(2026, 9, 6, 20, 12, 41));
+  const line = buildReadableLog(T, { humanSide: HUMAN, vis }).split('\n').find((l) => l.startsWith('['));
+  check('the download prints it to the minute', /^\[Oct 6, 20:12\] /.test(line ?? ''), line);
+  const src = readFileSync(join(ROOT, 'functions/_lib/gameServer.ts'), 'utf8');
+  check('the server stamps its own AI moves', /if \(advanced\) stampLogFrom\(state, logStart, Date\.now\(\)\)/.test(src));
+  check('the server stamps moves the off-site AI worker submits', /stampLogFrom\(next, priorLogLen, Date\.now\(\)\)/.test(src));
+  check('single-player saves stamp new entries', /stampLocalLog\(G\); \/\/ #796/.test(readFileSync(join(ROOT, 'src/play/PlayTab.tsx'), 'utf8')));
+}
 
 console.log('[ tripwires ]');
 const src = readFileSync(join(ROOT, 'src/play/PlayTab.tsx'), 'utf8');

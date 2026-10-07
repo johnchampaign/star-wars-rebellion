@@ -30,6 +30,7 @@ import type { RebellionAction } from '../../src/adapter/rebellionAction';
 import { rebellionAdapter } from '../../src/adapter/rebellionAdapter';
 import { makeRebellionCodec } from '../../src/adapter/codec';
 import { buildCatalog, createGame, rebuildMissionDeck, type DataBundle } from '../../src/engine/setup';
+import { stampLogFrom } from '../../src/engine/log';
 import { stepOnce } from '../../src/play/randomAI';
 
 const HUB = 'https://games-hub-5vo.pages.dev';
@@ -491,6 +492,7 @@ export function runServerAI(state: GameState): boolean {
   const ai = state.aiSides;
   if (!ai || ai.length === 0) return false;
   let advanced = false;
+  const logStart = state.turnLog?.length ?? 0;
   for (let i = 0; i < 4000; i++) {
     if (state.isGameOver) break;
     const actor = rebellionAdapter.currentActor(state);
@@ -500,6 +502,7 @@ export function runServerAI(state: GameState): boolean {
     if (!did) break; // AI couldn't resolve its own step — stop rather than spin.
     advanced = true;
   }
+  if (advanced) stampLogFrom(state, logStart, Date.now()); // #796
   return advanced;
 }
 
@@ -708,8 +711,10 @@ export async function applyAiWorkerMove(
   if (!latest) return { ok: false, reason: 'game-not-found', status: 404 };
   if (latest.turn !== baseTurn) return { ok: false, reason: `stale:${latest.turn}!=${baseTurn}`, status: 409 };
   let priorActor: Side | null;
+  let priorLogLen = 0;
   try {
     const prior = decodeSnapshot(codec, latest.state);
+    priorLogLen = prior.turnLog?.length ?? 0;
     if (prior.isGameOver) return { ok: false, reason: 'game-over', status: 409 };
     priorActor = rebellionAdapter.currentActor(prior);
     if (!priorActor || !prior.aiSides?.includes(priorActor)) {
@@ -721,12 +726,19 @@ export async function applyAiWorkerMove(
   // Reuse this decode to learn the NEW actor (no extra CPU).
   let nextActor: Side | null = null;
   let nextIsAi = false;
+  let toStore = newSnapshot;
   try {
     const next = decodeSnapshot(codec, newSnapshot);
     nextActor = next.isGameOver ? null : rebellionAdapter.currentActor(next);
     nextIsAi = !!(nextActor && next.aiSides?.includes(nextActor));
+    // The worker runs off-site and doesn't stamp times; stamp its move's new
+    // log entries here, as they are stored (#796).
+    if ((next.turnLog?.length ?? 0) > priorLogLen) {
+      stampLogFrom(next, priorLogLen, Date.now());
+      toStore = encodeSnapshot(codec, next);
+    }
   } catch { return { ok: false, reason: 'new-snapshot-invalid', status: 400 }; }
-  await store.putSnapshot(gameId, { turn: baseTurn + 1, state: newSnapshot });
+  await store.putSnapshot(gameId, { turn: baseTurn + 1, state: toStore });
   // Keep the ai-due flag accurate: once the turn passes back to a human, drop
   // this game from the actor_is_ai candidate set (best-effort — abandonment
   // timing already tolerates a lost write).
@@ -764,7 +776,9 @@ async function mutateStored(
   const latest = await store.getLatest(gameId);
   if (!latest) return false;
   const state = decodeSnapshot(codec, latest.state);
+  const logStart = state.turnLog?.length ?? 0;
   if (!fn(state)) return false;
+  stampLogFrom(state, logStart, Date.now()); // #796
   await store.putSnapshot(gameId, { turn: latest.turn + 1, state: encodeSnapshot(codec, state) });
   return true;
 }

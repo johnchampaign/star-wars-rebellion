@@ -10,6 +10,7 @@ import { missionTargets, missionLeaderTargets, missionRevealIsPointless } from '
 import { stepOnce as aiStepOnce, setCommandPolicyOverride } from './randomAI';
 import { buildV2GameLog, buildId } from './logFormat';
 import { buildReadableLog, type LogVisibility, type ExportChatMessage } from './logExport';
+import { stampLogFrom } from '../engine/log';
 import { nextReportKind } from './reportQueue';
 import { DeployUndoStack, deployStepKey } from './deployUndoStack';
 import { PLANNER_ENABLED, HUNT_OCCUPY_ENABLED } from './empirePlanner';
@@ -450,6 +451,17 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
    *  it CANNOT live in the policy override, because a stuck aiWaitingRef stops
    *  the loop before the override is ever called. */
   const aiWaitingSinceRef = useRef(0);
+  /** First turnLog index not yet given a wall-clock time (#796). 0 for a new
+   *  game; a resumed or imported game starts at its current length, so earlier
+   *  entries are never stamped with a time they didn't happen at. */
+  const logStampFromRef = useRef(0);
+  /** Stamp the entries added since the last save with the current time. The
+   *  engine never reads the clock; the page does it here, as the host. */
+  const stampLocalLog = (Gs: GameState) => {
+    const from = Math.min(logStampFromRef.current, Gs.turnLog?.length ?? 0);
+    stampLogFrom(Gs, from, Date.now());
+    logStampFromRef.current = Gs.turnLog?.length ?? 0;
+  };
   // Point the module-level engine handles at the online shim (mutators submit
   // RebellionActions to the server) or the real modules (single-player). See
   // the `let phases/combat` declaration above and onlineEngine.ts.
@@ -832,6 +844,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         lastAiProgressRef.current = (typeof performance !== 'undefined' ? performance.now() : Date.now());
         try {
           const Gf = gameRef.current;
+          if (Gf) stampLocalLog(Gf);
           if (Gf && canEncode(Gf)) lsSetMakingRoom(LS_CURRENT, encodeForResume(Gf));
         } catch { /* ignore */ }
         setTick((t) => t + 1);
@@ -961,6 +974,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     // redacted view to single-player localStorage (it would corrupt resume).
     const G = gameRef.current;
     if (!G) return;
+    stampLocalLog(G); // #796 — before the save and the end-of-game archive
     try {
       if (canEncode(G)) {
         // Resume save on every action — strip the heavy per-turn snapshots
@@ -1037,6 +1051,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
     finishArmedRef.current = true;
     // New game: nothing scored yet, but reset the seen-cursor to be safe.
     seenObjectiveLogIdxRef.current = 0;
+    logStampFromRef.current = 0; // a new game: every entry is new
     aiActivitySeenIdxRef.current = 0;
     aiActivityInitRef.current = false;
     setAiActivity([]);
@@ -1075,6 +1090,7 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       // forward the seen-cursor to the current end of log. Anything that
       // happens AFTER this point will pop the notice modal as expected.
       seenObjectiveLogIdxRef.current = restored.turnLog?.length ?? 0;
+      logStampFromRef.current = restored.turnLog?.length ?? 0; // don't back-date history (#796)
       aiActivitySeenIdxRef.current = restored.turnLog?.length ?? 0;
       aiActivityInitRef.current = true;
       setAiActivity([]);

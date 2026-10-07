@@ -29,6 +29,16 @@ export type ReadableLogOpts = {
   now?: Date;
 };
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const pad2 = (n: number) => String(n).padStart(2, '0');
+/** "Oct 6, 20:12" in the reader's local time. Minutes, as requested (#796):
+ *  enough to line the chat up with the moves. Log entries and chat use the
+ *  same format so the two read as one timeline. */
+export function formatLogTime(ms: number): string {
+  const d = new Date(ms);
+  return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
 /** Payload keys that are bookkeeping, not story. */
 const SKIP_KEYS = new Set(['codec', 'seq', 'unit', 'units', 'instanceId', 'instanceIds', 'unitInstanceIds']);
 
@@ -70,7 +80,7 @@ function renderValue(v: unknown, name: (s: string) => string, depth = 0): string
 /** One log entry as a line of text. */
 export function readableEntry(G: GameState, e: LogEntry, vis: LogVisibility): string {
   const name = nameLookup(G);
-  const who = e.side ? `${e.side} · ` : '';
+  const who = (e.at !== undefined ? `[${formatLogTime(e.at)}] ` : '') + (e.side ? `${e.side} · ` : '');
   const what = e.kind.replace(/-/g, ' ');
   if (vis.countOnly(e)) {
     const n = (e.payload as { count?: number } | undefined)?.count ?? 1;
@@ -91,7 +101,7 @@ export function buildReadableLog(G: GameState, opts: ReadableLogOpts): string {
   const now = opts.now ?? new Date();
   const out: string[] = [];
   out.push('STAR WARS: REBELLION — GAME LOG');
-  out.push(`Exported ${now.toISOString().replace('T', ' ').slice(0, 16)} UTC`);
+  out.push(`Exported ${formatLogTime(now.getTime())}, ${now.getFullYear()}`);
   out.push(`You played the ${humanSide}. Opponent: the ${opponent} (${opts.online ? 'another player' : 'the computer'}).`);
   if (G.expansion?.enabled) out.push('Rise of the Empire expansion: on.');
   if (G.isGameOver) {
@@ -100,6 +110,9 @@ export function buildReadableLog(G: GameState, opts: ReadableLogOpts): string {
     out.push(`Game in progress: round ${G.timeMarker}, ${G.phase} phase. Reputation marker on ${G.reputationMarker}.`);
   }
   out.push('Entries the rules keep secret from you are marked "(private)" or left out.');
+  if ((G.turnLog ?? []).some((e) => e.at !== undefined) || (opts.chat?.length ?? 0) > 0) {
+    out.push('Times are in your local time zone. Moves made before times were recorded have none.');
+  }
 
   let lastTurn: number | null = null;
   for (const e of G.turnLog ?? []) {
@@ -117,7 +130,10 @@ export function buildReadableLog(G: GameState, opts: ReadableLogOpts): string {
     out.push('=== Chat ===');
     if (opts.chatError) out.push(`(chat could not be loaded: ${opts.chatError})`);
     else if (!opts.chat || opts.chat.length === 0) out.push('(no messages)');
-    else for (const m of opts.chat) out.push(`[${m.at.replace('T', ' ').slice(0, 16)}] ${m.seat}: ${m.body}`);
+    else for (const m of opts.chat) {
+      const t = Date.parse(m.at);
+      out.push(`[${Number.isNaN(t) ? m.at : formatLogTime(t)}] ${m.seat}: ${m.body}`);
+    }
   }
   out.push('');
   return out.join('\n');

@@ -11,6 +11,19 @@
 
 import type { GameState, LogEntry, Side } from './types';
 
+/** Stamp the wall-clock time on the log entries a real move just added
+ *  (index `fromIndex` onward) that don't have one yet (#796: a player wanted
+ *  to line the chat up with the moves). Called by the HOSTS — the online server
+ *  around each stored move, and the single-player page when it saves — never
+ *  from inside the engine, which must not read the clock. Older entries are
+ *  left alone rather than given a time they didn't happen at. */
+export function stampLogFrom(G: GameState, fromIndex: number, at: number): void {
+  const log = G.turnLog ?? [];
+  for (let i = Math.max(0, fromIndex); i < log.length; i++) {
+    if (log[i].at === undefined) log[i].at = at;
+  }
+}
+
 export function log(G: GameState, entry: Omit<LogEntry, 'turn' | 'seq' | 'phase'>): void {
   G.turnLog.push({ seq: G.turnLog.length, turn: G.timeMarker, phase: G.phase, ...entry });
 }

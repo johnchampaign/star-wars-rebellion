@@ -19,6 +19,7 @@ import { redactStateForViewer } from './redact';
 import * as phases from '../engine/phases';
 import * as combat from '../engine/combat';
 import { findUnitInvariantViolations } from '../engine/mechanics';
+import { stampLogFrom } from '../engine/log';
 
 type Result = { ok: boolean; reason?: string };
 
@@ -236,6 +237,7 @@ export const rebellionAdapter: GameAdapter<GameState, RebellionAction, Side> = {
     if (!r.ok) throw new Error(r.reason ?? `Illegal action: ${action.kind}`);
     const broke = newConservationBreak(state, G);
     if (broke) throw new Error(`action ${action.kind} broke unit conservation: ${broke}`);
+    stampLogFrom(G, state.turnLog?.length ?? 0, Date.now()); // #796 — a real move
     return G;
   },
 
@@ -245,6 +247,7 @@ export const rebellionAdapter: GameAdapter<GameState, RebellionAction, Side> = {
     if (r.ok) {
       const broke = newConservationBreak(state, G);
       if (broke) return { state, ok: false, reason: `unit-conservation: ${broke}` };
+      stampLogFrom(G, state.turnLog?.length ?? 0, Date.now()); // #796 — a real move
     }
     return { state: r.ok ? G : state, ok: r.ok, reason: r.reason };
   },
