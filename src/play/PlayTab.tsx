@@ -2352,7 +2352,11 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           poll, re-showing the notice forever). */}
       {(() => {
         const all = G.pendingNotices ?? [];
-        const visible = online ? all.filter((n) => !n.side || n.side === humanSide) : all;
+        // Single-player too: a notice addressed to the AI's side is not for the
+        // human (#800 added Empire-only marker alerts; this also stops a Rebel-
+        // only "Rapid Mobilization — you drew X, Y, Z" from reaching a human
+        // Empire, which named the Rebel's private probe draws).
+        const visible = all.filter((n) => !n.side || n.side === humanSide);
         if (visible.length === 0) return null;
         return (
           <NotImplementedModal
@@ -8084,9 +8088,11 @@ function EnlargedSector({ G, system }: { G: GameState; system: System }) {
               'show-no-fear-3': 'Show No Fear',
             };
             return (
-              <span key={`tm-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#ffd54a', background: 'rgba(60,45,10,0.85)', padding: '2px 6px', borderRadius: 2, fontWeight: 600 }}>
+              // High contrast (#800): the old yellow-on-brown blended into the
+              // gold name text right above it.
+              <span key={`tm-${i}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 12, color: '#fff', background: '#b3261e', border: '2px solid #ff8a1f', padding: '2px 8px', borderRadius: 4, fontWeight: 700, boxShadow: '0 0 8px rgba(255,138,31,0.8)' }}>
                 {img[tm.source] && (
-                  <img src={vmodAssetUrl(img[tm.source], MARKER_IMAGE_BASE)} width={20} height={20} alt="" />
+                  <img src={vmodAssetUrl(img[tm.source], MARKER_IMAGE_BASE)} width={26} height={26} alt="" />
                 )}
                 TARGET — {label[tm.source] ?? tm.source}
               </span>
@@ -9421,13 +9427,22 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                 );
               })()}
               {/* RoE target markers, stacked in a row below the hex/planet. */}
+              {/* RoE target markers, ON the planet like the leaders (#800: tucked
+                  under the loyalty hex at 40px-native they were easy to miss).
+                  Big, on a pulsing orange ring; nudged up when leader pips sit on
+                  the planet centre so the two never overlap. */}
               {tMarkers.map((tm, i) => {
-                const tW = 40 * BOARD_SCALE;
-                const tH = 40 * BOARD_SCALE;
-                const spacing = tW * 0.85;
+                const tW = Math.max(30, 76 * BOARD_SCALE);
+                const tH = tW;
+                const spacing = tW * 1.1;
                 const total = (tMarkers.length - 1) * spacing;
-                const tx = mx - total / 2 + i * spacing;
-                const ty = my + markerH / 2 + tH * 0.4;
+                const px = s.boardPos.x * BOARD_SCALE;
+                const py = s.boardPos.y * BOARD_SCALE;
+                const leadersHere = (G.rebel.leadersOnBoard[s.id]?.length ?? 0)
+                  + (G.empire.leadersOnBoard[s.id]?.length ?? 0)
+                  + (G.empire.capturedLeaders ?? []).filter((c) => c.systemId === s.id).length;
+                const tx = px - total / 2 + i * spacing;
+                const ty = leadersHere > 0 ? py - 14 - tH / 2 - 4 : py;
                 const labels: Record<string, string> = {
                   'secure-the-plans': 'Secure the Plans target marker',
                   'raid-outposts-2': 'Raid Outposts target marker',
@@ -9437,6 +9452,10 @@ function Board({ G, systems, masks, eliminatedSystemIds, humanSide, highlightSys
                 return (
                   <g key={`tmarker-${s.id}-${i}`}>
                     <title>{`${s.name ?? s.id} — ${labels[tm.source] ?? 'target marker'}`}</title>
+                    <circle cx={tx} cy={ty} r={tW / 2 + 4}
+                      style={{ fill: 'rgba(20,10,5,0.75)', stroke: '#ff8a1f', strokeWidth: 3 }}>
+                      <animate attributeName="stroke-opacity" values="1;0.35;1" dur="1.6s" repeatCount="indefinite" />
+                    </circle>
                     <image
                       href={vmodAssetUrl(tm.src, MARKER_IMAGE_BASE)}
                       x={tx - tW / 2} y={ty - tH / 2}

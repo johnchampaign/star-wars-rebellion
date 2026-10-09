@@ -11,7 +11,7 @@ import type {
   GameState, Side, SystemId, UnitInstance, UnitInstanceId, UnitTypeId,
   LeaderId, SystemState,
 } from './types';
-import { log, logState } from './log';
+import { log, logState, pushNotice } from './log';
 import { shuffle } from './rng';
 
 // ============================================================================
@@ -843,7 +843,27 @@ export function placeTargetMarker(
   if (ss.targetMarkers.some((m) => m.source === source && m.placedBy === placedBy)) return;
   ss.targetMarkers.push({ source, placedBy, placedAt: G.timeMarker });
   log(G, { kind: 'target-marker-place', side: placedBy, payload: { systemId: sysId, source } });
+  // Tell the side the marker works AGAINST (#800: a Rebel Cell placed during
+  // Refresh went unnoticed until the Rebel scored from it). Skipped when that
+  // side placed it itself (Raid Outposts has the Empire place its markers).
+  // The marker is public board state, so naming the system leaks nothing —
+  // Show No Fear marks the base by design, and its Rebel is warned before.
+  const owner: Side = TARGET_MARKER_OWNER[source] ?? 'Rebel';
+  const warn: Side = owner === 'Rebel' ? 'Empire' : 'Rebel';
+  if (placedBy !== warn) {
+    const card = G.catalog.objectives[source]?.name ?? G.catalog.missions[source]?.name ?? source;
+    const sysName = G.catalog.systems[sysId]?.name ?? sysId;
+    pushNotice(G, `target-marker-${source}-${sysId}-t${G.timeMarker}`,
+      `${card}: target marker on ${sysName}`,
+      `The ${owner === 'Rebel' ? 'Rebels' : 'Empire'} placed a ${card} target marker on ${sysName}. `
+        + 'It is shown as a glowing marker on the planet; hover or select the system to see it.',
+      warn);
+  }
 }
+
+/** Which side's card each target marker belongs to (default Rebel: Rebel Cell,
+ *  Raid Outposts and Show No Fear are Rebel objectives). */
+const TARGET_MARKER_OWNER: Record<string, Side> = { 'secure-the-plans': 'Empire' };
 
 /** Remove a target marker by source. Returns true if removed. */
 export function removeTargetMarker(
