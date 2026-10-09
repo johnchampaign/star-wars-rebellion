@@ -212,6 +212,34 @@ const DEFEND_CORUSCANT: boolean = (() => {
   return true;
 })();
 
+/** SWR_CORUSCANT_REACH (#763, rokhm1 playing Rebel): while Rebel units are on
+ *  or next to Coruscant, Imperial stacks within TWO jumps of the capital keep
+ *  their reach — they are not used as sources for a move that takes them
+ *  further away — and activating a system next to Coruscant, which stages
+ *  them within striking distance, earns a bonus. The existing drain guard only
+ *  protected Coruscant itself; in the reporter's game the capital's neighbours
+ *  were empty, the nearest big stack sat at Kashyyyk (two jumps) and walked
+ *  off to Malastare while the Rebels held the capital for the last two rounds.
+ *  Default OFF pending the paired self-play screen. */
+const CORUSCANT_REACH: boolean = (() => {
+  try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_CORUSCANT_REACH; if (v === '1') return true; if (v === '0') return false; } catch { /* browser */ }
+  return false;
+})();
+
+/** SWR_HF_BASE_GUARD (#790, a0pzgi playing Empire): the base-strip guard
+ *  (#760) for Hidden Fleet. Hidden Fleet moves units OUT of the hidden Rebel
+ *  Base space — ships plus every ground unit they can carry — and its target
+ *  scorer never looked at the base, so the AI emptied a threatened base and the
+ *  Empire walked in (the reporter's base fell to 7 Imperial units against one
+ *  X-wing). While the hidden base is threatened (rebelBaseThreatened, the #760
+ *  test): -45 on Hidden Fleet targets, and if it is played anyway the picker
+ *  leaves the ground units and half the ships (min 1) home.
+ *  Default OFF pending the paired self-play screen. */
+const HF_BASE_GUARD: boolean = (() => {
+  try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_HF_BASE_GUARD; if (v === '1') return true; if (v === '0') return false; } catch { /* browser */ }
+  return false;
+})();
+
 /** Opt-out for the unbiased tie-break (SWR_TIEBREAK=0). Default ON. Off
  *  restores the old first-wins behaviour, which resolved every tied decision to
  *  the alphabetically-first system. Exists so the change stays measurable —
@@ -1895,6 +1923,7 @@ export function rebelMissionTargetScore(
       if (theirs > ours) s -= 25;
       else if (theirs * 1.5 > ours) s -= 10;
     }
+    if (HF_BASE_GUARD && !G.rebelBaseRevealed && rebelBaseThreatened(G)) s -= 45;
     return s;
   }
   if (missionId === 'lead-the-strike-team') {
@@ -2777,11 +2806,17 @@ function plannedMoveOrders(
     && [CORUSCANT, ...(G.catalog.adjacency[CORUSCANT] ?? [])].some((sid) =>
       (G.map.systems[sid]?.units ?? []).some((u) => u.side === 'Rebel'))
     ? CORUSCANT : undefined;
+  // SWR_CORUSCANT_REACH: with the capital threatened, a stack within two jumps
+  // of it must not be pulled further away (see the lever's note).
+  const corDist = side === 'Empire' && CORUSCANT_REACH && corDrainGuard
+    ? bfsDistances(G, CORUSCANT, 3) : undefined;
   const sources = adj.filter((sysId) => {
     if ((f.leadersOnBoard[sysId] ?? []).length > 0) return false;
     if (prisonSystems.has(sysId)) return false; // guard captured leaders
     if (sysId === baseDrainGuard) return false; // guard the revealed base
     if (sysId === corDrainGuard) return false;  // guard the threatened capital
+    if (corDist && distFrom(corDist, sysId) <= 2
+      && distFrom(corDist, targetSystemId) > distFrom(corDist, sysId)) return false;
     const ss = G.map.systems[sysId];
     return ss && ss.units.some((u) => u.side === side);
   });
@@ -3563,6 +3598,14 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         // reaction lag being reported. Capped so the capital cannot outbid every
         // other consideration on the map forever.
         ts += Math.min(26, 5 + 4 * Math.max(0, corThreat - corGarrison));
+      }
+      if (CORUSCANT_REACH && corThreat > 0 && sysId !== CORUSCANT
+          && (G.catalog.adjacency[CORUSCANT] ?? []).includes(sysId)) {
+        // Stage next to the threatened capital: activating a neighbour pulls
+        // stacks in from two jumps out, so next turn they can strike Coruscant
+        // itself (an activation only draws from adjacent systems). The universal
+        // troop guard still zeroes this when nothing would actually move.
+        ts += corGarrison === 0 ? 12 : 6;
       }
     } else {
       if (baseDist) {
@@ -5115,6 +5158,15 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       } else {
         riderIds.push(u.instanceId);
       }
+    }
+    if (HF_BASE_GUARD && !G.rebelBaseRevealed && rebelBaseThreatened(G)) {
+      // Threatened hidden base: the ground stays (it is what a capture has to
+      // beat) and so does half the fleet, strongest first, at least one ship.
+      const ships = baseUnits.filter((u) => selfMovingIds.includes(u.instanceId))
+        .sort((a, b) => unitStrength(G, b) - unitStrength(G, a));
+      const keep = Math.max(1, Math.ceil(ships.length / 2));
+      const go = ships.slice(keep).map((u) => u.instanceId);
+      return phases.resolveHiddenFleetUnitPick(G, go).ok;
     }
     const picks = [...selfMovingIds];
     for (const uid of riderIds) {
