@@ -226,6 +226,27 @@ const CORUSCANT_REACH: boolean = (() => {
   return false;
 })();
 
+/** SWR_BASE_REMOTE (#790, a0pzgi: "Initial base was on Utapau, which is an
+ *  early target for the Empire"). Among the distance-eligible opening bases,
+ *  prefer a REMOTE system (no loyalty, no resources) when one is eligible.
+ *  Archive, AI-Rebel games vs human Empires, base found by round 4: remote 16%
+ *  (n=79) vs 1-icon worlds 45%, 2-icon 62%, square-icon 69% (n=200) — at the
+ *  same distance from the Empire (~2 jumps). Rich worlds get found because the
+ *  Empire goes there for its own reasons. Human Rebels pick remote 44% of the
+ *  time, the AI 28%. Weighted 3x, not exclusive (remote picks 40% -> 61%).
+ *  DEFAULT ON since 2026-10-09: self-play screens were neutral (RoE 21/30 vs
+ *  21/30, 0 flips; base game 23/30 vs 24/30, 3-2) — the AI Empire doesn't hunt
+ *  like a human — and the archive effect is against human Empires, the case
+ *  that matters. =0 opts out. See docs/ab-levers.md. */
+const BASE_REMOTE: boolean = (() => {
+  try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_BASE_REMOTE; if (v === '1') return true; if (v === '0') return false; } catch { /* browser */ }
+  return true;
+})();
+const BASE_REMOTE_WEIGHT: number = (() => {
+  try { const v = Number((globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_BASE_REMOTE_W); if (v > 0) return v; } catch { /* browser */ }
+  return 3;
+})();
+
 /** SWR_HF_BASE_GUARD (#790, a0pzgi playing Empire): the base-strip guard
  *  (#760) for Hidden Fleet. Hidden Fleet moves units OUT of the hidden Rebel
  *  Base space — ships plus every ground unit they can carry — and its target
@@ -1171,6 +1192,19 @@ export function chooseRebelBaseSystem(G: GameState, candidates: SystemId[]): Sys
   // `score` stays the within-pool preference for the degenerate single-option
   // maps; sampling handles everything else.
   if (good.length === 0) return [...pool].sort((a, b) => score(b) - score(a))[0];
+  // SWR_BASE_REMOTE: a quiet remote system among the safe options beats a rich
+  // world the Empire will visit anyway (see the lever's note). Same safety
+  // rule — only from `good` — so no distance is given up.
+  // Weighted, not exclusive: an always-remote base would be the #718 problem
+  // again (a human Empire learns to probe the eight remotes first), so a remote
+  // option counts BASE_REMOTE_WEIGHT times as much as a planet in the draw.
+  if (BASE_REMOTE && !aggressive) {
+    const w = (sid: string) => (G.catalog.systems[sid]?.isRemote ? BASE_REMOTE_WEIGHT : 1);
+    const total = good.reduce((n, sid) => n + w(sid), 0);
+    let r = aiRand() * total;
+    for (const sid of good) { r -= w(sid); if (r < 0) return sid; }
+    return good[good.length - 1];
+  }
   return good[Math.min(good.length - 1, Math.floor(aiRand() * good.length))];
 }
 
