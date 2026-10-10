@@ -13,7 +13,7 @@ import * as _combat from '../engine/combat';
 import { makeOnlineCombat } from '../online/onlineEngine';
 import type { RebellionAction } from '../adapter/rebellionAction';
 import { stepOnce as aiStepOnce } from './randomAI';
-import { playedTacticsForCombat } from './combatTacticsStrip';
+import { playedTacticsForCombat, playedCombatActionsForCombat } from './combatTacticsStrip';
 import { vmodAssetUrl, CARD_IMAGE_BASE, UNIT_IMAGE_BASE } from '../data/loadAssets';
 import { unitImageUrl, getUnitStyle } from './unitImages';
 import { cinematicTopConditionNote } from '../engine/cinematicTactics';
@@ -199,6 +199,9 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
   // played). Lets you see the enemy actually played one and click to read it
   // (feature: MightyFaben — "you can't tell if the enemy played a tactic").
   const playedTactics = playedTacticsForCombat(G);
+  // Start-of-Combat action cards (Baze's Loyalty, Fully Operational, …) and
+  // what they destroyed before the dice came out (#801).
+  const playedActions = playedCombatActionsForCombat(G);
 
   // Current decision (if any) and which side owns it.
   const pc = G.pendingChoice;
@@ -519,6 +522,28 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
                 {G.catalog.tactics[p.card]?.name ?? p.card}
               </CardHover>
               {p.note && <span style={{ color: '#9a9a9e', fontSize: 11, marginLeft: 5 }}>({p.note})</span>}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {playedActions.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6, fontSize: 12 }}>
+          <span style={{ color: '#888' }}>Action cards played:</span>
+          {playedActions.map((p, i) => (
+            <span key={i} style={{
+              background: '#0c0d10', border: `1px solid ${SIDE_COLOR[p.side]}88`,
+              borderRadius: 3, padding: '2px 6px',
+            }}>
+              <span style={{ color: SIDE_COLOR[p.side], fontWeight: 700, marginRight: 4 }}>{p.side}</span>
+              <CardHover G={G} cardId={p.card}>
+                {G.catalog.actions[p.card]?.name ?? p.card}
+              </CardHover>
+              {p.destroyed.length > 0 && (
+                <span style={{ color: '#9a9a9e', fontSize: 11, marginLeft: 5 }}>
+                  (destroyed {p.destroyed.map((t) => G.catalog.unitTypes[t]?.name ?? t).join(', ')} before the dice were rolled)
+                </span>
+              )}
             </span>
           ))}
         </div>

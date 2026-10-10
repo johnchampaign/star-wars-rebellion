@@ -85,3 +85,56 @@ export function playedTacticsForCombat(G: GameState): PlayedTactic[] {
   const sys = G.pendingCombat?.systemId;
   return sys ? playedTacticsFor(G.turnLog, sys) : [];
 }
+
+export interface PlayedCombatAction {
+  side: Side;
+  card: string;
+  /** typeIds of the units this card destroyed, in order. */
+  destroyed: string[];
+}
+
+/** Every Start-of-Combat ACTION card played in the CURRENT combat at
+ *  `systemId`, with the units it destroyed (#801). The "Units removed" tally
+ *  already listed the lost unit, but nothing on the board said WHY — a player
+ *  whose Assault Carrier vanished to Baze's Loyalty before round 1 read it as
+ *  a dice/tactic bug ("my carrier should still get to shoot"). A played action
+ *  card is public (RR "Action Cards": flipped faceup and resolved), so naming
+ *  it leaks nothing; what a card DREW or RETRIEVED stays out of this list. */
+export function playedCombatActionsFor(turnLog: readonly LogEntry[], systemId: string): PlayedCombatAction[] {
+  let beginIdx = -1;
+  for (let i = turnLog.length - 1; i >= 0; i--) {
+    const e = turnLog[i];
+    if (e.kind === 'combat-begin' && (e.payload as { systemId?: string })?.systemId === systemId) { beginIdx = i; break; }
+  }
+  if (beginIdx < 0) return [];
+  const out: PlayedCombatAction[] = [];
+  // destroy-unit is logged before the card's effect line and is the only entry
+  // that still knows the unit's type once it has left the map.
+  const typeOf = new Map<string, string>();
+  for (let i = beginIdx + 1; i < turnLog.length; i++) {
+    const e = turnLog[i];
+    if (e.kind === 'combat-end') break;
+    const p = (e.payload ?? {}) as { card?: string; destroyed?: string; unit?: string; typeId?: string };
+    if (e.kind === 'destroy-unit' && p.unit && p.typeId) { typeOf.set(p.unit, p.typeId); continue; }
+    if (!e.side || !p.card) continue;
+    if (e.kind === 'combat-action-card') {
+      out.push({ side: e.side as Side, card: p.card, destroyed: [] });
+      continue;
+    }
+    if (e.kind === 'combat-action-card-effect' && p.destroyed) {
+      const typeId = typeOf.get(p.destroyed) ?? p.destroyed;
+      let entry: PlayedCombatAction | undefined;
+      for (let k = out.length - 1; k >= 0; k--) {
+        if (out[k].card === p.card && out[k].side === e.side) { entry = out[k]; break; }
+      }
+      if (!entry) { entry = { side: e.side as Side, card: p.card, destroyed: [] }; out.push(entry); }
+      entry.destroyed.push(typeId);
+    }
+  }
+  return out;
+}
+
+export function playedCombatActionsForCombat(G: GameState): PlayedCombatAction[] {
+  const sys = G.pendingCombat?.systemId;
+  return sys ? playedCombatActionsFor(G.turnLog, sys) : [];
+}
