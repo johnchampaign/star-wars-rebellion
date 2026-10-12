@@ -7175,6 +7175,17 @@ function applyFalseOrdersTo(
   if (!G.empire.leaderPool.includes(lid)) G.empire.leaderPool.push(lid);
   G.empire.missionHand.push(mid);
   log(G, { kind: 'false-orders', side: 'Rebel', payload: { targetLeaderId: lid, missionId: mid } });
+  // Tell the Empire why its assignment vanished: the bounce happens between
+  // "Done Assigning" and the first Command screen, so without this the Empire
+  // just sees its leader back in the pool with no explanation (#802). The
+  // mission stays unnamed — notice text is not redacted online.
+  const name = G.catalog.leaders[lid]?.name ?? lid;
+  pushNotice(G, `false-orders-t${G.timeMarker}-${lid}`, 'False Orders',
+    `The Rebel player played False Orders at the end of the Assignment phase. ` +
+    `It targets a leader who is alone on a mission: ${name} returns to your leader pool, ` +
+    `and that mission card goes back to your hand unrevealed. You can use ${name} again this round ` +
+    `to oppose missions, activate a system, or move.`,
+    'Empire');
 }
 
 /** Offer the Rebel a False Orders play at the end of the Assignment phase, once

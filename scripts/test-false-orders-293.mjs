@@ -81,6 +81,14 @@ console.log('\n[ #293 window appears after BOTH sides skip; play returns leader+
   check('False Orders discarded', G.rebel.actionDiscard.includes('false-orders')
     && !G.rebel.actionHand.includes('false-orders'));
   check('advanced to Command', G.phase === 'Command');
+  // #802: the bounce happens between "Done Assigning" and the first Command
+  // screen — the Empire must be told, or its assignment just vanishes.
+  const n = (G.pendingNotices ?? []).find((x) => x.title === 'False Orders');
+  check('#802 Empire-only False Orders notice posted', !!n && n.side === 'Empire', JSON.stringify(G.pendingNotices));
+  check('#802 notice names the bounced leader',
+    !!n && n.details.includes(G.catalog.leaders[empLeader]?.name ?? empLeader));
+  check('#802 notice does not name the (secret) mission',
+    !!n && !/gather intel/i.test(n.details));
 }
 
 console.log('\n[ #293 declining keeps the card and advances to Command ]');
@@ -93,6 +101,8 @@ console.log('\n[ #293 declining keeps the card and advances to Command ]');
   check('decline ok', r.ok, r.reason);
   check('card still in hand', G.rebel.actionHand.includes('false-orders'));
   check('Empire assignment untouched', G.empire.leadersOnMissions.length === 1);
+  check('#802 no False Orders notice when declined',
+    !(G.pendingNotices ?? []).some((x) => x.title === 'False Orders'));
   check('advanced to Command', G.phase === 'Command');
 }
 
