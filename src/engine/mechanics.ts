@@ -1094,6 +1094,26 @@ export function captureLeader(G: GameState, leaderId: LeaderId, ring: 'captured'
     }});
   }
 
+  // The captured (or carbonite) ring REPLACES whatever ring the leader bore.
+  // RR p.3 "Attachment Rings": "A leader can have only one ring at a time; if a
+  // leader gains a second ring, remove the previous one", and "If an attachment
+  // ring is removed from a leader, it is returned to the supply and its effect
+  // no longer applies to that leader." Keeping the old ring let a rescued Luke
+  // go on rerolling with Master Yoda's ring (player report #804). Rescue does
+  // not give it back.
+  for (const ringId of [...(G.leaderAttachments?.[leaderId] ?? [])]) {
+    removeAttachment(G, leaderId, ringId);
+    // The Millennium Falcon card stays in hand only as the ring's reminder;
+    // with the ring gone, discard it so the ring isn't lazily re-placed.
+    if (ringId === 'falcon') {
+      const fi = r.actionHand.indexOf('the-milleninium-falcon');
+      if (fi >= 0) {
+        r.actionHand.splice(fi, 1);
+        r.actionDiscard.push('the-milleninium-falcon');
+      }
+    }
+  }
+
   // Noble Sacrifice (Rebel/Obi-Wan) Special-timing trigger. The card reads
   // "use when this leader becomes captured" — so the use-window opens at the
   // moment of capture, BEFORE the automatic "no Imperial units → rescued"
@@ -1187,8 +1207,9 @@ export function rescueLeader(G: GameState, leaderId: LeaderId, reason: string = 
 // Per RR p.3 "Attachment Rings": a leader can have only one attachment ring
 // at a time. A new ring replaces the previous one. These are the non-capture
 // rings (Yoda, dark-side, R2D2, etc.). The 'captured' and 'carbonite' rings
-// are tracked separately in G.empire.capturedLeaders[].ring (a leader can
-// have both an attachment ring AND a captured/carbonite status).
+// are tracked separately in G.empire.capturedLeaders[].ring; capturing a
+// leader strips these rings (captureLeader), since the captured ring is the
+// leader's one ring while held.
 
 export type AttachmentKind = 'yoda' | 'dark-side' | 'r2d2' | 'c3po' | 'bounty' | 'k2so' | 'falcon';
 
