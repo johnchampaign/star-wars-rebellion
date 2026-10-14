@@ -180,6 +180,14 @@ export function recordEmpireSearched(G: GameState, affected?: SystemId[]): void 
     const ss = G.map.systems[id];
     if (!ss) continue;
     if (ss.subjugated || ss.loyalty === 'imperial') set.add(id);
+    // Imperial GROUND standing here is the reveal condition too
+    // (recomputeRebelBaseReveal), and it is the only one a REMOTE system can
+    // meet: remote systems never take a subjugation marker (rr p.12), so a
+    // landing there used to go unrecorded. Once the troops moved on, the
+    // searched world looked unknown again, and the AI walked its army straight
+    // back into it — Yavin, Dathomir, Yavin, Dathomir — while the base sat
+    // unvisited elsewhere (#806).
+    else if (hasGroundOf(G, 'Empire', id)) set.add(id);
   }
   // A probe card the Empire HOLDS names a system that cannot be the base — the
   // base's own card sits under the "Location" space, so anything in the Empire's

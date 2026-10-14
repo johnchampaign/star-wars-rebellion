@@ -8720,12 +8720,15 @@ function empireSearchedSystems(G: GameState): Set<string> {
   for (const [id, ss] of Object.entries(G.map.systems)) {
     if (id === G.rebelBaseSystemId) continue;
     if (ss.subjugated || ss.loyalty === 'imperial') out.add(id);
-    // An Imperial presence rules a system out: if the base were here it would
-    // already be revealed (RAW: the base reveals when the Empire has a unit in
-    // its system). So any system the Empire occupies that ISN'T the revealed
-    // base cannot be the base (player report #106 — moved troops to Hoth,
-    // expected it to be marked).
-    if (ss.units.some((u) => u.side === 'Empire')) out.add(id);
+    // Imperial GROUND rules a system out: if the base were here it would already
+    // be revealed (player report #106 — moved troops to Hoth, expected it to be
+    // marked). Ships alone do not: "If the Imperial player has ships in a
+    // system, but no ground units, the Rebel base is not revealed" (rr). This
+    // used to count any unit, which crossed off ship-only systems that were
+    // never searched — and, since the base itself is excluded below, a fleet
+    // parked over the hidden base was the one ship-occupied system left
+    // unmarked, giving its location away (#806).
+    if (ss.units.some((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground')) out.add(id);
   }
   out.delete(G.rebelBaseSystemId);
   // Red (probe) rule-out wins over yellow (searched): drop any system already

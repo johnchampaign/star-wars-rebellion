@@ -33,7 +33,7 @@ import { COST_OBJECTIVES, objectiveProgress, objectiveConditionMet, objectiveRep
 // Empire strike-fleet plan layer (#539) — a stateful delivery executor recomputed
 // pure from public state each turn. Env-gated (SWR_EMPIRE_PLANNER=1); off by
 // default → byte-identical to the pre-planner scorer.
-import { derivePlan, planSystemBonus, deployProximityScore, PLANNER_ENABLED, HUNT_OCCUPY_ENABLED, type StrikeFleetPlan } from './empirePlanner';
+import { derivePlan, planSystemBonus, deployProximityScore, PLANNER_ENABLED, HUNT_OCCUPY_ENABLED, empireSearchedSet, type StrikeFleetPlan } from './empirePlanner';
 import { log as logEvent } from '../engine/log';
 import { rankerCoversSide, rankCandidates, RANKER_ROLLOUT } from './candidateRanker';
 
@@ -3083,9 +3083,13 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   // visiting those systems to "stumble onto" the base.
   let baseCandidateSet: Set<string> | null = null;
   if (side === 'Empire' && !G.rebelBaseRevealed) {
+    // Worlds searched since the base last moved stay crossed off after the army
+    // leaves them (#806 — see empireSearchedSet).
+    const searched = empireSearchedSet(G);
     baseCandidateSet = new Set(
       allSystemIds.filter((sid) => {
         if (sid === 'coruscant') return false;
+        if (searched.has(sid)) return false;
         const def = G.catalog.systems[sid];
         if (!def) return false;
         // INCLUDE remote systems: the Rebel base CAN be hidden on a remote

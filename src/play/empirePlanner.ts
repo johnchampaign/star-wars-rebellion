@@ -233,11 +233,32 @@ const HUNT_SWEEP = 3;     // candidates ≤ this → march even without a signal
 // scouting/subjugation keep their turns when no army is in motion.
 const HUNT_SCALE = 1.2;
 
+/** SWR_SEARCH_MEMORY (#806, eu46ho playing Rebel: "Imperials seem to be going
+ *  back to trying to keep all their forces in one bunch"). The Empire's hunt
+ *  built its list of places the base could be from the probe cards in hand and
+ *  where its units stood RIGHT NOW — so a world its army had already searched
+ *  became a suspect again the moment the army left. In the reporter's game the
+ *  34-unit stack walked Yavin → Dathomir → Yavin → Dathomir, searching the same
+ *  two remote worlds four times, while the base sat at Ryloth. The engine keeps
+ *  the cumulative record (empireSearchedRuledOut — reset when the base moves);
+ *  this makes the hunt read it. Default ON everywhere; SWR_SEARCH_MEMORY=0 is
+ *  the counterfactual. */
+export const SEARCH_MEMORY_ENABLED: boolean = (() => {
+  try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_SEARCH_MEMORY; if (v === '1') return true; if (v === '0') return false; } catch { /* browser */ }
+  return true;
+})();
+
+/** Systems the Empire has already searched since the base last moved. */
+export function empireSearchedSet(G: GameState): Set<string> {
+  return SEARCH_MEMORY_ENABLED ? new Set(G.empireSearchedRuledOut ?? []) : new Set();
+}
+
 export function deriveHuntTarget(G: GameState): HuntTarget | null {
   if (G.rebelBaseRevealed || !G.rebelBaseSystemId) return null;
   const eliminated = new Set(
     (G.empire.probeHand ?? []).map((pid) => G.catalog.probes[pid]?.systemId).filter((s): s is string => !!s),
   );
+  for (const sid of empireSearchedSet(G)) eliminated.add(sid);
   const candidates: string[] = [];
   for (const sid of Object.keys(G.map.systems)) {
     if (sid === 'coruscant' || eliminated.has(sid) || !G.catalog.systems[sid]) continue;
