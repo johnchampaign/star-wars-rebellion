@@ -241,11 +241,18 @@ const HUNT_SCALE = 1.2;
  *  34-unit stack walked Yavin → Dathomir → Yavin → Dathomir, searching the same
  *  two remote worlds four times, while the base sat at Ryloth. The engine keeps
  *  the cumulative record (empireSearchedRuledOut — reset when the base moves);
- *  this makes the hunt read it. Default ON everywhere; SWR_SEARCH_MEMORY=0 is
- *  the counterfactual. */
+ *  this makes the heuristic hunt read it too (MCTS baseCandidates already did).
+ *
+ *  OFF by default, measured: 30-seed `--realistic --deterministic` pairs with the
+ *  browser's planner / hunt-occupy / belief flags on — engine record alone 18/30
+ *  Empire wins (base found 25/30), + dropping searched worlds from the candidate
+ *  set 12/30, + the narrower form below (cleared, left in the count) 15/30. The
+ *  revisit it targets occurs 1-4 times per 30 self-play games, so self-play can
+ *  only see its side effects (it also collapses the #580 pass-margin fixture).
+ *  It fixes the reported board; SWR_SEARCH_MEMORY=1 turns it on to re-measure. */
 export const SEARCH_MEMORY_ENABLED: boolean = (() => {
   try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_SEARCH_MEMORY; if (v === '1') return true; if (v === '0') return false; } catch { /* browser */ }
-  return true;
+  return false;
 })();
 
 /** Systems the Empire has already searched since the base last moved. */
@@ -258,7 +265,6 @@ export function deriveHuntTarget(G: GameState): HuntTarget | null {
   const eliminated = new Set(
     (G.empire.probeHand ?? []).map((pid) => G.catalog.probes[pid]?.systemId).filter((s): s is string => !!s),
   );
-  for (const sid of empireSearchedSet(G)) eliminated.add(sid);
   const candidates: string[] = [];
   for (const sid of Object.keys(G.map.systems)) {
     if (sid === 'coruscant' || eliminated.has(sid) || !G.catalog.systems[sid]) continue;
@@ -266,10 +272,13 @@ export function deriveHuntTarget(G: GameState): HuntTarget | null {
     candidates.push(sid);
   }
   if (candidates.length === 0 || candidates.length > HUNT_NARROW) return null;
+  // Pick past worlds already searched since the base moved (#806), but leave
+  // them in the count: HUNT_NARROW / HUNT_SWEEP were tuned on it.
+  const searched = empireSearchedSet(G);
   let best: string | null = null, bestScore = -1;
   for (const cid of candidates) {
     const ss = G.map.systems[cid];
-    if (!ss) continue;
+    if (!ss || searched.has(cid)) continue;
     let s = 0;
     if (ss.loyalty === 'rebel') s += 12;
     if (ss.units.some((u) => u.side === 'Rebel')) s += 6;

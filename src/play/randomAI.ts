@@ -3083,13 +3083,9 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   // visiting those systems to "stumble onto" the base.
   let baseCandidateSet: Set<string> | null = null;
   if (side === 'Empire' && !G.rebelBaseRevealed) {
-    // Worlds searched since the base last moved stay crossed off after the army
-    // leaves them (#806 — see empireSearchedSet).
-    const searched = empireSearchedSet(G);
     baseCandidateSet = new Set(
       allSystemIds.filter((sid) => {
         if (sid === 'coruscant') return false;
-        if (searched.has(sid)) return false;
         const def = G.catalog.systems[sid];
         if (!def) return false;
         // INCLUDE remote systems: the Rebel base CAN be hidden on a remote
@@ -3128,7 +3124,16 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   // subjugation. With the occupy flag OFF this widens to any Empire unit
   // (space-only counted as cleared — the older, RAW-inaccurate behavior) so
   // production is byte-identical.
-  const isCandidateCleared = (ss: { units: { side: string; typeId: string }[]; loyalty?: string; subjugated?: boolean }): boolean => {
+  //
+  // A world searched since the base last moved stays cleared after the army
+  // leaves it (#806 — see empireSearchedSet). It deliberately stays IN
+  // baseCandidateSet: the narrowing / hunt gates below count that set and were
+  // tuned on it, and dropping searched worlds from the count tipped the Empire
+  // into hunt mode early — 18 → 12 Empire wins in a 30-seed pair. Only the
+  // revisit is priced down. Behind SWR_SEARCH_MEMORY, which is OFF (see there).
+  const searchedSinceMove = side === 'Empire' ? empireSearchedSet(G) : new Set<string>();
+  const isCandidateCleared = (sid: string, ss: { units: { side: string; typeId: string }[]; loyalty?: string; subjugated?: boolean }): boolean => {
+    if (searchedSinceMove.has(sid)) return true;
     if (ss.loyalty === 'imperial' || ss.subjugated) return true;
     if (HUNT_OCCUPY_ENABLED) {
       return ss.units.some((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground');
@@ -3181,7 +3186,7 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
     for (const cid of baseCandidateSet) {
       const ss = G.map.systems[cid];
       if (!ss) continue;
-      if (isCandidateCleared(ss)) continue; // already swept — base would have auto-revealed
+      if (isCandidateCleared(cid, ss)) continue; // already swept — base would have auto-revealed
       let s = 0;
       if (ss.loyalty === 'rebel') s += 12;
       if (ss.units.some((u) => u.side === 'Rebel')) s += 6;
@@ -3350,8 +3355,12 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         // been to (own units / Imperial-loyal / subjugated) is "cleared" —
         // the base would have auto-revealed on arrival — so it's nearly
         // worthless to revisit.
-        if (isCandidateCleared(sys)) {
-          ts += 1;
+        if (isCandidateCleared(sysId, sys)) {
+          // A world searched and since LEFT earns nothing as a search target:
+          // with the staging gradient below it otherwise tied an unsearched
+          // neighbour, and the tie walked the stack back into it (#806).
+          const leftBehind = searchedSinceMove.has(sysId) && !sys.units.some((u) => u.side === 'Empire');
+          if (!leftBehind) ts += 1;
         } else {
           // Priority: hit Rebel units (combat impact) > Rebel-loyal (deny
           // their production) > populous double-resource > single > remote

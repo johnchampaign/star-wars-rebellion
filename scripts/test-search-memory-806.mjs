@@ -86,12 +86,16 @@ console.log('[ the hunt reads the record ]');
     const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--pick'], { env: { ...process.env, ...env }, encoding: 'utf8' });
     return (r.stdout.match(/PICK (\S+)/) ?? [])[1] ?? `error: ${r.stderr.slice(-300)}`;
   };
-  const now = pick({});
+  // SWR_SEARCH_MEMORY (the heuristic half) is OFF by default — measured, see
+  // empirePlanner.ts — so the lever is exercised explicitly here.
+  const now = pick({ SWR_SEARCH_MEMORY: '1' });
   const before = pick({ SWR_SEARCH_MEMORY: '0' });
-  check('the stack on Dathomir moves on to Dantooine, the world it has not searched', now === 'dantooine', now);
-  check('control: without the record it walks back into searched Yavin (the reported ping-pong)', before === 'yavin', before);
-  const shipped = pick({ SWR_HUNT_OCCUPY: '1', SWR_EMPIRE_PLANNER: '1' });
+  check('with SWR_SEARCH_MEMORY=1 the stack on Dathomir moves on to Dantooine, the world it has not searched', now === 'dantooine', now);
+  check('control: without it the heuristic walks back into searched Yavin (the reported ping-pong)', before === 'yavin', before);
+  const shipped = pick({ SWR_SEARCH_MEMORY: '1', SWR_HUNT_OCCUPY: '1', SWR_EMPIRE_PLANNER: '1' });
   check('the same with the browser\'s hunt and planner settings on', shipped === 'dantooine', shipped);
+  const dflt = pick({ SWR_SEARCH_MEMORY: '' });
+  check('the heuristic half ships OFF (it measured 15/30 against 18/30 for the engine record alone)', dflt === 'yavin', dflt);
 }
 
 console.log('[ tripwires ]');
@@ -101,7 +105,13 @@ console.log('[ tripwires ]');
     /ss\.units\.some\(\(u\) => u\.side === 'Empire' && G\.catalog\.unitTypes\[u\.typeId\]\?\.theater === 'ground'\)\) out\.add\(id\)/.test(play)
     && !/if \(ss\.units\.some\(\(u\) => u\.side === 'Empire'\)\) out\.add\(id\)/.test(play));
   const planner = readFileSync(join(ROOT, 'src/play/empirePlanner.ts'), 'utf8');
-  check('the strike-fleet hunt target also skips searched worlds', /for \(const sid of empireSearchedSet\(G\)\) eliminated\.add\(sid\);/.test(planner));
+  check('the strike-fleet hunt target also skips searched worlds', /if \(!ss \|\| searched\.has\(cid\)\) continue;/.test(planner));
+  const rai = readFileSync(join(ROOT, 'src/play/randomAI.ts'), 'utf8');
+  // Searched worlds are priced as cleared, NOT dropped from the candidate set:
+  // the narrowing / hunt gates count that set, and shrinking it moved them
+  // (18 → 12 Empire wins in a 30-seed pair).
+  check('searched worlds count as cleared, not as removed candidates',
+    /if \(searchedSinceMove\.has\(sid\)\) return true;/.test(rai) && !/if \(searched\.has\(sid\)\) return false;/.test(rai));
 }
 
 console.log(fail === 0 ? `\nALL PASS — ${pass} passed, 0 failed` : `\nFAILURES — ${pass} passed, ${fail} failed`);
