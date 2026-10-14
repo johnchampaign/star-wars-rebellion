@@ -340,6 +340,7 @@ export function runCombat(G: GameState): void {
       c.roundTheatersDone.push('space');
     } else if (!c.roundTheatersDone.includes('space')) {
       // No space combat this round (only one side has space units) — mark done.
+      closeAbandonedTheater(G, c, 'space');
       c.roundTheatersDone.push('space');
     }
 
@@ -362,6 +363,7 @@ export function runCombat(G: GameState): void {
       if (G.isGameOver) { c.step = 'Ended'; break; }
       c.roundTheatersDone.push('ground');
     } else if (!c.roundTheatersDone.includes('ground')) {
+      closeAbandonedTheater(G, c, 'ground');
       c.roundTheatersDone.push('ground');
     }
 
@@ -714,6 +716,21 @@ function postCinematicInteractivePick(
   }
 
   return false;
+}
+
+/** A theatre step that STARTED but is no longer contested on resume (a
+ *  cinematic "destroy 1 unit" card killed the last enemy unit, then the step
+ *  paused for a reroll/dice choice, or a side retreated out mid-step). The
+ *  remaining attacks are moot, but units already dealt lethal damage this
+ *  step must still be destroyed — skipping the step outright let endCombat
+ *  wipe that damage (#805: a Stormtrooper hit by Hold Them Back survived). */
+function closeAbandonedTheater(G: GameState, c: CombatState, theater: Theater): void {
+  if (c.activeTheater !== theater) return;
+  finalizeTheaterDestructions(G, c, theater);
+  c.activeTheater = undefined;
+  c.theaterStaged = undefined;
+  c.theaterAttackersDone = undefined;
+  c.currentRoundReportIdx = undefined;
 }
 
 /** Begin or continue the current theater step. Returns early if a player
