@@ -5725,6 +5725,15 @@ export function resolveRaidOutpostsPlace(
   const resumeKind = pc.resumeKind ?? 'command';
   for (const sid of uniq) M.placeTargetMarker(G, sid, 'raid-outposts-2', 'Empire');
   markPersistentActivated(G, 'raid-outposts-2');
+  // The card is the Rebel's, but the Empire picks the systems — so the Rebel
+  // otherwise just sees two markers appear and can mistake them for a marker
+  // of their own they never got to place (#808). Say who placed them and why.
+  const names = uniq.map((s) => G.catalog.systems[s]?.name ?? s).join(' and ');
+  pushNotice(G, `raid-outposts-placed-t${G.timeMarker}`,
+    `Raid Outposts: Empire marked ${names}`,
+    `Your Raid Outposts objective has the IMPERIAL player choose 2 remote systems for its target markers — the Empire picked ${names}. `
+      + 'You gain 1 reputation each time one of these markers is removed (have your ground units there with no Imperial ground units present).',
+    'Rebel');
   G.pendingChoice = undefined;
   resumeAfterImmediateObjective(G, resumeKind, logStart);
   return { ok: true };

@@ -1703,6 +1703,14 @@ function OneInAMillionPanel({ G, choice, onPersist }: {
     }
     setPicks(next);
   };
+  // Spending the card on a combat roll leaves nothing for the Death Star Plans
+  // roll that follows the space step — the card names that use explicitly, so
+  // say so when the Rebel holds the Plans and a Death Star is here (#807).
+  const sysId = G.pendingCombat?.systemId;
+  const deathStarHere = !!sysId && (G.map.systems[sysId]?.units ?? []).some((u) =>
+    u.side === 'Empire' && (u.typeId === 'death-star' || u.typeId === 'death-star-under-construction'));
+  const holdsPlans = (G.rebel.objectiveHand ?? []).some((id) => id.startsWith('death-star-plans'));
+  const savePlansHint = deathStarHere && holdsPlans;
   const submit = (skip: boolean) => {
     const arr = skip ? [] : Array.from(picks.entries()).map(([index, face]) => ({ index, face }));
     const r = combat.resolveOneInAMillionCombat(G, arr);
@@ -1729,6 +1737,14 @@ function OneInAMillionPanel({ G, choice, onPersist }: {
           </>
         )}
       </div>
+      {savePlansHint && (
+        <div style={{ fontSize: 12, color: '#ffd27a', marginBottom: 8 }}>
+          ★ You hold <b>Death Star Plans</b> and there's a Death Star here. If you save
+          this card (Skip), it can set a die to <b>direct-hit</b> on the Plans roll after
+          the space battle step — an automatic success. Using it on this combat roll
+          discards it.
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
         {choice.faces.map((face, i) => {
           const overridden = picks.get(i);

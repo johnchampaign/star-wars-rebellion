@@ -131,6 +131,13 @@ console.log('[ #8: refresh-draw resume dispatches to the rest of Refresh ]');
   // The resume ran the rest of Refresh (advance time / recruit / build); it did
   // NOT leave the Raid Outposts placement pending.
   check('refresh continued (no lingering placement choice)', G.pendingChoice?.kind !== 'RaidOutpostsPlace');
+  // #808: the Empire picks the systems for the Rebel's card, so the Rebel must
+  // be told where the markers went (they otherwise look like their own Rebel
+  // Cell marker placed without asking).
+  const n = (G.pendingNotices ?? []).find((x) => x.id.startsWith('raid-outposts-placed'));
+  const names = remotes.slice(0, 2).map((id) => G.catalog.systems[id].name);
+  check('Rebel is notified of the Empire-chosen Raid Outposts systems',
+    n && n.side === 'Rebel' && names.every((nm) => n.title.includes(nm)), JSON.stringify(n));
 }
 
 // ---- Rebel Cell discard resolver: discard for +1 reputation ----
