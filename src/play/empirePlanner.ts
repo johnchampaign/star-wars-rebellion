@@ -243,16 +243,19 @@ const HUNT_SCALE = 1.2;
  *  the cumulative record (empireSearchedRuledOut — reset when the base moves);
  *  this makes the heuristic hunt read it too (MCTS baseCandidates already did).
  *
- *  OFF by default, measured: 30-seed `--realistic --deterministic` pairs with the
- *  browser's planner / hunt-occupy / belief flags on — engine record alone 18/30
- *  Empire wins (base found 25/30), + dropping searched worlds from the candidate
- *  set 12/30, + the narrower form below (cleared, left in the count) 15/30. The
- *  revisit it targets occurs 1-4 times per 30 self-play games, so self-play can
- *  only see its side effects (it also collapses the #580 pass-margin fixture).
- *  It fixes the reported board; SWR_SEARCH_MEMORY=1 turns it on to re-measure. */
+ *  ON (John, 2026-10-16). Measured: 30-seed `--realistic --deterministic` pairs
+ *  with the browser's planner / hunt-occupy / belief flags on. Dropping searched
+ *  worlds from the candidate set lost (12/30 vs 18/30 for the record alone): the
+ *  narrowing / hunt gates count that set. The narrower form below (cleared, left
+ *  in the count) is FLAT over 60 seeds — 15 vs 18 on seeds 1-30, 20 vs 16 on
+ *  31-60, 35/60 vs 34/60 pooled, discordant 10-9. Self-play barely reaches the
+ *  revisit (1-4 per 30 games); the real games do: 84 revisits by the AI Empire in
+ *  446 archive games vs 0 by human Empires, and with it ON both reporter boards
+ *  make the right move (#806 Dantooine; #809 Yavin, the real base, 12/12 seeds).
+ *  SWR_SEARCH_MEMORY=0 is the counterfactual. */
 export const SEARCH_MEMORY_ENABLED: boolean = (() => {
   try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_SEARCH_MEMORY; if (v === '1') return true; if (v === '0') return false; } catch { /* browser */ }
-  return false;
+  return true;
 })();
 
 /** Systems the Empire has already searched since the base last moved. */

@@ -3147,7 +3147,7 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   // baseCandidateSet: the narrowing / hunt gates below count that set and were
   // tuned on it, and dropping searched worlds from the count tipped the Empire
   // into hunt mode early — 18 → 12 Empire wins in a 30-seed pair. Only the
-  // revisit is priced down. Behind SWR_SEARCH_MEMORY, which is OFF (see there).
+  // revisit is priced down. Behind SWR_SEARCH_MEMORY (ON; see there).
   const searchedSinceMove = side === 'Empire' ? empireSearchedSet(G) : new Set<string>();
   const isCandidateCleared = (sid: string, ss: { units: { side: string; typeId: string }[]; loyalty?: string; subjugated?: boolean }): boolean => {
     if (searchedSinceMove.has(sid)) return true;

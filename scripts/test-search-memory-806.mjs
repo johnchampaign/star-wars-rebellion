@@ -86,8 +86,8 @@ console.log('[ the hunt reads the record ]');
     const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--pick'], { env: { ...process.env, ...env }, encoding: 'utf8' });
     return (r.stdout.match(/PICK (\S+)/) ?? [])[1] ?? `error: ${r.stderr.slice(-300)}`;
   };
-  // SWR_SEARCH_MEMORY (the heuristic half) is OFF by default — measured, see
-  // empirePlanner.ts — so the lever is exercised explicitly here.
+  // SWR_SEARCH_MEMORY (the heuristic half) is ON by default since 2026-10-16 —
+  // measured, see empirePlanner.ts; both settings are exercised explicitly.
   const now = pick({ SWR_SEARCH_MEMORY: '1' });
   const before = pick({ SWR_SEARCH_MEMORY: '0' });
   check('with SWR_SEARCH_MEMORY=1 the stack on Dathomir moves on to Dantooine, the world it has not searched', now === 'dantooine', now);
@@ -95,7 +95,7 @@ console.log('[ the hunt reads the record ]');
   const shipped = pick({ SWR_SEARCH_MEMORY: '1', SWR_HUNT_OCCUPY: '1', SWR_EMPIRE_PLANNER: '1' });
   check('the same with the browser\'s hunt and planner settings on', shipped === 'dantooine', shipped);
   const dflt = pick({ SWR_SEARCH_MEMORY: '' });
-  check('the heuristic half ships OFF (it measured 15/30 against 18/30 for the engine record alone)', dflt === 'yavin', dflt);
+  check('the heuristic half ships ON (flat over 60 self-play seeds, right on both reporter boards)', dflt === 'dantooine', dflt);
 }
 
 console.log('[ tripwires ]');

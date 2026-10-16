@@ -44,6 +44,13 @@ function board() {
   return G;
 }
 
+// Child mode: one full search with the caller's settings.
+if (process.argv[2] === '--search') {
+  AI.seedAI(1); mcts.seedMCTS?.(1);
+  const r = mcts.searchMctsCommand(board(), 'Empire');
+  console.log(`SEARCH ${r ? `${r.chosen.kind}:${r.chosen.targetSystemId ?? r.chosen.missionId ?? ''}` : 'none'}`);
+  process.exit(0);
+}
 // Child mode: the heuristic's top activation, for the counterfactual.
 if (process.argv[2] === '--pick') {
   const top = AI.bestCommandAction(board(), 'Empire').find((a) => a.kind === 'activate');
@@ -73,14 +80,20 @@ console.log('[ the reporter\'s board ]');
 
 console.log('[ a destroyed world is not a target ]');
 {
-  const before = pick({ SWR_DESTROYED_GUARD: '0' });
+  // Both off reproduces the report: the searched-worlds memory alone also
+  // demotes Mygeeto (the Empire searched it before destroying it).
+  const before = pick({ SWR_DESTROYED_GUARD: '0', SWR_SEARCH_MEMORY: '0' });
   check('control: without the guard the destroyed Mygeeto leads at 53 (the reported move)', before === 'mygeeto:53', before);
-  const now = pick({});
+  const now = pick({ SWR_SEARCH_MEMORY: '0' });
   check('with the guard the AI no longer leads with Mygeeto', !now.startsWith('mygeeto:'), now);
-  const G = board();
-  AI.seedAI(1); mcts.seedMCTS?.(1);
-  const r = mcts.searchMctsCommand(G, 'Empire');
-  check('the full search does not move into Mygeeto either', !!r && !(r.chosen.kind === 'activate' && r.chosen.targetSystemId === 'mygeeto'), r && JSON.stringify(r.chosen));
+  // The guard alone leaves Kashyyyk on top: a world the Empire already searched
+  // that the forgetful hunt still counted as a suspect. With the searched-worlds
+  // memory (SWR_SEARCH_MEMORY, ON) the Empire goes for Yavin — the real base.
+  const shipped = pick({});
+  check('as shipped, the Empire lands on Yavin, the real base, next to its Death Star stack', shipped.startsWith('yavin:'), shipped);
+  const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url), '--search'], { env: { ...process.env, ...SHIPPED }, encoding: 'utf8' });
+  const chose = (r.stdout.match(/SEARCH (\S+)/) ?? [])[1] ?? `error: ${r.stderr.slice(-300)}`;
+  check('the full search (browser settings) lands on Yavin too', chose === 'activate:yavin', chose);
 }
 
 console.log('[ tripwires ]');
