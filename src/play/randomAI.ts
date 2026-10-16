@@ -238,6 +238,22 @@ const CORUSCANT_REACH: boolean = (() => {
  *  21/30, 0 flips; base game 23/30 vs 24/30, 3-2) — the AI Empire doesn't hunt
  *  like a human — and the archive effect is against human Empires, the case
  *  that matters. =0 opts out. See docs/ab-levers.md. */
+/** SWR_DESTROYED_GUARD (#809, fl4qs5 playing Rebel: "Empire left deathstar in
+ *  Dathomir and moved other forces to mygeeto that it had already destroyed").
+ *  A system the Death Star has destroyed holds no loyalty, can never be
+ *  subjugated (rr p.7) and cannot hide the base — yet the activation scorer
+ *  priced it like any neutral world: +6 as a subjugation pickup and +20 as a
+ *  live base candidate (MCTS baseCandidates already excluded destroyed
+ *  systems; the heuristic's baseCandidateSet did not). On the reporter's board
+ *  that made the destroyed Mygeeto (53) outscore Yavin (41) — the real base,
+ *  next door to the Death Star's stack, with only three candidates left. The
+ *  Rebel's "build presence" bonus had the same gap. Default ON;
+ *  SWR_DESTROYED_GUARD=0 is the counterfactual. */
+const DESTROYED_GUARD: boolean = (() => {
+  try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_DESTROYED_GUARD; if (v === '1') return true; if (v === '0') return false; } catch { /* browser */ }
+  return true;
+})();
+
 const BASE_REMOTE: boolean = (() => {
   try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_BASE_REMOTE; if (v === '1') return true; if (v === '0') return false; } catch { /* browser */ }
   return true;
@@ -3086,6 +3102,7 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
     baseCandidateSet = new Set(
       allSystemIds.filter((sid) => {
         if (sid === 'coruscant') return false;
+        if (DESTROYED_GUARD && G.map.systems[sid]?.destroyed) return false; // #809
         const def = G.catalog.systems[sid];
         if (!def) return false;
         // INCLUDE remote systems: the Rebel base CAN be hidden on a remote
@@ -3277,7 +3294,8 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
         // exactly the ones worth retaking. There is a fight to have and loyalty
         // to defend, so the "gains nothing" premise does not hold (#697).
         ts -= 3;
-      } else if (!hasOwnUnits && !sys.subjugated && sys.loyalty !== 'imperial') {
+      } else if (!hasOwnUnits && !sys.subjugated && sys.loyalty !== 'imperial'
+          && !(DESTROYED_GUARD && sys.destroyed)) { // #809: nothing to subjugate
         // The explicit loyalty test keeps this branch exactly where it always
         // was. It used to be implied — every Imperial-loyal system fell into the
         // branch above — but now that a contested one can skip that branch, it
@@ -3777,7 +3795,8 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
             }
           }
         } else if (!hasEnemyUnits && sys.loyalty !== 'rebel' && !def?.isRemote
-                   && sysId !== 'coruscant' && bringable > 0 && dFromBase >= 2) {
+                   && sysId !== 'coruscant' && bringable > 0 && dFromBase >= 2
+                   && !(DESTROYED_GUARD && sys.destroyed)) { // #809 mirror: no loyalty to gain
           // Build presence on an uncontested core system (gain loyalty / deny
           // the Empire) — only force already away from the base, to not
           // telegraph its location.
