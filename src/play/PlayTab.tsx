@@ -4069,6 +4069,7 @@ function OpposeMissionModal({ G, choice, onResolve }: {
     opposerSide: Side;
     skill: string;
     attackerDice: number;
+    attackerCardDice?: number;
     attackerPortrait: number;
     poolLeaders: string[];
     existingAtTarget: string[];
@@ -4112,6 +4113,16 @@ function OpposeMissionModal({ G, choice, onResolve }: {
           </CardNameHover>
           {' '}at <strong style={{ color: '#ffd54a' }}>{targetName}</strong>
           {' '}— attacker will roll <strong style={{ color: '#fff' }}>{choice.attackerDice}</strong> {choice.skill} dice.
+          {/* Say where a total above the leaders' icons comes from (#810: Leia
+              alone, 2 diplomacy, showed 4 — the card's +2 for a Rebel unit in
+              Sullust, which nothing on screen explained). */}
+          {(choice.attackerCardDice ?? 0) > 0 && (
+            <>
+              {' '}That is {choice.attackerDice - (choice.attackerCardDice ?? 0)} for skill icons
+              {' '}plus {choice.attackerCardDice} from the card itself
+              {choice.missionId === 'build-alliance' ? <> (Rebel units are in {targetName})</> : null}.
+            </>
+          )}
         </div>
 
         {choice.attackerPortrait > 0 && (

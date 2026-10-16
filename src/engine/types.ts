@@ -237,6 +237,10 @@ export type ChoiceRequest =
       opposerSide: Side;
       skill: string;            // mission's required skill (for tooltip)
       attackerDice: number;     // count of dice the resolver will roll
+      // The part of attackerDice the mission CARD adds (Build Alliance: +2 when
+      // Rebel units are in the system), so the prompt can explain a total larger
+      // than the leaders' icons (#810). Absent/0 when the card adds nothing.
+      attackerCardDice?: number;
       attackerPortrait: number; // +successes from the mission's pictured leader (rr p.9)
       poolLeaders: LeaderId[];  // opposer's pool leaders available to send
       existingAtTarget: LeaderId[]; // already-there opposer leaders (auto-oppose)
