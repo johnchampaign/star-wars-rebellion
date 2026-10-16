@@ -1685,8 +1685,8 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
     const attSkill = countsAll
       ? totalAllSkills(G, attLeaders)
       : totalSkill(G, attLeaders, skill);
-    const attackerDice = attSkill.major + attSkill.minor
-      + missionExtraAttackerDice(G, pending.missionId, pending.targetSystemId);
+    const attackerCardDice = missionExtraAttackerDice(G, pending.missionId, pending.targetSystemId);
+    const attackerDice = attSkill.major + attSkill.minor + attackerCardDice;
 
     // Subversion (#311): if the opposer has a Subversion mission assigned, using
     // it is a "may" — surface it so the opposer can choose (resolveOpposition's
@@ -1697,6 +1697,7 @@ function continueRevealAfterSpecialOffer(G: GameState, pending: MissionResolutio
       kind: 'OpposeMission',
       missionId: pending.missionId, targetSystemId: pending.targetSystemId, opposerSide: oppSide,
       skill, attackerDice,
+      ...(attackerCardDice > 0 ? { attackerCardDice } : {}),
       attackerPortrait: portraitBonus(G, pending.missionId, pending.leaderIds as LeaderId[]),
       poolLeaders: pool,
       existingAtTarget: existing,
@@ -6812,6 +6813,15 @@ export function promoteNextDeployPick(G: GameState): boolean {
   const r = G.refreshPaused;
   if (!r?.pendingDeployPicks) return false;
   while (r.pendingDeployPicks.length > 0) {
+    // A completed Death Star goes FIRST. Its placement is not a choice (it
+    // replaces the under-construction marker) but it is a deploy, and it counts
+    // toward that system's 2-unit limit: "deploying a Death Star to this system
+    // counts toward the limit of deploying 2 units during the Refresh Phase"
+    // (RoE, Shield Bunker — Local Reinforcement). Placed first, the limit then
+    // trims the free-choice deploys behind it instead of being blown past (#811:
+    // the Death Star plus two more units landed on Dathomir).
+    const dsAt = r.pendingDeployPicks.findIndex((e) => e.typeId === 'death-star');
+    if (dsAt > 0) r.pendingDeployPicks.unshift(...r.pendingDeployPicks.splice(dsAt, 1));
     const next = r.pendingDeployPicks[0];
     const f = faction(G, next.side);
     // Death Star completion (RAW): the finished Death Star is placed in the
@@ -6835,6 +6845,7 @@ export function promoteNextDeployPick(G: GameState): boolean {
           systemId: dsucSys, replacedUnit: removed.instanceId,
         }});
         M.deployUnit(G, 'Empire', 'death-star', dsucSys);
+        trackDeploy(G, 'Empire', dsucSys, 'death-star'); // counts toward the cap (#811)
         r.pendingDeployPicks.shift();
         continue;
       }
