@@ -581,6 +581,14 @@ export interface AiDueGame { gameId: string; turn: number; actor: Side; snapshot
 // read; the worker drains a backlog across successive polls. Also the CPU-safety
 // bound for the fallback scan below (see AI_DUE_LIMIT usage).
 const AI_DUE_LIMIT = 8;
+// The refs-only list (listAiDueRefs) carries no snapshots, so it can afford a
+// much larger window. It MUST also be ordered newest-turn-first: with a small
+// unordered limit, a handful of long-dead flagged games (stuck since July:
+// snapshot 503s, abandoned seats) filled all 8 slots, every NEW AI-due game
+// fell outside the window, and the worker never saw it — "the Rebel AI never
+// deploys after the Empire does" (#812). The worker skips already-seen turns
+// cheaply, so stale rows cost one snapshot fetch per turn, not per poll.
+const AI_DUE_REFS_LIMIT = 100;
 
 /** Reject with a labeled error if `p` doesn't settle within `ms`. Temporary
  *  diagnostic so a hung ai-due request returns WHERE it stalled instead of
@@ -616,7 +624,8 @@ export interface AiDueRef { gameId: string; actor: Side; since?: string; }
  *  unavailable (caller falls back to the capped decode scan). */
 export async function listAiDueRefs(supabase: SupabaseClient): Promise<AiDueRef[] | null> {
   const { data, error } = await raceTimeout(
-    supabase.from('swr_turn_notify').select('game_id, actor, started_at').eq('actor_is_ai', true).limit(AI_DUE_LIMIT),
+    supabase.from('swr_turn_notify').select('game_id, actor, started_at').eq('actor_is_ai', true)
+      .order('started_at', { ascending: false }).limit(AI_DUE_REFS_LIMIT),
     7000, 'flag-query',
   );
   if (error || !data) {
