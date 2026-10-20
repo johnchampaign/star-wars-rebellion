@@ -188,7 +188,13 @@ function computeEmpireProbeRuledOut(state: GameState): SystemId[] {
 }
 
 export function redactStateForViewer(state: GameState, viewer: Side | null): GameState {
-  const G = structuredClone(state);
+  // Deep-copy only the mutable board. The static catalog and the turn log /
+  // activation reports (filtered by reference below) are shared with `state`:
+  // late in a game the log is most of a ~1 MB state, and cloning it was most
+  // of the server's per-request CPU (Cloudflare's per-request limit). Treat the
+  // returned view as read-only — the server only serialises it.
+  const { catalog, turnLog, activationReports, ...board } = state;
+  const G = { ...structuredClone(board), catalog, turnLog, activationReports } as GameState;
   const baseHiddenToViewer = viewer !== 'Rebel' && !G.rebelBaseRevealed;
   // The Empire's probe rule-outs must be computed from the real (pre-hide) deck.
   const empireProbeRuledOut = viewer === 'Empire' ? computeEmpireProbeRuledOut(state) : undefined;
