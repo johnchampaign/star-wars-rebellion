@@ -23,13 +23,19 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
   const { identity } = useIdentity();
   const idTokRef = useRef<string | undefined>(undefined);
   idTokRef.current = identity?.token;
+  // The poll response also carries opponentAbandoned (the server sets it once
+  // they've been away past the grace period) — read it from there.
+  const [oppAbandoned, setOppAbandoned] = useState(false);
   const client = useMemo(
-    () => makeGameClient(gameId, token, () => idTokRef.current),
+    () => makeGameClient(gameId, token, () => idTokRef.current,
+      (r) => setOppAbandoned(!!r.opponentAbandoned)),
     [gameId, token],
   );
   // Poll every 8s — quick enough to feel live, gentle on the Supabase free tier.
+  // trackLegalActions off: nothing here reads `legal`, and each fetch of it
+  // costs the server a full snapshot decode.
   const { view, yourTurn, turn, gameOver, you, ranked, submit, loading, error, refresh } =
-    useGame<GameState, RebellionAction>(client, { pollMs: 8000 });
+    useGame<GameState, RebellionAction>(client, { pollMs: 8000, trackLegalActions: false });
   // The game's chat, for the downloadable log (#796).
   const fetchChat = useCallback(async () => {
     const r = await fetch(`/api/games/${encodeURIComponent(gameId)}/chat?t=${encodeURIComponent(token)}`);
@@ -46,27 +52,24 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
   const setupWaiting = !!view && !gameOver && view.phase === 'Setup' && (you === 'Rebel' || you === 'Empire')
     && (view.pendingDeployment?.[you]?.length ?? 0) === 0
     && !(you === 'Rebel' && (view.pendingRebelBasePick?.length ?? 0) > 0);
-  const [oppAbandoned, setOppAbandoned] = useState(false);
 
-  // Re-sync immediately whenever the tab regains focus/visibility. Browsers
-  // throttle or suspend background-tab timers (and a sleeping machine pauses
-  // them entirely), so the 8s poll can stall for a long time. Without this,
+  // Re-sync immediately whenever the window regains focus. Browsers throttle or
+  // suspend background-tab timers (and a sleeping machine pauses them
+  // entirely), so the 8s poll can stall for a long time. Without this,
   // returning to a backgrounded tab shows stale state — e.g. it still says
   // "waiting for opponent" while the server has already handed the turn back to
-  // you (and the reminder email fired). Forcing a refresh on focus closes that
-  // gap. A ref holds the latest refresh so we subscribe the listeners once.
+  // you (and the reminder email fired). useGame itself already refreshes when
+  // the tab becomes visible again, so only window focus is handled here (a
+  // second visibility listener just doubled every heavy fetch). A ref holds the
+  // latest refresh so we subscribe the listener once.
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
   useEffect(() => {
     const resync = () => {
       if (document.visibilityState === 'visible') void refreshRef.current?.();
     };
-    document.addEventListener('visibilitychange', resync);
     window.addEventListener('focus', resync);
-    return () => {
-      document.removeEventListener('visibilitychange', resync);
-      window.removeEventListener('focus', resync);
-    };
+    return () => window.removeEventListener('focus', resync);
   }, []);
 
   // Fail soft on a server hiccup: while the INITIAL load is failing (error, no
@@ -80,22 +83,13 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
     return () => clearInterval(iv);
   }, [error, view]);
 
-  // While waiting on the opponent, poll for abandonment (the server returns
-  // opponentAbandoned once they've been away past the grace period).
+  // Abandonment only matters while waiting on the opponent. The flag itself
+  // arrives with each poll (see makeGameClient above) — this used to be a
+  // second fetch of the same heavy view every 30 s, which kept running even in
+  // hidden tabs, where useGame pauses its own poll.
   useEffect(() => {
-    if (yourTurn || gameOver) { setOppAbandoned(false); return; }
-    let cancelled = false;
-    const check = async () => {
-      try {
-        const r = await fetch(`/api/games/${encodeURIComponent(gameId)}?t=${encodeURIComponent(token)}`);
-        const j = await r.json();
-        if (!cancelled) setOppAbandoned(!!j.opponentAbandoned);
-      } catch { /* ignore */ }
-    };
-    void check();
-    const iv = setInterval(check, 30000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, [yourTurn, gameOver, gameId, token]);
+    if (yourTurn || gameOver) setOppAbandoned(false);
+  }, [yourTurn, gameOver]);
 
   async function abandonAction(kind: 'takeover' | 'claim') {
     setBusy(true); setActErr(null);

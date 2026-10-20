@@ -14,12 +14,15 @@ async function asJson(r: Response): Promise<any> {
 
 export function makeGameClient(
   gameId: string, token: string, getIdentityToken?: () => string | undefined,
+  /** Sees every poll response — e.g. its extra `opponentAbandoned` flag, so the
+   *  page needn't re-fetch the whole (CPU-heavy) view just to read it. */
+  onFetched?: (r: { opponentAbandoned?: boolean }) => void,
 ): GameClientApi<GameState, RebellionAction> {
   const base = `/api/games/${encodeURIComponent(gameId)}`;
   const q = `?t=${encodeURIComponent(token)}`;
   return {
     // Routes return the framework ViewResult/array shapes directly.
-    fetch: () => fetch(`${base}${q}`).then(asJson),
+    fetch: () => fetch(`${base}${q}`).then(asJson).then((r) => { onFetched?.(r); return r; }),
     legalActions: () => fetch(`${base}/legal${q}`).then(asJson),
     submit: (action) =>
       fetch(`${base}/submit${q}`, {
