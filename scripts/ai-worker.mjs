@@ -102,9 +102,12 @@ async function api(path, init) {
 // RECHECK_MS as a backstop, and after RETRY_MS following an error. Before this,
 // ~6 stale-flagged games were re-fetched every 5 s: ~100k requests/day, which
 // is the Cloudflare free plan's entire daily budget.
+// Errors back off exponentially from RETRY_MS up to RECHECK_MS: a late-game
+// ai-move that dies on Cloudflare's CPU limit would otherwise be retried every
+// minute, forever, and each retry is another kill.
 const RECHECK_MS = 30 * 60_000;
 const RETRY_MS = 60_000;
-const seen = new Map(); // gameId → { since, until }
+const seen = new Map(); // gameId → { since, until, fails }
 
 async function tick() {
   const due = await api('/api/admin/ai-due', { method: 'GET' });
@@ -115,14 +118,19 @@ async function tick() {
   for (const g of games) {
     const s = g.since ? seen.get(g.gameId) : null;
     if (s && s.since === g.since && now < s.until) continue;
-    const settle = (ms) => { if (g.since) seen.set(g.gameId, { since: g.since, until: Date.now() + ms }); };
+    const settle = (ms) => { if (g.since) seen.set(g.gameId, { since: g.since, until: Date.now() + ms, fails: 0 }); };
+    const settleFail = () => {
+      if (!g.since) return;
+      const fails = (s && s.since === g.since ? s.fails ?? 0 : 0) + 1;
+      seen.set(g.gameId, { since: g.since, until: Date.now() + Math.min(RETRY_MS * 2 ** (fails - 1), RECHECK_MS), fails });
+    };
     try {
       // Server returns refs only ({ gameId, actor, since }); fetch the snapshot
       // per game. Older servers still inline it — use that when present.
       let turn = g.turn, raw = g.snapshot;
       if (raw == null) {
         const s = await api(`/api/admin/ai-snapshot?gameId=${encodeURIComponent(g.gameId)}`, { method: 'GET' });
-        if (s.status !== 200) { console.warn(`[ai-worker] ai-snapshot ${s.status} for ${g.gameId}: ${JSON.stringify(s.body).slice(0, 120)}`); settle(RETRY_MS); continue; }
+        if (s.status !== 200) { console.warn(`[ai-worker] ai-snapshot ${s.status} for ${g.gameId}: ${JSON.stringify(s.body).slice(0, 120)}`); settleFail(); continue; }
         turn = s.body.turn; raw = s.body.snapshot;
       }
       // Deterministic per (game, turn) so a retry recomputes identically.
@@ -137,8 +145,8 @@ async function tick() {
       });
       if (res.status === 200) { console.log(`[ai-worker] moved ${g.gameId} (${actor}) turn ${turn}→${turn + 1}`); settle(RECHECK_MS); }
       else if (res.status === 409) { console.log(`[ai-worker] ${g.gameId} already advanced (409) — skipping`); settle(RECHECK_MS); }
-      else { console.warn(`[ai-worker] ai-move ${res.status} for ${g.gameId}: ${JSON.stringify(res.body).slice(0, 120)}`); settle(RETRY_MS); }
-    } catch (e) { console.warn(`[ai-worker] error on ${g.gameId}:`, e?.message); settle(RETRY_MS); }
+      else { console.warn(`[ai-worker] ai-move ${res.status} for ${g.gameId}: ${JSON.stringify(res.body).slice(0, 120)}`); settleFail(); }
+    } catch (e) { console.warn(`[ai-worker] error on ${g.gameId}:`, e?.message); settleFail(); }
   }
 }
 
