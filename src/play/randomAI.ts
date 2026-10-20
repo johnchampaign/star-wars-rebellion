@@ -196,6 +196,44 @@ const ASSAULT_SIZING: boolean = (() => {
   return false;
 })();
 
+/** Land a trooper on an unsearched base candidate (#815, fl4qs5 playing Rebel:
+ *  "Empire moves to nal hutta with only space forces leaving behind all
+ *  ground ... impossible for empire to discover rebel base without ground
+ *  forces"). RR "Revealing the Rebel Base": the base reveals only when the
+ *  Empire has loyalty or GROUND units in its system — "if the Imperial player
+ *  has ships in a system, but no ground units, the Rebel base is not
+ *  revealed." plannedMoveOrders filled carrier capacity with fighters before
+ *  ground, so a Star Destroyer with six TIEs (capacity 6) arrived at a live
+ *  candidate with no troops and searched nothing. On the reporter's board
+ *  (three candidates left: Felucia, Kessel, Toydaria) the heuristic's top move
+ *  was Toydaria from Bothawui, and it sailed in with the SD + 6 TIEs while 6
+ *  stormtroopers and an AT-ST stayed home. With this on, ONE ground unit takes
+ *  a slot ahead of the fighters whenever the target is a candidate the Empire
+ *  has not searched; the rest of the load is unchanged. SWR_HUNT_GROUND=0 is
+ *  the counterfactual. Pinned by test-hunt-ground-815. */
+const HUNT_GROUND: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_HUNT_GROUND === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
+/** Could the hidden base still be at sid, as far as the Empire knows, with no
+ *  Imperial search there yet? Mirrors bestCommandAction's candidate filter
+ *  under SWR_HUNT_OCCUPY: not Coruscant, not destroyed, not named by a probe in
+ *  hand, not searched since the base last moved, and no Imperial ground,
+ *  loyalty or subjugation there now. */
+function isUnsearchedBaseCandidate(G: GameState, sid: SystemId): boolean {
+  if (G.rebelBaseRevealed || sid === 'coruscant') return false;
+  const ss = G.map.systems[sid];
+  if (!ss || ss.destroyed || !G.catalog.systems[sid]) return false;
+  if ((G.empire.probeHand ?? []).some((pid) => G.catalog.probes[pid]?.systemId === sid)) return false;
+  if (empireSearchedSet(G).has(sid)) return false;
+  if (ss.loyalty === 'imperial' || ss.subjugated) return false;
+  return !ss.units.some((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground');
+}
+
 const RM_GATE_ONE_HOP: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
@@ -2975,6 +3013,10 @@ function plannedMoveOrders(
         if (used >= capacity) break;
         groundToBring.push(u); used++;
       }
+    } else if (HUNT_GROUND && side === 'Empire' && capacity > 0 && groundCandidates.length > 0
+      && isUnsearchedBaseCandidate(G, targetSystemId)) {
+      // One trooper aboard so the arrival actually searches the candidate.
+      groundToBring.push(groundCandidates[0]); used++;
     }
     for (const u of fighters) {
       if (used >= capacity) break;
@@ -2983,6 +3025,7 @@ function plannedMoveOrders(
     if (!groundFirst) {
       for (const u of groundCandidates) {
         if (used >= capacity) break;
+        if (groundToBring.includes(u)) continue;
         groundToBring.push(u); used++;
       }
     }

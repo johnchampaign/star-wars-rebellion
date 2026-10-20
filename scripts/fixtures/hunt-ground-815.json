@@ -1,0 +1,1157 @@
+{
+  "schema": "rebellion-state-v1",
+  "encodedAt": "2026-10-20T06:16:24.213Z",
+  "state": {
+    "expansion": {
+      "enabled": true,
+      "roeUnits": true,
+      "roeMissions": true,
+      "roeMissionsRebel": true,
+      "roeMissionsEmpire": false,
+      "cinematicCombat": true,
+      "baseSetupUnits": false
+    },
+    "timeMarker": 8,
+    "reputationMarker": 13,
+    "trackLength": 16,
+    "phase": "Command",
+    "currentPlayer": "Rebel",
+    "passedThisCommand": [],
+    "rebel": {
+      "side": "Rebel",
+      "leaderPool": [
+        "luke-skywalker-jedi",
+        "obi-wan-kenobi"
+      ],
+      "leadersOnBoard": {
+        "kashyyyk": [
+          "jan-dodonna"
+        ],
+        "rebel-base-space": [
+          "general-rieekan"
+        ]
+      },
+      "leadersOnMissions": [
+        {
+          "missionId": "build-alliance",
+          "leaderIds": [
+            "mon-mothma"
+          ]
+        },
+        {
+          "missionId": "lead-the-strike-team",
+          "leaderIds": [
+            "han-solo"
+          ]
+        },
+        {
+          "missionId": "safe-haven",
+          "leaderIds": [
+            "princess-leia"
+          ]
+        },
+        {
+          "missionId": "sabotage",
+          "leaderIds": [
+            "chewbacca"
+          ]
+        }
+      ],
+      "eliminatedLeaders": [],
+      "attachmentRings": [],
+      "actionDeck": [
+        "its-a-trap",
+        "something-to-fight-for",
+        "independent-operation",
+        "undercover",
+        "point-blank-assault",
+        "ambush",
+        "one-in-a-million",
+        "under-the-radar",
+        "target-the-star-destroyers",
+        "he-means-well",
+        "trust-in-the-force",
+        "an-old-friend",
+        "baze-s-loyalty"
+      ],
+      "actionHand": [
+        "rebel-planning",
+        "wookie-guardian",
+        "the-milleninium-falcon",
+        "noble-sacrifice"
+      ],
+      "actionDiscard": [
+        "rebel-extremist",
+        "son-of-skywalker"
+      ],
+      "missionDeck": [
+        "assault",
+        "establish-trade-relations",
+        "support-of-mon-calamari",
+        "assault",
+        "reconnaissance",
+        "rebel-promotion",
+        "behind-enemy-lines",
+        "secret-mission",
+        "prepare-for-battle",
+        "aggressive-negotiations",
+        "base-defenses",
+        "critical-rescue",
+        "regional-aid"
+      ],
+      "missionHand": [
+        "infiltration",
+        "contingency-plan",
+        "heist",
+        "rapid-mobilization"
+      ],
+      "missionDiscard": [
+        "stolen-plans",
+        "subversion-new-rebel",
+        "wookie-uprising",
+        "behind-enemy-lines",
+        "safe-haven",
+        "for-the-greater-good",
+        "reconnaissance",
+        "my-only-hope",
+        "misdirection",
+        "rogue-squadron-raid",
+        "plant-explosives",
+        "seek-yoda",
+        "plan-the-assault"
+      ],
+      "buildQueue": {
+        "1": [
+          "y-wing",
+          "airspeeder"
+        ],
+        "2": [
+          "mon-cala-cruiser",
+          "nebulon-b-frigate"
+        ],
+        "3": []
+      },
+      "objectiveDeck": [
+        "show-no-fear-3",
+        "death-star-plans-3",
+        "major-victory-3",
+        "establish-outposts-3",
+        "raid-imperial-factory-3",
+        "support-of-the-hutts-1",
+        "leave-no-one-behind-2"
+      ],
+      "objectiveHand": [
+        "crippling-blow-1",
+        "threaten-the-core-1",
+        "defensive-position-1",
+        "a-time-for-peace-2",
+        "death-star-plans-2",
+        "heart-of-the-empire-2"
+      ],
+      "objectiveDiscard": [],
+      "startingActionDeck": [
+        "temporary-alliance",
+        "start-the-evacuation",
+        "our-most-desperate-hour",
+        "resourceful-astromech",
+        "false-orders"
+      ],
+      "cinematicTacticDiscard": [
+        "cin-rebel-space-bombing-run",
+        "cin-rebel-ground-tow-cables",
+        "cin-rebel-space-deployment",
+        "cin-rebel-ground-confrontation",
+        "cin-rebel-ground-hold-them-back",
+        "cin-rebel-ground-escape-plan",
+        "cin-rebel-ground-take-cover",
+        "cin-rebel-space-fleet-logistics",
+        "cin-rebel-space-rogue-squadron-support",
+        "cin-rebel-ground-planetary-shield",
+        "cin-rebel-ground-rogue-one",
+        "cin-rebel-space-outrun-them",
+        "cin-rebel-ground-take-it-down",
+        "cin-rebel-space-draw-their-fire",
+        "cin-rebel-space-ion-blast"
+      ],
+      "scoredObjectives": [
+        {
+          "objectiveId": "decisive-victory-1",
+          "reputation": 1,
+          "turn": 5
+        },
+        {
+          "objectiveId": "seize-control-2",
+          "reputation": 1,
+          "turn": 6
+        }
+      ]
+    },
+    "empire": {
+      "side": "Empire",
+      "leaderPool": [
+        "colonel-yularen",
+        "admiral-ozzel",
+        "emperor-palpatine"
+      ],
+      "leadersOnBoard": {
+        "nal-hutta": [
+          "admiral-piett"
+        ],
+        "dantooine": [
+          "grand-moff-tarkin"
+        ]
+      },
+      "leadersOnMissions": [
+        {
+          "missionId": "capture-rebel-operative",
+          "leaderIds": [
+            "general-tagge"
+          ]
+        },
+        {
+          "missionId": "collect-bounty",
+          "leaderIds": [
+            "darth-vader"
+          ]
+        },
+        {
+          "missionId": "rule-by-fear",
+          "leaderIds": [
+            "jabba"
+          ]
+        }
+      ],
+      "eliminatedLeaders": [],
+      "attachmentRings": [],
+      "actionDeck": [
+        "target-the-generator",
+        "fully-operational",
+        "local-rumors",
+        "catch-them-by-surprise",
+        "lord-vader-s-orders",
+        "public-support",
+        "scouting-mission",
+        "ready-for-action",
+        "boba-fett-where",
+        "blindside",
+        "ambitions-of-power",
+        "secret-facility",
+        "sweep-the-area"
+      ],
+      "actionHand": [
+        "it-is-your-destiny",
+        "proceeding-as-planned",
+        "good-intel"
+      ],
+      "actionDiscard": [
+        "post-bounty",
+        "keep-them-from-escaping",
+        "more-dangerous-than-you-realize"
+      ],
+      "missionDeck": [
+        "homing-beacon",
+        "intercept-transmissions",
+        "double-our-efforts",
+        "secret-weapons-research",
+        "hunt-them-down",
+        "address-delays",
+        "detained",
+        "probe-droid-initiative",
+        "display-of-power",
+        "planetary-conquest"
+      ],
+      "missionHand": [
+        "interrogation",
+        "superlaser-online",
+        "research-and-development",
+        "gather-intel",
+        "lure-of-the-dark-side",
+        "carbon-freezing",
+        "interrogation"
+      ],
+      "missionDiscard": [
+        "interrogation-droid",
+        "oversee-project",
+        "subversion-original",
+        "address-delays",
+        "trade-negotiations",
+        "secret-weapons-research",
+        "imperial-propaganda",
+        "retrieve-the-plans",
+        "long-range-probe",
+        "intercept-transmissions",
+        "construct-death-star",
+        "fear-will-keep-them-in-line",
+        "trade-negotiations"
+      ],
+      "buildQueue": {
+        "1": [
+          "death-star",
+          "assault-carrier",
+          "at-at",
+          "at-at",
+          "tie-fighter",
+          "tie-fighter",
+          "tie-fighter",
+          "stormtrooper"
+        ],
+        "2": [],
+        "3": []
+      },
+      "probeHand": [
+        "probe-sullust",
+        "probe-mon-calamari",
+        "probe-tatooine",
+        "probe-nal-hutta",
+        "probe-naboo",
+        "probe-ryloth",
+        "probe-alderaan",
+        "probe-dathomir",
+        "probe-endor",
+        "probe-geonosis",
+        "probe-utapau",
+        "probe-dagobah",
+        "probe-malastare",
+        "probe-mandalore",
+        "probe-yavin",
+        "probe-ord-mantell",
+        "probe-ilum",
+        "probe-cato-neimoidia",
+        "probe-bespin",
+        "probe-bothawui"
+      ],
+      "projectDeck": [
+        "interdictor-development",
+        "superlaser-online",
+        "construct-super-star-destroyer",
+        "construct-factory",
+        "oversee-project",
+        "single-reactor-ignition",
+        "superlaser-online",
+        "construct-super-star-destroyer",
+        "interdictor-development",
+        "construct-factory"
+      ],
+      "projectDiscard": [],
+      "capturedLeaders": [],
+      "startingActionDeck": [
+        "brilliant-administrator",
+        "according-to-my-design",
+        "early-promotion",
+        "track-them"
+      ],
+      "cinematicTacticDiscard": [
+        "cin-empire-ground-armored-position",
+        "cin-empire-space-swarm-tactics",
+        "cin-empire-ground-support-of-the-501st",
+        "cin-empire-space-tractor-beam",
+        "cin-empire-space-reinforcements"
+      ]
+    },
+    "map": {
+      "systems": {
+        "alderaan": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        },
+        "bespin": {
+          "loyalty": "neutral",
+          "subjugated": true,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "u1000015",
+              "typeId": "death-star",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100002",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100003",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100004",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100005",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100006",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000061",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000063",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "bothawui": {
+          "loyalty": "neutral",
+          "subjugated": true,
+          "destroyed": false,
+          "sabotage": true,
+          "units": [
+            {
+              "instanceId": "s100029",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100035",
+              "typeId": "at-st",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100007",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100031",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100009",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100033",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000008",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000050",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "cato-neimoidia": {
+          "loyalty": "rebel",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        },
+        "corellia": {
+          "loyalty": "imperial",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": true,
+          "units": [
+            {
+              "instanceId": "u1000045",
+              "typeId": "at-at",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "coruscant": {
+          "loyalty": "imperial",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "s100038",
+              "typeId": "at-st",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "dagobah": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "u1000041",
+              "typeId": "death-star-under-construction",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "dantooine": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "u1000019",
+              "typeId": "star-destroyer",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000020",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000037",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000047",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000048",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100040",
+              "typeId": "assault-tank",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000038",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "dathomir": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        },
+        "endor": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        },
+        "felucia": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        },
+        "geonosis": {
+          "loyalty": "neutral",
+          "subjugated": true,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "u1000021",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000049",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "hoth": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        },
+        "ilum": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        },
+        "kashyyyk": {
+          "loyalty": "rebel",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "u1000036",
+              "typeId": "rebel-trooper",
+              "side": "Rebel",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000055",
+              "typeId": "rebel-trooper",
+              "side": "Rebel",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000056",
+              "typeId": "rebel-vanguard",
+              "side": "Rebel",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000016",
+              "typeId": "mon-cala-cruiser",
+              "side": "Rebel",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000028",
+              "typeId": "airspeeder",
+              "side": "Rebel",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000032",
+              "typeId": "rebel-trooper",
+              "side": "Rebel",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000035",
+              "typeId": "rebel-trooper",
+              "side": "Rebel",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000044",
+              "typeId": "rebel-trooper",
+              "side": "Rebel",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000053",
+              "typeId": "u-wing",
+              "side": "Rebel",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000054",
+              "typeId": "x-wing",
+              "side": "Rebel",
+              "damage": 0
+            }
+          ]
+        },
+        "kessel": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        },
+        "malastare": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        },
+        "mandalore": {
+          "loyalty": "neutral",
+          "subjugated": true,
+          "destroyed": false,
+          "sabotage": true,
+          "units": [
+            {
+              "instanceId": "s100034",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "mon-calamari": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        },
+        "mustafar": {
+          "loyalty": "imperial",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "s100039",
+              "typeId": "assault-tank",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "mygeeto": {
+          "loyalty": "imperial",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "u1000065",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "naboo": {
+          "loyalty": "neutral",
+          "subjugated": true,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "u1000014",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "nal-hutta": {
+          "loyalty": "rebel",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "s100015",
+              "typeId": "star-destroyer",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100023",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100019",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100025",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100021",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100027",
+              "typeId": "tie-striker",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000012",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "ord-mantell": {
+          "loyalty": "imperial",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": true,
+          "units": [
+            {
+              "instanceId": "s100032",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "rodia": {
+          "loyalty": "imperial",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "u1000039",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "ryloth": {
+          "loyalty": "rebel",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        },
+        "saleucami": {
+          "loyalty": "imperial",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "u1000002",
+              "typeId": "rebel-trooper",
+              "side": "Rebel",
+              "damage": 0
+            }
+          ]
+        },
+        "sullust": {
+          "loyalty": "imperial",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "u1000009",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100014",
+              "typeId": "star-destroyer",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000046",
+              "typeId": "tie-fighter",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100037",
+              "typeId": "at-st",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000040",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000062",
+              "typeId": "at-st",
+              "side": "Empire",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000064",
+              "typeId": "stormtrooper",
+              "side": "Empire",
+              "damage": 0
+            }
+          ]
+        },
+        "tatooine": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        },
+        "toydaria": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        },
+        "utapau": {
+          "loyalty": "rebel",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": [
+            {
+              "instanceId": "s100043",
+              "typeId": "rebel-transport",
+              "side": "Rebel",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100051",
+              "typeId": "rebel-trooper",
+              "side": "Rebel",
+              "damage": 0
+            },
+            {
+              "instanceId": "s100052",
+              "typeId": "rebel-trooper",
+              "side": "Rebel",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000059",
+              "typeId": "rebel-trooper",
+              "side": "Rebel",
+              "damage": 0
+            },
+            {
+              "instanceId": "u1000060",
+              "typeId": "rebel-vanguard",
+              "side": "Rebel",
+              "damage": 0
+            }
+          ]
+        },
+        "yavin": {
+          "loyalty": "neutral",
+          "subjugated": false,
+          "destroyed": false,
+          "sabotage": false,
+          "units": []
+        }
+      },
+      "rebelBaseSpace": {
+        "loyalty": "neutral",
+        "subjugated": false,
+        "destroyed": false,
+        "sabotage": false,
+        "units": [
+          {
+            "instanceId": "s100049",
+            "typeId": "rebel-trooper",
+            "side": "Rebel",
+            "damage": 0
+          },
+          {
+            "instanceId": "s100054",
+            "typeId": "airspeeder",
+            "side": "Rebel",
+            "damage": 0
+          },
+          {
+            "instanceId": "u1000004",
+            "typeId": "rebel-transport",
+            "side": "Rebel",
+            "damage": 0
+          },
+          {
+            "instanceId": "u1000010",
+            "typeId": "rebel-trooper",
+            "side": "Rebel",
+            "damage": 0
+          },
+          {
+            "instanceId": "u1000011",
+            "typeId": "rebel-trooper",
+            "side": "Rebel",
+            "damage": 0
+          },
+          {
+            "instanceId": "u1000027",
+            "typeId": "rebel-vanguard",
+            "side": "Rebel",
+            "damage": 0
+          },
+          {
+            "instanceId": "u1000042",
+            "typeId": "airspeeder",
+            "side": "Rebel",
+            "damage": 0
+          },
+          {
+            "instanceId": "u1000057",
+            "typeId": "rebel-trooper",
+            "side": "Rebel",
+            "damage": 0
+          },
+          {
+            "instanceId": "u1000058",
+            "typeId": "rebel-trooper",
+            "side": "Rebel",
+            "damage": 0
+          }
+        ]
+      }
+    },
+    "rebelBaseSystemId": "kessel",
+    "rebelBaseRevealed": false,
+    "probeDeck": [
+      "probe-felucia",
+      "probe-toydaria",
+      "probe-dantooine",
+      "probe-kashyyyk"
+    ],
+    "spaceTacticDeck": [
+      "space-take-it-down",
+      "space-unstoppable-assault",
+      "space-concentrate-fire",
+      "space-critical-hit",
+      "space-outmaneuver",
+      "space-concentrate-fire",
+      "space-onslaught",
+      "space-no-escape",
+      "space-take-it-down",
+      "space-defensive-formation",
+      "space-brilliant-strategy",
+      "space-defensive-formation",
+      "space-defensive-formation",
+      "space-outmaneuver",
+      "space-critical-hit"
+    ],
+    "spaceTacticDiscard": [],
+    "groundTacticDeck": [
+      "ground-brilliant-strategy",
+      "ground-take-it-down",
+      "ground-dig-in",
+      "ground-unstoppable-assault",
+      "ground-defensive-formation",
+      "ground-onslaught",
+      "ground-critical-hit",
+      "ground-bombardment",
+      "ground-concentrate-fire",
+      "ground-dig-in",
+      "ground-concentrate-fire",
+      "ground-critical-hit",
+      "ground-defensive-formation",
+      "ground-defensive-formation",
+      "ground-escape-plan"
+    ],
+    "groundTacticDiscard": [],
+    "isGameOver": false,
+    "rng": {
+      "state": -1688609540
+    },
+    "controllerSeeds": {
+      "rebel": 451755162,
+      "empire": 451755163
+    },
+    "turnLog": [],
+    "rebelDeployTarget": "kashyyyk",
+    "empireDeployTarget": "hoth",
+    "empireSearchedRuledOut": [
+      "corellia",
+      "coruscant",
+      "hoth",
+      "mustafar",
+      "mygeeto",
+      "rodia",
+      "saleucami",
+      "sullust",
+      "mon-calamari",
+      "naboo",
+      "mandalore",
+      "ord-mantell",
+      "tatooine",
+      "nal-hutta",
+      "ryloth",
+      "utapau",
+      "kashyyyk",
+      "alderaan",
+      "dathomir",
+      "geonosis",
+      "cato-neimoidia",
+      "endor",
+      "dagobah",
+      "malastare",
+      "yavin",
+      "bothawui",
+      "ilum",
+      "bespin",
+      "dantooine"
+    ],
+    "leaderAttachments": {
+      "princess-leia": [
+        "c3po"
+      ],
+      "han-solo": [
+        "falcon"
+      ],
+      "luke-skywalker-jedi": [
+        "yoda"
+      ]
+    },
+    "activationReports": [],
+    "combatReports": [],
+    "missionReports": [],
+    "yodaRerollUsedThisRound": false,
+    "refreshPreStep": 4,
+    "refreshRebelCellDiscardTaken": false,
+    "detainedLeadersNextRefresh": [],
+    "refreshReports": [],
+    "objectiveReports": [],
+    "pendingRapidMobilizations": [
+      {
+        "twoLeaders": false
+      }
+    ],
+    "pendingNotices": []
+  },
+  "__turnLogEntriesDropped": 1378
+}
