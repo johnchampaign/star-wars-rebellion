@@ -284,10 +284,22 @@ export async function makeCronServer(env: Env, originFallback?: string): Promise
 //  - per-game failures skipped, never fatal (same contract as the framework)
 // Reminder-clock semantics (turn/since/sent) are copied from the framework
 // loop verbatim so a later return to the stock sweep stays compatible.
+//
+// It STILL died (Pages exceededCpu on every tick, Oct 2026): the deadline is
+// wall-clock, and Workers' clock does not advance during pure CPU work, so it
+// never fired while the sweep decoded 38 late-game snapshots (~1 MB each,
+// ~0.5 s CPU per tick). So the sweep now runs on turn NUMBERS — one cheap
+// batch query — and decodes a snapshot only for a game whose reminder is
+// actually due, at most `maxDecodes` per tick (a count, not a clock). Game-over
+// is detected at that point too, so finished games still get marked resolved;
+// the backlog drains at `maxDecodes` per tick.
 // ---------------------------------------------------------------------------
 export interface SweepDeps {
   /** Two bounded, non-overlapping chunks of unresolved games. */
   listChunks(): Promise<GameMetaLike[]>;
+  /** Latest turn per game — turn numbers only, no snapshot bodies. */
+  listLatestTurns(gameIds: string[]): Promise<Map<string, number>>;
+  /** Full latest snapshot. Expensive (fetch + decode): only for due games. */
   getLatest(gameId: string): Promise<{ turn: number; state: string } | null>;
   putGameMeta(meta: GameMetaLike): Promise<void>;
   /** Decoded state → whose turn (null = game over). */
@@ -305,34 +317,42 @@ export interface GameMetaLike {
 
 export async function boundedReminderSweep(
   deps: SweepDeps,
-  opts: { olderThanMs: number; deadlineMs: number },
+  opts: { olderThanMs: number; deadlineMs: number; maxDecodes: number },
 ): Promise<{ scanned: number; reminded: number; resolvedMarked: number; truncated: boolean; msElapsed: number }> {
   const t0 = deps.now();
   const games = await deps.listChunks();
-  let reminded = 0, resolvedMarked = 0, scanned = 0, truncated = false;
+  const turns = await raceTimeout(deps.listLatestTurns(games.map((g) => g.gameId)), 8000, 'sweep-listLatestTurns');
+  let reminded = 0, resolvedMarked = 0, scanned = 0, decodes = 0, truncated = false;
+  const restartClock = (meta: GameMetaLike, turn: number) => deps.putGameMeta({
+    ...meta,
+    reminder: { turn, since: new Date(deps.now()).toISOString(), sent: false },
+  });
   for (const meta of games) {
     if (deps.now() - t0 > opts.deadlineMs) { truncated = true; break; }
     scanned++;
     try {
+      const turn = turns.get(meta.gameId);
+      if (turn === undefined) continue;
+      const r = meta.reminder;
+      if (!r || r.turn !== turn) {
+        // Activity since we last looked → restart the clock, don't email yet.
+        await restartClock(meta, turn);
+        continue;
+      }
+      if (r.sent) continue;
+      if (deps.now() - new Date(r.since).getTime() < opts.olderThanMs) continue;
+      // Due. Only now pay for the snapshot, and only `maxDecodes` per tick.
+      if (decodes >= opts.maxDecodes) { truncated = true; continue; }
+      decodes++;
       const latest = await raceTimeout(deps.getLatest(meta.gameId), 8000, `sweep-getLatest:${meta.gameId}`);
       if (!latest) continue;
+      if (latest.turn !== r.turn) { await restartClock(meta, latest.turn); continue; }
       const actor = deps.actorOf(latest.state);
       if (actor === null) {
         // Game over → mark resolved so it leaves the unresolved set for good.
         if (!meta.resolved) { await deps.putGameMeta({ ...meta, resolved: true }); resolvedMarked++; }
         continue;
       }
-      const r = meta.reminder;
-      if (!r || r.turn !== latest.turn) {
-        // Activity since we last looked → restart the clock, don't email yet.
-        await deps.putGameMeta({
-          ...meta,
-          reminder: { turn: latest.turn, since: new Date(deps.now()).toISOString(), sent: false },
-        });
-        continue;
-      }
-      if (r.sent) continue;
-      if (deps.now() - new Date(r.since).getTime() < opts.olderThanMs) continue;
       const email = meta.emails?.[actor];
       if (email) {
         try {
@@ -393,6 +413,7 @@ export async function runBoundedReminderSweep(
       }
       return out;
     },
+    listLatestTurns: (gameIds) => store.listLatestTurns!(gameIds),
     getLatest: async (gameId) => {
       const latest = await store.getLatest(gameId);
       return latest ? { turn: latest.turn, state: latest.state } : null;
@@ -412,7 +433,7 @@ export async function runBoundedReminderSweep(
       });
     },
     now: () => Date.now(),
-  }, { olderThanMs: 15 * 60 * 1000, deadlineMs: 15_000 });
+  }, { olderThanMs: 15 * 60 * 1000, deadlineMs: 15_000, maxDecodes: 2 });
 }
 
 /** Record who is on the clock and since when, per game (table

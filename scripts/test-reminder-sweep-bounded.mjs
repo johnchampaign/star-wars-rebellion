@@ -19,6 +19,9 @@
 //      game-over marks resolved — so a later return to the stock sweep is a
 //      drop-in
 //   3. one bad game never kills the sweep for the rest
+//   4. (Oct 2026) snapshots are fetched + decoded ONLY for games whose reminder
+//      is due, at most maxDecodes per tick — the wall-clock deadline can't stop
+//      CPU work on Workers, so a count has to
 //
 // Run: node scripts/test-reminder-sweep-bounded.mjs
 import { join, dirname } from 'node:path';
@@ -38,33 +41,34 @@ const meta = (id, over = {}) => ({
   createdAt: new Date(NOW - 86400000).toISOString(), resolved: false, ...over,
 });
 /** Standard test harness: games keyed by id -> {meta, turn, actor}. */
-function harness(games, { latestDelayMs = 0 } = {}) {
+function harness(games, { writeDelayMs = 0 } = {}) {
   let clock = NOW;
-  const sent = []; const metaWrites = [];
+  const sent = []; const metaWrites = []; const decoded = [];
   const deps = {
     listChunks: async () => games.map((g) => g.meta),
+    listLatestTurns: async (ids) => new Map(games.filter((g) => ids.includes(g.meta.gameId)).map((g) => [g.meta.gameId, g.turn])),
     getLatest: async (id) => {
-      clock += latestDelayMs;
+      decoded.push(id);
       const g = games.find((x) => x.meta.gameId === id);
       if (g?.explode) throw new Error(`kaboom:${id}`);
-      return g ? { turn: g.turn, state: id } : null;
+      return g ? { turn: g.latestTurn ?? g.turn, state: id } : null;
     },
-    putGameMeta: async (m) => { metaWrites.push(m); },
+    putGameMeta: async (m) => { clock += writeDelayMs; metaWrites.push(m); },
     actorOf: (raw) => games.find((x) => x.meta.gameId === raw)?.actor ?? null,
     notifyYourTurn: async ({ email, meta: m, actor, turn }) => { sent.push({ email, id: m.gameId, actor, turn }); },
     now: () => clock,
   };
-  return { deps, sent, metaWrites, tick: (ms) => { clock += ms; } };
+  return { deps, sent, metaWrites, decoded, tick: (ms) => { clock += ms; } };
 }
 
 const OLDER = 15 * 60 * 1000;
 
 console.log('\n[ 1. the deadline stops the loop — the actual #683 fix ]');
 {
-  // 50 games, each getLatest costs 1s of simulated clock. Deadline 10s.
+  // 50 fresh games, each clock-start write costs 1s of simulated clock. Deadline 10s.
   const games = Array.from({ length: 50 }, (_, i) => ({ meta: meta(`g${i}`), turn: 3, actor: 'Rebel' }));
-  const { deps } = harness(games, { latestDelayMs: 1000 });
-  const r = await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 10_000 });
+  const { deps } = harness(games, { writeDelayMs: 1000 });
+  const r = await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 10_000, maxDecodes: 2 });
   check('the sweep returned instead of running to exhaustion', r.truncated === true,
     JSON.stringify(r));
   check('and it scanned only what fit in the budget', r.scanned > 0 && r.scanned <= 12,
@@ -76,7 +80,7 @@ console.log('\n[ 2. framework reminder-clock semantics, verbatim ]');
   // First sighting of a turn: start the clock, no email.
   const g = [{ meta: meta('fresh'), turn: 5, actor: 'Empire' }];
   const { deps, sent, metaWrites } = harness(g);
-  await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 60_000 });
+  await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 60_000, maxDecodes: 2 });
   check('first sighting starts the clock without emailing', sent.length === 0
     && metaWrites.length === 1 && metaWrites[0].reminder?.turn === 5 && metaWrites[0].reminder?.sent === false,
     JSON.stringify({ sent, metaWrites }));
@@ -85,7 +89,7 @@ console.log('\n[ 2. framework reminder-clock semantics, verbatim ]');
   // Clock old enough → exactly one email, to the ACTOR, then marked sent.
   const g = [{ meta: meta('due', { reminder: { turn: 5, since: new Date(NOW - OLDER - 1000).toISOString(), sent: false } }), turn: 5, actor: 'Empire' }];
   const { deps, sent, metaWrites } = harness(g);
-  await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 60_000 });
+  await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 60_000, maxDecodes: 2 });
   check('a due game emails the player on the clock', sent.length === 1 && sent[0].email === 'due-empire@x.test',
     JSON.stringify(sent));
   check('and is marked sent so it cannot double-send', metaWrites.some((m) => m.reminder?.sent === true));
@@ -98,18 +102,19 @@ console.log('\n[ 2. framework reminder-clock semantics, verbatim ]');
     { meta: meta('young', { reminder: { turn: 4, since: new Date(NOW - 60_000).toISOString(), sent: false } }), turn: 4, actor: 'Rebel' },
   ];
   const { deps, sent, metaWrites } = harness(g);
-  await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 60_000 });
+  await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 60_000, maxDecodes: 2 });
   check('sent-already and not-yet-due games stay silent', sent.length === 0, JSON.stringify(sent));
   const movedWrite = metaWrites.find((m) => m.gameId === 'moved');
   check('a game that moved on gets a fresh clock for the new turn',
     movedWrite?.reminder?.turn === 6 && movedWrite?.reminder?.sent === false, JSON.stringify(movedWrite));
 }
 {
-  // Game over → marked resolved, which is what lets the backlog finally drain.
-  const g = [{ meta: meta('done'), turn: 9, actor: null }];
+  // Game over → marked resolved once its clock is due, which is what lets the
+  // backlog finally drain.
+  const g = [{ meta: meta('done', { reminder: { turn: 9, since: new Date(NOW - OLDER - 1000).toISOString(), sent: false } }), turn: 9, actor: null }];
   g[0].actor = null;
   const { deps, sent, metaWrites } = harness(g);
-  const r = await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 60_000 });
+  const r = await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 60_000, maxDecodes: 2 });
   check('a finished game is marked resolved', r.resolvedMarked === 1
     && metaWrites.some((m) => m.gameId === 'done' && m.resolved === true), JSON.stringify(metaWrites));
   check('and nobody is emailed about a finished game', sent.length === 0);
@@ -118,13 +123,40 @@ console.log('\n[ 2. framework reminder-clock semantics, verbatim ]');
 console.log('\n[ 3. one bad game cannot take down the sweep ]');
 {
   const g = [
-    { meta: meta('bomb'), turn: 2, actor: 'Rebel', explode: true },
+    { meta: meta('bomb', { reminder: { turn: 2, since: new Date(NOW - OLDER - 1).toISOString(), sent: false } }), turn: 2, actor: 'Rebel', explode: true },
     { meta: meta('after', { reminder: { turn: 7, since: new Date(NOW - OLDER - 1).toISOString(), sent: false } }), turn: 7, actor: 'Rebel' },
   ];
   const { deps, sent } = harness(g);
-  const r = await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 60_000 });
+  const r = await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 60_000, maxDecodes: 2 });
   check('the game after the failure still gets its nudge', sent.length === 1 && sent[0].id === 'after',
     JSON.stringify({ r, sent }));
+}
+
+console.log('\n[ 4. snapshots are decoded only for due games, at most maxDecodes per tick ]');
+{
+  const due = (id) => meta(id, { reminder: { turn: 4, since: new Date(NOW - OLDER - 1000).toISOString(), sent: false } });
+  const g = [
+    { meta: meta('fresh'), turn: 4, actor: 'Rebel' },
+    { meta: meta('young', { reminder: { turn: 4, since: new Date(NOW - 60_000).toISOString(), sent: false } }), turn: 4, actor: 'Rebel' },
+    { meta: meta('sent', { reminder: { turn: 4, since: new Date(NOW - OLDER * 2).toISOString(), sent: true } }), turn: 4, actor: 'Rebel' },
+    ...Array.from({ length: 30 }, (_, i) => ({ meta: due(`d${i}`), turn: 4, actor: 'Empire' })),
+  ];
+  const { deps, sent, decoded } = harness(g);
+  const r = await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 60_000, maxDecodes: 2 });
+  check('fresh, not-yet-due and already-sent games are never decoded',
+    !decoded.some((id) => ['fresh', 'young', 'sent'].includes(id)), JSON.stringify(decoded));
+  check('due games are decoded at most maxDecodes per tick', decoded.length === 2, `decoded ${decoded.length}`);
+  check('the decoded due games are emailed', sent.length === 2, JSON.stringify(sent));
+  check('and the tick reports that work was left over', r.truncated === true, JSON.stringify(r));
+}
+{
+  // The turn moved between the batch turn query and the snapshot fetch.
+  const g = [{ meta: meta('raced', { reminder: { turn: 4, since: new Date(NOW - OLDER - 1000).toISOString(), sent: false } }), turn: 4, latestTurn: 5, actor: 'Rebel' }];
+  const { deps, sent, metaWrites } = harness(g);
+  await boundedReminderSweep(deps, { olderThanMs: OLDER, deadlineMs: 60_000, maxDecodes: 2 });
+  check('a game that moved mid-sweep restarts its clock instead of emailing',
+    sent.length === 0 && metaWrites.some((m) => m.reminder?.turn === 5 && m.reminder?.sent === false),
+    JSON.stringify({ sent, metaWrites }));
 }
 
 console.log(fail === 0 ? `\nALL PASS — ${pass} passed, 0 failed` : `\nFAILURES — ${pass} passed, ${fail} failed`);
