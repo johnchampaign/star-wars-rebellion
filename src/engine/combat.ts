@@ -3696,6 +3696,12 @@ function applyDsucSoleShipRule(G: GameState, c: NonNullable<GameState['pendingCo
   if (dsuc.typeId !== 'death-star-under-construction') return;
   // Rebel must still have at least one ship in the space theater.
   if (unitsOf(G, 'Rebel', c.systemId, 'space').length === 0) return;
+  // RoE Shield Bunker: "Death Stars and Death Stars Under Construction cannot
+  // be destroyed, dealt damage, or assigned damage while in the same system as
+  // a Shield Bunker." That covers this rule too — combat damage and Death Star
+  // Plans already honoured it; this path did not (#814).
+  if (G.expansion?.enabled && (G.map.systems[c.systemId]?.units ?? []).some(
+    (u) => u.side === 'Empire' && u.typeId === 'shield-bunker')) return;
   destroyViaCombatCard(G, c, dsuc.instanceId, 'dsuc-sole-ship');
   log(G, { kind: 'combat-dsuc-destroyed', side: 'Empire', payload: {
     systemId: c.systemId, round: c.round,

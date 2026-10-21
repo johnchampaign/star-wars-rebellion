@@ -2386,6 +2386,63 @@ const DEATH_STAR_CAUTION: boolean = (() => {
   return true;
 })();
 
+/** Shield the Death Star with a Shield Bunker (#814, eu46ho playing Rebel:
+ *  "Imperials left their Death Star(s) VERY undefended making it easy to target
+ *  them and blow both of them up"). RoE: a Death Star or Death Star Under
+ *  Construction in the same system as a Shield Bunker cannot be destroyed —
+ *  immune to Death Star Plans.
+ *
+ *  Measured on the archive (2026-10-20, turn-start snapshots, RoE games): human
+ *  Empires kept a bunker beside a station under construction 21% of station-
+ *  rounds (102/484) and beside a completed one 10% (82/836); the AI 2/458 and
+ *  2/1207. Escorts were NOT the gap — the AI parks 4.6 fighters beside a station
+ *  on average vs the humans' 3.5, and most stations Death Star Plans killed had
+ *  4+ fighters there, because the card only needs one Rebel fighter to survive
+ *  the space step. The AI lost 257 completed stations to Death Star Plans and
+ *  33 under construction to the sole-ship rule (humans 41 and 5, against an AI
+ *  Rebel that plays the card far less).
+ *
+ *  SWR_BUNKERS (bunker the station wherever it is) was rejected twice: it chased
+ *  a MOBILE station and arrived after it left (7/81 reached it, 0 Plans blocked
+ *  in 120 games). This lever fixes where that went wrong:
+ *    - the bunker goes to the construction site, which cannot move, so it
+ *      arrives; the Death Star is completed in place, under it;
+ *    - the completed station stays under its bunker unless it is going to the
+ *      revealed base or the Empire holds Superlaser Online (which destroys the
+ *      system the station is in, so it has to leave to use it);
+ *    - an unbunkered construction site keeps one other ship, so the station is
+ *      not left as the sole ship (rr: then it is destroyed).
+ *  Self-play cannot judge it (the AI Rebel rarely plays Death Star Plans); the
+ *  archive gap and test-ds-bunker-814 are the evidence. SWR_DS_BUNKER=0 is the
+ *  counterfactual. */
+const DS_BUNKER: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_DS_BUNKER === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
+const hasImperialBunker = (G: GameState, sysId: string): boolean =>
+  (G.map.systems[sysId]?.units ?? []).some((u) => u.side === 'Empire' && u.typeId === 'shield-bunker');
+
+/** Where a Shield Bunker should go: the Death Star Under Construction's system
+ *  (it cannot move), else the completed station's, when no bunker is there. */
+function deathStarBunkerSite(G: GameState): string | undefined {
+  if (!G.expansion?.enabled) return undefined;
+  const find = (typeId: string) => Object.entries(G.map.systems)
+    .find(([, ss]) => ss.units.some((u) => u.side === 'Empire' && u.typeId === typeId))?.[0];
+  const site = find('death-star-under-construction') ?? find('death-star');
+  return site && !hasImperialBunker(G, site) ? site : undefined;
+}
+
+/** Does the Empire have a reason to take its station out from under a bunker:
+ *  Superlaser Online in hand or assigned (it destroys the station's own system). */
+function empireWantsSuperlaser(G: GameState): boolean {
+  return (G.empire.missionHand ?? []).includes('superlaser-online')
+    || (G.empire.leadersOnMissions ?? []).some((m) => m.missionId === 'superlaser-online');
+}
+
 /** Opt-out for weighing subjugation targets by resource SHAPE rather than icon
  *  count (SWR_RESOURCE_SHAPE=0), from playtester report #694. Default ON.
  *
@@ -2855,8 +2912,9 @@ function unitStrength(G: GameState, u: { typeId: string }): number {
  *  ship, and the passivity #701's Death Star guard caused.
  *
  *  Pure: reads G, mutates nothing. Callers must not mutate the result.
+ *  Exported for tests (test-ds-bunker-814).
  */
-function plannedMoveOrders(
+export function plannedMoveOrders(
   G: GameState, side: Side, targetSystemId: SystemId,
 ): phases.MoveOrder[] {
   const f = side === 'Rebel' ? G.rebel : G.empire;
@@ -2945,9 +3003,19 @@ function plannedMoveOrders(
               u.side !== side && G.catalog.unitTypes[u.typeId]?.theater === 'space')));
     const isStation = (typeId: string) =>
       typeId === 'death-star' || typeId === 'death-star-under-construction';
+    // #814: a station under its Shield Bunker is immune, so it stays there
+    // unless it is going to the revealed base or to fire Superlaser Online.
+    // Unlike the caution hold above, this one does NOT fall back to sending the
+    // station when nothing else moves — that fallback is exactly how a parked
+    // station would walk out from under its bunker.
+    const bunkerHold = DS_BUNKER && side === 'Empire' && hasImperialBunker(G, fromId)
+      && !(G.rebelBaseRevealed && targetSystemId === G.rebelBaseSystemId)
+      && !empireWantsSuperlaser(G);
+    const bunkerHeld: typeof mine = [];
     for (const u of mine) {
       const t = G.catalog.unitTypes[u.typeId];
       if (!t || t.transport.immobile) continue;
+      if (bunkerHold && u.typeId === 'death-star') { bunkerHeld.push(u); continue; }
       // Leave the station home. Its capacity leaves with it, so the
       // fighter/ground fitting below sees the real figure and simply
       // brings fewer passengers rather than an illegal load.
@@ -2989,6 +3057,19 @@ function plannedMoveOrders(
     const groundReserve = (side === 'Empire' && worthHolding && ground.length > 0
       && !G.rebelBaseRevealed) ? 1 : 0;
     const groundCandidates = ground.slice(0, Math.max(0, ground.length - groundReserve));
+    // #814: never strip an unbunkered construction site down to the station
+    // alone — rr: if the Death Star Under Construction is the Empire's only
+    // ship when the Rebels attack, it is destroyed. Keep one ship: a fighter if
+    // there is one (it costs no carrier room), else the smallest capital.
+    if (DS_BUNKER && side === 'Empire' && !hasImperialBunker(G, fromId)
+      && ss.units.some((u) => u.side === 'Empire' && u.typeId === 'death-star-under-construction')) {
+      if (fighters.length > 0) fighters.pop();
+      else if (capitalShips.length > 0 && selfMovers.length === 0) {
+        capitalShips.sort((a, b) => (G.catalog.unitTypes[a.typeId]?.transport.capacity ?? 0)
+          - (G.catalog.unitTypes[b.typeId]?.transport.capacity ?? 0));
+        capitalShips.shift();
+      }
+    }
     // Transport-capacity math: capital ships' total capacity must
     // cover (fighters + ground) we move. Bring all capitals (they're
     // valuable + provide capacity), then fit as many fighters/ground
@@ -4620,7 +4701,10 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     );
     // A Shield Bunker only earns its icon at the Death Star's system; anywhere
     // else it is an immobile structure doing nothing.
-    const bunkerHome = BUILD_SHIELD_BUNKERS && c.typeId === 'shield-bunker'
+    const dsSite = DS_BUNKER && side === 'Empire' && c.typeId === 'shield-bunker'
+      ? deathStarBunkerSite(G) : undefined;
+    const bunkerHome = dsSite && c.candidates.includes(dsSite) ? dsSite
+      : BUILD_SHIELD_BUNKERS && c.typeId === 'shield-bunker'
       ? Object.entries(G.map.systems).find(([, ss]) => ss.units.some((u) => u.side === side
           && (u.typeId === 'death-star-under-construction' || u.typeId === 'death-star')))?.[0]
       : undefined;
@@ -6186,9 +6270,14 @@ function handleBuildPick(G: GameState): boolean {
     ? Object.entries(G.map.systems).find(([, ss]) => ss.units.some((u) => u.side === 'Empire'
         && (u.typeId === 'death-star-under-construction' || u.typeId === 'death-star')))?.[0]
     : undefined;
-  const bunkerWanted = !!dsucSite
+  const queuedBunkers = [1, 2, 3].reduce((n, slot) =>
+    n + ((G.empire.buildQueue as Record<number, string[]>)[slot] ?? []).filter((t) => t === 'shield-bunker').length, 0);
+  const bunkerWanted = (!!dsucSite
     && !G.map.systems[dsucSite].units.some((u) => u.side === 'Empire' && u.typeId === 'shield-bunker')
-    && countOnBoardAndQueue('shield-bunker') < 1;
+    && countOnBoardAndQueue('shield-bunker') < 1)
+    // #814: one bunker for the construction site (or the completed station's
+    // system), whatever else is on the board — only none already queued.
+    || (side === 'Empire' && DS_BUNKER && !!deathStarBunkerSite(G) && queuedBunkers === 0);
   let bunkerQueued = false; // at most one Bunker per build batch
   // Track within-batch consumption so the AI doesn't pick the same exhausted
   // type twice (the engine hard-rejects 0-supply picks now). `available` is
