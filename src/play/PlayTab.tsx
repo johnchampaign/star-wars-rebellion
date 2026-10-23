@@ -1601,25 +1601,19 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   };
 
   const onActivateSystem = (
-    leaderId: string, targetSystemId: string, moveOrders: MoveOrder[],
+    leaderId: string, targetSystemId: string, moveOrders: MoveOrder[], chosenCaptives: string[] = [],
   ) => {
     if (!G) return;
     // Captive escort (#595, RAW RR "Captured Leaders"): Imperial units moving
-    // out of a captive's system may bring the captive along. Offer it per
-    // captive when the HUMAN Empire's move sources hold any — otherwise the
-    // move auto-frees them the moment the prison empties.
-    const bringCaptives: string[] = [];
-    if (G.currentPlayer === 'Empire' && humanSide === 'Empire') {
-      const sources = new Set(moveOrders.filter((o) => o.unitInstanceIds.length > 0).map((o) => o.fromSystemId));
-      for (const cap of G.empire.capturedLeaders ?? []) {
-        if (!sources.has(cap.systemId)) continue;
-        const name = G.catalog.leaders[cap.leaderId]?.name ?? cap.leaderId;
-        const dest = G.catalog.systems[targetSystemId]?.name ?? targetSystemId;
-        if (window.confirm(`Bring the captured ${name} along to ${dest}?\n\n(If all your units leave and the captive stays, they are rescued.)`)) {
-          bringCaptives.push(cap.leaderId);
-        }
-      }
-    }
+    // out of a captive's system may bring the captive along. The Command panel
+    // now shows this as a checkbox under each source that holds a captive
+    // (#816: the old pop-up after Activate was easy to miss — "If there was an
+    // option, I couldn't find it"). Only captives whose system actually sends
+    // units are passed on.
+    const sources = new Set(moveOrders.filter((o) => o.unitInstanceIds.length > 0).map((o) => o.fromSystemId));
+    const bringCaptives = G.currentPlayer === 'Empire' && humanSide === 'Empire'
+      ? chosenCaptives.filter((lid) => (G.empire.capturedLeaders ?? []).some((c) => c.leaderId === lid && sources.has(c.systemId)))
+      : [];
     const r = phases.activateSystem(G, G.currentPlayer, leaderId, targetSystemId, moveOrders, bringCaptives);
     if (!r.ok) {
       // Diagnostic dump: build a human-readable per-unit dump inline in the
@@ -10605,7 +10599,7 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass, onRevealBase }: {
   side: Side;
   /** Rebel only, while the base is hidden (FAQ voluntary reveal). */
   onRevealBase?: () => void;
-  onActivate: (leaderId: string, targetSystemId: string, moveOrders: MoveOrder[]) => boolean | void;
+  onActivate: (leaderId: string, targetSystemId: string, moveOrders: MoveOrder[], bringCaptives?: string[]) => boolean | void;
   onReveal: (missionId: string, targetSystemId: string, targetLeaderId?: string, assignedLeaderIds?: string[]) => boolean | void;
   onPass: () => void;
 }) {
@@ -10615,6 +10609,8 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass, onRevealBase }: {
   const [targetSystemId, setTargetSystemId] = useState<string | null>(null);
   // moveCounts: fromSystemId -> typeId -> count to move
   const [moveCounts, setMoveCounts] = useState<Record<string, Record<string, number>>>({});
+  // Captured leaders the Empire chose to bring along with this move (#816).
+  const [bringCaptives, setBringCaptives] = useState<string[]>([]);
 
   // Eligible leaders: only leaders WITH tactic values. RR (twice): "A leader
   // that does not have tactic values cannot activate a system." The three
@@ -10678,6 +10674,7 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass, onRevealBase }: {
     setLeaderId(null);
     setTargetSystemId(null);
     setMoveCounts({});
+    setBringCaptives([]);
   };
 
   const bump = (sysId: string, typeId: string, delta: number, max: number) => {
@@ -10764,7 +10761,7 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass, onRevealBase }: {
         + `or start a battle, and it uses up the activation. Continue anyway?`);
       if (!ok) return;
     }
-    const ok = onActivate(leaderId, targetSystemId, orders);
+    const ok = onActivate(leaderId, targetSystemId, orders, bringCaptives);
     if (ok !== false) reset();
   };
 
@@ -11162,6 +11159,24 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass, onRevealBase }: {
                       )}
                     </div>
                   )}
+                  {/* Captive escort (#816): bring a captured leader held here. */}
+                  {side === 'Empire' && (G.empire.capturedLeaders ?? []).filter((c) => c.systemId === sysId).map((c) => {
+                    const moving = Object.values(sel).some((n) => n > 0);
+                    const checked = moving && bringCaptives.includes(c.leaderId);
+                    const lname = G.catalog.leaders[c.leaderId]?.name ?? c.leaderId;
+                    return (
+                      <label key={c.leaderId} style={{ display: 'flex', gap: 6, alignItems: 'flex-start', marginTop: 6, paddingTop: 4,
+                        borderTop: '1px solid #2a2d34', fontSize: 11, color: moving ? '#ffd54a' : '#777', cursor: moving ? 'pointer' : 'default' }}
+                        title={moving ? '' : 'Select units to move from here first'}>
+                        <input type="checkbox" disabled={!moving} checked={checked}
+                          onChange={(e) => setBringCaptives((b) => e.target.checked
+                            ? [...b.filter((x) => x !== c.leaderId), c.leaderId]
+                            : b.filter((x) => x !== c.leaderId))} />
+                        <span>Bring captured <b>{lname}</b> along
+                          <span style={{ color: '#888' }}> (if every unit leaves without them, they are rescued)</span></span>
+                      </label>
+                    );
+                  })}
                 </div>
               );
             })}

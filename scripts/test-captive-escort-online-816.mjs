@@ -75,5 +75,16 @@ console.log('\n[ an action without the field still leaves the captive put ]');
   check('captive stays in the still-garrisoned prison', captiveAt(G) === PRISON, String(captiveAt(G)));
 }
 
+console.log('[ the choice is visible in the move panel (#816: "If there was an option, I couldn\'t find it") ]');
+{
+  // The offer used to be a pop-up after Activate. It is now a checkbox under
+  // each source system holding a captive, and Activate passes the ticks on.
+  const src = readFileSync(join(ROOT, 'src/play/PlayTab.tsx'), 'utf8');
+  check('the move panel shows a "Bring captured … along" checkbox per captive',
+    /Bring captured <b>\{lname\}<\/b> along/.test(src) && /\(G\.empire\.capturedLeaders \?\? \[\]\)\.filter\(\(c\) => c\.systemId === sysId\)/.test(src));
+  check('Activate passes the ticked captives through', /onActivate\(leaderId, targetSystemId, orders, bringCaptives\)/.test(src));
+  check('…and the old pop-up is gone from the activation path', !/Bring the captured \$\{name\} along to \$\{dest\}\?[^`]*`\)\) \{\n\s*bringCaptives\.push\(cap\.leaderId\);\n\s*\}\n\s*\}\n\s*\}\n\s*const r = phases\.activateSystem/.test(src));
+}
+
 console.log(`\n${fail ? 'FAIL' : 'ALL PASS'} — ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
