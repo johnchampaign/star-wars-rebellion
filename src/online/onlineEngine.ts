@@ -74,7 +74,7 @@ export function makeOnlinePhases(submit: Submit, canSubmit: () => boolean): type
     // Command
     pass: (_g: any, _s: any) => act({ kind: 'pass' }),
     revealRebelBaseVoluntarily: (_g: any, _s: any) => act({ kind: 'revealRebelBase' }),
-    activateSystem: (_g: any, _s: any, leaderId: any, targetSystemId: any, moveOrders: any = []) => act({ kind: 'activateSystem', leaderId, targetSystemId, moveOrders }),
+    activateSystem: (_g: any, _s: any, leaderId: any, targetSystemId: any, moveOrders: any = [], bringCapturedLeaderIds: any = []) => act({ kind: 'activateSystem', leaderId, targetSystemId, moveOrders, bringCapturedLeaderIds }),
     revealMission: (_g: any, _s: any, missionId: any, targetSystemId: any, targetLeaderId?: any, assignedLeaderIds?: any) => act({ kind: 'revealMission', missionId, targetSystemId, targetLeaderId, assignedLeaderIds }),
     // Mission resolution
     resolveOpposition: (_g: any, opposerLeaderId: any, useSubversion: any) => act({ kind: 'resolveOpposition', opposerLeaderId, useSubversion: !!useSubversion }),
@@ -149,7 +149,7 @@ export function makeOnlinePhases(submit: Submit, canSubmit: () => boolean): type
     resolveC3POOffer: (_g: any, accept: any) => act({ kind: 'resolveC3POOffer', accept }),
     resolveFalconOffer: (_g: any, leaderId: any) => act({ kind: 'resolveFalconOffer', leaderId }),
     resolveBrilliantAdministratorBuildPick: (_g: any, typeIds: any) => act({ kind: 'resolveBrilliantAdministratorBuildPick', typeIds }),
-    resolveCatchThemBySurpriseMovePick: (_g: any, orders: any) => act({ kind: 'resolveCatchThemBySurpriseMovePick', orders }),
+    resolveCatchThemBySurpriseMovePick: (_g: any, orders: any, bringCapturedLeaderIds: any = []) => act({ kind: 'resolveCatchThemBySurpriseMovePick', orders, bringCapturedLeaderIds }),
     resolveScoutingMissionTIEPick: (_g: any, unitInstanceIds: any) => act({ kind: 'resolveScoutingMissionTIEPick', unitInstanceIds }),
     resolveOurMostDesperateHourPick: (_g: any, missionId: any) => act({ kind: 'resolveOurMostDesperateHourPick', missionId }),
     resolveProceedingAsPlannedPick: (_g: any, missionId: any) => act({ kind: 'resolveProceedingAsPlannedPick', missionId }),

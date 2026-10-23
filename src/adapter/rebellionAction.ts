@@ -48,7 +48,7 @@ export type RebellionAction =
   // FAQ: the Rebel may reveal his base at the start of a Command turn. Not a
   // command action; the turn is not consumed.
   | { kind: 'revealRebelBase' }
-  | { kind: 'activateSystem'; leaderId: LeaderId; targetSystemId: SystemId; moveOrders: MoveOrder[] }
+  | { kind: 'activateSystem'; leaderId: LeaderId; targetSystemId: SystemId; moveOrders: MoveOrder[]; bringCapturedLeaderIds?: LeaderId[] }
   | { kind: 'revealMission'; missionId: string; targetSystemId: SystemId; targetLeaderId?: LeaderId; assignedLeaderIds?: LeaderId[] }
 
   // ---------- Mission resolution (top of the mission flow) ----------
@@ -109,7 +109,7 @@ export type RebellionAction =
   | { kind: 'resolveC3POOffer'; accept: boolean }
   | { kind: 'resolveFalconOffer'; leaderId: LeaderId | null }
   | { kind: 'resolveBrilliantAdministratorBuildPick'; typeIds: (UnitTypeId | null)[] }
-  | { kind: 'resolveCatchThemBySurpriseMovePick'; orders: { fromSystemId: SystemId; unitInstanceIds: UnitInstanceId[] }[] }
+  | { kind: 'resolveCatchThemBySurpriseMovePick'; orders: { fromSystemId: SystemId; unitInstanceIds: UnitInstanceId[] }[]; bringCapturedLeaderIds?: LeaderId[] }
   | { kind: 'resolveScoutingMissionTIEPick'; unitInstanceIds: UnitInstanceId[] }
   | { kind: 'resolveOurMostDesperateHourPick'; missionId: string }
   | { kind: 'resolveProceedingAsPlannedPick'; missionId: string }

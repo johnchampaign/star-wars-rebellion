@@ -55,7 +55,7 @@ function dispatch(G: GameState, a: RebellionAction, actor: Side): Result {
     // ---------- Command (top-level) ----------
     case 'pass':               return phases.pass(G, actor);
     case 'revealRebelBase':    return phases.revealRebelBaseVoluntarily(G, actor);
-    case 'activateSystem':     return phases.activateSystem(G, actor, a.leaderId, a.targetSystemId, a.moveOrders);
+    case 'activateSystem':     return phases.activateSystem(G, actor, a.leaderId, a.targetSystemId, a.moveOrders, a.bringCapturedLeaderIds ?? []);
     case 'revealMission':      return phases.revealMission(G, actor, a.missionId, a.targetSystemId, a.targetLeaderId, a.assignedLeaderIds);
 
     // ---------- Mission resolution (top of flow) ----------
@@ -146,7 +146,7 @@ function dispatch(G: GameState, a: RebellionAction, actor: Side): Result {
     case 'resolveC3POOffer':                     return phases.resolveC3POOffer(G, a.accept);
     case 'resolveFalconOffer':                   return phases.resolveFalconOffer(G, a.leaderId);
     case 'resolveBrilliantAdministratorBuildPick': return phases.resolveBrilliantAdministratorBuildPick(G, a.typeIds);
-    case 'resolveCatchThemBySurpriseMovePick':   return phases.resolveCatchThemBySurpriseMovePick(G, a.orders);
+    case 'resolveCatchThemBySurpriseMovePick':   return phases.resolveCatchThemBySurpriseMovePick(G, a.orders, a.bringCapturedLeaderIds ?? []);
     case 'resolveScoutingMissionTIEPick':        return phases.resolveScoutingMissionTIEPick(G, a.unitInstanceIds);
     case 'resolveOurMostDesperateHourPick':      return phases.resolveOurMostDesperateHourPick(G, a.missionId);
     case 'resolveProceedingAsPlannedPick':       return phases.resolveProceedingAsPlannedPick(G, a.missionId);
