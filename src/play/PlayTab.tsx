@@ -158,6 +158,49 @@ function readUploadedIds(): Set<string> {
  *  archive whose only reader is the uploader, so on a refused write shed
  *  archived games — already-uploaded ones first, then oldest first — and retry.
  *  Returns whether the write landed. */
+/** Private per-game notes (#819, danithaca: a BoardGameArena-style "Player
+ *  Note" to keep track of things in async games). Stored on this device only,
+ *  keyed by game; never sent anywhere, so the opponent can't see them. */
+const LS_NOTES_PREFIX = 'rebellion-notes:';
+
+function PlayerNotes({ storageKey }: { storageKey: string | null }) {
+  const [text, setText] = useState('');
+  const [status, setStatus] = useState<'' | 'saved' | 'failed'>('');
+  const loadedKey = useRef<string | null>(null);
+  useEffect(() => {
+    loadedKey.current = storageKey;
+    let v = '';
+    if (storageKey) { try { v = localStorage.getItem(storageKey) ?? ''; } catch { /* storage blocked */ } }
+    setText(v); setStatus('');
+  }, [storageKey]);
+  useEffect(() => {
+    if (!storageKey || loadedKey.current !== storageKey) return;
+    const t = setTimeout(() => {
+      let ok: boolean;
+      if (text) ok = lsSetMakingRoom(storageKey, text);
+      else { try { localStorage.removeItem(storageKey); ok = true; } catch { ok = false; } }
+      setStatus(ok ? 'saved' : 'failed');
+    }, 400);
+    return () => clearTimeout(t);
+  }, [text, storageKey]);
+  if (!storageKey) return null;
+  return (
+    <details style={{ marginTop: 12, background: '#15171c', border: '1px solid #2a2d34', borderRadius: 4, padding: '6px 10px' }}
+      open={text.length > 0 || undefined}>
+      <summary style={{ cursor: 'pointer', color: '#ccc', fontSize: 13, fontWeight: 600 }}>
+        My notes <span style={{ color: '#888', fontWeight: 400, fontSize: 11 }}>(private: kept only on this device, your opponent never sees them)</span>
+      </summary>
+      <textarea value={text} onChange={(e) => setText(e.target.value)} rows={5}
+        placeholder="Plans, suspicions, what to do next turn…"
+        style={{ width: '100%', boxSizing: 'border-box', marginTop: 6, background: '#0c0d10', color: '#ddd',
+          border: '1px solid #2a2d34', borderRadius: 3, padding: 6, fontSize: 13, fontFamily: 'inherit', resize: 'vertical' }} />
+      <div style={{ fontSize: 10, color: status === 'failed' ? '#ff6b6b' : '#666', minHeight: 12 }}>
+        {status === 'saved' && text ? 'Saved on this device.' : status === 'failed' ? 'Could not save: this browser\u2019s storage is full or blocked.' : ''}
+      </div>
+    </details>
+  );
+}
+
 function lsSetMakingRoom(key: string, value: string): boolean {
   try { localStorage.setItem(key, value); return true; } catch { /* full — make room */ }
   if (key === LS_HISTORY) return false;
@@ -434,6 +477,8 @@ export type PlayTabOnlineMode = {
   submit: (action: RebellionAction) => Promise<void>;
   /** The game's chat, for the downloadable log (#796). */
   fetchChat?: () => Promise<ExportChatMessage[]>;
+  /** The server's game id: keys this game's private notes (#819). */
+  gameId?: string;
 };
 
 export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {}) {
@@ -2255,6 +2300,11 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
         <FactionPanel G={G} side="Rebel" humanSide={humanSide} />
         <FactionPanel G={G} side="Empire" humanSide={humanSide} />
       </div>
+
+      <PlayerNotes storageKey={(() => {
+        if (online) return online.gameId ? `${LS_NOTES_PREFIX}online:${online.gameId}` : null;
+        try { const id = localStorage.getItem(LS_GAME_ID); return id ? `${LS_NOTES_PREFIX}${id}` : null; } catch { return null; }
+      })()} />
 
       <LogPanel G={G} humanSide={humanSide} onDownload={() => void downloadLog()} />
 

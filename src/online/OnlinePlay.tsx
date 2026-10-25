@@ -239,7 +239,7 @@ export default function OnlinePlay({ gameId, token }: { gameId: string; token: s
             SUBMITS an action when it's your turn, so stray board-action clicks on
             the opponent's turn no-op silently instead of being server-rejected. */}
         <div>
-          <PlayTab online={{ view, you: you as Side | null, yourTurn, submit, fetchChat }} />
+          <PlayTab online={{ view, you: you as Side | null, yourTurn, submit, fetchChat, gameId }} />
         </div>
       </div>
 

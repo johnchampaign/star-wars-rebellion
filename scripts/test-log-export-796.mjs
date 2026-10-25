@@ -106,7 +106,7 @@ const src = readFileSync(join(ROOT, 'src/play/PlayTab.tsx'), 'utf8');
 check('the log panel and the download share one visibility function', /const vis = logVisibility\(humanSide\);/.test(src) && /vis: logVisibility\(humanSide\)/.test(src));
 check('the log panel offers "Download log"', />\s*Download log\s*</.test(src));
 check('the game-over screen offers "Download game log"', />\s*Download game log\s*</.test(src));
-check('online games pass the chat in', /submit, fetchChat \}\}/.test(readFileSync(join(ROOT, 'src/online/OnlinePlay.tsx'), 'utf8')));
+check('online games pass the chat in', /submit, fetchChat(, gameId)? \}\}/.test(readFileSync(join(ROOT, 'src/online/OnlinePlay.tsx'), 'utf8')));
 
 console.log(fail === 0 ? `\nALL PASS — ${pass} passed, 0 failed` : `\nFAILURES — ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
