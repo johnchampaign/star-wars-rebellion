@@ -1796,6 +1796,9 @@ export type CombatState = {
     // True once the R2-D2 flip window has been resolved for this attack so
     // re-entry (after another pause) doesn't re-prompt the Rebel.
     r2d2Resolved?: boolean;
+    // Set when the engine assigned this attack's hits itself because each had
+    // only one legal target (#793), so the board can say so (#818).
+    autoAssigned?: { typeId: string; hits: number }[];
     // True once the One In A Million window has been resolved for this
     // attack so re-entry doesn't re-prompt the Rebel.
     oneInAMillionResolved?: boolean;
@@ -1975,6 +1978,10 @@ export type CombatAttackReport = {
   blockedDamage: number;        // from defender's defensive cards
   damageApplied: number;        // final damage that landed
   destroyed: { typeId: string; instanceId: string }[];
+  /** Hits the engine assigned itself (every hit had one legal target, #793),
+   *  by the unit type that took them. Shown so a silent assignment is visible
+   *  (#818: "at end of battle airspeeder was destroyed. Should have been ok"). */
+  autoAssigned?: { typeId: string; hits: number }[];
 };
 
 export type CombatRoundReport = {

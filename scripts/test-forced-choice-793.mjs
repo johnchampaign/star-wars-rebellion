@@ -128,5 +128,35 @@ console.log('\n[ Fully Operational with one Rebel ship needs no pick ]');
       && e.payload?.destroyed === corvette));
 }
 
+console.log('\n[ #818: an automatic assignment is shown, naming the unit it hit ]');
+{
+  // #818: a lone red hit landed on the only red-health unit (an Airspeeder)
+  // with no prompt, and the player thought the unit had vanished. The attack's
+  // report entry now records which unit types took automatic hits.
+  let attacks = 0, named = 0, forcedLogs = 0, logTargets = 0;
+  for (let seed = 1; seed <= 10; seed++) {
+    const G = setup(seed, ['corellian-corvette']);
+    drive(G);
+    const empire = (G.combatReports ?? []).flatMap((r) => r.rounds.flatMap((rd) => rd.attacks)).filter((a) => a.side === 'Empire');
+    attacks += empire.filter((a) => a.autoAssigned).length;
+    named += empire.filter((a) => a.autoAssigned?.some((t) => t.typeId === 'corellian-corvette' && t.hits >= 1)).length;
+    const logs = G.turnLog.filter((e) => e.kind === 'combat-assign-forced' && e.side === 'Empire');
+    forcedLogs += logs.length;
+    logTargets += logs.filter((e) => e.payload?.targets?.[0]?.typeId === 'corellian-corvette').length;
+  }
+  check('every automatic assignment is on its attack\'s report entry', attacks > 0 && attacks === forcedLogs, `${attacks} report entries vs ${forcedLogs} forced`);
+  check('…naming the Corellian Corvette that took the hits', named === attacks, `${named}/${attacks}`);
+  check('the log entry names the targets too', logTargets === forcedLogs, `${logTargets}/${forcedLogs}`);
+  const G = setup(1, ['corellian-corvette', 'corellian-corvette', 'corellian-corvette']);
+  const s2 = drive(G);
+  const prompted = (G.combatReports ?? []).flatMap((r) => r.rounds.flatMap((rd) => rd.attacks))
+    .filter((a) => a.side === 'Empire' && !a.autoAssigned && a.damageApplied > 0).length;
+  check('control: a hit the player chose is not marked automatic', s2.empireAssignPrompts === 0 || prompted > 0);
+  const board = readFileSync(join(ROOT, 'src/play/CombatBoardLive.tsx'), 'utf-8');
+  const play = readFileSync(join(ROOT, 'src/play/PlayTab.tsx'), 'utf-8');
+  check('the live combat board lists "Hits assigned automatically"', /Hits assigned automatically:/.test(board) && /a\.autoAssigned/.test(board));
+  check('the end-of-battle report marks them', /assigned automatically to \{a\.autoAssigned!/.test(play));
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

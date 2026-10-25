@@ -7541,6 +7541,13 @@ function CombatReportModal({ G, report, onDismiss }: {
                     tactic cards: {a.tacticsPlayed.map((t) => `${t.card} (${t.detail})`).join(', ')}
                   </div>
                 )}
+                {(a.autoAssigned?.length ?? 0) > 0 && (
+                  <div style={{ fontSize: 11, color: '#aaa', marginTop: 2 }}
+                    title="Each of these hits had only one unit it could legally damage, so the game assigned it without asking (#818).">
+                    assigned automatically to {a.autoAssigned!.map((t) => G.catalog.unitTypes[t.typeId]?.name ?? t.typeId).join(', ')}
+                    <span style={{ color: '#777' }}> ({a.autoAssigned!.length === 1 ? 'the only unit it could damage' : 'the only units it could damage'})</span>
+                  </div>
+                )}
                 {a.destroyed.length > 0 && (
                   <div style={{ fontSize: 11, color: '#ff8866', marginTop: 2 }}>
                     destroyed: {a.destroyed.map((u) => G.catalog.unitTypes[u.typeId]?.name ?? u.typeId).join(', ')}

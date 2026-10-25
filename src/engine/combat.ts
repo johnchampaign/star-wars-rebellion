@@ -2030,8 +2030,17 @@ function finalizeAttack(G: GameState, c: CombatState, blocksApplied: number): vo
   if (targetsByHit.every((t) => t.length <= 1)) {
     const forced = targetsByHit.map((t) => t[0] ?? null);
     if (!assignmentError(applicableHits, targetsByHit, forced)) {
+      // Which unit types took the hits, for the board and the battle report
+      // (#818). Targets are public, so naming them reveals nothing.
+      const byType = new Map<string, number>();
+      for (const id of forced) {
+        const typeId = id ? liveTargets.find((u) => u.instanceId === id)?.typeId : undefined;
+        if (typeId) byType.set(typeId, (byType.get(typeId) ?? 0) + 1);
+      }
+      pa.autoAssigned = [...byType].map(([typeId, hits]) => ({ typeId, hits }));
       log(G, { kind: 'combat-assign-forced', side: pa.side, payload: {
         theater: pa.theater, hits: applicableHits.length, blocksApplied,
+        targets: pa.autoAssigned,
       }});
       applyDamageAssignment(G, c, pa, forced);
       return;
@@ -2231,6 +2240,7 @@ function pushAttackReport(G: GameState, c: CombatState, blocksApplied: number, d
     blockedDamage: Math.min(blocksApplied, rawHitsCount + pa.bonusDamage),
     damageApplied,
     destroyed: [],
+    ...(pa.autoAssigned?.length ? { autoAssigned: pa.autoAssigned } : {}),
   };
   const bucketIdx = c.currentRoundReportIdx;
   if (bucketIdx !== undefined && c.report.rounds[bucketIdx]) {

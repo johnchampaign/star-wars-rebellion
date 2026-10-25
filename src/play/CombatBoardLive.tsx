@@ -549,6 +549,34 @@ export function CombatBoardLive({ G, humanSide, onPersist, onReportProblem, onSh
         </div>
       )}
 
+      {/* Hits the game assigned by itself because each had only one legal
+          target (#818: a lone red hit landed on the only red-health unit, an
+          Airspeeder, with no prompt, and the player thought it vanished). */}
+      {(() => {
+        const auto = (c.report?.rounds ?? []).flatMap((r) => r.attacks
+          .filter((a) => (a.autoAssigned?.length ?? 0) > 0)
+          .map((a) => ({ round: r.round, side: a.side, theater: a.theater, targets: a.autoAssigned! })));
+        if (auto.length === 0) return null;
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6, fontSize: 12 }}>
+            <span style={{ color: '#888' }} title="Each of these hits had only one unit it could legally damage, so the game assigned it without asking.">
+              Hits assigned automatically:
+            </span>
+            {auto.map((a, i) => (
+              <span key={i} style={{
+                background: '#0c0d10', border: `1px solid ${SIDE_COLOR[a.side]}88`,
+                borderRadius: 3, padding: '2px 6px',
+              }}>
+                <span style={{ color: '#9a9a9e', marginRight: 4 }}>R{a.round} {a.theater}</span>
+                <span style={{ color: SIDE_COLOR[a.side], fontWeight: 700, marginRight: 4 }}>{a.side}</span>
+                → {a.targets.map((t) => G.catalog.unitTypes[t.typeId]?.name ?? t.typeId).join(', ')}
+                <span style={{ color: '#9a9a9e', fontSize: 11, marginLeft: 5 }}>({a.targets.length === 1 ? 'the only unit it could damage' : 'the only units it could damage'})</span>
+              </span>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* Running tally of units destroyed in this battle (Foggy Leggy request). */}
       {(c.removed?.length ?? 0) > 0 && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6, fontSize: 12 }}>
