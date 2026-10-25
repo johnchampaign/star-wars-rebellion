@@ -6,7 +6,7 @@
       "runtimeExecutable": "/bin/bash",
       "runtimeArgs": [
         "-c",
-        "export PATH=\"$HOME/.local/bin:$PATH\"; exec npm run dev -- --port 5180 --strictPort"
+        "export PATH=\"$HOME/.local/bin:$PATH\"; exec systemd-run --user --scope -q -p MemoryMax=2G npm run dev -- --port 5180 --strictPort"
       ],
       "port": 5180
     }

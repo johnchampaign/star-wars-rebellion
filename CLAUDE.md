@@ -135,9 +135,14 @@ baseline, relevant tests/suites pass), commit and push it to `master`
 summarizing by impact + the Co-Authored-By line; never `--amend` or
 `--force-push`; `git pull --no-edit origin master` before pushing
 (parallel sessions push to master too). This covers commit + `git push
-origin master`. It does NOT auto-authorize a Cloudflare **deploy** — that
-still waits for an explicit "ship/deploy/release" (see below) — nor does it
-license committing on a bad/unverified change.
+origin master` — **and the deploy that follows.** John, 2026-10-25: "Always
+deploy after a commit and push." So after a verified push, run `npm run deploy`
+straight away (memory-capped, under the shared heavy-job lock), confirm
+production serves the new bundle, then close the from-game issue. It does not
+license committing a bad/unverified change, and the usual guards hold: never
+deploy a tree with tracked edits you don't own, and don't edit tracked files
+while a queued deploy waits on the lock (it builds whatever is in the tree when
+it starts).
 
 ## Deploys
 
