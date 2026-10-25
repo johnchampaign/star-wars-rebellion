@@ -315,6 +315,37 @@ const HF_BASE_GUARD: boolean = (() => {
   return false;
 })();
 
+/** SWR_HF_NARROW_GUARD (#817, cgjuna playing Empire: "Rebel AI used hidden
+ *  fleet to Ilum, abandoning the base which it knows I know is in Endor").
+ *  The Empire had publicly ruled out everything but Dantooine and Endor; Hidden
+ *  Fleet carried all 17 units, every ground unit among them, out of the base,
+ *  with Imperial troops two jumps away. SWR_HF_BASE_GUARD (OFF) would not have
+ *  fired: rebelBaseThreatened weighs nearby Imperial ground against the
+ *  garrison BEFORE the move and looks one hop out, so it never sees that this
+ *  card is what empties the base.
+ *
+ *  Narrow by design (three self-play screens — #760, #790, base-found — said
+ *  holding the Rebel back costs games): only while the base is hidden AND the
+ *  Empire's public evidence leaves 3 or fewer worlds, judged against what Hidden
+ *  Fleet would leave behind (nothing), with Imperial mobile ground within two
+ *  jumps (>= 2 units). Then the picker keeps the ground and half the ships home
+ *  (the #790 split); the card itself is still played. Archive (AI Rebel vs human
+ *  Empire, 181 hidden-base plays): base revealed or taken within two rounds 58%
+ *  when every ground unit left vs 44% when ground stayed. Default ON (John,
+ *  2026-10-24, option a); SWR_HF_NARROW_GUARD=0 is the counterfactual. */
+const HF_NARROW_GUARD: boolean = (() => {
+  try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_HF_NARROW_GUARD; if (v === '1') return true; if (v === '0') return false; } catch { /* browser */ }
+  return true;
+})();
+
+/** #817: the hidden base is nearly found and Imperial ground is close enough to
+ *  take it if Hidden Fleet empties it. */
+export function hiddenFleetWouldStripNarrowedBase(G: GameState): boolean {
+  if (!HF_NARROW_GUARD || !G.rebelBaseSystemId || G.rebelBaseRevealed) return false;
+  if (rebelPublicBaseCandidates(G).length > 3) return false;
+  return empireProximityToBase(G, 2) >= 2;
+}
+
 /** Opt-out for the unbiased tie-break (SWR_TIEBREAK=0). Default ON. Off
  *  restores the old first-wins behaviour, which resolved every tied decision to
  *  the alphabetically-first system. Exists so the change stays measurable —
@@ -5352,9 +5383,11 @@ function stepOnceInner(G: GameState, side: Side): boolean {
         riderIds.push(u.instanceId);
       }
     }
-    if (HF_BASE_GUARD && !G.rebelBaseRevealed && rebelBaseThreatened(G)) {
+    if ((HF_BASE_GUARD && !G.rebelBaseRevealed && rebelBaseThreatened(G))
+      || hiddenFleetWouldStripNarrowedBase(G)) {
       // Threatened hidden base: the ground stays (it is what a capture has to
       // beat) and so does half the fleet, strongest first, at least one ship.
+      // #817 adds the narrowed-base case (see hiddenFleetWouldStripNarrowedBase).
       const ships = baseUnits.filter((u) => selfMovingIds.includes(u.instanceId))
         .sort((a, b) => unitStrength(G, b) - unitStrength(G, a));
       const keep = Math.max(1, Math.ceil(ships.length / 2));
