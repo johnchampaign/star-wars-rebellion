@@ -13242,7 +13242,13 @@ function LoadArtModal({ G, currentMeta, onClose, onLoaded }: {
         >
           <input
             type="file"
-            accept=".vmod,.zip,application/zip"
+            // iPadOS/iOS and Android pickers grey out any file whose extension
+            // they can't map to a known type — and .vmod is unknown — so the
+            // filter is dropped on touch devices (#820). loadVmodFromFile
+            // rejects non-ZIPs with a 'not-a-zip' report anyway.
+            accept={typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0
+              ? undefined
+              : '.vmod,.zip,application/zip'}
             style={{ display: 'none' }}
             disabled={!!progress}
             onChange={(e) => {
