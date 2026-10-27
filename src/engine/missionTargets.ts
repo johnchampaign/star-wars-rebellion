@@ -659,6 +659,64 @@ export function missionRevealIsPointless(
   }
 }
 
+/** Why `missionRevealIsPointless` said yes, in a player's words — the play UI
+ *  puts it in the "this mission would be wasted" warning, which used to say only
+ *  that there was "nothing here for its effect to act on" and left the player
+ *  guessing whether the warning was wrong (#822: Behind Enemy Lines with ground
+ *  units at the base but no ship to carry them). Call it only after the check
+ *  returned true; missions without a specific reason get the generic one. */
+export function missionPointlessReason(
+  G: GameState, side: Side, missionId: string, sysId: SystemId
+): string {
+  const ss = G.map.systems[sysId];
+  const sName = G.catalog.systems[sysId]?.name ?? sysId;
+  const opp = side === 'Empire' ? 'Rebel' : 'Imperial';
+  /** What sits at the Rebel base, for the missions that move units out of it. */
+  const baseCargo = (useBaseSpace: boolean) => {
+    const loc = useBaseSpace || !G.rebelBaseRevealed || !G.rebelBaseSystemId
+      ? G.map.rebelBaseSpace : G.map.systems[G.rebelBaseSystemId];
+    let ships = 0, ground = 0;
+    for (const u of loc?.units ?? []) {
+      const t = G.catalog.unitTypes[u.typeId];
+      if (u.side !== 'Rebel' || !t || t.transport.immobile || t.class === 'structure') continue;
+      if (t.theater === 'ground') ground++; else ships++;
+    }
+    // Pointless means nothing can move, so there are no ships here at all.
+    if (ground > 0) return 'your ground units at the Rebel base have no ship there to carry them (ground units need a transport to move)';
+    return ships > 0 ? 'none of the units at the Rebel base can move' : 'there are no units at the Rebel base that can move';
+  };
+  switch (missionId) {
+    case 'imperial-propaganda': return `no system in ${sName}'s region has Rebel loyalty to remove`;
+    case 'draw-them-out': return 'the Rebel leader pool is empty, so there is no leader to place';
+    case 'misdirection': return 'the Imperial leader pool is empty, so there is no one for it to stop';
+    case 'single-reactor-ignition': return `there are no Rebel ground units or target markers at ${sName}`;
+    case 'hidden-fleet': return baseCargo(true);
+    case 'behind-enemy-lines': return baseCargo(false);
+    case 'safe-haven':
+    case 'imperial-might':
+    case 'oversee-project':
+      if (ss?.sabotage) return `${sName} is sabotaged, and nothing can be deployed to a sabotaged system`;
+      return missionId === 'safe-haven' ? 'your build queue is empty, so there is nothing to deploy'
+        : missionId === 'imperial-might' ? 'space 1 of your build queue is empty, so there is nothing to deploy'
+          : 'spaces 1 and 2 of your build queue are empty, so there is nothing to deploy';
+    case 'hunt-them-down':
+    case 'hit-and-run':
+    case 'rogue-squadron-raid':
+      return `there are no ${opp} units at ${sName} that it can destroy`;
+    case 'assault': return `there are no stormtroopers at ${sName} to destroy`;
+    case 'plant-explosives': return `there are no Imperial ground units at ${sName} to destroy`;
+    case 'wookie-uprising': return `${sName} is already Rebel-loyal and has no Imperial units to destroy`;
+    case 'superlaser-online': return `there are no Rebel units and no Rebel loyalty at ${sName} — it would only destroy your own units`;
+    case 'plan-the-assault': return 'there are no Rebel ships at the Rebel base to send';
+    case 'lead-the-strike-team': return `there are no ground units at the Rebel base to send, and no battle to fight at ${sName}`;
+    case 'demolition': return `nothing in the Imperial build queue matches ${sName}'s resource icons`;
+    case 'heist': return `${sName} has no target marker to remove and no Death Star`;
+    case 'long-range-probe': return G.rebelBaseRevealed ? 'the Rebel base has already been found'
+      : `you already know the Rebel base is not at ${sName}`;
+    default: return 'there is nothing here for its effect to act on';
+  }
+}
+
 /** How many systems in `sysId`'s region currently hold Rebel loyalty — the
  *  "payoff size" for Imperial Propaganda. 0 means the mission would be wasted
  *  there (see missionRevealIsPointless). Exposed for AI target scoring. */

@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, useCallback, useMemo, createContext, useCo
 import { loadAllForEngine, loadBoardMask, MAP_IMAGE_URL, MARKER_IMAGE_BASE, UNIT_IMAGE_BASE, LEADER_IMAGE_BASE, CARD_IMAGE_BASE, IMG_BUST, diceImageUrl, vmodAssetUrl, mapImageUrl } from '../data/loadAssets';
 import { UNIT_IMAGE, groupByType, groupTypeIds, getUnitStyle, setUnitStyle, nextStyle, unitImageUrl, type UnitImageStyle } from './unitImages';
 import { capturePageScreenshot, screenshotAutoCaptureSafe } from './screenshot';
-import { missionTargets, missionLeaderTargets, missionRevealIsPointless } from '../engine/missionTargets';
+import { missionTargets, missionLeaderTargets, missionRevealIsPointless, missionPointlessReason } from '../engine/missionTargets';
 import { stepOnce as aiStepOnce, setCommandPolicyOverride } from './randomAI';
 import { buildV2GameLog, buildId } from './logFormat';
 import { buildReadableLog, type LogVisibility, type ExportChatMessage } from './logExport';
@@ -10776,9 +10776,9 @@ function CommandPanel({ G, side, onActivate, onReveal, onPass, onRevealBase }: {
       const mName = G.catalog.missions[revealMissionId]?.name ?? revealMissionId;
       const sName = G.catalog.systems[target]?.name ?? target;
       const ok = confirmAdvisory(
-        `${mName} at ${sName} won't accomplish anything right now — there's `
-        + `nothing here for its effect to act on, so the mission would be wasted. `
-        + `Reveal it anyway?`);
+        `${mName} at ${sName} won't accomplish anything right now: `
+        + `${missionPointlessReason(G, side, revealMissionId, target)}. `
+        + `The mission would be wasted. Reveal it anyway?`);
       if (!ok) return;
     }
     const ok = onReveal(revealMissionId, target, revealTargetLeaderId ?? undefined, revealEntry?.leaderIds);
