@@ -11779,15 +11779,22 @@ function TurnTrack({ G }: { G: GameState }) {
  *  What genuinely stays secret is the mission a player never attempted: it
  *  returns to hand at Refresh unrevealed, and is logged as
  *  'mission-return-to-hand' rather than a discard, so it never reaches here.
+ *    - 'subversion-trigger' a face-down Subversion revealed and discarded
+ *                          when it fires;
+ *    - 'stolen-intel-discard' the Empire discarding a mission from the Rebel
+ *                          hand (#821). Logged under the EMPIRE's side, but
+ *                          the card lands on the Rebel pile.
  *  Derived from the log rather than faction.missionDiscard so that entries
  *  before a 'mission-deck-reshuffled' drop out — that pile went back into the
  *  deck. */
 function publicMissionDiscards(G: GameState, side: Side): string[] {
   const out: string[] = [];
   for (const e of G.turnLog) {
-    if (e.side !== side) continue;
+    const owner = e.kind === 'stolen-intel-discard' ? 'Rebel' : e.side;
+    if (owner !== side) continue;
     if (e.kind === 'mission-deck-reshuffled') { out.length = 0; continue; }
-    if (e.kind === 'mission-discard' || e.kind === 'mission-hand-trim') {
+    if (e.kind === 'mission-discard' || e.kind === 'mission-hand-trim'
+        || e.kind === 'subversion-trigger' || e.kind === 'stolen-intel-discard') {
       const id = (e.payload as { missionId?: string } | undefined)?.missionId;
       if (id) out.push(id);
     }
