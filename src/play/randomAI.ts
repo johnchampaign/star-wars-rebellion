@@ -346,6 +346,16 @@ export function hiddenFleetWouldStripNarrowedBase(G: GameState): boolean {
   return empireProximityToBase(G, 2) >= 2;
 }
 
+/** RoE Shield Bunker (rules p.8): a Death Star in a system with an Imperial
+ *  Shield Bunker cannot be destroyed or damaged, Death Star Plans included. The
+ *  Rebel's Death Star opportunism bonuses assume the plans can fire, so they
+ *  must skip a shielded one (#823: the AI planned the assault on a Death Star
+ *  sitting over a Shield Bunker and lost its strike force for nothing). */
+export function deathStarShielded(G: GameState, sysId: SystemId): boolean {
+  return !!G.expansion?.enabled && (G.map.systems[sysId]?.units ?? []).some(
+    (u) => u.side === 'Empire' && u.typeId === 'shield-bunker');
+}
+
 /** Opt-out for the unbiased tie-break (SWR_TIEBREAK=0). Default ON. Off
  *  restores the old first-wins behaviour, which resolved every tied decision to
  *  the alphabetically-first system. Exists so the change stays measurable —
@@ -2153,8 +2163,13 @@ export function rebelMissionTargetScore(
     //   - empty target      → no combat, nothing to assault
     //   - trivial own force  → a lone fighter (reb < 5, ~2 fighters) just dies
     //   - losing matchup     → outmatched by the defenders
+    // #823: a Death Star over a Shield Bunker can't be damaged, so if it is the
+    // only Imperial ship there the space battle can't be won at all.
+    const onlyShieldedDS = deathStarShielded(G, targetSysId) && (sysState?.units ?? []).every((u) =>
+      u.side !== 'Empire' || G.catalog.unitTypes[u.typeId]?.theater !== 'space'
+      || u.typeId === 'death-star' || u.typeId === 'death-star-under-construction');
     if (imp === 0) s -= 20;
-    else if (reb < 5 || reb < imp * 1.2) s -= 40;
+    else if (onlyShieldedDS || reb < 5 || reb < imp * 1.2) s -= 40;
     else s += 8;
     // DEATH STAR OPPORTUNISM via Plan the Assault (#591): the reporter watched
     // the AI route 6 base fighters to a system with a single TIE while a LONE
@@ -2167,7 +2182,8 @@ export function rebelMissionTargetScore(
     const impShipUnits = (sysState?.units ?? []).filter((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'space');
     const hasLoneDS = impShipUnits.some((u) => u.typeId === 'death-star')
       && impShipUnits.filter((u) => u.typeId !== 'death-star').length <= 1;
-    if (hasLoneDS && (G.rebel.objectiveHand ?? []).some((id) => id.startsWith('death-star-plans')) && reb >= 5) {
+    if (hasLoneDS && !deathStarShielded(G, targetSysId)
+        && (G.rebel.objectiveHand ?? []).some((id) => id.startsWith('death-star-plans')) && reb >= 5) {
       s += 30;
     }
   }
@@ -3938,7 +3954,7 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
               // bringable fighters; the surrounding strength gate already
               // filters genuinely suicidal escorts.
               if (rebelObjHand.some((id) => id.startsWith('death-star-plans'))
-                  && impUnits.some((u) => u.typeId === 'death-star')) {
+                  && impUnits.some((u) => u.typeId === 'death-star') && !deathStarShielded(G, sysId)) {
                 const fightersBringable =
                   sys.units.filter((u) => u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.class === 'fighter').length
                   + (G.catalog.adjacency[sysId] ?? []).reduce((acc, a) =>
