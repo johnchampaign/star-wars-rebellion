@@ -234,6 +234,72 @@ function isUnsearchedBaseCandidate(G: GameState, sid: SystemId): boolean {
   return !ss.units.some((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground');
 }
 
+/** SWR_SEARCH_IN_FORCE (#539): once the Empire has narrowed the hidden base to
+ *  a few worlds, landing ground on one of them probably REVEALS it, so the
+ *  landing is the assault. In 30 self-play games the AI's reveal was its own
+ *  landing 18 times, 10 of them weak (under 0.7x the base's ground; typically 2
+ *  stormtroopers against 9 Rebel ground with ~9 more Imperial ground within two
+ *  jumps): 1 of those 10 won the first battle and 2 took the base within two
+ *  rounds, against 6 of 8 for even or stronger landings — and 6 of the 10 bases
+ *  moved away afterwards. With this on, a live candidate counts as "likely the
+ *  base" when at most SWR_SEARCH_IN_FORCE_MAX (default 5) are left: its landing
+ *  loads ground before fighters, a landing under 0.7x the Rebel's public
+ *  garrison (the Rebel Base space is on the board, plus any Rebel ground at the
+ *  target) loses its search bonus, and moving ground next to such a candidate
+ *  is rewarded instead — but only when waiting pays: more Imperial ground sits
+ *  two or three jumps out (enough to reach 0.7x) and a move this turn brings
+ *  some of it adjacent from outside the candidate's reach. Shuffling a stack
+ *  between two systems that already border the base is not staging (that
+ *  recreated #809's Death Star shuffle). A broad search keeps its cheap
+ *  one-trooper taps. Measured 2026-10-29 (60-game pair, browser flags, seeds
+ *  1+31): neutral — Empire wins 18 -> 18, weak reveal landings 18 -> 17, bases
+ *  found 35 -> 33; the gate fires on ~2% of hidden-base round starts, because
+ *  most weak landings have no reserve to wait for. (An earlier version without
+ *  the reserve/staging tests read 18 -> 21 wins but recreated #809.) Default ON
+ *  as harmless and right where it fires;
+ *  SWR_SEARCH_IN_FORCE=0 is the counterfactual. */
+const SEARCH_IN_FORCE: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_SEARCH_IN_FORCE === '1') return true;
+    if (proc?.env?.SWR_SEARCH_IN_FORCE === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+const SEARCH_IN_FORCE_MAX: number = (() => {
+  try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_SEARCH_IN_FORCE_MAX; if (v) return Number(v); } catch { /* browser */ }
+  return 5;
+})();
+
+/** Worlds the base could still be on that the Empire has not searched, from its
+ *  own knowledge (the public rule-outs plus its probe hand). */
+const liveCandidateMemo = new WeakMap<GameState, { key: string; ids: SystemId[] }>();
+export function empireLiveBaseCandidates(G: GameState): SystemId[] {
+  const key = `${G.timeMarker}:${G.turnLog?.length ?? 0}:${G.empireSearchedRuledOut?.length ?? 0}:${G.empire.probeHand?.length ?? 0}`;
+  const hit = liveCandidateMemo.get(G);
+  if (hit && hit.key === key) return hit.ids;
+  const ids = G.rebelBaseRevealed ? [] : Object.keys(G.map.systems).filter((sid) => isUnsearchedBaseCandidate(G, sid as SystemId)) as SystemId[];
+  liveCandidateMemo.set(G, { key, ids });
+  return ids;
+}
+
+/** #539: is a ground landing at `sid` likely to reveal the base (so it must be
+ *  an assault, not a tap)? */
+export function searchInForceTarget(G: GameState, sid: SystemId): boolean {
+  if (!SEARCH_IN_FORCE || G.rebelBaseRevealed || !isUnsearchedBaseCandidate(G, sid)) return false;
+  return empireLiveBaseCandidates(G).length <= SEARCH_IN_FORCE_MAX;
+}
+
+/** The Rebel ground a landing at `sid` would face if the base is there: the
+ *  public Rebel Base space plus any Rebel ground already in the system. */
+export function rebelGarrisonIfBase(G: GameState, sid: SystemId): number {
+  let n = 0;
+  for (const u of [...(G.map.rebelBaseSpace?.units ?? []), ...(G.map.systems[sid]?.units ?? [])]) {
+    if (u.side === 'Rebel' && G.catalog.unitTypes[u.typeId]?.theater === 'ground') n += unitStrength(G, u);
+  }
+  return n;
+}
+
 const RM_GATE_ONE_HOP: boolean = (() => {
   try {
     const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
@@ -3134,8 +3200,9 @@ export function plannedMoveOrders(
     let used = 0;
     // Assault sizing: the revealed base is taken on the ground, so troops get
     // the carrier capacity first and fighters ride on what is left.
-    const groundFirst = ASSAULT_SIZING && side === 'Empire'
-      && G.rebelBaseRevealed && targetSystemId === G.rebelBaseSystemId;
+    const groundFirst = side === 'Empire' && ((ASSAULT_SIZING
+      && G.rebelBaseRevealed && targetSystemId === G.rebelBaseSystemId)
+      || searchInForceTarget(G, targetSystemId));
     if (groundFirst) {
       for (const u of groundCandidates) {
         if (used >= capacity) break;
@@ -3186,6 +3253,59 @@ export function plannedMoveOrders(
     }
   }
   return orders;
+}
+
+/** #539 (SWR_SEARCH_IN_FORCE): likely-base candidates the Empire can only land
+ *  on weakly right now, with an army in reserve and a staging move on offer.
+ *  Their landing is priced down and moving ground next to them is rewarded, so
+ *  the reveal comes with an army. */
+export function empireWeakSearchTargets(G: GameState): Set<string> | null {
+  const side: Side = 'Empire';
+  let weakSearchTargets: Set<string> | null = null;
+  if (SEARCH_IN_FORCE && !G.rebelBaseRevealed
+      && empireLiveBaseCandidates(G).length <= SEARCH_IN_FORCE_MAX) {
+    weakSearchTargets = new Set();
+    for (const c of empireLiveBaseCandidates(G)) {
+      let delivered = 0;
+      for (const o of plannedMoveOrders(G, side, c)) {
+        const src = G.map.systems[o.fromSystemId];
+        for (const id of o.unitInstanceIds) {
+          const u = src?.units.find((x) => x.instanceId === id);
+          const t = u ? G.catalog.unitTypes[u.typeId] : undefined;
+          if (u && t?.theater === 'ground' && t.class !== 'structure') delivered += unitStrength(G, u);
+        }
+      }
+      const need = 0.7 * rebelGarrisonIfBase(G, c);
+      if (delivered === 0 || delivered >= need) continue;
+      // Waiting only pays if there is an army to wait FOR: mobile Imperial
+      // ground two or three jumps out that staging can bring within reach.
+      // Without it the weak landing is the best strike on offer (#809's board:
+      // the Death Star's stack beside Yavin was all the ground there was).
+      let reserve = 0;
+      for (const [sid, d] of bfsDistances(G, c, 3)) {
+        if (d < 2) continue;
+        for (const u of G.map.systems[sid]?.units ?? []) {
+          const t = G.catalog.unitTypes[u.typeId];
+          if (u.side === 'Empire' && t?.theater === 'ground' && t.class !== 'structure' && !t.transport.immobile) reserve += unitStrength(G, u);
+        }
+      }
+      if (delivered + reserve < need) continue;
+      // …and only if THIS turn offers a staging move: an activation beside the
+      // target that pulls ground in from out of reach. Otherwise skipping the
+      // landing just hands the turn to an unrelated move.
+      const reach = new Set<string>([c, ...(G.catalog.adjacency[c] ?? [])]);
+      const canStage = (G.catalog.adjacency[c] ?? []).some((n) => plannedMoveOrders(G, side, n).some((o) => {
+        if (reach.has(o.fromSystemId)) return false;
+        const src = G.map.systems[o.fromSystemId];
+        return o.unitInstanceIds.some((id) => {
+          const t = G.catalog.unitTypes[src?.units.find((u) => u.instanceId === id)?.typeId ?? ''];
+          return t?.theater === 'ground' && t.class !== 'structure';
+        });
+      }));
+      if (canStage) weakSearchTargets.add(c);
+    }
+  }
+  return weakSearchTargets;
 }
 
 export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
@@ -3342,6 +3462,8 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
   let subjugatedCount = 0;
   for (const ss of Object.values(G.map.systems)) if (ss.subjugated) subjugatedCount++;
   const subjugationCap = side === 'Empire' && subjugatedCount >= 6;
+  // #539 (SWR_SEARCH_IN_FORCE): likely-base worlds to stage beside, not land on.
+  const weakSearchTargets = side === 'Empire' ? empireWeakSearchTargets(G) : null;
   let largestEmpireStackSys: string | null = null;
   let largestEmpireStackSize = 0;
   if (side === 'Empire') {
@@ -3569,7 +3691,30 @@ export function bestCommandAction(G: GameState, side: Side): CommandAction[] {
           // flag on, where such a candidate is no longer treated as cleared.)
           if (HUNT_OCCUPY_ENABLED && sys.units.some((u) => u.side === 'Empire')) cand += 5;
           ts += cand;
+          // #539: a landing that probably reveals the base is the assault. A
+          // weak one loses the battle and warns the Rebel, so it earns nothing
+          // as a search; staging next door (below) takes its place.
+          if (weakSearchTargets?.has(sysId)) ts -= cand + 10;
         }
+      }
+      // #539 staging: mass ground beside a likely-base world the Empire can't
+      // yet land on in force, so the next activation there is the assault.
+      // Only ground that comes from OUT of reach counts — sliding a stack from
+      // one neighbour of the target to another adds nothing (#809's board).
+      if (weakSearchTargets && weakSearchTargets.size > 0 && !weakSearchTargets.has(sysId)
+          && (G.catalog.adjacency[sysId] ?? []).some((a) => weakSearchTargets!.has(a))) {
+        const inReach = (sid: string) => weakSearchTargets!.has(sid)
+          || (G.catalog.adjacency[sid] ?? []).some((a) => weakSearchTargets!.has(a));
+        let groundIn = 0;
+        for (const o of plannedHere) {
+          if (inReach(o.fromSystemId)) continue;
+          const src = G.map.systems[o.fromSystemId];
+          for (const id of o.unitInstanceIds) {
+            const t = G.catalog.unitTypes[src?.units.find((u) => u.instanceId === id)?.typeId ?? ''];
+            if (t?.theater === 'ground' && t.class !== 'structure') groundIn++;
+          }
+        }
+        if (groundIn > 0) ts += 6 + Math.min(groundIn, 4) * 2;
       }
       // URGENCY: Empire's path to victory requires finding and invading
       // the base before reputation-time runs out. Tournament data showed

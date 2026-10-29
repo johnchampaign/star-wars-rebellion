@@ -75,7 +75,9 @@ check('board: Toydaria is unsearched, Nal Hutta already searched',
   !(G0.empireSearchedRuledOut ?? []).includes('toydaria') && (G0.empireSearchedRuledOut ?? []).includes('nal-hutta'));
 
 const on = run({ SWR_HUNT_GROUND: '1' });
-const off = run({ SWR_HUNT_GROUND: '0' });
+// SWR_SEARCH_IN_FORCE also loads ground first on a narrowed candidate (#539);
+// the control isolates this lever.
+const off = run({ SWR_HUNT_GROUND: '0', SWR_SEARCH_IN_FORCE: '0' });
 check('ON: the move into the Toydaria candidate lands ground', on.toydaria.ok && on.toydaria.ground >= 1, JSON.stringify(on.toydaria));
 check('ON: carrier still full (7 units arrive)', on.toydaria.units === 7, JSON.stringify(on.toydaria));
 check('OFF reproduces the report: Toydaria gets ships only', off.toydaria.ok && off.toydaria.ground === 0, JSON.stringify(off.toydaria));
