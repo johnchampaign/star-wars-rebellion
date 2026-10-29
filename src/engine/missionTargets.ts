@@ -520,13 +520,22 @@ export function missionRevealIsPointless(
       if (ss?.sabotage) return true;
       return ([1, 2] as const).every((s) => (G.empire.buildQueue[s]?.length ?? 0) === 0);
     }
+    case 'rogue-squadron-raid':
+      // "Destroy up to 4 health worth of units of your choice ON THE BUILD
+      // QUEUE" — the target system only gates the attempt, so units there are
+      // irrelevant (#824: warned "no Imperial units at Corellia" with a 4-health
+      // Interdictor sitting on the queue). A no-op only when no queued unit fits
+      // the budget; the Death Star is never a target (#370).
+      return !([1, 2, 3] as const).some((s) => (G.empire.buildQueue[s] ?? []).some((typeId) => {
+        const t = G.catalog.unitTypes[typeId];
+        return !!t && t.class !== 'station' && t.health.value <= 4;
+      }));
     case 'hunt-them-down':
-    case 'hit-and-run':
-    case 'rogue-squadron-raid': {
+    case 'hit-and-run': {
       // "Destroy up to N health worth of units of your choice IN THE SYSTEM" —
       // a no-op when the opponent has no destroyable units there. The Empire
-      // shouldn't waste Hunt Them Down on a system with no Rebel units, and the
-      // Rebel raids likewise need Imperial units present (#326).
+      // shouldn't waste Hunt Them Down on a system with no Rebel units, and Hit
+      // And Run likewise needs Imperial units present (#326).
       const opp: Side = side === 'Empire' ? 'Rebel' : 'Empire';
       return !(ss?.units ?? []).some(
         (u) => u.side === opp && G.catalog.unitTypes[u.typeId]?.health.color !== null);
@@ -701,8 +710,9 @@ export function missionPointlessReason(
           : 'spaces 1 and 2 of your build queue are empty, so there is nothing to deploy';
     case 'hunt-them-down':
     case 'hit-and-run':
-    case 'rogue-squadron-raid':
       return `there are no ${opp} units at ${sName} that it can destroy`;
+    case 'rogue-squadron-raid':
+      return 'there are no units on the Imperial build queue that it can destroy';
     case 'assault': return `there are no stormtroopers at ${sName} to destroy`;
     case 'plant-explosives': return `there are no Imperial ground units at ${sName} to destroy`;
     case 'wookie-uprising': return `${sName} is already Rebel-loyal and has no Imperial units to destroy`;

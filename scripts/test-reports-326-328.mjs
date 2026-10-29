@@ -54,8 +54,17 @@ console.log('\n[ #326 Rebel raids need Imperial units present ]');
   G.map.systems[sys].units = [];
   check('Hit And Run pointless with no Imperial units',
     missionRevealIsPointless(G, 'Rebel', 'hit-and-run', sys) === true);
-  check('Rogue Squadron Raid pointless with no Imperial units',
+  // Rogue Squadron Raid hits the BUILD QUEUE, not the system (#824).
+  G.empire.buildQueue[1] = []; G.empire.buildQueue[2] = []; G.empire.buildQueue[3] = [];
+  check('Rogue Squadron Raid pointless with an empty build queue',
     missionRevealIsPointless(G, 'Rebel', 'rogue-squadron-raid', sys) === true);
+  G.empire.buildQueue[2] = ['interdictor'];
+  check('#824 Rogue Squadron Raid NOT pointless with a 4-health Interdictor queued and no units in the system',
+    missionRevealIsPointless(G, 'Rebel', 'rogue-squadron-raid', sys) === false);
+  G.empire.buildQueue[2] = ['super-star-destroyer'];
+  check('Rogue Squadron Raid pointless when only an over-budget 6-health Super Star Destroyer is queued',
+    missionRevealIsPointless(G, 'Rebel', 'rogue-squadron-raid', sys) === true);
+  G.empire.buildQueue[2] = [];
   M.deployUnit(G, 'Empire', 'stormtrooper', sys);
   check('Hit And Run NOT pointless with an Imperial unit',
     missionRevealIsPointless(G, 'Rebel', 'hit-and-run', sys) === false);
