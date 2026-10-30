@@ -1838,6 +1838,12 @@ export function empireMissionTargetScore(G: GameState, missionId: string, target
       // 1-icon world (nothing to unlock) scores 0 rather than a false bonus.
     }
   }
+  // Display of Power ("gain 2 loyalty in this system") is the same kind of
+  // loyalty-GAIN mission but was missing from the guard above, so every
+  // populous target scored 0 and the AI happily attempted it on Coruscant
+  // (#825) — always Imperial, and its loyalty is locked (gainLoyalty refuses
+  // it), so the success did literally nothing. Same -30 as an Imperial system.
+  if (missionId === 'display-of-power' && (sysState?.loyalty === 'imperial' || sys.isCoruscant)) s -= 30;
   // Captures / probes don't care about target system per se.
   if (missionId === 'gather-intel') s += 3;
   // Research & Development can REMOVE a sabotage marker from its target system
