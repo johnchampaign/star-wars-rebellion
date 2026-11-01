@@ -389,7 +389,13 @@ export function missionTargets(G: GameState, _side: Side, missionId: string): Ta
   // Did we detect *any* constraint?
   const haveBase = noteParts.length > 0 || quals.length > 0;
   if (!haveBase && (t.includes('in any system') || t.includes('on any system') || t.includes('anywhere'))) {
-    return { systemIds: allSystems(G), permissive: false, note: 'Any system.' };
+    // "Any system" includes destroyed ones: Imperial ground units can still sit
+    // there (in transport), so e.g. Plant Explosives or Hit and Run can hit them
+    // (player report #826: Plant Explosives refused a destroyed Mandalore).
+    // Same live-system test as below, plus missions that drop ground units in
+    // and resolve a ground battle — a destroyed world can't host one (rr p.7).
+    const needsLive = /loyalty|subjugat|sabotage|ignoring transport/.test(full);
+    return { systemIds: needsLive ? allSystems(G) : Object.keys(G.map.systems), permissive: false, note: 'Any system.' };
   }
   if (!haveBase) {
     return {
