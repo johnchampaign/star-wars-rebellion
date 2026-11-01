@@ -42,6 +42,10 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// #763's SWR_LOYALTY_YIELD prices direct loyalty gains by build yield and
+// supersedes this branch for Rule by Fear; pin THIS lever with it off (both
+// arms — the child inherits it). The yield scoring is test-loyalty-yield-763.
+process.env.SWR_LOYALTY_YIELD = '0';
 const { register } = await import('tsx/esm/api'); register();
 const { createGame } = await import('../src/engine/setup.ts');
 const AI = await import('../src/play/randomAI.ts');
