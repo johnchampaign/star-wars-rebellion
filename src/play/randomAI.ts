@@ -122,6 +122,35 @@ const CONVERT_SUBJUGATED: boolean = (() => {
   return true;
 })();
 
+/** SWR_LOYALTY_YIELD (#763): aim a loyalty-gain mission by what Imperial
+ *  loyalty there would actually BUILD. The target score counted icons flat, so
+ *  a neutral Mon Calamari (space triangle + space SQUARE: a Star Destroyer
+ *  every build round) tied with any other two-icon world, and the subjugated
+ *  conversion bonus paid 8 per locked icon whether it hid a Star Destroyer or
+ *  an AT-AT with the supply empty. Display of Power and Message from High
+ *  Command had no target score at all. With this on, a gain that makes the
+ *  target Imperial-loyal scores 3x the build yield of the icons it unlocks
+ *  (every icon from neutral; all but the left-most from subjugated, RR
+ *  "Subjugation"), priced by iconBuildValue — the same yield SWR_BUILD_YIELD
+ *  aims Construct Factory with. SWR_LOYALTY_YIELD=0 is the counterfactual. */
+const LOYALTY_YIELD: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_LOYALTY_YIELD === '0') return false;
+    if (proc?.env?.SWR_LOYALTY_YIELD === '1') return true;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+const LOYALTY_YIELD_W: number = (() => {
+  try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_LOYALTY_YIELD_W; if (v) return Number(v); } catch { /* browser */ }
+  return 3;
+})();
+/** Loyalty a single success adds in the target system, for the missions that
+ *  gain it THERE (Fear Will Keep Them in Line gains it elsewhere in the region). */
+const EMPIRE_LOYALTY_GAIN: Record<string, number> = {
+  'rule-by-fear': 1, 'trade-negotiations': 1, 'message-from-high-command': 1, 'display-of-power': 2,
+};
+
 /** Candidate WIDTH (SWR_CAND_K, default 1 = the historical generator). How many
  *  targets each mission / each leader proposes to the search. Measured on 1,119
  *  exact Command-start positions from winning human games
@@ -1799,7 +1828,16 @@ export function empireMissionTargetScore(G: GameState, missionId: string, target
   // Generally prefer high-resource systems for build/diplomacy missions.
   const resourceWeight = (sys.resources?.length ?? 0);
   const sysState = G.map.systems[targetSysId];
-  if (missionId.startsWith('rule-by-fear') || missionId.startsWith('trade-negotiations')
+  const gain = EMPIRE_LOYALTY_GAIN[missionId] ?? 0;
+  if (LOYALTY_YIELD && gain > 0) {
+    s += resourceWeight * 2;
+    if (sysState?.loyalty === 'imperial') s -= 30;
+    // Imperial afterwards? From Rebel loyalty it takes two gains.
+    else if (gain >= (sysState?.loyalty === 'rebel' ? 2 : 1)) {
+      const unlocked = sysState?.subjugated ? (sys.resources ?? []).slice(1) : (sys.resources ?? []);
+      s += LOYALTY_YIELD_W * unlocked.reduce((a, r) => a + iconBuildValue(G, 'Empire', { theater: r.type, shape: r.shape }), 0);
+    } else if (sysState?.subjugated) s -= 6; // only strips the Rebel marker (see below)
+  } else if (missionId.startsWith('rule-by-fear') || missionId.startsWith('trade-negotiations')
     || missionId === 'fear-will-keep-them-in-line') {
     s += resourceWeight * 2;
     // Loyalty-GAIN missions ("gain 1 loyalty in this system") are WASTED on a
