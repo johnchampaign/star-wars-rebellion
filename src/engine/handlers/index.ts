@@ -115,7 +115,7 @@ function destroyUpToHealthAuto(G: GameState, opponentSide: 'Rebel' | 'Empire', s
   return spent;
 }
 
-/** Sum of skill icons + tactic dice — a rough "value" heuristic for leaders. */
+/** Sum of skill icons + tactic values — a rough "value" heuristic for leaders. */
 function leaderValue(G: GameState, leaderId: string): number {
   const ld = G.catalog.leaders[leaderId];
   if (!ld) return 0;
