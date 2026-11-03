@@ -444,7 +444,7 @@ function aiOwesChoice(G: GameState, side: Side): boolean {
  *  We don't bother validating per-system legality of activation — that's
  *  expensive and the player can see system options in the Command panel
  *  anyway. The check is a fast superset that's accurate for "no leaders
- *  left in pool with tactic dice AND no revealable missions". */
+ *  left in pool with tactic values AND no revealable missions". */
 function hasAnyCommandAction(G: GameState, side: Side): boolean {
   const f = side === 'Rebel' ? G.rebel : G.empire;
   // Any leader WITH tactic values still in pool? Only those can activate a
