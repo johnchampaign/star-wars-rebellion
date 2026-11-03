@@ -53,6 +53,7 @@ const useUnitStyle = () => useContext(UnitStyleContext);
 import { createGame, resolveExpansion } from '../engine/setup';
 import * as _phases from '../engine/phases';
 import { hopelessFor } from './aiResign';
+import { RING_LABELS, leaderRingLabels, leaderRingTooltip, leaderMinorSkills } from './leaderInfo';
 import { RANKER_ENABLED, RANKER_FINAL } from './candidateRanker';
 import type { MoveOrder } from '../engine/phases';
 import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
@@ -8572,7 +8573,18 @@ function LeaderPips({ G, systemId, centerX, centerY }: {
                 {x.kind === 'carbonite' ? '❄' : '⛓'}
               </text>
             )}
-            <title>{titlePrefix}: {x.leader.name}</title>
+            {/* A ring is on the physical leader in the board game, so it shows
+                on the map token too (#828). */}
+            {leaderRingLabels(G, x.leader.id).length > 0 && (
+              <text
+                x={cx - SIZE / 2 - 1} y={centerY - SIZE / 2 + 8}
+                fontSize={10}
+                style={{ paintOrder: 'stroke', stroke: '#000', strokeWidth: 2 }}
+              >
+                💍
+              </text>
+            )}
+            <title>{titlePrefix}: {x.leader.name}{leaderRingLabels(G, x.leader.id).length > 0 ? `\n${leaderRingTooltip(G, x.leader.id)}` : ''}</title>
           </g>
         );
       })}
@@ -8622,6 +8634,16 @@ function LeaderPips({ G, systemId, centerX, centerY }: {
                 {' · '}
                 Space {l.tacticValues.space} / Ground {l.tacticValues.ground}
               </div>
+              {leaderMinorSkills(G, l.id).length > 0 && (
+                <div style={{ fontSize: 11, color: '#80dc78', marginTop: 2, textAlign: 'center' }}>
+                  Minor: {leaderMinorSkills(G, l.id).map((m) => `${m.name} ${m.value}`).join(' · ')}
+                </div>
+              )}
+              {leaderRingLabels(G, l.id).length > 0 && (
+                <div style={{ fontSize: 11, color: '#ffd54a', marginTop: 2, textAlign: 'center' }}>
+                  💍 {leaderRingLabels(G, l.id).join(', ')}
+                </div>
+              )}
             </div>
           </foreignObject>
         );
@@ -9678,10 +9700,15 @@ function LeaderRoster({ G, side, humanSide }: { G: GameState; side: Side; humanS
         {leaders.map((l) => {
           const st = leaderStatusFor(G, side, l.id, humanSide);
           const art = l.image ? getCachedArtUrlSync(l.image) : null;
+          const minors = leaderMinorSkills(G, l.id);
+          const rings = leaderRingLabels(G, l.id);
+          const minorTip = minors.length
+            ? `\nMinor skills: ${minors.map((m) => `${m.name} ${m.value}`).join(' · ')}` : '';
+          const ringTip = rings.length ? `\n${leaderRingTooltip(G, l.id)}` : '';
           return (
             <div
               key={l.id}
-              title={`${l.name}\nDiplomacy ${l.skills.diplomacy} · Intel ${l.skills.intel} · SpecOps ${l.skills.specOps} · Logistics ${l.skills.logistics}\nTactics: space ${l.tacticValues.space} / ground ${l.tacticValues.ground}\n${st.label}`}
+              title={`${l.name}\nDiplomacy ${l.skills.diplomacy} · Intel ${l.skills.intel} · SpecOps ${l.skills.specOps} · Logistics ${l.skills.logistics}${minorTip}\nTactics: space ${l.tacticValues.space} / ground ${l.tacticValues.ground}${ringTip}\n${st.label}`}
               style={{
                 width: 132, background: '#0c0d10', border: `1px solid ${st.color}55`,
                 borderLeft: `3px solid ${st.color}`, borderRadius: 4, padding: '4px 6px',
@@ -9721,6 +9748,24 @@ function LeaderRoster({ G, side, humanSide }: { G: GameState; side: Side; humanS
                     </>
                   )}
                 </div>
+                {minors.length > 0 && (
+                  // Its own line: the major-skill line above already fills the
+                  // tile. Green, matching the green dice minor icons roll.
+                  <div style={{ fontSize: 9.5, color: '#6f6a5c', whiteSpace: 'nowrap' }}>
+                    minor
+                    {minors.map((m) => (
+                      <span key={m.key}>
+                        {' '}{m.key}<span style={{ color: '#80dc78', fontWeight: 700 }}>{m.value}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {rings.length > 0 && (
+                  <div style={{ fontSize: 9.5, color: '#ffd54a', whiteSpace: 'nowrap',
+                    overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    💍 {rings.join(', ')}
+                  </div>
+                )}
                 <div style={{ fontSize: 9.5, color: st.color, whiteSpace: 'nowrap',
                   overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {st.label}
@@ -9731,7 +9776,7 @@ function LeaderRoster({ G, side, humanSide }: { G: GameState; side: Side; humanS
         })}
       </div>
       <div style={{ fontSize: 9.5, color: '#666', marginTop: 4 }}>
-        D/I/O/L = Diplomacy / Intel / Spec-Ops / Logistics skill · S/G = space / ground tactic value
+        D/I/O/L = Diplomacy / Intel / Spec-Ops / Logistics skill · minor = minor skill icons · 💍 = attached ring (hover for what it does) · S/G = space / ground tactic value
       </div>
     </details>
   );
@@ -9921,22 +9966,20 @@ function FactionPanel({ G, side, humanSide }: { G: GameState; side: Side; humanS
             : `${f.actionHand.length} cards`
         } />
         <Row label="Action deck" value={`${f.actionDeck.length} cards`} />
-        {side === 'Rebel' && (() => {
+        {(() => {
           // Show where every ring is attached. Previously only the R2-D2 / C-3PO
           // droid rings were listed, so a leader awarded the Master Yoda ring via
           // Seek Yoda (or the K-2SO / bounty / dark-side rings) showed nothing and
-          // looked like they got no ring at all (player report #275).
-          const RING_LABELS: Record<string, string> = {
-            r2d2: 'R2-D2', c3po: 'C-3PO', k2so: 'K-2SO',
-            yoda: 'Yoda', bounty: 'Bounty', 'dark-side': 'Dark Side',
-            // #626: the Falcon ring decides WHO can trigger the rescue and
-            // WHERE, so the player has to be able to see where it landed.
-            falcon: 'Millennium Falcon',
-          };
+          // looked like they got no ring at all (player report #275). Each panel
+          // lists its own side's leaders: this row used to be Rebel-only, which
+          // hid a lured leader's ring from the Empire panel (#828).
           const att = G.leaderAttachments ?? {};
           const entries: string[] = [];
           for (const lid of Object.keys(att)) {
-            const name = G.catalog.leaders[lid]?.name ?? lid;
+            const ldr = G.catalog.leaders[lid];
+            const owner = att[lid].includes('dark-side') ? 'Empire' : ldr?.side;
+            if (owner !== side) continue;
+            const name = ldr?.name ?? lid;
             for (const ring of att[lid]) {
               const label = RING_LABELS[ring];
               if (label) entries.push(`${label} → ${name}`);
@@ -11532,6 +11575,12 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
                   }}
                 >
                   <strong>{leader.name}</strong>
+                  {leaderRingLabels(G, lid).length > 0 && (
+                    <span title={leaderRingTooltip(G, lid)}
+                      style={{ marginLeft: 4, color: isSelected ? '#000' : '#ffd54a', fontSize: 11 }}>
+                      💍 {leaderRingLabels(G, lid).join(', ')}
+                    </span>
+                  )}
                   {isPictured && <span style={{ marginLeft: 4, color: isSelected ? '#000' : '#ffb84d', fontWeight: 700 }}>🖼 +2</span>}
                   {skillMatch && <span style={{ marginLeft: 4, color: isSelected ? '#000' : '#46c8b8', fontWeight: 700 }}>✓{requiredSkill} {skillValue}</span>}
                   <span style={{ marginLeft: 6, color: isSelected ? '#000a' : '#888', fontSize: 10 }}>
@@ -11539,6 +11588,9 @@ function AssignmentPanel({ G, side, humanSide, onChange }: { G: GameState; side:
                       .filter(([, v]) => v > 0)
                       .map(([k, v]) => `${k}:${v}`)
                       .join(' ')}
+                    {leaderMinorSkills(G, lid).length > 0 && (
+                      <>{' '}· minor {leaderMinorSkills(G, lid).map((m) => `${m.name}:${m.value}`).join(' ')}</>
+                    )}
                     {' '}· tactic s{leader.tacticValues.space}/g{leader.tacticValues.ground}
                   </span>
                 </button>
@@ -16274,6 +16326,11 @@ function MissionListPickModal({
             <span style={{ color: '#6f6a5c' }}>Int</span> {ldr.skills.intel}{'  '}
             <span style={{ color: '#6f6a5c' }}>Ops</span> {ldr.skills.specOps}{'  '}
             <span style={{ color: '#6f6a5c' }}>Log</span> {ldr.skills.logistics}
+            {leaderMinorSkills(G, ldr.id).length > 0 && (
+              <span style={{ color: '#80dc78' }}>
+                {'  '}Minor: {leaderMinorSkills(G, ldr.id).map((m) => `${m.name} ${m.value}`).join(', ')}
+              </span>
+            )}
             <div style={{ fontSize: 11, color: '#8a8470', marginTop: 2 }}>
               You can pick a mission {ldr.name} can't fulfill alone — it just won't
               resolve unless another leader's skill covers it.
