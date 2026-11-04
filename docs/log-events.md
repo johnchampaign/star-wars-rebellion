@@ -45,7 +45,7 @@ formats to `{ meta, humanSide, winner, events, snapshots, final }`.
 2. Run `node scripts/gen-log-registry.mjs`, then edit your kind's Description.
 3. `node scripts/test-log-registry.mjs` must pass.
 
-## Kinds (267)
+## Kinds (269)
 
 | Kind | Description | Sample payload | Emitted from |
 |---|---|---|---|
