@@ -2080,8 +2080,8 @@ function finishOpposition(G: GameState, pm: MissionResolution, subversionBonus: 
       empireSide: empireSideOfRoll ?? 'attacker', // unused if no Empire roll
     };
 
-    // Yoda mission pause: Rebel may discard the once-per-round reroll on
-    // a blank die in their OWN roll. Mirrors the combat-side YodaReroll
+    // Yoda mission pause: Rebel may spend the once-per-round reroll on a
+    // die in their OWN roll. Mirrors the combat-side YodaReroll
     // pause point in advanceAttackToTactics.
     const yodaPosted = maybePostMissionYodaReroll(G, pm);
     if (yodaPosted) return { ok: true };
@@ -2218,7 +2218,11 @@ function finalizeMissionRoll(
  *  if a choice was posted (caller pauses). Eligibility: Yoda ring holder
  *  is on the Rebel side at the mission's target system, the reroll hasn't
  *  been used this round, AND the Rebel-side roll (attacker if Rebel is
- *  resolver, else opposer) has at least one blank die. */
+ *  resolver, else opposer) has a die worth rerolling. Ring text: "you may
+ *  reroll 1 of your dice" — no blank restriction (#829, the mission half of
+ *  #540). A hit or direct-hit is 1 success and can become a special's 2, which
+ *  decides a roll that is behind by one. Only a special is excluded
+ *  (strictly-best face, rerolling it is a misclick). */
 function maybePostMissionYodaReroll(G: GameState, pm: MissionResolution): boolean {
   if (G.yodaRerollUsedThisRound) return false;
   const yoda = findYodaHolder(G);
@@ -2241,14 +2245,14 @@ function maybePostMissionYodaReroll(G: GameState, pm: MissionResolution): boolea
   const ownSuccesses = rebelIsResolver ? attTotal : stash.oppSuccesses;
   const oppFaces = rebelIsResolver ? stash.oppFaces : stash.attFaces;
   const oppSuccesses = rebelIsResolver ? stash.oppSuccesses : attTotal;
-  const blanks = rebelFaces.map((f, i) => f === 'blank' ? i : -1).filter((i) => i >= 0);
-  if (blanks.length === 0) return false;
+  const rerollable = rebelFaces.map((f, i) => f !== 'special' ? i : -1).filter((i) => i >= 0);
+  if (rerollable.length === 0) return false;
   G.pendingChoice = {
     kind: 'YodaReroll',
     side: 'Rebel',
     context: 'mission',
     systemId: pm.targetSystemId,
-    blankIndices: blanks,
+    blankIndices: rerollable,
     holderLeaderId: yoda,
     missionFaces: [...rebelFaces],
     missionOwnSuccesses: ownSuccesses,
@@ -2256,7 +2260,8 @@ function maybePostMissionYodaReroll(G: GameState, pm: MissionResolution): boolea
     missionOppSuccesses: oppSuccesses,
   };
   log(G, { kind: 'choice-request', side: 'Rebel', payload: {
-    kind: 'YodaReroll', context: 'mission', blanks: blanks.length,
+    kind: 'YodaReroll', context: 'mission', candidates: rerollable.length,
+    blanks: rebelFaces.filter((f) => f === 'blank').length,
   }});
   return true;
 }
@@ -2461,7 +2466,7 @@ function continueMissionFromStash(G: GameState, pm: MissionResolution): void {
 
 /** Resolve a mission-context Yoda reroll. rerollIndex === null → skip
  *  (preserve the reroll for a later roll this round). Otherwise reroll
- *  the chosen blank die, recompute the side's successes, then continue. */
+ *  the chosen die, recompute the side's successes, then continue. */
 export function resolveYodaMissionReroll(G: GameState, rerollIndex: number | null): { ok: boolean; reason?: string } {
   const pc = G.pendingChoice;
   if (!pc || pc.kind !== 'YodaReroll' || pc.context !== 'mission') return { ok: false, reason: 'no-pending' };
@@ -2473,7 +2478,9 @@ export function resolveYodaMissionReroll(G: GameState, rerollIndex: number | nul
     const facesArr = pm.resolverSide === 'Rebel' ? stash.attFaces : stash.oppFaces;
     const colorsArr = pm.resolverSide === 'Rebel' ? stash.attColors : stash.oppColors;
     if (rerollIndex < 0 || rerollIndex >= facesArr.length) return { ok: false, reason: 'bad-index' };
-    if (facesArr[rerollIndex] !== 'blank') return { ok: false, reason: 'not-blank' };
+    // Any die but a special (#829) — same guard the offer applies.
+    if (facesArr[rerollIndex] === 'special') return { ok: false, reason: 'special-not-rerollable' };
+    const oldFace = facesArr[rerollIndex];
     const color = colorsArr[rerollIndex];
     const fresh = rollDie(G.rng, color);
     facesArr[rerollIndex] = fresh.face;
@@ -2487,10 +2494,10 @@ export function resolveYodaMissionReroll(G: GameState, rerollIndex: number | nul
     const holderName = G.catalog.leaders[pc.holderLeaderId]?.name ?? pc.holderLeaderId;
     log(G, { kind: 'yoda-reroll', side: 'Rebel', payload: {
       context: 'mission', holder: pc.holderLeaderId, holderName,
-      systemId: pm.targetSystemId, color, oldFace: 'blank', newFace: fresh.face,
-      rule: "Yoda's training: once per round, reroll one blank die on a mission or combat attack rolled by the leader bearing the Yoda ring.",
+      systemId: pm.targetSystemId, color, oldFace, newFace: fresh.face,
+      rule: "Yoda's training: once per game round, when the leader bearing the Yoda ring is in the same system as a mission or combat, reroll 1 of your dice.",
       explanation: `Yoda (carried by ${holderName} at ${G.catalog.systems[pm.targetSystemId]?.name ?? pm.targetSystemId}) ` +
-                   `rerolled a blank ${color} die → ${fresh.face === 'blank' ? 'still blank' : fresh.face}.`,
+                   `rerolled a ${oldFace} ${color} die → ${fresh.face === oldFace ? `still ${oldFace}` : fresh.face}.`,
     }});
   } else {
     log(G, { kind: 'yoda-skipped', side: 'Rebel', payload: { context: 'mission', systemId: pm.targetSystemId } });

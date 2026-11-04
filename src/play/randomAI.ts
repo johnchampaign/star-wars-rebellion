@@ -4556,8 +4556,10 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     }
     if (c.context === 'mission') {
       // AI: always reroll the first blank (it's a free upgrade — same
-      // policy as the auto-apply we replaced).
-      const idx = c.blankIndices[0] ?? null;
+      // policy as the auto-apply we replaced). Candidates now include every
+      // non-special die (#829); with no blank it skips, as in combat, which
+      // doesn't spend the ring.
+      const idx = c.blankIndices.find((i) => c.missionFaces?.[i] === 'blank') ?? null;
       return phases.resolveYodaMissionReroll(G, idx).ok;
     }
     return handleYodaReroll(G);

@@ -14333,7 +14333,10 @@ function YodaMissionRerollModal({
   const oppFaces = choice.missionOppFaces ?? [];
   const ownSucc = choice.missionOwnSuccesses ?? 0;
   const oppSucc = choice.missionOppSuccesses ?? 0;
-  const winning = ownSucc > oppSucc;
+  // The mission's attempter must get MORE successes, so the opposing Rebel
+  // wins a tie (RR Mission Cards step 5).
+  const rebelOpposing = G.pendingMission?.resolverSide === 'Empire';
+  const winning = rebelOpposing ? ownSucc >= oppSucc : ownSucc > oppSucc;
   const glyphFor = (face: string) =>
     face === 'hit' ? '✓' : face === 'direct-hit' ? '✶' : face === 'special' ? '◈' : '·';
   const sysName = G.catalog.systems[choice.systemId]?.name ?? choice.systemId;
@@ -14351,7 +14354,7 @@ function YodaMissionRerollModal({
         <h3 style={{ color: '#80dc78', marginTop: 0 }}>
           {choice.context === 'dsplans'
             ? 'Yoda\'s training — reroll a die? Only ✶ (direct-hit) destroys the Death Star.'
-            : 'Yoda\'s training — reroll a blank die?'}
+            : 'Yoda\'s training — reroll a die?'}
         </h3>
         <div style={{ color: '#cbc4b0', fontSize: 13, fontStyle: 'italic', marginBottom: 8 }}>
           Master Yoda ring: once per game round, when this leader is in the same
@@ -14361,7 +14364,7 @@ function YodaMissionRerollModal({
           <b>{holderName}</b> (Yoda ring holder) is at <b>{sysName}</b>.
           {choice.context === 'dsplans'
             ? ' Your Death Star Plans roll has no direct-hit yet — you may reroll any one of its dice for another chance at the ✶.'
-            : ' Both sides have now rolled. You may reroll one blank die on your mission roll.'}
+            : ' Both sides have now rolled. You may reroll any one die on your mission roll, except a ◈ (already the best at 2 successes). The new face stands, so rerolling a ✓ or ✶ can lose its success, or turn it into a ◈.'}
           {' '}The reroll is once per game round, so skipping here
           preserves it for any combat or mission later this round.
         </div>
@@ -14389,7 +14392,9 @@ function YodaMissionRerollModal({
           <div style={{ fontSize: 12, color: winning ? '#80dc78' : '#e08a5f' }}>
             {winning
               ? 'You are currently winning the mission — a reroll could pad your margin.'
-              : `You need more successes than the opponent to win — you are ${ownSucc === oppSucc ? 'tied' : 'behind'}.`}
+              : rebelOpposing
+                ? 'You are behind — the mission succeeds unless you at least tie.'
+                : `You need more successes than the opponent to win — you are ${ownSucc === oppSucc ? 'tied' : 'behind'}.`}
           </div>
           {oppFaces.length > 0 && (
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
@@ -14430,7 +14435,8 @@ function YodaMissionRerollModal({
                 }}
                 title={rerollable ? `Reroll this ${face} die`
                   : face === 'direct-hit' ? 'Direct hit — already the best face'
-                  : 'Not rerollable here (mission rerolls target blanks — every other mission face scores)'}
+                  : face === 'special' ? 'Special — already the best face on a mission (2 successes)'
+                  : 'Not rerollable here'}
               >
                 <span>{glyph}</span>
                 <span style={{ fontSize: 9, fontWeight: 500, opacity: 0.8 }}>{face}</span>

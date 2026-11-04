@@ -1372,7 +1372,7 @@ export type ChoiceRequest =
       kind: 'YodaReroll';
       side: Side;        // always 'Rebel' but kept for consistency
       // 'combat' = re-roll a die in pendingCombat.pendingAttack.dice
-      // 'mission' = re-roll a blank in the stashed mission roll
+      // 'mission' = re-roll a die in the stashed mission roll
       // 'dsplans' = re-roll a die in the Death Star Plans objective roll
       context: 'combat' | 'mission' | 'dsplans';
       // Combat-only: which theater (for the panel header).
@@ -1383,8 +1383,8 @@ export type ChoiceRequest =
       //   combat:  every non-direct-hit die;
       //   dsplans: every die (offer only fires on a not-yet-successful roll,
       //            where every face is a dud);
-      //   mission: blanks only (every non-blank mission face SCORES, so a
-      //            non-blank reroll is strictly dominated — kept narrow).
+      //   mission: every non-special die (#829 — a special is 2 successes,
+      //            the strictly-best face; a hit can still become one);
       // Field name kept for compatibility (it was historically blanks-only).
       blankIndices: number[];
       holderLeaderId: LeaderId;
