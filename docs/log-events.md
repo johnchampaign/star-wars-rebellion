@@ -45,7 +45,7 @@ formats to `{ meta, humanSide, winner, events, snapshots, final }`.
 2. Run `node scripts/gen-log-registry.mjs`, then edit your kind's Description.
 3. `node scripts/test-log-registry.mjs` must pass.
 
-## Kinds (266)
+## Kinds (267)
 
 | Kind | Description | Sample payload | Emitted from |
 |---|---|---|---|
@@ -228,6 +228,7 @@ formats to `{ meta, humanSide, winner, events, snapshots, final }`.
 | `post-bounty-skipped` | — | `(not seen in corpus or sample game)` | src/engine/phases.ts |
 | `prepare-for-battle-peek` | — | `(not seen in corpus or sample game)` | src/engine/phases.ts |
 | `probe-removed-for-system` | — | `{"systemId":"hoth","probeId":"probe-hoth"}` | src/engine/mechanics.ts |
+| `probe-restored-for-system` | Setup: the Empire pulled its last unit from a system, so that system's probe card goes back into the probe deck (it was boxed when the system was claimed). | `(not seen in corpus or sample game)` | src/engine/mechanics.ts |
 | `probe-state-repaired` | — | `(not seen in corpus or sample game)` | src/engine/mechanics.ts |
 | `proceeding-as-planned-applied` | — | `{"missionId":"construct-death-star","leaderId":"admiral-ozzel"}` | src/engine/phases.ts |
 | `project-draw` | — | `{"count":1,"drawn":["construct-factory"]}` | src/engine/phases.ts |

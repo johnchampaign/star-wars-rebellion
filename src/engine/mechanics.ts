@@ -12,7 +12,7 @@ import type {
   LeaderId, SystemState,
 } from './types';
 import { log, logState, pushNotice } from './log';
-import { shuffle } from './rng';
+import { nextInt, shuffle } from './rng';
 
 // ============================================================================
 // Helpers
@@ -1360,6 +1360,16 @@ export function removeProbeForSystem(G: GameState, sysId: SystemId): void {
   // undefined in hotseat lets the panel derive rule-outs from the visible deck,
   // which is correct.
   if (removed) log(G, { kind: 'probe-removed-for-system', payload: { systemId: sysId, probeId: probe.id } });
+}
+
+/** Undo removeProbeForSystem during setup, when the Empire takes its Death Star
+ *  site back: the card rejoins the deck at a random position. The hand needs no
+ *  handling, since the Empire holds no probes until the first Refresh (#404). */
+export function restoreProbeForSystem(G: GameState, sysId: SystemId): void {
+  const probe = Object.values(G.catalog.probes).find((p) => p.systemId === sysId);
+  if (!probe || G.probeDeck.includes(probe.id)) return;
+  G.probeDeck.splice(nextInt(G.rng, G.probeDeck.length + 1), 0, probe.id);
+  log(G, { kind: 'probe-restored-for-system', payload: { systemId: sysId, probeId: probe.id } });
 }
 
 // ============================================================================

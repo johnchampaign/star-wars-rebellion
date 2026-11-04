@@ -464,6 +464,9 @@ function mkSetupInstance(typeId: string, side: Side) {
   return { instanceId: `s${(++setupInstanceCounter).toString().padStart(6, '0')}`, typeId, side, damage: 0 };
 }
 
+/** RoE p.8: the units that must start alongside the Death Star Under Construction. */
+const DSUC_ESCORT: Record<string, number> = { 'tie-fighter': 4, stormtrooper: 1 };
+
 /** RoE setup (rulebook p.8): the chosen remote system holds the Death Star
  *  Under Construction TOGETHER WITH 4 TIE Fighters + 1 Stormtrooper. The
  *  interactive flow let the Imperial player drop the DSUC alone and finish
@@ -479,34 +482,84 @@ function ensureDsucEscort(G: GameState, remoteId: SystemId): void {
   const dest = G.map.systems[remoteId];
   if (!dest) return;
   const pending = G.pendingDeployment?.Empire ?? [];
-  for (const [typeId, required] of [['tie-fighter', 4], ['stormtrooper', 1]] as const) {
+  for (const [typeId, required] of Object.entries(DSUC_ESCORT)) {
     const have = dest.units.filter((u) => u.side === 'Empire' && u.typeId === typeId).length;
+    const ground = G.catalog.unitTypes[typeId]?.theater === 'ground';
     for (let k = have; k < required; k++) {
+      // A pending ground unit may be the last one able to reach a world that has
+      // no ground yet; prefer a spare from the board so that world can still be
+      // filled.
       const pi = pending.indexOf(typeId);
-      if (pi >= 0) {
+      const keepPending = ground && setupGroundIsReserved(G);
+      if (pi >= 0 && !keepPending) {
         pending.splice(pi, 1);
         const esc = mkSetupInstance(typeId, 'Empire');
         dest.units.push(esc);
         log(G, { kind: 'setup-deploy', side: 'Empire', payload: { typeId, systemId: remoteId, unit: esc.instanceId, escort: true } });
         continue;
       }
-      // Pending exhausted — reclaim one of this type already placed elsewhere.
-      let reclaimed = false;
-      for (const [sid, ss] of Object.entries(G.map.systems)) {
-        if (sid === remoteId) continue;
-        const ui = ss.units.findIndex((u) => u.side === 'Empire' && u.typeId === typeId);
-        if (ui >= 0) {
-          ss.units.splice(ui, 1);
-          const rec = mkSetupInstance(typeId, 'Empire');
-          dest.units.push(rec);
-          log(G, { kind: 'setup-deploy', side: 'Empire', payload: { typeId, systemId: remoteId, unit: rec.instanceId, escort: true, reclaimedFrom: sid } });
-          reclaimed = true;
-          break;
-        }
+      // Reclaim one of this type already placed elsewhere, never a world's only
+      // ground unit unless nothing else is left: every Imperial system must keep
+      // at least one.
+      const donors = Object.entries(G.map.systems).filter(([sid, ss]) => sid !== remoteId
+        && ss.units.some((u) => u.side === 'Empire' && u.typeId === typeId));
+      const donor = donors.find(([, ss]) => !ground || empireGroundCount(G, ss.units) > 1
+        || !(ss.loyalty === 'imperial' || ss.subjugated))?.[1];
+      if (donor) {
+        donor.units.splice(donor.units.findIndex((u) => u.side === 'Empire' && u.typeId === typeId), 1);
+      } else if (pi >= 0) {
+        pending.splice(pi, 1);
+      } else if (donors.length > 0) {
+        const last = donors[0][1];
+        last.units.splice(last.units.findIndex((u) => u.side === 'Empire' && u.typeId === typeId), 1);
+      } else {
+        break; // none left anywhere (shouldn't happen given setup counts)
       }
-      if (!reclaimed) break; // none left anywhere (shouldn't happen given setup counts)
+      const rec = mkSetupInstance(typeId, 'Empire');
+      dest.units.push(rec);
+      log(G, { kind: 'setup-deploy', side: 'Empire', payload: { typeId, systemId: remoteId, unit: rec.instanceId, escort: true } });
     }
   }
+}
+
+function empireGroundCount(G: GameState, units: readonly { side: Side; typeId: string }[]): number {
+  return units.filter((u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground').length;
+}
+
+/** Imperial-loyal or subjugated systems that have no Imperial ground unit yet. */
+function bareImperialWorlds(G: GameState): SystemId[] {
+  return Object.entries(G.map.systems)
+    .filter(([, ss]) => (ss.loyalty === 'imperial' || ss.subjugated) && empireGroundCount(G, ss.units) === 0)
+    .map(([id]) => id);
+}
+
+/** True when every pending Empire ground unit is spoken for by a world that has
+ *  no ground yet (RR p.15: at least one in each Imperial system). */
+function setupGroundIsReserved(G: GameState): boolean {
+  const bare = bareImperialWorlds(G).length;
+  if (bare === 0) return false;
+  const pendingGround = (G.pendingDeployment?.Empire ?? [])
+    .filter((t) => G.catalog.unitTypes[t]?.theater === 'ground').length;
+  return pendingGround <= bare;
+}
+
+/** The only systems this Empire unit may still deploy to if a world would
+ *  otherwise be left without ground, or null when it is free to go anywhere
+ *  legal. Lets the setup panel offer just the destinations the engine accepts. */
+export function setupRequiredGroundWorlds(G: GameState, typeId: string): SystemId[] | null {
+  if (G.catalog.unitTypes[typeId]?.theater !== 'ground' || !setupGroundIsReserved(G)) return null;
+  return bareImperialWorlds(G);
+}
+
+/** True when pulling this Empire unit back would short the Death Star Under
+ *  Construction's mandatory escort. Pull the DSUC itself to move the site. */
+export function setupUnitIsDsucEscort(G: GameState, side: Side, typeId: string, systemId: SystemId): boolean {
+  if (side !== 'Empire') return false;
+  const required = DSUC_ESCORT[typeId];
+  const units = G.map.systems[systemId]?.units;
+  if (!required || !units) return false;
+  if (!units.some((u) => u.side === 'Empire' && u.typeId === 'death-star-under-construction')) return false;
+  return units.filter((u) => u.side === 'Empire' && u.typeId === typeId).length <= required;
 }
 
 /** Reseed setupInstanceCounter to max existing s-prefixed ID + 1.
@@ -547,6 +600,12 @@ export function setupDeployUnit(G: GameState, side: Side, typeId: string, system
     const def = G.catalog.systems[systemId];
     const isImperialSys = ss.loyalty === 'imperial' || ss.subjugated;
     const isDsuc = typeId === 'death-star-under-construction';
+    // RR p.15: every Imperial system starts with a ground unit. Checked per
+    // placement, before the remote is claimed below, so the last ground units
+    // can't be spent elsewhere and setup can't reach a state it has to refuse.
+    if (setupRequiredGroundWorlds(G, typeId)?.includes(systemId) === false) {
+      return { ok: false, reason: 'imperial-world-needs-ground' };
+    }
     // The remote deploy target exists ONLY to hold the Death Star Under
     // Construction: RoE rulebook p.4 places Imperial starting units in "any
     // systems that have an Imperial loyalty marker, subjugation marker, or a
@@ -648,9 +707,22 @@ export function setupUndoDeployUnit(G: GameState, side: Side, typeId: string, sy
   // side+type unit here was placed during setup.
   const ui = dest.units.findIndex((u) => u.side === side && u.typeId === typeId);
   if (ui < 0) return { ok: false, reason: `no-such-unit-placed:${typeId}@${systemId}` };
+  if (setupUnitIsDsucEscort(G, side, typeId, systemId)) return { ok: false, reason: 'dsuc-escort-required' };
   dest.units.splice(ui, 1);
   G.pendingDeployment[side].push(typeId);
   log(G, { kind: 'setup-undeploy', side, payload: { typeId, systemId } });
+  // The escort arrived with the DSUC, so it leaves with it.
+  if (side === 'Empire' && typeId === 'death-star-under-construction') {
+    for (const [escortId, required] of Object.entries(DSUC_ESCORT)) {
+      for (let k = 0; k < required; k++) {
+        const ei = dest.units.findIndex((u) => u.side === 'Empire' && u.typeId === escortId);
+        if (ei < 0) break;
+        dest.units.splice(ei, 1);
+        G.pendingDeployment.Empire.push(escortId);
+        log(G, { kind: 'setup-undeploy', side, payload: { typeId: escortId, systemId } });
+      }
+    }
+  }
   // Clear the single-system deploy target if this was the last unit there, so
   // the player can re-choose where their forces start.
   if (side === 'Rebel' && G.rebelDeployTarget === systemId
@@ -660,6 +732,13 @@ export function setupUndoDeployUnit(G: GameState, side: Side, typeId: string, sy
   if (side === 'Empire' && G.empireDeployTarget === systemId
     && !(G.map.systems[systemId]?.units ?? []).some((u) => u.side === 'Empire')) {
     G.empireDeployTarget = undefined;
+    // No longer the Death Star site, so it is a possible base again: only the
+    // chosen site's probe stays in the box. A placeholder base keeps its card out
+    // until pickRebelBase swaps it back.
+    if (systemId !== G.rebelBaseSystemId) M.restoreProbeForSystem(G, systemId);
+    if (G.pendingRebelBasePick && !G.pendingRebelBasePick.includes(systemId)) {
+      G.pendingRebelBasePick.push(systemId);
+    }
   }
   return { ok: true };
 }
@@ -751,11 +830,9 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
         // that residual is inside noise. The cost is opponent-independent so
         // the verdict is fairly safe, but it is a verdict about the opponents
         // we can field, not a law. See docs/ab-levers.md before re-deciding.
-        for (const typeId of ['death-star-under-construction', 'tie-fighter', 'tie-fighter',
-          'tie-fighter', 'tie-fighter', 'stormtrooper']) {
-          const i = remaining.indexOf(typeId);
-          if (i >= 0) { G.map.systems[remote].units.push(mkSetupInstance(typeId, 'Empire')); remaining.splice(i, 1); }
-        }
+        remaining.splice(remaining.indexOf('death-star-under-construction'), 1);
+        G.map.systems[remote].units.push(mkSetupInstance('death-star-under-construction', 'Empire'));
+        ensureDsucEscort(G, remote);
         if (DSUC_EXTRA_GARRISON) {
           for (const typeId of ['assault-carrier', 'at-st', 'stormtrooper']) {
             const i = remaining.indexOf(typeId);
@@ -766,22 +843,16 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
     }
 
     // First: ensure each Imperial system has ≥1 ground unit (rr p.15).
-    // Find systems that currently lack ground; deploy a triangle ground unit there.
-    const triangleGround = G.catalog.unitTypes['stormtrooper'] ? 'stormtrooper' : null;
-    if (triangleGround) {
-      for (const sys of imperialSystems) {
-        const ss = G.map.systems[sys];
-        const hasGround = ss.units.some((u) => {
-          const t = G.catalog.unitTypes[u.typeId];
-          return u.side === 'Empire' && t?.theater === 'ground';
-        });
-        if (!hasGround) {
-          const i = remaining.indexOf(triangleGround);
-          if (i >= 0) {
-            ss.units.push(mkSetupInstance(triangleGround, 'Empire'));
-            remaining.splice(i, 1);
-          }
-        }
+    // Find systems that currently lack ground; deploy a Stormtrooper there, or
+    // whatever ground is left once those have all been placed.
+    for (const sys of imperialSystems) {
+      const ss = G.map.systems[sys];
+      if (empireGroundCount(G, ss.units) > 0) continue;
+      let i = remaining.indexOf('stormtrooper');
+      if (i < 0) i = remaining.findIndex((t) => G.catalog.unitTypes[t]?.theater === 'ground');
+      if (i >= 0) {
+        ss.units.push(mkSetupInstance(remaining[i], 'Empire'));
+        remaining.splice(i, 1);
       }
     }
 
@@ -853,8 +924,9 @@ function maybeAdvanceFromSetup(G: GameState): void {
     G.currentPlayer = 'Rebel';
   } else if (empireDone && rebelDone) {
     // Both done — Verify Imperial constraint (≥1 ground per Imperial system).
-    // If violated, log a warning but proceed (rule's enforcement is at end of
-    // placement; a real player would have ensured this).
+    // setupDeployUnit refuses any placement that would break it, so this only
+    // fires for a game saved mid-setup before that check existed. Log a warning
+    // and proceed: holding here would strand a save with nothing left to place.
     for (const [sysId, ss] of Object.entries(G.map.systems)) {
       if (ss.loyalty !== 'imperial' && !ss.subjugated) continue;
       const hasGround = ss.units.some((u) => {

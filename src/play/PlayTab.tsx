@@ -1804,7 +1804,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
       gameRef.current = decode(baseline, Gc.catalog);
     } else {
       // Stack lost to a reload: pull every placed unit of this side back.
-      for (const u of setupPlacedUnits(Gc, side)) {
+      // DSUC first: its escort can't be pulled back while it stands.
+      const dsucFirst = [...setupPlacedUnits(Gc, side)].sort((a, b) =>
+        Number(b.typeId === 'death-star-under-construction') - Number(a.typeId === 'death-star-under-construction'));
+      for (const u of dsucFirst) {
         phases.setupUndoDeployUnit(Gc, side, u.typeId, u.systemId);
       }
     }
@@ -10414,8 +10417,9 @@ function lastSetupPlacement(G: GameState, side: Side): { side: Side; typeId: str
   for (let i = log.length - 1; i >= 0; i--) {
     const e = log[i];
     if (e.kind !== 'setup-deploy' || e.side !== side) continue;
-    const p = e.payload as { typeId?: string; systemId?: string; unit?: string } | undefined;
+    const p = e.payload as { typeId?: string; systemId?: string; unit?: string; escort?: boolean } | undefined;
     if (!p?.typeId || !p.systemId) continue;
+    if (p.escort) continue; // came with the DSUC, and goes back with it
     const dest = p.systemId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[p.systemId];
     const still = dest?.units.some((u) => u.side === side
       && (p.unit ? u.instanceId === p.unit : u.typeId === p.typeId));
@@ -10450,6 +10454,8 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onUndoUnit, onReset
 
   // Legal targets
   const legalTargets: { id: string; name: string; note?: string }[] = [];
+  const requiredGroundWorlds = side === 'Empire' && selectedType
+    ? _phases.setupRequiredGroundWorlds(G, selectedType) : null;
   if (side === 'Empire') {
     // The remote "Death Star site" deploy option is a RoE-only thing: it exists
     // to hold the Death Star Under Construction. Whenever setup hands out the
@@ -10622,9 +10628,14 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onUndoUnit, onReset
               No legal targets — Empire needs Imperial-loyalty/subjugated systems.
             </div>
           )}
+          {requiredGroundWorlds && (
+            <div style={{ color: '#ff8866', fontSize: 12, marginBottom: 4 }}>
+              Your remaining ground units must go to the Imperial systems that have none yet.
+            </div>
+          )}
           {selectedType && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 4 }}>
-              {legalTargets.map((t) => (
+              {legalTargets.filter((t) => !requiredGroundWorlds || requiredGroundWorlds.includes(t.id)).map((t) => (
                 <button
                   key={t.id}
                   onClick={() => onDeploy(side, selectedType, t.id)}
@@ -10667,14 +10678,20 @@ function SetupPanel({ G, side, onDeploy, onAutoFill, onUndo, onUndoUnit, onReset
               Placed so far — click a unit to pull it back off the board:
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {placed.map((p) => (
-                <button key={`${p.systemId}:${p.typeId}`} className="tab-button"
-                  onClick={() => onUndoUnit(side, p.typeId, p.systemId)}
-                  title={`Pull a ${G.catalog.unitTypes[p.typeId]?.name ?? p.typeId} back from ${p.sysName}`}
-                  style={{ fontSize: 11, padding: '3px 8px' }}>
-                  ↩ {G.catalog.unitTypes[p.typeId]?.name ?? p.typeId}{p.count > 1 ? ` ×${p.count}` : ''} @ {p.sysName}
-                </button>
-              ))}
+              {placed.map((p) => {
+                const escort = _phases.setupUnitIsDsucEscort(G, side, p.typeId, p.systemId);
+                return (
+                  <button key={`${p.systemId}:${p.typeId}`} className="tab-button"
+                    disabled={escort}
+                    onClick={() => onUndoUnit(side, p.typeId, p.systemId)}
+                    title={escort
+                      ? 'Required escort for the Death Star Under Construction. Pull the Death Star back to move it.'
+                      : `Pull a ${G.catalog.unitTypes[p.typeId]?.name ?? p.typeId} back from ${p.sysName}`}
+                    style={{ fontSize: 11, padding: '3px 8px', opacity: escort ? 0.5 : 1 }}>
+                    ↩ {G.catalog.unitTypes[p.typeId]?.name ?? p.typeId}{p.count > 1 ? ` ×${p.count}` : ''} @ {p.sysName}
+                  </button>
+                );
+              })}
             </div>
           </div>
         );
