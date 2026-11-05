@@ -1110,16 +1110,7 @@ export function captureLeader(G: GameState, leaderId: LeaderId, ring: 'captured'
   // go on rerolling with Master Yoda's ring (player report #804). Rescue does
   // not give it back.
   for (const ringId of [...(G.leaderAttachments?.[leaderId] ?? [])]) {
-    removeAttachment(G, leaderId, ringId);
-    // The Millennium Falcon card stays in hand only as the ring's reminder;
-    // with the ring gone, discard it so the ring isn't lazily re-placed.
-    if (ringId === 'falcon') {
-      const fi = r.actionHand.indexOf('the-milleninium-falcon');
-      if (fi >= 0) {
-        r.actionHand.splice(fi, 1);
-        r.actionDiscard.push('the-milleninium-falcon');
-      }
-    }
+    returnRingToSupply(G, leaderId, ringId);
   }
 
   // Noble Sacrifice (Rebel/Obi-Wan) Special-timing trigger. The card reads
@@ -1223,13 +1214,34 @@ export type AttachmentKind = 'yoda' | 'dark-side' | 'r2d2' | 'c3po' | 'bounty' |
 
 export function attachRing(G: GameState, leaderId: LeaderId, ring: AttachmentKind): void {
   if (!G.leaderAttachments) G.leaderAttachments = {};
-  const existing = G.leaderAttachments[leaderId] ?? [];
-  // Append (dedup) rather than replace: a leader can bear more than one ring
-  // (e.g. the R2-D2 and C-3PO droid rings are distinct tokens). Every trigger
-  // site keys off `includes(ring)`, so co-existence is safe.
-  if (!existing.includes(ring)) existing.push(ring);
-  G.leaderAttachments[leaderId] = existing;
+  // RR p.3 "Attachment Rings": "A leader can have only one ring at a time; if a
+  // leader gains a second ring, remove the previous one." Most attach sites
+  // already target ringless leaders, but Seek Yoda and the Falcon do not, so a
+  // bountied Leia who resolved Seek Yoda kept both rings (player report #830).
+  for (const old of [...(G.leaderAttachments[leaderId] ?? [])]) {
+    if (old !== ring) returnRingToSupply(G, leaderId, old);
+  }
+  G.leaderAttachments[leaderId] = [ring];
   log(G, { kind: 'ring-attach', payload: { leaderId, ring } });
+}
+
+/** Remove a ring from a leader because it was replaced, and discard the Rebel
+ *  card that was standing in for it. The Falcon card stays in hand only as the
+ *  ring's reminder, so leaving it there would lazily re-place the ring; a droid
+ *  card has left the hand and is otherwise discarded when its ring is used. */
+function returnRingToSupply(G: GameState, leaderId: LeaderId, ring: AttachmentKind): void {
+  removeAttachment(G, leaderId, ring);
+  const r = G.rebel;
+  if (ring === 'falcon') {
+    const fi = r.actionHand.indexOf('the-milleninium-falcon');
+    if (fi >= 0) {
+      r.actionHand.splice(fi, 1);
+      r.actionDiscard.push('the-milleninium-falcon');
+    }
+  }
+  if (ring === 'r2d2') r.actionDiscard.push('resourceful-astromech');
+  if (ring === 'c3po') r.actionDiscard.push('human-cyborg-relations');
+  if (ring === 'k2so') r.actionDiscard.push('he-means-well');
 }
 
 /** Find which leader (if any) currently bears the given ring. */
