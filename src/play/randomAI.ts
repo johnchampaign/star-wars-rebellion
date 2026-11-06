@@ -493,6 +493,17 @@ const LOYALTY_SHAPE_W: Record<string, number> = (() => {
   } catch { /* browser */ }
   return w;
 })();
+/** #831: true when moving `sendIds` out of `srcId` would leave the REVEALED
+ *  Rebel base system holding Imperial units and no Rebel units — the Empire's
+ *  instant win. Rules, not a tuning lever, so there is no opt-out flag. */
+function holdOneForBase(G: GameState, srcId: string, sendIds: string[]): boolean {
+  if (!G.rebelBaseRevealed || srcId !== G.rebelBaseSystemId || sendIds.length === 0) return false;
+  const units = G.map.systems[srcId]?.units ?? [];
+  if (!units.some((u) => u.side === 'Empire')) return false;
+  const leaving = new Set(sendIds);
+  return !units.some((u) => u.side === 'Rebel' && !leaving.has(u.instanceId));
+}
+
 /** Base-strip guard (#760, SWR_BASE_STRIP_GUARD=0 opts out). DEFAULT ON since
  *  2026-09-15: 30-seed screen pair, Rebel 17/30 with it vs 16/30 without, paired
  *  2-1 — neutral to slightly positive, and it only bites in real danger.
@@ -4672,6 +4683,20 @@ function stepOnceInner(G: GameState, side: Side): boolean {
       else if (t.transport.restriction) fighters.push(sid);
       else others.push(sid);
     }
+    // #831: from a REVEALED base holding Imperial units, sending every ship
+    // leaves the Empire alone in the base system — an instant Empire win
+    // (RR "Winning the Game"). Hold one ship home: a fighter first (needs no
+    // capacity), then a ship that carries nothing, then the smallest carrier.
+    if (holdOneForBase(G, srcId, [...caps, ...others, ...fighters.slice(0, capacity)])) {
+      if (fighters.length > 0) fighters.pop();
+      else if (others.length > 0) others.pop();
+      else if (caps.length > 0) {
+        caps.sort((a, b) => (G.catalog.unitTypes[idToUnit.get(b)!.typeId]?.transport.capacity ?? 0)
+          - (G.catalog.unitTypes[idToUnit.get(a)!.typeId]?.transport.capacity ?? 0));
+        const kept = caps.pop()!;
+        capacity -= G.catalog.unitTypes[idToUnit.get(kept)!.typeId]?.transport.capacity ?? 0;
+      }
+    }
     const picked = [...caps, ...others, ...fighters.slice(0, capacity)];
     let r = phases.resolvePlanTheAssaultShips(G, picked);
     // Fallback: if even that fails, try caps + others only.
@@ -5839,9 +5864,11 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     return phases.resolveSafeHavenPick(G, order).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'PlanTheAssaultShips' && side === 'Rebel') {
-    // AI: send every available ship.
+    // AI: send every available ship (but never empty a held base, #831).
     const c = G.pendingChoice;
-    const r = phases.resolvePlanTheAssaultShips(G, c.availableShipIds);
+    const send = holdOneForBase(G, c.sourceSystemId ?? 'rebel-base-space', c.availableShipIds)
+      ? c.availableShipIds.slice(0, -1) : c.availableShipIds;
+    const r = phases.resolvePlanTheAssaultShips(G, send);
     return r.ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'DestroyUpToHealth' && G.pendingChoice.side === side) {
