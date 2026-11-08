@@ -12487,6 +12487,12 @@ const ONSCREEN_REDACTED_KINDS = new Set<string>([
 const OWNER_ONLY_KINDS = new Set<string>([
   // Interrogation: the Rebel's objective hand, revealed to the Empire.
   'interrogation-reveal',
+  // Stolen Plans (and the tactic-deck reorders that share its log kind): the
+  // new order of the top cards is known only to the side that looked (#832).
+  'stolen-plans-reorder',
+  // Covert Operation: which objective the Rebel kept and which went to the
+  // bottom of the deck (#832).
+  'covert-operation-pick',
 ]);
 
 const OPPONENT_SECRET_KINDS = new Set<string>([
