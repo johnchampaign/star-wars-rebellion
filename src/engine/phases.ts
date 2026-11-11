@@ -16,7 +16,7 @@ import { pickDsucSite } from './setup';
 import * as Handlers from './handlers/registry';
 import { missionTargets } from './missionTargets';
 import { PROJECT_ONLY_UNIT_IDS } from './units';
-import { rollDie, shuffle, nextInt } from './rng';
+import { rollDie, shuffle, nextInt, nextFloat } from './rng';
 
 /** A/B lever: optional extra garrison on the Death Star remote at setup
  *  (SWR_DSUC_GARRISON=1). Playtester suggestion, OFF by default — REJECTED
@@ -28,6 +28,50 @@ const DSUC_EXTRA_GARRISON: boolean = (() => {
     return proc?.env?.SWR_DSUC_GARRISON === '1';
   } catch { return false; } // browser: no process
 })();
+/** Lever (#833): spread the Empire's auto-filled setup units away from
+ *  Coruscant instead of dealing them round-robin in map order
+ *  (SWR_SETUP_SPREAD=0 restores map order). Default ON. */
+const SETUP_SPREAD: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    return proc?.env?.SWR_SETUP_SPREAD !== '0';
+  } catch { return true; } // browser: no process
+})();
+
+/** Order the Imperial systems for the setup round-robin. The pending list
+ *  leads with the capital ships, so the first three systems in this order are
+ *  where the Star Destroyers land. Map order is alphabetical, which put every
+ *  AI Star Destroyer on the first three Imperial worlds A–Z — Coruscant in
+ *  every game, mean 1.23 jumps from it (345 archived AI-Empire setups). Human
+ *  Empires average 2.37 jumps and 12.7% on Coruscant (371 games). A draw
+ *  without replacement weighted 1 + jumps-from-Coruscant reproduces the human
+ *  spread (2.39 mean, farthest SD 3.41 vs 3.43). */
+function setupSystemOrder(G: GameState, systems: string[]): string[] {
+  if (!SETUP_SPREAD) return systems;
+  const cor = Object.keys(G.catalog.systems).find((id) => G.catalog.systems[id]?.isCoruscant);
+  const dist = new Map<string, number>();
+  if (cor) {
+    dist.set(cor, 0);
+    let frontier = [cor];
+    for (let d = 1; frontier.length > 0; d++) {
+      const next: string[] = [];
+      for (const s of frontier) for (const a of (G.catalog.adjacency[s] ?? [])) {
+        if (!dist.has(a)) { dist.set(a, d); next.push(a); }
+      }
+      frontier = next;
+    }
+  }
+  const pool = systems.slice();
+  const out: string[] = [];
+  while (pool.length > 0) {
+    const w = pool.map((id) => 1 + (dist.get(id) ?? 0));
+    let u = nextFloat(G.rng) * w.reduce((a, b) => a + b, 0);
+    let i = 0;
+    while (i < pool.length - 1 && u >= w[i]) { u -= w[i]; i++; }
+    out.push(pool.splice(i, 1)[0]);
+  }
+  return out;
+}
 import { objectiveConditionMet, objectiveReputationGain, objectiveReturnsToDeck, objectiveReturnsToHand, postPlayObjectiveChoice, PERSISTENT_OBJECTIVES, COST_OBJECTIVES, OPT_IN_OBJECTIVES, timeForPeaceQueueTargets } from './objectives';
 import { registerChoice, requestChoice } from './choices';
 // Re-export the generic-choice resolver so all call sites (UI, online adapter,
@@ -856,11 +900,12 @@ export function setupAutoFill(G: GameState, side: Side): { ok: boolean; reason?:
       }
     }
 
-    // Distribute remaining units round-robin.
+    // Distribute remaining units round-robin, in a spread order (#833).
+    const order = remaining.length > 0 ? setupSystemOrder(G, imperialSystems) : imperialSystems;
     let idx = 0;
     while (remaining.length > 0) {
       const typeId = remaining.shift()!;
-      const sys = imperialSystems[idx % imperialSystems.length];
+      const sys = order[idx % order.length];
       G.map.systems[sys].units.push(mkSetupInstance(typeId, 'Empire'));
       idx++;
     }
