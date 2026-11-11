@@ -13,8 +13,13 @@
 //   SWR_BASE_URL      e.g. https://star-wars-rebellion.pages.dev   (required)
 //   SWR_ADMIN_TOKEN   the admin token                               (required)
 //   AI_POLL_MS        poll interval, default 5000
+//   AI_IDLE_POLL_MS   longest interval while nothing is due, default 60000
+//                     (the API path only — see the main loop)
 //   AI_DEPTH          search depth, default 2
 //   AI_MAX_STEPS      per-turn safety cap, default 4000
+//   SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY  (optional) read the AI-due flags
+//                     straight from Supabase instead of polling /api/admin/ai-due
+//                     — see dueRefs below
 // Run: node scripts/ai-worker.mjs [path/to/env-file]
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
@@ -33,6 +38,7 @@ if (process.argv[2]) {
 const BASE = (process.env.SWR_BASE_URL || '').replace(/\/$/, '');
 const TOKEN = process.env.SWR_ADMIN_TOKEN || '';
 const POLL_MS = Number(process.env.AI_POLL_MS || 5000);
+const IDLE_POLL_MS = Number(process.env.AI_IDLE_POLL_MS || 60000);
 const DEPTH = Number(process.env.AI_DEPTH || 2);
 const MAX_STEPS = Number(process.env.AI_MAX_STEPS || 4000);
 if (!BASE || !TOKEN) { console.error('[ai-worker] SWR_BASE_URL and SWR_ADMIN_TOKEN are required'); process.exit(1); }
@@ -109,15 +115,43 @@ const RECHECK_MS = 30 * 60_000;
 const RETRY_MS = 60_000;
 const seen = new Map(); // gameId → { since, until, fails }
 
+// Which games have an AI seat on the clock. With the Supabase keys this is the
+// same one indexed query /api/admin/ai-due runs (listAiDueRefs), made directly:
+// a 5 s poll through Cloudflare was ~17k Pages Function requests a day, the
+// biggest single share of the free plan's 100k/day account-wide budget. The
+// snapshot fetch and the move still go through the API (once per AI turn).
+const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '').replace(/\/rest\/v1$/, '');
+const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+async function dueRefs() {
+  if (!SB_URL || !SB_KEY) {
+    const due = await api('/api/admin/ai-due', { method: 'GET' });
+    if (due.status !== 200) { console.warn(`[ai-worker] ai-due ${due.status}: ${JSON.stringify(due.body).slice(0, 120)}`); return null; }
+    return due.body.games ?? [];
+  }
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/swr_turn_notify?select=game_id,actor,started_at&actor_is_ai=eq.true&order=started_at.desc&limit=100`, {
+      signal: ctrl.signal, headers: { apikey: SB_KEY, authorization: `Bearer ${SB_KEY}` },
+    });
+    if (!r.ok) { console.warn(`[ai-worker] ai-due flags ${r.status}: ${(await r.text()).slice(0, 120)}`); return null; }
+    return (await r.json()).filter((x) => x.actor).map((x) => ({ gameId: x.game_id, actor: x.actor, ...(x.started_at ? { since: String(x.started_at) } : {}) }));
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** One poll; returns whether any game needed work (a snapshot was fetched). */
 async function tick() {
-  const due = await api('/api/admin/ai-due', { method: 'GET' });
-  if (due.status !== 200) { console.warn(`[ai-worker] ai-due ${due.status}: ${JSON.stringify(due.body).slice(0, 120)}`); return; }
-  const games = due.body.games ?? [];
+  const games = await dueRefs();
+  if (!games) return false;
+  let worked = false;
   const now = Date.now();
   for (const id of seen.keys()) if (!games.some((g) => g.gameId === id)) seen.delete(id); // no longer due → forget
   for (const g of games) {
     const s = g.since ? seen.get(g.gameId) : null;
     if (s && s.since === g.since && now < s.until) continue;
+    worked = true;
     const settle = (ms) => { if (g.since) seen.set(g.gameId, { since: g.since, until: Date.now() + ms, fails: 0 }); };
     const settleFail = () => {
       if (!g.since) return;
@@ -148,13 +182,23 @@ async function tick() {
       else { console.warn(`[ai-worker] ai-move ${res.status} for ${g.gameId}: ${JSON.stringify(res.body).slice(0, 120)}`); settleFail(); }
     } catch (e) { console.warn(`[ai-worker] error on ${g.gameId}:`, e?.message); settleFail(); }
   }
+  return worked;
 }
 
 function hashStr(s) { let h = 2166136261; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-console.log(`[ai-worker] up — base=${BASE} depth=${DEPTH} poll=${POLL_MS}ms`);
+console.log(`[ai-worker] up — base=${BASE} depth=${DEPTH} poll=${POLL_MS}ms due=${SB_URL && SB_KEY ? 'supabase' : 'api'}`);
+// Polling /api/admin/ai-due every 5 s was ~17k Cloudflare requests a day even
+// with no game waiting. On that path the interval doubles while nothing is due
+// (5 s → 60 s) and snaps back to POLL_MS as soon as a game needs a move, so an
+// AI turn after a quiet spell can start up to IDLE_POLL_MS late. Reading the
+// flags from Supabase costs no Cloudflare request, so that path stays at POLL_MS.
+const direct = Boolean(SB_URL && SB_KEY);
+let wait = POLL_MS;
 for (;;) {
-  try { await tick(); } catch (e) { console.warn('[ai-worker] tick error:', e?.message); }
-  await sleep(POLL_MS);
+  let worked = false;
+  try { worked = await tick(); } catch (e) { console.warn('[ai-worker] tick error:', e?.message); }
+  wait = direct || worked ? POLL_MS : Math.min(wait * 2, IDLE_POLL_MS);
+  await sleep(wait);
 }

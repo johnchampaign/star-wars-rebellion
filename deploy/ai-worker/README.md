@@ -6,7 +6,11 @@ Polls `/api/admin/ai-due`, computes locally, posts to `/api/admin/ai-move`.
 
 ## Layout on the box (`champaignj@172.232.14.119`, root-free)
 - `~/swr-ai/` — clone of `johnchampaign/star-wars-rebellion` (public).
-- `~/swr-worker.env` — `SWR_BASE_URL`, `SWR_ADMIN_TOKEN`, `AI_POLL_MS`, `AI_DEPTH`
+- `~/swr-worker.env` — `SWR_BASE_URL`, `SWR_ADMIN_TOKEN`, `AI_POLL_MS`, `AI_DEPTH`,
+  and `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` so the 5 s due-check reads
+  `swr_turn_notify` directly instead of costing a Cloudflare request each time
+  (without them it polls `/api/admin/ai-due`, backing off to `AI_IDLE_POLL_MS`
+  — default 60 s — while nothing is due)
   (perms 600, **outside** the repo so `git pull` never touches it).
 - `~/swr-ai-worker.log` — worker + supervisor output.
 - `deploy/ai-worker/tick.sh` — cron supervisor + auto-deploy (see below).
