@@ -99,7 +99,7 @@ console.log('[ the lever: off by default, re-orders when on ]');
 console.log('[ the MCTS root is wired ]');
 {
   const src = readFileSync(join(ROOT, 'src/play/mctsAI.ts'), 'utf8');
-  check('rankCandidates wraps bestCommandAction before the topK cut', /rankCandidates\(G, side, bestCommandAction\(G, side\)\)\.slice\(0, conf\.topK\)/.test(src));
+  check('rankCandidates wraps bestCommandAction before the topK cut', /rankCandidates\(G, side, (?:deferIdleLastLeader\(G, side, )?bestCommandAction\(G, side\)\)?\)\.slice\(0, conf\.topK\)/.test(src));
   check('the prior steers PULLS: a PUCT term in the selection rule', /RANKER_PRIOR_W \* priors\[arms\.indexOf\(x\)\] \* Math\.sqrt\(pulls \+ 1\) \/ \(1 \+ x\.n\)/.test(src));
   check('and can cut the root to the ranker\'s top-N arms', /RANKER_TOPK > 0 && candidates\.length > RANKER_TOPK/.test(src));
   check('the trace records whether the search followed the prior', /rankerTop:/.test(src));

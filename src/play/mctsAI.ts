@@ -294,6 +294,36 @@ export function saturatedPick<T extends { a: { kind: string; score: number }; n:
   const pool = acts.length ? acts : alive;
   return pool.reduce((b, x) => (x.a.score > b.a.score ? x : b), pool[0]);
 }
+/** Last-reserve guard (#834, 2026-11-12). Opposing an enemy mission needs a
+ *  leader in the pool, so the LAST pool leader is the side's whole answer to
+ *  the missions the opponent has yet to reveal. On the reporter's board the
+ *  Rebel held only General Rieekan, had four face-down missions of its own
+ *  (best reveal score 37), and spent him first on a score-1 activation that
+ *  moved one X-wing. Its own search rated the reveals higher (0.21 vs 0.19);
+ *  the ranker prior (94% on the two Rieekan moves) plus final-by-visits
+ *  overrode it on every seed. Self-play shows the same shape in ~9% of Rebel
+ *  activations.
+ *
+ *  So while the side still has a reveal to make, a near-worthless activation
+ *  by its last pool leader waits until the reveals are done. Nothing is lost:
+ *  reveals don't use the pool, and the move is still on offer afterwards.
+ *  Real activations (score >= floor) are untouched. SWR_RESERVE_LEADER=0 off;
+ *  SWR_RESERVE_FLOOR sets the floor. */
+const RESERVE_LEADER_GUARD: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_RESERVE_LEADER === '0') return false;
+  } catch { /* browser */ }
+  return true;
+})();
+const RESERVE_FLOOR: number = envInt('SWR_RESERVE_FLOOR', 5);
+/** The candidate list with the last-reserve guard applied. Exported for tests. */
+export function deferIdleLastLeader<T extends { kind: string; score: number }>(G: GameState, side: Side, cands: T[]): T[] {
+  if (!RESERVE_LEADER_GUARD) return cands;
+  const f = side === 'Rebel' ? G.rebel : G.empire;
+  if (f.leaderPool.length !== 1 || !cands.some((a) => a.kind === 'reveal')) return cands;
+  return cands.filter((a) => a.kind !== 'activate' || a.score >= RESERVE_FLOOR);
+}
 /** Worker-side setter (the worker cannot read the main thread's query/localStorage). */
 export function setPostRevealHeuristic(on: boolean): void { postRevealHeuristic = on; }
 export function isPostRevealHeuristic(): boolean { return postRevealHeuristic; }
@@ -514,7 +544,7 @@ export function searchMctsCommand(G: GameState, side: Side, cfg?: Partial<MctsCo
   // are re-ordered by a model of the recorded human decisions BEFORE the topK
   // cut, so the search spends its pulls on what a winning player would look
   // at. Off by default; see docs/imitation-plan.md.
-  let candidates = rankCandidates(G, side, bestCommandAction(G, side)).slice(0, conf.topK);
+  let candidates = rankCandidates(G, side, deferIdleLastLeader(G, side, bestCommandAction(G, side))).slice(0, conf.topK);
   if (candidates.length === 0) return null; // heuristic will pass
   // Ranker PRIOR (docs/imitation-plan.md). Re-ordering alone was measured
   // flat end-to-end: topK (12) exceeds the ~6 candidates offered, so every
