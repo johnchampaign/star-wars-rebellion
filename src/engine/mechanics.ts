@@ -318,10 +318,15 @@ export function sweepTargetMarkerRemovals(G: GameState): void {
 }
 
 function applyInvariants(G: GameState, affected?: SystemId[]): void {
+  // Reveal first: a reveal moves the "Rebel Base" space's units into the
+  // system, and subjugation / target markers must see them. Revealing last
+  // marked a system subjugated by a lone Stormtrooper that three Rebel
+  // troopers were about to land beside (#835; contested systems don't take
+  // the marker, #612).
+  recomputeRebelBaseReveal(G);
   recomputeSubjugation(G, affected);
   cullOverTransportInDestroyed(G, affected);
   processTargetMarkerRemovals(G, affected);
-  recomputeRebelBaseReveal(G);
   recordEmpireSearched(G, affected);
   // If a captured leader's system no longer has Imperial units, auto-rescue
   // (rr Capturing leaders). Scan affected systems only, since this is called

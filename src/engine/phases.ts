@@ -5276,7 +5276,22 @@ function runMissionEffect(G: GameState, side: Side, missionId: string, targetSys
     return;
   }
   const ctx = Handlers.makeContext(side, { kind: 'mission', id: missionId }, { targetSystemId, targetLeaderId, leaderIds, successMargin });
+  const baseWasHidden = !G.rebelBaseRevealed;
   Handlers.invokeByKey(G, key, ctx);
+  // A mission that reveals the base (Deployment landing a Stormtrooper there,
+  // Single Reactor Ignition, a loyalty gain) drops the "Rebel Base" space's
+  // units into the system. FAQ (Single Reactor Ignition): "Any combat
+  // resulting from playing a mission card is resolved after all mission steps
+  // are complete" — the card's player initiated it (FAQ "a combat that you
+  // initiated"). Without this the two armies just sat together (#835).
+  // beginCombat no-ops unless both sides share a theater; while the combat
+  // runs, pendingMission stays set and combat end finishes the mission, exactly
+  // as for triggerCombatAt (Ignite Rebellion).
+  if (baseWasHidden && G.rebelBaseRevealed && !G.pendingChoice && !G.pendingCombat && !G.isGameOver) {
+    const base = G.rebelBaseSystemId;
+    beginCombat(G, side, base, base);
+    if (G.pendingCombat) runCombat(G);
+  }
 }
 
 /** RoE missions whose card text reads "If the mission fails, return this card to
