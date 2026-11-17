@@ -5,9 +5,10 @@
 // scripts/deploy-api.sh. docs/online-multiplayer.md "Where the API runs".
 //
 // Env (/etc/swr-api.env on the Linode, never committed): gameServer.ts's Env —
-// SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, RESEND_API_KEY, RESEND_FROM (invite
-// emails), RATINGS_INGEST_KEY, SWR_ADMIN_TOKEN, AI_WORKER_ENABLED,
-// PUBLIC_BASE_URL — plus PORT (default 8395).
+// SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, RATINGS_INGEST_KEY, SWR_ADMIN_TOKEN,
+// AI_WORKER_ENABLED, PUBLIC_BASE_URL, INVITE_EMAIL_RELAY — plus PORT (default
+// 8395). No Resend key: Cloudflare's is write-only, so invite emails go through
+// INVITE_EMAIL_RELAY (functions/api/admin/send-invite.ts) and Cloudflare sends.
 //
 // The catalog is loaded from PUBLIC_BASE_URL's /dev-assets/*.json once per
 // process, so restart the service (deploy:api does) after an asset change.

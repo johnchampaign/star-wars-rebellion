@@ -60,8 +60,12 @@ and the median Rebellion request (snapshot decode + catalog) was ~10 ms, so
 heavier requests were killed every day.
 
 - **Stays on Cloudflare** (secrets only the Pages project holds; all light):
-  `/api/cron/*` (the reminder sweep), `/api/report`, `/api/my-responses`,
-  `/api/upload-logs`.
+  `/api/cron/*` (the reminder sweep), `/api/admin/send-invite`, `/api/report`,
+  `/api/my-responses`, `/api/upload-logs`.
+- **Invite emails:** the Linode has no Resend key (Cloudflare secrets can't be
+  read back to copy). Game creation runs on the Linode, and its `sendInviteEmail`
+  POSTs to `INVITE_EMAIL_RELAY` (`/api/admin/send-invite`, admin token), which
+  Cloudflare sends with its own key.
 - **New route under `functions/api/`?** Add it to `ROUTES` in
   `server/linode.ts` too, or it 404s through the forwarder.
 - **Deploys:** `npm run deploy` runs `npm run deploy:api` after the Pages

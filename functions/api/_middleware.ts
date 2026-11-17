@@ -8,8 +8,9 @@
 //
 // Still answered here, never forwarded: endpoints that need secrets only this
 // Pages project holds — the reminder sweep (/api/cron/*, Resend + the cron
-// Worker) and the bug-report/log endpoints (SWR_BUGREPORT_TOKEN, a GitHub token).
-// All are light.
+// Worker), the invite-email relay the Linode calls (/api/admin/send-invite,
+// Resend), and the bug-report/log endpoints (SWR_BUGREPORT_TOKEN, a GitHub
+// token). All are light.
 //
 // When the Linode can't be reached at all (the fetch throws, or Cloudflare
 // answers 530: the tunnel or its DNS name is down), the request runs here as
@@ -22,7 +23,7 @@
 import type { Env } from '../_lib/gameServer';
 
 const API_ORIGIN = 'https://swr-api.johnchampaign.com';
-const LOCAL_ONLY = ['/api/cron/', '/api/report', '/api/my-responses', '/api/upload-logs'];
+const LOCAL_ONLY = ['/api/cron/', '/api/admin/send-invite', '/api/report', '/api/my-responses', '/api/upload-logs'];
 
 export const onRequest: PagesFunction<Env & { SWR_API_ORIGIN?: string }> = async (ctx) => {
   const url = new URL(ctx.request.url);

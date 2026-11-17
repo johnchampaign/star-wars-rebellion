@@ -77,6 +77,10 @@ export interface Env {
   // is safe — optimistic concurrency prevents double-moves — this only decides
   // who plays the AI's move.)
   AI_WORKER_ENABLED?: string;
+  // Set on the Linode only (which has no Resend key): invite emails are POSTed
+  // here — the Pages endpoint functions/api/admin/send-invite.ts, gated by
+  // SWR_ADMIN_TOKEN — and sent by Cloudflare with the key it already holds.
+  INVITE_EMAIL_RELAY?: string;
 }
 
 /** Resend turn-alert emails when configured, else a no-op. The framework's
@@ -102,6 +106,15 @@ export async function sendInviteEmail(
   env: Env,
   args: { to: string; gameUrl: string; side: Side },
 ): Promise<void> {
+  if (!env.RESEND_API_KEY && env.INVITE_EMAIL_RELAY && env.SWR_ADMIN_TOKEN) {
+    const r = await fetch(env.INVITE_EMAIL_RELAY, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.SWR_ADMIN_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(args),
+    });
+    if (!r.ok) throw new Error(`invite relay failed: ${r.status} ${await r.text()}`);
+    return;
+  }
   if (!env.RESEND_API_KEY || !env.RESEND_FROM) return;
   const { to, gameUrl, side } = args;
   const html =
