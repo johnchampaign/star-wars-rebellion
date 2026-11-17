@@ -1,5 +1,7 @@
 node_modules
 dist
+dist-api
+.wrangler
 .DS_Store
 *.log
 .vite

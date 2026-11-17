@@ -162,6 +162,9 @@ handle the whole thing:
    intentionally skip the `tsc -b` step in the deploy script because
    the project has pre-existing tsconfig issues that don't affect the
    actual runtime build. `vite build` alone produces a working `dist/`.
+   Since Nov 2026 it then runs `npm run deploy:api`, which ships the online
+   API to John's Linode (ssh) and restarts it. Most of `/api/*` is served
+   there; see docs/online-multiplayer.md "Where the API runs".
 4. **Report back with**:
    - The new deployment preview URL (wrangler prints `https://<hash>.star-wars-rebellion.pages.dev`)
    - The production URL: https://star-wars-rebellion.pages.dev

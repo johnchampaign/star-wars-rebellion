@@ -49,6 +49,34 @@ src/online/           online-only UI
                        to submit() to the server instead of mutating locally
 ```
 
+## Where the API runs (since Nov 2026)
+
+`functions/api/_middleware.ts` **forwards** most of `/api/*` to
+`https://swr-api.johnchampaign.com`. That is `swr-api.service` on John's Linode
+(port 8395, env in `/etc/swr-api.env`), reached through the `litrpgrec`
+Cloudflare tunnel. It runs these same `functions/api` handlers in Node via
+`server/linode.ts`. Why: Workers' free plan allows 10 ms of CPU per request,
+and the median Rebellion request (snapshot decode + catalog) was ~10 ms, so
+heavier requests were killed every day.
+
+- **Stays on Cloudflare** (secrets only the Pages project holds; all light):
+  `/api/cron/*` (the reminder sweep), `/api/report`, `/api/my-responses`,
+  `/api/upload-logs`.
+- **New route under `functions/api/`?** Add it to `ROUTES` in
+  `server/linode.ts` too, or it 404s through the forwarder.
+- **Deploys:** `npm run deploy` runs `npm run deploy:api` after the Pages
+  deploy. That rebuilds and ships the server and restarts it. The restart
+  matters even when only assets changed, because the process caches
+  `/dev-assets` for its lifetime. `deploy:api` needs ssh to the Linode, so it
+  runs from John's machine.
+- **Fallback / rollback:** if the Linode can't be reached (fetch error or 530),
+  the request runs on Cloudflare as before. Pages env `SWR_API_ORIGIN=local`
+  forces that. A bad API build rolls back per `scripts/deploy-api.sh`.
+- The AI worker (`deploy/ai-worker/`) runs on the same box and calls the API
+  directly at `http://127.0.0.1:8395` (`SWR_BASE_URL` in
+  `/home/champaignj/swr-worker.env`), so its polling costs no Cloudflare
+  requests.
+
 ## Generic choice framework — one adapter action covers all of them
 
 Master added a unified player-choice framework (`src/engine/choices.ts`): a
