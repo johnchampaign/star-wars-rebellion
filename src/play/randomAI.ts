@@ -2846,19 +2846,33 @@ function planAssignment(G: GameState, side: Side): Array<{ missionId: string; le
     // Only sets of the SAME size are considered, so this never spends an extra
     // leader to save a good one, and the portrait/bespoke bonuses still get to
     // outvote it (a +4 pairing beats a 2-point tactic saving).
+    //
+    // PAIRING-FIRST candidate (#842). Neither ordering above ever LOOKS at the
+    // portrait/bespoke pairings — they only score them after the set is built.
+    // Seek Yoda costs 1 intel; Leia and Luke both carry 2, Leia sits earlier in
+    // the pool, so fit-order and cheap-order both picked Leia and Luke's +9
+    // (portrait + Jedi swap) was never on the table. Build a third set that
+    // seats the paired leader first, and let the same worth() comparison decide.
+    const pairing = (lid: LeaderId) =>
+      leaderPortraitBonus(G, lid, missionId) + leaderMissionBespoke(lid, missionId);
+    const oppCost = (lid: LeaderId) => {
+      if (!ASSIGN_OPPORTUNITY_COST) return 0;
+      const l = G.catalog.leaders[lid];
+      return (l?.tacticValues.space ?? 0) + (l?.tacticValues.ground ?? 0);
+    };
+    const worth = (set: LeaderId[]) => set.reduce((s, l) => s + pairing(l) - oppCost(l), 0);
+    const alternatives = [];
     if (ASSIGN_OPPORTUNITY_COST) {
-      const oppCost = (lid: LeaderId) => {
-        const l = G.catalog.leaders[lid];
-        return (l?.tacticValues.space ?? 0) + (l?.tacticValues.ground ?? 0);
-      };
-      const cheap = greedy([...ranked].sort((a, b) =>
-        oppCost(a.lid) - oppCost(b.lid) || b.fit - a.fit));
-      if (cheap.sum >= cost && cheap.picked.length <= used.length) {
-        const worth = (set: LeaderId[]) => set.reduce((s, l) =>
-          s + leaderPortraitBonus(G, l, missionId) + leaderMissionBespoke(l, missionId)
-            - oppCost(l), 0);
-        if (worth(cheap.picked) > worth(used)) { used = cheap.picked; sum = cheap.sum; }
-      }
+      alternatives.push(greedy([...ranked].sort((a, b) =>
+        oppCost(a.lid) - oppCost(b.lid) || b.fit - a.fit)));
+    }
+    if (ranked.some((r) => pairing(r.lid) > 0)) {
+      alternatives.push(greedy([...ranked].sort((a, b) =>
+        pairing(b.lid) - pairing(a.lid) || b.fit - a.fit)));
+    }
+    for (const alt of alternatives) {
+      if (alt.sum >= cost && alt.picked.length <= used.length
+        && worth(alt.picked) > worth(used)) { used = alt.picked; sum = alt.sum; }
     }
     // Skip missions the Command phase would refuse to play. Assigning one just
     // leaves a face-down mission the AI can't reveal, so it ends up passing
