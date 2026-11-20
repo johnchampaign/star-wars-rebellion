@@ -6253,6 +6253,11 @@ function PlantFalseLeadModal({ G, cards, onConfirm, title, blurb }: {
               You took these {cards.length} probe card{cards.length === 1 ? '' : 's'} from the Empire
               (systems they'd ruled out). Choose where each goes — <b>Bottom</b> hides it the longest;
               <b> Top</b> makes the Empire redraw it next, wasting their probe.
+              {/* #845: the card says 4, so fewer looks like a bug. Say why. */}
+              {cards.length < 4 && (
+                <> The mission takes 4, but the Empire was only holding {cards.length} — that
+                  was their whole hand.</>
+              )}
             </>
           )}
         </div>
