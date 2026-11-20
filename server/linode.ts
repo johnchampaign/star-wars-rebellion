@@ -54,9 +54,17 @@ const origin = env.PUBLIC_BASE_URL ?? 'https://star-wars-rebellion.pages.dev';
 const json = (body: unknown, status: number) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+// Without its database keys this server can't serve a game. Answer 530 — the
+// status the Pages middleware already treats as "Linode unreachable" — so
+// Cloudflare runs the request itself instead of players getting a 500.
+// (2026-11-20: the DNS name went live before the keys were set, and every game
+// request failed for ~23 h.) Health reports it, so deploy-api's check does too.
+const configured = Boolean(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY);
+
 async function route(request: Request): Promise<Response> {
   const path = new URL(request.url).pathname;
-  if (path === '/api/health') return json({ ok: true }, 200);
+  if (path === '/api/health') return json({ ok: true, configured }, 200);
+  if (!configured) return json({ error: 'swr-api has no database keys; Cloudflare serves this' }, 530);
   for (const [re, mod] of ROUTES) {
     const m = re.exec(path);
     if (!m) continue;

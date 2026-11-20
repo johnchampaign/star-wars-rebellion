@@ -27,5 +27,9 @@ echo
 # The box itself answered above (fatal if not). The public check is a warning
 # only: if it fails, the tunnel or DNS name is down and the site falls back to
 # running the API on Cloudflare, so the deploy itself still succeeded.
-if curl -fsS --max-time 20 "$PUBLIC/api/health"; then echo; echo "Rebellion API $rev live at $PUBLIC"
-else echo "WARNING: $PUBLIC unreachable; the site is falling back to Cloudflare (API $rev is on the box)"; fi
+h=$(curl -fsS --max-time 20 "$PUBLIC/api/health" || true)
+case "$h" in
+  *'"configured":true'*) echo "$h"; echo "Rebellion API $rev live at $PUBLIC";;
+  *'"configured":false'*) echo "WARNING: $PUBLIC is up but has no database keys (/etc/swr-api.env); it hands every request back to Cloudflare";;
+  *) echo "WARNING: $PUBLIC unreachable; the site is falling back to Cloudflare (API $rev is on the box)";;
+esac
