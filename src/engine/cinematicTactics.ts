@@ -308,29 +308,7 @@ function abilityValue(G: GameState, c: CombatState, side: Side, theater: Theater
     // Either way the primary resolves to nothing, and the card goes to the
     // discard for nothing. Skip it and keep it for a real confrontation.
     if (empGround === 0 || !empLeaderHere) return 0;
-    // Can the Rebels actually wipe the Imperial ground force THIS round? A
-    // unit count alone can't tell: one full-health AT-AT (3 red health) against
-    // a mostly-black Rebel pool is out of reach, yet it scored as "small force,
-    // likely wiped" (#770). Estimate by colour — regular hits (2/6 per die) only
-    // hurt matching health, direct hits (1/6 red/black, 2/6 green) hurt anything
-    // — and require the expected direct hits to cover the colour shortfall.
-    let red = 0, black = 0, green = 0;
-    for (const u of unitsOf(G, 'Rebel', c.systemId, 'ground')) {
-      const t = G.catalog.unitTypes[u.typeId];
-      if (!t) continue;
-      red += t.attack.red; black += t.attack.black; green += t.attack.green;
-    }
-    red = Math.min(5, red); black = Math.min(5, black); green = Math.min(3, green);
-    let redLeft = 0, blackLeft = 0;
-    for (const u of empUnits) {
-      const t = G.catalog.unitTypes[u.typeId];
-      if (!t || t.health.color === null) return 0; // can't be destroyed at all
-      const left = Math.max(0, t.health.value - u.damage);
-      if (t.health.color === 'red') redLeft += left; else blackLeft += left;
-    }
-    const shortfall = Math.max(0, redLeft - red * 2 / 6) + Math.max(0, blackLeft - black * 2 / 6);
-    const directHits = (red + black) / 6 + green * 2 / 6;
-    if (shortfall > directHits) return 0;
+    if (!rebelCanWipeEmpireGround(G, c.systemId)) return 0;
     return empGround <= 2 ? 1.5 : 0.6;
   }
   if (ab.kind === 'escapePlan') {
@@ -409,6 +387,38 @@ function availableCards(G: GameState, side: Side, theater: Theater): string[] {
  *  played card to the side's cinematic discard. */
 /** Is `side` locked out of playing a tactic card in `theater` this round?
  *  (Entrapment / Air Superiority / Outrun Them / Escape Plan secondaries.) */
+/** Can the Rebel ground units in `sysId` plausibly destroy every Imperial
+ *  ground unit there in ONE round — the trigger for Confrontation's primary?
+ *  A unit count alone can't tell: one full-health AT-AT (3 red health) against
+ *  a mostly-black Rebel pool is out of reach, yet it scored as "small force,
+ *  likely wiped" (#770). Estimate by colour — regular hits (2/6 per die) only
+ *  hurt matching health, direct hits (1/6 red/black, 2/6 green) hurt anything
+ *  — and require the expected direct hits to cover the colour shortfall.
+ *  False when either side has no ground units here. Shared by the Rebel's
+ *  Confrontation scorer and the Empire's add-a-leader-to-combat pick (#848). */
+export function rebelCanWipeEmpireGround(G: GameState, sysId: string): boolean {
+  const empUnits = unitsOf(G, 'Empire', sysId, 'ground');
+  const rebUnits = unitsOf(G, 'Rebel', sysId, 'ground');
+  if (empUnits.length === 0 || rebUnits.length === 0) return false;
+  let red = 0, black = 0, green = 0;
+  for (const u of rebUnits) {
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t) continue;
+    red += t.attack.red; black += t.attack.black; green += t.attack.green;
+  }
+  red = Math.min(5, red); black = Math.min(5, black); green = Math.min(3, green);
+  let redLeft = 0, blackLeft = 0;
+  for (const u of empUnits) {
+    const t = G.catalog.unitTypes[u.typeId];
+    if (!t || t.health.color === null) return false; // can't be destroyed at all
+    const left = Math.max(0, t.health.value - u.damage);
+    if (t.health.color === 'red') redLeft += left; else blackLeft += left;
+  }
+  const shortfall = Math.max(0, redLeft - red * 2 / 6) + Math.max(0, blackLeft - black * 2 / 6);
+  const directHits = (red + black) / 6 + green * 2 / 6;
+  return shortfall <= directHits;
+}
+
 export function isCinematicLocked(c: CombatState, side: Side, theater: Theater): boolean {
   // It's a Trap (#272): the named side cannot play SPACE tactic cards in round 1.
   if (theater === 'space' && c.round === 1 && c.flags?.noSpaceTacticsRound1Side === side) {

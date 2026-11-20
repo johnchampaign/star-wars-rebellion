@@ -22,7 +22,7 @@ const args = (() => {
   const a = process.argv.slice(2);
   // maxRounds defaults to 16 — the real length of the time track. (It was 8,
   // which force-ended healthy games early and inflated "max-rounds-reached".)
-  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16, expansion: false, rebelPolicy: null, empirePolicy: null, fastSearch: false, realistic: false, verdict: false, deterministic: false };
+  const out = { games: 10, seed: 1, out: null, verbose: false, maxRounds: 16, expansion: false, cinematic: false, rebelPolicy: null, empirePolicy: null, fastSearch: false, realistic: false, verdict: false, deterministic: false };
   for (let i = 0; i < a.length; i++) {
     const k = a[i];
     if (k === '--games') out.games = parseInt(a[++i], 10);
@@ -37,6 +37,9 @@ const args = (() => {
     // base-game result, which is fine for base-game behaviour but silently
     // measures nothing when the change under test is expansion-only.
     else if (k === '--expansion' || k === '--roe') out.expansion = true;
+    // Rise of the Empire with Cinematic Combat (implies --expansion). Leader
+    // elimination by Confrontation only exists here (#848).
+    else if (k === '--cinematic') { out.expansion = true; out.cinematic = true; }
     // Swap in a STRONGER Command-phase brain for one side. Both sides run the
     // plain heuristic by default, which means every A/B here measures a change
     // against that specific opponent. That matters for anything defensive or
@@ -174,7 +177,7 @@ if (rebelPolicyName || empirePolicyName) {
     console.warn('       table from this run. See docs/ab-levers.md (harness note 2026-08-21).');
   }
 }
-console.log(`mode: ${args.expansion ? 'Rise of the Empire' : 'base game'}`);
+console.log(`mode: ${args.expansion ? 'Rise of the Empire' + (args.cinematic ? ' + Cinematic Combat' : '') : 'base game'}`);
 
 /** Run one game. Returns { result, rounds, steps, elapsed_ms, log }. */
 function playOne(seed) {
@@ -190,7 +193,7 @@ function playOne(seed) {
   if (mctsMod) mctsMod.seedMCTS(seed * 29 + 3);
   const G = createGame(data, { seed, autoSetupUnits: false,
     expansion: args.expansion
-      ? { enabled: true, roeUnits: true, roeMissions: true }
+      ? { enabled: true, roeUnits: true, roeMissions: true, cinematicCombat: args.cinematic }
       : undefined });
   const t0 = performance.now();
 

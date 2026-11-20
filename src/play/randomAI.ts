@@ -24,7 +24,7 @@ import * as phases from '../engine/phases';
 import * as combat from '../engine/combat';
 import { unitsAvailableInSupply } from '../engine/mechanics';
 import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
-import { pickBestCinematicPlay } from '../engine/cinematicTactics';
+import { pickBestCinematicPlay, rebelCanWipeEmpireGround } from '../engine/cinematicTactics';
 import { missionTargets, missionRevealIsPointless, rebelLoyalSystemsInRegion } from '../engine/missionTargets';
 // Re-exported so existing callers/tests that import it from the AI module keep
 // working now that the canonical definition lives in the engine (#304).
@@ -144,6 +144,21 @@ const LOYALTY_YIELD: boolean = (() => {
 const LOYALTY_YIELD_W: number = (() => {
   try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_LOYALTY_YIELD_W; if (v) return Number(v); } catch { /* browser */ }
   return 3;
+})();
+/** SWR_SAFE_COMBAT_LEADER (#848): in cinematic combat, Confrontation's primary
+ *  ELIMINATES an Imperial leader (permanently) if the last Imperial ground unit
+ *  in the system falls that round. The Empire used to add its best pool leader
+ *  to every combat, so a turn-1 Rebel strike on a one-trooper Death Star Under
+ *  Construction cost it Darth Vader. Now it adds no leader while Confrontation
+ *  is still live in the Rebel deck and the Rebel ground units here can
+ *  plausibly wipe the Imperial ground force. SWR_SAFE_COMBAT_LEADER=0 is the
+ *  counterfactual. */
+const SAFE_COMBAT_LEADER: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_SAFE_COMBAT_LEADER === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
 })();
 /** SWR_CORUSCANT_DEPLOY (#839): aim Oversee Project at Coruscant while the
  *  Rebels hold it. The card ("Choose 1 Imperial unit on space 1 or 2 of the
@@ -1854,6 +1869,17 @@ function systemBuildValue(G: GameState, side: Side, sysId: SystemId): number {
  *  hold Coruscant with no Imperial unit there (Heart of the Empire's condition):
  *  24 next door, 16 at two jumps, 8 at three, nothing further out; x1.5 once
  *  Heart of the Empire has scored. 0 when Coruscant is not held. */
+/** #848: would an Imperial leader added to this combat risk elimination by
+ *  Confrontation? Only in cinematic combat, only while the card is not in the
+ *  Rebel discard (public, and a deck only recycles once it runs dry), and only
+ *  when the Rebel ground force here can plausibly wipe the Imperial ground
+ *  units. */
+export function empireLeaderFacesConfrontation(G: GameState, systemId: SystemId): boolean {
+  if (!SAFE_COMBAT_LEADER || !G.expansion?.cinematicCombat) return false;
+  if ((G.rebel.cinematicTacticDiscard ?? []).includes('cin-rebel-ground-confrontation')) return false;
+  return rebelCanWipeEmpireGround(G, systemId);
+}
+
 function coruscantReliefTerm(G: GameState, targetSysId: SystemId): number {
   const cid = Object.keys(G.catalog.systems).find((id) => G.catalog.systems[id]?.isCoruscant);
   const units = cid ? (G.map.systems[cid]?.units ?? []) : [];
@@ -4691,6 +4717,9 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     // here but no leader. Future tuning could decline when the combat is
     // unwinnable anyway (e.g. defender vs overwhelming attacker).
     const c = G.pendingChoice;
+    if (side === 'Empire' && empireLeaderFacesConfrontation(G, c.systemId)) {
+      return combat.resolveCombatAddLeaderPick(G, null).ok;
+    }
     let best: { id: string; v: number } | null = null;
     for (const lid of c.candidates) {
       const ld = G.catalog.leaders[lid];
