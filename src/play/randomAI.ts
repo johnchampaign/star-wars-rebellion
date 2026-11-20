@@ -145,6 +145,24 @@ const LOYALTY_YIELD_W: number = (() => {
   try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_LOYALTY_YIELD_W; if (v) return Number(v); } catch { /* browser */ }
   return 3;
 })();
+/** SWR_CORUSCANT_DEPLOY (#839): aim Oversee Project at Coruscant while the
+ *  Rebels hold it. The card ("Choose 1 Imperial unit on space 1 or 2 of the
+ *  build queue and deploy it in this system") had NO target score, so every
+ *  legal system tied and the pick was arbitrary — the reporter watched a Super
+ *  Star Destroyer land at Bothawui, four jumps out, while a Rebel stack sat on
+ *  Coruscant scoring Heart of the Empire (+2 reputation every Refresh while
+ *  Coruscant holds a Rebel unit and no Imperial unit, then back to hand). While
+ *  that condition stands, a target scores by how close it lands to Coruscant
+ *  (the card can't target Coruscant itself: it has Rebel units), x1.5 once
+ *  Heart of the Empire has scored, since the Empire then knows it repeats.
+ *  Inert otherwise. SWR_CORUSCANT_DEPLOY=0 is the counterfactual. */
+const CORUSCANT_DEPLOY: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_CORUSCANT_DEPLOY === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
 /** Loyalty a single success adds in the target system, for the missions that
  *  gain it THERE (Fear Will Keep Them in Line gains it elsewhere in the region). */
 const EMPIRE_LOYALTY_GAIN: Record<string, number> = {
@@ -1832,6 +1850,20 @@ function systemBuildValue(G: GameState, side: Side, sysId: SystemId): number {
     (a, r) => a + iconBuildValue(G, side, { theater: r.type, shape: r.shape }), 0);
 }
 
+/** SWR_CORUSCANT_DEPLOY: worth of deploying at `targetSysId` while Rebel units
+ *  hold Coruscant with no Imperial unit there (Heart of the Empire's condition):
+ *  24 next door, 16 at two jumps, 8 at three, nothing further out; x1.5 once
+ *  Heart of the Empire has scored. 0 when Coruscant is not held. */
+function coruscantReliefTerm(G: GameState, targetSysId: SystemId): number {
+  const cid = Object.keys(G.catalog.systems).find((id) => G.catalog.systems[id]?.isCoruscant);
+  const units = cid ? (G.map.systems[cid]?.units ?? []) : [];
+  if (!cid || !units.some((u) => u.side === 'Rebel') || units.some((u) => u.side === 'Empire')) return 0;
+  const d = distFrom(bfsDistances(G, cid, 3), targetSysId);
+  const base = Math.max(0, 4 - d) * 8;
+  const known = (G.rebel.scoredObjectives ?? []).some((o) => o.objectiveId === 'heart-of-the-empire-2');
+  return known ? base * 1.5 : base;
+}
+
 export function empireMissionTargetScore(G: GameState, missionId: string, targetSysId: SystemId): number {
   let s = 0;
   const sys = G.catalog.systems[targetSysId];
@@ -2007,6 +2039,7 @@ export function empireMissionTargetScore(G: GameState, missionId: string, target
   if (missionId === 'hunt-them-down') {
     s += Math.min(30, bestDestroyValue(G, 'Rebel', targetSysId, 2));
   }
+  if (missionId === 'oversee-project' && CORUSCANT_DEPLOY) s += coruscantReliefTerm(G, targetSysId);
   // Prefer an undefended target so the attempt auto-succeeds (see helper).
   s += oppositionTargetTerm(G, 'Empire', missionId, targetSysId);
   return s;
