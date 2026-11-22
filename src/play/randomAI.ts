@@ -2066,6 +2066,15 @@ export function empireMissionTargetScore(G: GameState, missionId: string, target
     s += Math.min(30, bestDestroyValue(G, 'Rebel', targetSysId, 2));
   }
   if (missionId === 'oversee-project' && CORUSCANT_DEPLOY) s += coruscantReliefTerm(G, targetSysId);
+  // Capture missions: WHO is standing there (#847). They had no target term
+  // beyond the opposition penalty, so Jan Dodonna at Mygeeto and Mon Mothma at
+  // Ord Mantell (both 0 spec ops, both -2) tied and the pick fell to the
+  // tie-break. Centred on an average leader and kept under one opposition icon
+  // (2), so it orders otherwise-equal targets without buying worse odds.
+  if (CAPTURE_PRIZE && LEADER_TARGETING_MISSIONS.has(missionId)) {
+    const here = G.rebel.leadersOnBoard[targetSysId] ?? [];
+    if (here.length > 0) s += (Math.max(...here.map((l) => capturePrize(G, l))) - 6.5) * 0.5;
+  }
   // Prefer an undefended target so the attempt auto-succeeds (see helper).
   s += oppositionTargetTerm(G, 'Empire', missionId, targetSysId);
   return s;
@@ -3055,6 +3064,30 @@ function leaderValue(G: GameState, lid: string): number {
     + l.tacticValues.space + l.tacticValues.ground;
 }
 
+/** Opt-out for the capture-prize ordering (SWR_CAPTURE_PRIZE=0). Default ON. */
+const CAPTURE_PRIZE: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_CAPTURE_PRIZE === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
+/** What a captured leader costs its owner (#847: "it should have captured mon
+ *  mothma instead of jan dodonna"). leaderValue counts tactic values at full
+ *  weight, which ranks Mon Mothma (no tactics at all) as the LEAST valuable
+ *  Rebel leader on the board. But a captured leader is lost for missions first
+ *  and battles second, and diplomacy is the skill the Rebel can least replace:
+ *  loyalty is its production and most of its objectives. So: diplomacy double,
+ *  other skills once, tactics at half. Mon Mothma 7, Leia 8, Dodonna 5.5. */
+function capturePrize(G: GameState, lid: string): number {
+  const l = G.catalog.leaders[lid];
+  if (!l) return -1;
+  const sk = l.skills;
+  return 2 * (sk.diplomacy ?? 0) + (sk.intel ?? 0) + (sk.specOps ?? 0) + (sk.logistics ?? 0)
+    + 0.5 * (l.tacticValues.space + l.tacticValues.ground);
+}
+
 /** Leader-targeting missions must LOCK their target at reveal time (RAW: the
  *  target is chosen when the mission is performed, not after it succeeds).
  *  Without this the engine falls back to "capture whoever is on the board at
@@ -3068,7 +3101,8 @@ function captureTargetLeaderId(G: GameState, side: Side, missionId: string, sysI
   const oppF = side === 'Empire' ? G.rebel : G.empire;
   const here = oppF.leadersOnBoard[sysId] ?? [];
   if (here.length === 0) return undefined;
-  return [...here].sort((a, b) => leaderValue(G, b) - leaderValue(G, a))[0] as LeaderId;
+  const value = CAPTURE_PRIZE ? capturePrize : leaderValue;
+  return [...here].sort((a, b) => value(G, b) - value(G, a))[0] as LeaderId;
 }
 
 /** Opt-out for the hold-or-flee assessment on a revealed base
