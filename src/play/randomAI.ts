@@ -2659,6 +2659,41 @@ const DS_BUNKER: boolean = (() => {
   return true;
 })();
 
+/** SWR_FLEET_SPREAD (#846): while the Rebel base is hidden, an activation that
+ *  is not an attack never gathers EVERY Star Destroyer into one stack; at least
+ *  one stays where it is. The planner brings all capital ships from each source
+ *  (they carry the troops), so a single mid-map reposition swept all three of
+ *  a reporter's Star Destroyers into Malastare, three turns from most of the
+ *  map. Exempt: targets holding Rebel units (a fight) and search-in-force
+ *  landings on a narrowed base candidate. SWR_FLEET_SPREAD=0 is the
+ *  counterfactual. */
+const FLEET_SPREAD: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_FLEET_SPREAD === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+const isStarDestroyer = (typeId: string): boolean =>
+  typeId === 'star-destroyer' || typeId === 'super-star-destroyer';
+/** How many more Star Destroyers an Empire activation of `targetSystemId` may
+ *  bring under SWR_FLEET_SPREAD; Infinity when the rule does not apply. */
+export function fleetSpreadSdBudget(G: GameState, targetSystemId: SystemId): number {
+  if (!FLEET_SPREAD || G.rebelBaseRevealed) return Infinity;
+  if ((G.map.systems[targetSystemId]?.units ?? []).some((u) => u.side === 'Rebel')) return Infinity;
+  if (searchInForceTarget(G, targetSystemId)) return Infinity;
+  let total = 0, atTarget = 0;
+  for (const [sid, ss] of Object.entries(G.map.systems)) {
+    for (const u of ss.units) {
+      if (u.side !== 'Empire' || !isStarDestroyer(u.typeId)) continue;
+      total++;
+      if (sid === targetSystemId) atTarget++;
+    }
+  }
+  if (total < 2) return Infinity;
+  return Math.max(0, total - 1 - atTarget);
+}
+
 const hasImperialBunker = (G: GameState, sysId: string): boolean =>
   (G.map.systems[sysId]?.units ?? []).some((u) => u.side === 'Empire' && u.typeId === 'shield-bunker');
 
@@ -3241,6 +3276,8 @@ export function plannedMoveOrders(
     const ss = G.map.systems[sysId];
     return ss && ss.units.some((u) => u.side === side);
   });
+  // SWR_FLEET_SPREAD (#846): Star Destroyers this activation may still bring.
+  let sdBudget = side === 'Empire' ? fleetSpreadSdBudget(G, targetSystemId) : Infinity;
   for (const fromId of sources) {
     const ss = G.map.systems[fromId];
     if (!ss) continue;
@@ -3343,6 +3380,15 @@ export function plannedMoveOrders(
         capitalShips.sort((a, b) => (G.catalog.unitTypes[a.typeId]?.transport.capacity ?? 0)
           - (G.catalog.unitTypes[b.typeId]?.transport.capacity ?? 0));
         capitalShips.shift();
+      }
+    }
+    // Fleet spread: past the budget a Star Destroyer stays home, and its
+    // capacity with it, so the fitting below brings fewer passengers.
+    if (sdBudget !== Infinity) {
+      for (let i = capitalShips.length - 1; i >= 0; i--) {
+        if (!isStarDestroyer(capitalShips[i].typeId)) continue;
+        if (sdBudget > 0) sdBudget--;
+        else capitalShips.splice(i, 1);
       }
     }
     // Transport-capacity math: capital ships' total capacity must
