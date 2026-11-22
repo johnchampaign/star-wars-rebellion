@@ -141,6 +141,10 @@ const raw = load('passivity-580.json');
 // 2026-10-16: the searched-worlds memory (#806/#809, SWR_SEARCH_MEMORY, default
 // ON) collapsed it again through the rollouts: floor off forfeits 0/10 with it
 // on, 2/10 with it off. The control child runs with SWR_SEARCH_MEMORY=0.
+// 2026-11-22: the #840/#841 Rebel loyalty-yield term (SWR_REBEL_LOYALTY_YIELD,
+// default ON) moved the Rebel's Build Alliance targets inside the rollouts and
+// collapsed it again: floor off forfeits 0/10 with it on, 1/10 with it off;
+// floor on stays 0/10. The control child runs with SWR_REBEL_LOYALTY_YIELD=0.
 if (process.env.PASS580_CHILD === '1') {
   console.log(JSON.stringify({ rateOff: withPassZ('0', () => passRate(raw, 10)) }));
   process.exit(0);
@@ -149,7 +153,7 @@ console.log('[ control: with the floor OFF, this board still forfeits sometimes 
 {
   const { execFileSync } = await import('node:child_process');
   const child = JSON.parse(execFileSync(process.execPath, [fileURLToPath(import.meta.url)],
-    { env: { ...process.env, PASS580_CHILD: '1', SWR_EMPIRE_CALIB: '0', SWR_BASE_STRIP_GUARD: '0', SWR_LOYALTY_SHAPE: '0', SWR_SEARCH_MEMORY: '0' }, encoding: 'utf8' }).trim().split('\n').pop());
+    { env: { ...process.env, PASS580_CHILD: '1', SWR_EMPIRE_CALIB: '0', SWR_BASE_STRIP_GUARD: '0', SWR_LOYALTY_SHAPE: '0', SWR_SEARCH_MEMORY: '0', SWR_REBEL_LOYALTY_YIELD: '0' }, encoding: 'utf8' }).trim().split('\n').pop());
   const rateOff = child.rateOff;
   console.log('    (control arm runs with SWR_EMPIRE_CALIB=0 — see the note above)');
   console.log(`    floor off: passed in ${(100 * rateOff).toFixed(0)}% of 10 seeds`);

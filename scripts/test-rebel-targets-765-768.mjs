@@ -70,8 +70,10 @@ if (CHILD) { console.log(JSON.stringify(measure())); process.exit(0); }
 let pass = 0, fail = 0;
 const check = (n, ok, e = '') => { console.log(`  ${ok ? '✓' : '✗'} ${n}${ok ? '' : ' — ' + e}`); ok ? pass++ : fail++; };
 const on = measure();
+// The control reproduces the pre-#765 scorer, so it also turns off the #840
+// loyalty-yield term, which prices the same Mon Calamari / Utapau square icons.
 const off = JSON.parse(execFileSync(process.execPath, [fileURLToPath(import.meta.url), '--child'], {
-  env: { ...process.env, SWR_LOYALTY_SHAPE: '0', SWR_HIDDEN_FLEET_GUARD: '0' }, encoding: 'utf8',
+  env: { ...process.env, SWR_LOYALTY_SHAPE: '0', SWR_HIDDEN_FLEET_GUARD: '0', SWR_REBEL_LOYALTY_YIELD: '0' }, encoding: 'utf8',
 }).trim().split('\n').pop());
 
 console.log('#765 loyalty target shape');

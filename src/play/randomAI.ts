@@ -145,6 +145,32 @@ const LOYALTY_YIELD_W: number = (() => {
   try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_LOYALTY_YIELD_W; if (v) return Number(v); } catch { /* browser */ }
   return 3;
 })();
+/** SWR_REBEL_LOYALTY_YIELD (#840/#841, the Rebel mirror of SWR_LOYALTY_YIELD):
+ *  "a mon cal in turn one is the most important troop to get for later" and
+ *  "getting loyalty would prevent me from getting a sd there". The Rebel loyalty
+ *  target term counted icon SHAPES (SWR_LOYALTY_SHAPE) but not what the icons
+ *  build, nor what they would have built for the Empire, so a held region
+ *  objective's +3.5 sent turn-1 Build Alliance to Nal Hutta over an untouched
+ *  Utapau. With this on, a gain that makes the target Rebel-loyal adds W x (the
+ *  Rebel build yield of its icons + the Empire's, when it was neutral and one
+ *  Imperial gain would have claimed it), priced by iconBuildValue.
+ *  SWR_REBEL_LOYALTY_YIELD=0 is the counterfactual; _W overrides the weight. */
+const REBEL_LOYALTY_YIELD: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_REBEL_LOYALTY_YIELD === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+const REBEL_LOYALTY_YIELD_W: number = (() => {
+  try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_REBEL_LOYALTY_YIELD_W; if (v) return Number(v); } catch { /* browser */ }
+  return 1;
+})();
+/** Loyalty a single success adds in the target system (Rebel missions). */
+const REBEL_LOYALTY_GAIN: Record<string, number> = {
+  'build-alliance': 1, 'establish-trade-relations': 1, 'wookie-uprising': 1,
+  'support-of-mon-calamari': 2, 'regional-aid': 1,
+};
 /** SWR_SAFE_COMBAT_LEADER (#848): in cinematic combat, Confrontation's primary
  *  ELIMINATES an Imperial leader (permanently) if the last Imperial ground unit
  *  in the system falls that round. The Empire used to add its best pool leader
@@ -1865,10 +1891,6 @@ function systemBuildValue(G: GameState, side: Side, sysId: SystemId): number {
     (a, r) => a + iconBuildValue(G, side, { theater: r.type, shape: r.shape }), 0);
 }
 
-/** SWR_CORUSCANT_DEPLOY: worth of deploying at `targetSysId` while Rebel units
- *  hold Coruscant with no Imperial unit there (Heart of the Empire's condition):
- *  24 next door, 16 at two jumps, 8 at three, nothing further out; x1.5 once
- *  Heart of the Empire has scored. 0 when Coruscant is not held. */
 /** #848: would an Imperial leader added to this combat risk elimination by
  *  Confrontation? Only in cinematic combat, only while the card is not in the
  *  Rebel discard (public, and a deck only recycles once it runs dry), and only
@@ -1880,6 +1902,10 @@ export function empireLeaderFacesConfrontation(G: GameState, systemId: SystemId)
   return rebelCanWipeEmpireGround(G, systemId);
 }
 
+/** SWR_CORUSCANT_DEPLOY: worth of deploying at `targetSysId` while Rebel units
+ *  hold Coruscant with no Imperial unit there (Heart of the Empire's condition):
+ *  24 next door, 16 at two jumps, 8 at three, nothing further out; x1.5 once
+ *  Heart of the Empire has scored. 0 when Coruscant is not held. */
 function coruscantReliefTerm(G: GameState, targetSysId: SystemId): number {
   const cid = Object.keys(G.catalog.systems).find((id) => G.catalog.systems[id]?.isCoruscant);
   const units = cid ? (G.map.systems[cid]?.units ?? []) : [];
@@ -2149,6 +2175,20 @@ export function rebelMissionTargetScore(
     s += LOYALTY_SHAPE
       ? (sysDef.resources ?? []).reduce((acc, r) => acc + (LOYALTY_SHAPE_W[r.shape] ?? 2), 0)
       : (sysDef.resources?.length ?? 0) * 2;
+    // SWR_REBEL_LOYALTY_YIELD: what a Rebel-loyal flip here builds for us, and
+    // (from neutral) what it stops the Empire claiming with one gain.
+    if (REBEL_LOYALTY_YIELD && sysState && !sysState.subjugated && sysDef.buildSlot) {
+      const gain = REBEL_LOYALTY_GAIN[missionId] ?? 1;
+      const flips = sysState.loyalty === 'neutral' ? gain >= 1 : sysState.loyalty === 'imperial' ? gain >= 2 : false;
+      if (flips) {
+        let y = 0;
+        for (const r of sysDef.resources ?? []) {
+          y += iconBuildValue(G, 'Rebel', { theater: r.type, shape: r.shape });
+          if (sysState.loyalty === 'neutral') y += iconBuildValue(G, 'Empire', { theater: r.type, shape: r.shape });
+        }
+        s += REBEL_LOYALTY_YIELD_W * y;
+      }
+    }
     // OPENING BOOK (jocke01): "pick a system the Empire can't subjugate turn 1".
     // A loyalty flip on a system the Empire already occupies — or can reach in
     // one move — gets subjugated straight back, so the mission buys nothing.
