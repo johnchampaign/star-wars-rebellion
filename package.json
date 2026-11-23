@@ -11,6 +11,7 @@
     "test": "node scripts/run-all-tests.mjs",
     "test:lord-vader": "node scripts/test-lord-vaders-orders.mjs",
     "test:turn-order": "node scripts/test-turn-order.mjs",
+    "prebuild": "node scripts/check-install.mjs",
     "build": "node scripts/copy-dev-assets.mjs && vite build && node scripts/strip-images-from-dist.mjs",
     "build:with-art": "vite build",
     "preview": "vite preview",
