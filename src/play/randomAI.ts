@@ -2932,6 +2932,34 @@ function rankedRevealTargets(
   return out;
 }
 
+/** #849 (mrvvfh, playing Empire): General Rieekan resolved Contingency Plan and
+ *  was put on Rapid Mobilization, with Build Alliance in hand and an undefended
+ *  Mon Calamari on the board. The picker took `candidates[0]` — whichever
+ *  starting mission happened to sit first in hand — so the card's whole value
+ *  (a second go at the round's best starting mission) was left to hand order.
+ *
+ *  Now: among the starting missions this leader has the skill icons to reveal
+ *  (the reveal re-checks skill, so an unqualified pick strands the leader),
+ *  take the one whose best target scores highest on the same reveal score the
+ *  Command phase uses. Falls back to the first qualified card, then to the old
+ *  first-in-hand pick, so the choice can never soft-lock. Exported for tests. */
+export function chooseContingencyPlanMission(G: GameState, leaderId: LeaderId, candidates: string[]): string {
+  const baseDist = (G.rebelBaseSystemId && !G.rebelBaseRevealed && !rebelBaseExposed(G))
+    ? bfsDistances(G, G.rebelBaseSystemId, 3)
+    : null;
+  let best: string | null = null, bestScore = -Infinity, firstQualified: string | null = null;
+  for (const mid of candidates) {
+    const card = G.catalog.missions[mid];
+    if (!card?.skill) continue;
+    const sk = phases.totalSkill(G, [leaderId], card.skill);
+    if (sk.major + sk.minor < card.skillCost) continue;
+    firstQualified ??= mid;
+    const r = bestRevealTarget(G, 'Rebel', mid, baseDist);
+    if (r && Number.isFinite(r.revealScore) && r.revealScore > bestScore) { bestScore = r.revealScore; best = mid; }
+  }
+  return best ?? firstQualified ?? candidates[0];
+}
+
 export function __testPlanAssignment(
   G: GameState, side: Side,
 ): Array<{ missionId: string; leaderIds: LeaderId[] }> {
@@ -5887,10 +5915,10 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     if (!r.ok) r = phases.resolveBuildFromIconsPick(G, c.icons.map(() => null));
     return r.ok;
   }
-  // Contingency Plan: pick a random starting mission from the candidates.
+  // Contingency Plan: the starting mission this leader can do the most with.
   if (G.pendingChoice && G.pendingChoice.kind === 'ContingencyPlanPick' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
-    return phases.resolveContingencyPlanPick(G, c.candidates[0]).ok;
+    return phases.resolveContingencyPlanPick(G, chooseContingencyPlanMission(G, c.leaderId, c.candidates)).ok;
   }
   // Rapid Mobilization branch: if the base is in danger (revealed, or Empire
   // units closing in), RELOCATE it (establish-base) to escape. If it's still
