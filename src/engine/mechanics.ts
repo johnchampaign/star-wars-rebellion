@@ -214,6 +214,8 @@ export function recordEmpireSearched(G: GameState, affected?: SystemId[]): void 
  *  under Empire ground or Imperial control). */
 export function resetEmpireSearchedForBaseMove(G: GameState): void {
   G.empireSearchedRuledOut = [];
+  // A Long Range Probe "yes" named the OLD location (#850).
+  delete G.empireBaseConfirmed;
   recordEmpireSearched(G);
 }
 

@@ -58,7 +58,9 @@ if (CHILD) {
   if (existsSync(AARON)) { const G = aaronBoard(); out.geonosis = AI.rebelMissionTargetScore(G, 'lead-the-strike-team', 'geonosis', null); out.exposed = AI.rebelBaseExposed(G); }
   console.log(JSON.stringify(out)); process.exit(0);
 }
-const legacy = JSON.parse(execFileSync(process.execPath, [fileURLToPath(import.meta.url)], { env: { ...process.env, BF_CHILD: '1', SWR_BASE_STRIP_GUARD: '0', SWR_BASE_FOUND: '0' }, encoding: 'utf8' }).trim().split('\n').pop());
+// The legacy arm is the scorer before ANY base guard, so it also turns off the
+// #850 known-base guard (this board is narrowed to 3 with Imperial ground near).
+const legacy = JSON.parse(execFileSync(process.execPath, [fileURLToPath(import.meta.url)], { env: { ...process.env, BF_CHILD: '1', SWR_BASE_STRIP_GUARD: '0', SWR_BASE_FOUND: '0', SWR_KNOWN_BASE_GUARD: '0' }, encoding: 'utf8' }).trim().split('\n').pop());
 
 console.log('[ Aaron\'s board: turn 7, base at Endor, Imperial stack at Bespin ]');
 if (!existsSync(AARON)) console.log('  (skip) reporter log absent on this machine');

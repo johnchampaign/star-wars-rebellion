@@ -500,6 +500,40 @@ export function hiddenFleetWouldStripNarrowedBase(G: GameState): boolean {
   return empireProximityToBase(G, 2) >= 2;
 }
 
+/** SWR_KNOWN_BASE_GUARD (#850, mrvvfh playing Empire): "I know for sure the base
+ *  is at Nal Hutta because I found out by the card long range probe ... the
+ *  rebel just removes his best (and only) defense ... by playing lead the strike
+ *  team in kashyyyk". A Long Range Probe "yes" was stored nowhere, so the AI
+ *  Rebel went on treating its base as one of many candidates. The base-strip
+ *  guard (#760) did not fire either: one Imperial ground unit next door cannot
+ *  outnumber a three-unit garrison, but with the base known it does not have to
+ *  search, only land. The base fell the same round.
+ *
+ *  Two parts, one flag:
+ *  - a positive Long Range Probe (G.empireBaseConfirmed) collapses the public
+ *    candidates to that one world, which also arms the #817 Hidden Fleet guard;
+ *  - the #817 narrowed-base test is extended to the two missions that take
+ *    ground out of the base, Lead the Strike Team and Behind Enemy Lines: the
+ *    -45 target penalty and the keep-half-the-ground picker (#760's) apply while
+ *    the base is narrowed to 3 or fewer worlds and Imperial mobile ground is
+ *    within two jumps (1 unit once confirmed, 2 when only narrowed).
+ *  Shipped ON on John's call (2026-11-24), as #817 was: the self-play Empire
+ *  rarely follows up a found base the way a human does. SWR_KNOWN_BASE_GUARD=0
+ *  is the counterfactual. */
+const KNOWN_BASE_GUARD: boolean = (() => {
+  try { const v = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.SWR_KNOWN_BASE_GUARD; if (v === '1') return true; if (v === '0') return false; } catch { /* browser */ }
+  return true;
+})();
+
+/** #850: the Empire knows (or nearly knows) where the hidden base is and has
+ *  ground close enough to take it, so ground must not leave the base. */
+export function strikeWouldStripKnownBase(G: GameState): boolean {
+  if (!KNOWN_BASE_GUARD || !G.rebelBaseSystemId || G.rebelBaseRevealed) return false;
+  const n = rebelPublicBaseCandidates(G).length;
+  if (n > 3) return false;
+  return empireProximityToBase(G, 2) >= (n === 1 ? 1 : 2);
+}
+
 /** RoE Shield Bunker (rules p.8): a Death Star in a system with an Imperial
  *  Shield Bunker cannot be destroyed or damaged, Death Star Plans included. The
  *  Rebel's Death Star opportunism bonuses assume the plans can fire, so they
@@ -614,6 +648,9 @@ const BASE_FOUND_MAX: number = (() => {
 /** Systems the base could still be in, from what the Empire has publicly
  *  established. Exported for tests. */
 export function rebelPublicBaseCandidates(G: GameState): SystemId[] {
+  // #850: a Long Range Probe "yes" names the base outright.
+  if (KNOWN_BASE_GUARD && G.empireBaseConfirmed && G.empireBaseConfirmed === G.rebelBaseSystemId
+      && !G.rebelBaseRevealed) return [G.empireBaseConfirmed];
   const ruledOut = new Set(G.empireSearchedRuledOut ?? []);
   const universe = new Set<string>();
   for (const p of Object.values(G.catalog.probes)) if (p?.systemId) universe.add(p.systemId);
@@ -634,7 +671,7 @@ function baseStatus(G: GameState): { exposed: boolean; threatened: boolean } {
   // Every engine rule-out is logged, so log length alone would do in play; the
   // ruled-out count is in the key too so a board edited without a log entry
   // (tests, analysis scripts) never reads a stale answer.
-  const key = `${G.timeMarker}:${G.turnLog?.length ?? 0}:${G.rebelBaseSystemId}:${G.rebelBaseRevealed}:${G.empireSearchedRuledOut?.length ?? 0}`;
+  const key = `${G.timeMarker}:${G.turnLog?.length ?? 0}:${G.rebelBaseSystemId}:${G.rebelBaseRevealed}:${G.empireSearchedRuledOut?.length ?? 0}:${G.empireBaseConfirmed ?? ''}`;
   const hit = baseStatusMemo.get(G);
   if (hit && hit.key === key) return hit;
   let exposed = false, threatened = false;
@@ -2139,8 +2176,8 @@ export function rebelMissionTargetScore(
   // a fleet strike because a garrison sits next door is the over-trigger this
   // guard was calibrated to avoid (#522's fixture: a 3-cruiser base with setup
   // garrisons nearby read as threatened and lost a winnable strike).
-  if (BASE_STRIP_GUARD && (missionId === 'lead-the-strike-team' || missionId === 'behind-enemy-lines')
-      && !G.rebelBaseRevealed && rebelBaseThreatened(G)) {
+  if ((missionId === 'lead-the-strike-team' || missionId === 'behind-enemy-lines')
+      && !G.rebelBaseRevealed && ((BASE_STRIP_GUARD && rebelBaseThreatened(G)) || strikeWouldStripKnownBase(G))) {
     const adjacentToBase = (G.catalog.adjacency[G.rebelBaseSystemId] ?? []).includes(targetSysId);
     const baseGround = (G.map.rebelBaseSpace?.units ?? []).filter((u) => u.side === 'Rebel'
       && G.catalog.unitTypes[u.typeId]?.theater === 'ground').length;
@@ -4948,7 +4985,7 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     // least half the base ground (min 1) home when revealed; when the base is
     // still hidden, the old "send the strongest up to 4" behavior is fine.
     let sendCap = c.max;
-    if (G.rebelBaseRevealed || (BASE_STRIP_GUARD && rebelBaseThreatened(G))) {
+    if (G.rebelBaseRevealed || (BASE_STRIP_GUARD && rebelBaseThreatened(G)) || strikeWouldStripKnownBase(G)) {
       const reserve = Math.max(1, Math.floor(c.availableUnitIds.length / 2));
       sendCap = Math.max(0, Math.min(c.max, c.availableUnitIds.length - reserve));
     }
@@ -5573,7 +5610,8 @@ function stepOnceInner(G: GameState, side: Side): boolean {
     });
     // #760: keep half the base's ground units (min 1) home while Imperial ground
     // threatens the hidden base — the strongest stay, since they defend it.
-    if (BASE_STRIP_GUARD && c.sourceSystemId === 'rebel-base-space' && rebelBaseThreatened(G)) {
+    if (c.sourceSystemId === 'rebel-base-space'
+        && ((BASE_STRIP_GUARD && rebelBaseThreatened(G)) || strikeWouldStripKnownBase(G))) {
       const groundIdx = avail.map((a, i) => ({ a, i })).filter(({ a }) => {
         const u = container?.units.find((x) => x.instanceId === a.uid);
         const t = u ? G.catalog.unitTypes[u.typeId] : undefined;

@@ -556,6 +556,8 @@ const longRangeProbe: EffectHandler = (G, ctx) => {
     systemId: sysId, isBase, source: 'long-range-probe',
   }});
   if (isBase) {
+    // Public from here on: the Rebel had to answer, so both players know (#850).
+    G.empireBaseConfirmed = sysId;
     pushNotice(G, `lrp-${sysId}-t${G.timeMarker}`, 'Long Range Probe',
       `The Rebel base IS at ${sysName}! (Move units there to capture it — it isn't revealed yet.)`,
       'Empire');

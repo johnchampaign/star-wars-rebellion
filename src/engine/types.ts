@@ -2232,6 +2232,10 @@ export type GameState = {
   // have been revealed. Cleared & re-seeded with still-qualifying systems when
   // the base relocates. Not secret (these are systems ruled OUT).
   empireSearchedRuledOut?: SystemId[];
+  // The base system a successful Long Range Probe answered "yes" for (#850).
+  // RAW the base stays hidden, but both players now know where it is, so this
+  // is public. Cleared when the base relocates.
+  empireBaseConfirmed?: SystemId;
 
   // Online-only: the probe-deck-derived ruled-out systems, computed server-side
   // and attached to the EMPIRE's redacted view. The deck itself is hidden online
