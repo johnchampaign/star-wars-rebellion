@@ -32,7 +32,11 @@ type Ok = { ok: true; reason?: string };
 let inFlight = false;
 function makeAct(submit: Submit, canSubmit: () => boolean) {
   return (action: RebellionAction): Ok => {
-    if (!canSubmit() || inFlight) return { ok: true };
+    // Dismissing your own notices is allowed on either side's turn (the adapter
+    // marks it allowsOutOfTurn) — gating it on yourTurn swallowed the click and
+    // left the notice up until the opponent moved.
+    const anyTurn = action.kind === 'acknowledgeNotices';
+    if ((!anyTurn && !canSubmit()) || inFlight) return { ok: true };
     inFlight = true;
     void submit(action)
       .catch((err: unknown) => {

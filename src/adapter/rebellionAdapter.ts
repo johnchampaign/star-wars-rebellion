@@ -278,9 +278,16 @@ export const rebellionAdapter: GameAdapter<GameState, RebellionAction, Side> = {
   },
 
   // currentActor already resolves choice owners (incl. opposition/combat
-  // defender), so in-turn validation covers the out-of-turn cases.
-  allowsOutOfTurn() {
-    return false;
+  // defender), so in-turn validation covers the out-of-turn cases — except
+  // dismissing a notice. Notices are addressed to one side and often reach it
+  // while the OTHER side is to move (False Orders bounces the Empire's leader,
+  // then Command opens on the Rebel's turn). Refusing the dismissal left the
+  // Empire behind a full-screen "Got it" that did nothing until the Rebel moved
+  // (lobby report, 2026-11-25). It is safe out of turn: acknowledgeNotices(G,
+  // actor) clears only the actor's own and untagged notices, and touches nothing
+  // the player to move can act on.
+  allowsOutOfTurn(action) {
+    return action.kind === 'acknowledgeNotices';
   },
 
   // Per-seat redaction (Phase 2). Strips the base location, opponent hands, all
