@@ -23,7 +23,7 @@
 // the captive was auto-rescued the instant the prison emptied.
 //
 // Run: node scripts/test-catch-surprise-captive-731.mjs
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -107,9 +107,17 @@ console.log('\n[ validation mirrors the activation path, before any mutation ]')
 
 console.log('\n[ the FAQ carve-out is real: this is not Independent Operation ]');
 {
-  const faq = readFileSync(join(ROOT, 'reports', 'faq.txt'), 'utf8').replace(/\s+/g, ' ');
-  check('our FAQ contains the entry the reporter was quoted',
-    /if an Imperial card allows the Imperial player to move units to an adjacent system, he can move leaders with the units/i.test(faq));
+  // reports/ is gitignored: the FAQ is Fantasy Flight's copyrighted document
+  // and this repo is public, so it is never committed. Check the citation where
+  // a local copy exists; skip it (not fail) everywhere else.
+  const faqPath = join(ROOT, 'reports', 'faq.txt');
+  if (existsSync(faqPath)) {
+    const faq = readFileSync(faqPath, 'utf8').replace(/\s+/g, ' ');
+    check('our FAQ contains the entry the reporter was quoted',
+      /if an Imperial card allows the Imperial player to move units to an adjacent system, he can move leaders with the units/i.test(faq));
+  } else {
+    console.log('  - skipped the FAQ citation check: no local reports/faq.txt');
+  }
   const card = (data.actions.actions ?? data.actions).find?.((a) => a.id === 'catch-them-by-surprise')
     ?? Object.values(data.actions.actions ?? data.actions).find((a) => a.id === 'catch-them-by-surprise');
   check('and the card really does move units between adjacent systems',
