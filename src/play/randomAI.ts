@@ -25,7 +25,7 @@ import * as combat from '../engine/combat';
 import { unitsAvailableInSupply } from '../engine/mechanics';
 import { PROJECT_ONLY_UNIT_IDS } from '../engine/units';
 import { pickBestCinematicPlay, rebelCanWipeEmpireGround } from '../engine/cinematicTactics';
-import { missionTargets, missionRevealIsPointless, rebelLoyalSystemsInRegion } from '../engine/missionTargets';
+import { missionTargets, missionRevealIsPointless } from '../engine/missionTargets';
 // Re-exported so existing callers/tests that import it from the AI module keep
 // working now that the canonical definition lives in the engine (#304).
 export { missionRevealIsPointless } from '../engine/missionTargets';
@@ -1758,9 +1758,114 @@ function unitKillValue(G: GameState, u: { typeId: string }): number {
   return unitStrength(G, u) + (t.buildResource ?? 0) * 2 + (t.transport?.capacity ?? 0) * 2;
 }
 
-/** Best total `unitKillValue` obtainable at `targetSysId` with `healthBudget`
- *  health to spend — an exact 0/1 knapsack over the destroyable enemy units
- *  (weights are unit health; a dozen units and a budget of ≤4 make this tiny).
+/** Liberation-aware destroy picks (#854). DEFAULT ON; SWR_LIBERATE_PICK=0
+ *  restores the plain per-unit knapsack so the two can be compared. */
+export const LIBERATE_PICK: boolean = (() => {
+  try {
+    const proc = (globalThis as { process?: { env?: Record<string, string | undefined> } }).process;
+    if (proc?.env?.SWR_LIBERATE_PICK === '0') return false;
+  } catch { /* browser: no process */ }
+  return true;
+})();
+
+/** What the Rebel gains, on the unitKillValue scale, when a destroy effect
+ *  removes the LAST Imperial ground unit from a subjugated system — the marker
+ *  comes off (mechanics.recomputeSubjugation), which no single unit's kill
+ *  value can see.
+ *
+ *  Player report #854: Hit And Run at a Rebel-loyal, subjugated Mon Calamari
+ *  holding one Stormtrooper, one TIE Fighter and an Assault Carrier. The AI
+ *  killed the carrier (the best single unit) and left the lone Stormtrooper —
+ *  "he is the only one who subjugates mon calamari". Killing the trooper and
+ *  the TIE instead hands the world's icons back to the Rebel and takes them
+ *  from the Empire.
+ *
+ *  A Rebel-loyal world flips production to the Rebel outright; a neutral one
+ *  only costs the Empire its left-most icon, so it is worth far less. A
+ *  sabotaged world builds for nobody this round either way. */
+function liberationValue(G: GameState, sysId: SystemId): number {
+  const ss = G.map.systems[sysId];
+  const def = G.catalog.systems[sysId];
+  if (!ss || !def || !ss.subjugated || ss.destroyed) return 0;
+  const icons = def.resources?.length ?? 0;
+  const v = ss.loyalty === 'rebel' ? 6 + icons * 4 : 3 + icons;
+  return ss.sabotage ? v / 2 : v;
+}
+
+interface DestroyItem { uid: string; hp: number; val: number; ground: boolean }
+
+/** Exact 0/1 knapsack: best total `val` using ≤cap units and ≤budget health,
+ *  with the winning set read back out. A dozen units and a budget of ≤4 make
+ *  this tiny. */
+function destroyKnapsack(items: DestroyItem[], budget: number, cap: number): { value: number; picks: string[] } {
+  if (budget <= 0 || cap <= 0 || items.length === 0) return { value: 0, picks: [] };
+  let dp: number[][] = Array.from({ length: cap + 1 }, () => new Array<number>(budget + 1).fill(0));
+  const keep: boolean[][][] = [];
+  for (const it of items) {
+    const next = dp.map((row) => row.slice());
+    const took: boolean[][] = Array.from({ length: cap + 1 }, () => new Array<boolean>(budget + 1).fill(false));
+    for (let k = 1; k <= cap; k++) {
+      for (let h = it.hp; h <= budget; h++) {
+        const cand = dp[k - 1][h - it.hp] + it.val;
+        if (cand > next[k][h]) { next[k][h] = cand; took[k][h] = true; }
+      }
+    }
+    keep.push(took);
+    dp = next;
+  }
+  const picks: string[] = [];
+  let k = cap; let h = budget;
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (keep[i][k][h]) { picks.push(items[i].uid); h -= items[i].hp; k -= 1; }
+  }
+  return { value: dp[cap][budget], picks };
+}
+
+/** The best set of `candidateIds` to destroy at `sysId` for a "destroy up to N
+ *  health worth of units of your choice" effect, and what it is worth. Shared
+ *  by the target scorer and the in-system pick so the two cannot disagree
+ *  about which system was worth attacking.
+ *
+ *  Two plans are compared: the plain knapsack over unitKillValue, and — when
+ *  the victims are Imperial and the budget can clear EVERY Imperial ground
+ *  unit in a subjugated system — "clear the garrison, spend what is left on
+ *  the best of the rest", credited with liberationValue (#854). */
+function bestDestroyPick(
+  G: GameState, oppSide: Side, sysId: SystemId, candidateIds: string[],
+  healthBudget: number, unitCap?: number,
+): { value: number; picks: string[] } {
+  const ss = sysId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[sysId];
+  const budget = Math.max(0, healthBudget);
+  if (!ss || budget <= 0) return { value: 0, picks: [] };
+  const items: DestroyItem[] = [];
+  for (const uid of candidateIds) {
+    const u = ss.units.find((x) => x.instanceId === uid);
+    const t = u ? G.catalog.unitTypes[u.typeId] : null;
+    if (!u || !t) continue;
+    items.push({ uid, hp: Math.max(1, t.health.value ?? 1), val: unitKillValue(G, u), ground: t.theater === 'ground' });
+  }
+  if (items.length === 0) return { value: 0, picks: [] };
+  const cap = unitCap ?? items.length;                // Plant Explosives: ≤3 units (#303)
+  const plain = destroyKnapsack(items, budget, cap);
+  if (!LIBERATE_PICK || oppSide !== 'Empire' || sysId === 'rebel-base-space') return plain;
+  const bonus = liberationValue(G, sysId);
+  if (bonus <= 0) return plain;
+  // Every Imperial ground unit standing there must be killable by this effect.
+  const garrisonCount = ss.units.filter(
+    (u) => u.side === 'Empire' && G.catalog.unitTypes[u.typeId]?.theater === 'ground').length;
+  const garrison = items.filter((it) => it.ground);
+  const garrisonHp = garrison.reduce((a, it) => a + it.hp, 0);
+  if (garrison.length !== garrisonCount || garrison.length === 0
+      || garrisonHp > budget || garrison.length > cap) return plain;
+  const rest = destroyKnapsack(items.filter((it) => !it.ground), budget - garrisonHp, cap - garrison.length);
+  const value = garrison.reduce((a, it) => a + it.val, 0) + bonus + rest.value;
+  return value > plain.value
+    ? { value, picks: [...garrison.map((it) => it.uid), ...rest.picks] }
+    : plain;
+}
+
+/** Best total value obtainable at `targetSysId` with `healthBudget` health to
+ *  spend (see bestDestroyPick).
  *
  *  Candidate rule mirrors engine `queueDestroyUpToHealth` exactly: opposing
  *  side, optional theater filter, and never a `health.color === null` unit (the
@@ -1772,27 +1877,32 @@ function bestDestroyValue(
 ): number {
   const ss = targetSysId === 'rebel-base-space' ? G.map.rebelBaseSpace : G.map.systems[targetSysId];
   if (!ss || healthBudget <= 0) return 0;
-  const items = ss.units
+  const ids = ss.units
     .filter((u) => u.side === oppSide)
-    .map((u) => ({ u, t: G.catalog.unitTypes[u.typeId] }))
-    .filter((x) => !!x.t && x.t.health.color !== null)
-    .filter((x) => !theater || x.t!.theater === theater)
-    .map((x) => ({ hp: Math.max(1, x.t!.health.value ?? 1), val: unitKillValue(G, x.u) }));
-  if (items.length === 0) return 0;
-  const cap = unitCap ?? items.length;
-  // best[k][h] = best value using at most k units and exactly ≤h health.
-  let best: number[][] = Array.from({ length: cap + 1 }, () => new Array<number>(healthBudget + 1).fill(0));
-  for (const it of items) {
-    const next = best.map((row) => row.slice());
-    for (let k = 1; k <= cap; k++) {
-      for (let h = it.hp; h <= healthBudget; h++) {
-        const cand = best[k - 1][h - it.hp] + it.val;
-        if (cand > next[k][h]) next[k][h] = cand;
-      }
-    }
-    best = next;
+    .filter((u) => {
+      const t = G.catalog.unitTypes[u.typeId];
+      return !!t && t.health.color !== null && (!theater || t.theater === theater);
+    })
+    .map((u) => u.instanceId);
+  return bestDestroyPick(G, oppSide, targetSysId, ids, healthBudget, unitCap).value;
+}
+
+/** Payoff of Imperial Propaganda ("each system in this region that has Rebel
+ *  loyalty becomes neutral") aimed at `targetSysId`'s region. A free Rebel-
+ *  loyal system is worth 12 plus 2 per resource icon it stops building with; a
+ *  subjugated one is worth a token 3 (it only stops the world reverting to the
+ *  Rebel if the garrison is ever removed). Exported for tests (#857). */
+export function imperialPropagandaRegionValue(G: GameState, targetSysId: SystemId): number {
+  const region = G.catalog.systems[targetSysId]?.region;
+  if (region == null) return 0;
+  let v = 0;
+  for (const d of Object.values(G.catalog.systems)) {
+    if (d.region !== region) continue;
+    const ss = G.map.systems[d.id];
+    if (!ss || ss.loyalty !== 'rebel') continue;
+    v += ss.subjugated ? 3 : 12 + (d.resources?.length ?? 0) * 2;
   }
-  return best[cap][healthBudget];
+  return v;
 }
 
 /** True when revealing this Empire mission at this system would accomplish
@@ -2064,8 +2174,16 @@ export function empireMissionTargetScore(G: GameState, missionId: string, target
   // neutral — so its value scales with how many Rebel-loyal systems that region
   // holds. Aim it at the region with the most to convert; a region with none is
   // already dropped by missionRevealIsPointless before scoring (#304).
+  //
+  // But not every Rebel-loyal system is worth the same (#857). One the Empire
+  // already SUBJUGATES gives the Rebel nothing today, so turning it neutral
+  // changes almost nothing; one the Rebel holds free is building units for
+  // him every round, and loses all of its icons the moment it goes neutral.
+  // Counting both as 12 made a region of two occupied worlds (Toydaria,
+  // Bothawui) tie a region of two free, producing ones (Naboo, Utapau), and
+  // the reporter watched the card go to the occupied pair.
   if (missionId === 'imperial-propaganda') {
-    s += rebelLoyalSystemsInRegion(G, targetSysId) * 12;
+    s += imperialPropagandaRegionValue(G, targetSysId);
   }
   // Planetary Conquest moves up to 4 ground to the target and fights any Rebel
   // ground there — an OFFENSIVE strike, not a place to dump troops on an
@@ -6135,42 +6253,15 @@ function stepOnceInner(G: GameState, side: Side): boolean {
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'DestroyUpToHealth' && G.pendingChoice.side === side) {
     const c = G.pendingChoice;
-    const ss = G.map.systems[c.systemId] ?? G.map.rebelBaseSpace;
     // Spend the health budget on the units it actually hurts to lose. The old
     // rule sorted by tier-then-health and took greedily, which prices a unit by
     // its silhouette rather than by what replacing it costs — a transport is a
-    // circle, same as an AT-ST (#727). Exact knapsack over unitKillValue, with
-    // the same weights the target scorer uses so the two cannot disagree about
-    // which system was worth attacking.
-    const items = c.candidates
-      .map((uid) => {
-        const u = ss?.units.find((x) => x.instanceId === uid);
-        const t = u ? G.catalog.unitTypes[u.typeId] : null;
-        return { uid, hp: Math.max(1, t?.health.value ?? 1), val: u ? unitKillValue(G, u) : 0 };
-      });
-    const cap = c.unitCap ?? items.length;          // Plant Explosives: ≤3 units (#303)
-    const budget = Math.max(0, c.budget);
-    // dp[k][h] = best value using ≤k units and ≤h health; keep[i][k][h] records
-    // whether item i was taken, so the winning set can be read back out.
-    let dp: number[][] = Array.from({ length: cap + 1 }, () => new Array<number>(budget + 1).fill(0));
-    const keep: boolean[][][] = [];
-    for (const it of items) {
-      const next = dp.map((row) => row.slice());
-      const took: boolean[][] = Array.from({ length: cap + 1 }, () => new Array<boolean>(budget + 1).fill(false));
-      for (let k = 1; k <= cap; k++) {
-        for (let h = it.hp; h <= budget; h++) {
-          const cand = dp[k - 1][h - it.hp] + it.val;
-          if (cand > next[k][h]) { next[k][h] = cand; took[k][h] = true; }
-        }
-      }
-      keep.push(took);
-      dp = next;
-    }
-    const picks: string[] = [];
-    let k = cap; let h = budget;
-    for (let i = items.length - 1; i >= 0; i--) {
-      if (keep[i][k][h]) { picks.push(items[i].uid); h -= items[i].hp; k -= 1; }
-    }
+    // circle, same as an AT-ST (#727). bestDestroyPick is the same solver the
+    // target scorer uses, so the two cannot disagree about which system was
+    // worth attacking, and it knows that clearing the last Imperial ground unit
+    // lifts a subjugation (#854).
+    const oppSide: Side = side === 'Rebel' ? 'Empire' : 'Rebel';
+    const { picks } = bestDestroyPick(G, oppSide, c.systemId, c.candidates, c.budget, c.unitCap);
     return phases.resolveDestroyUpToHealth(G, picks).ok;
   }
   if (G.pendingChoice && G.pendingChoice.kind === 'RogueSquadronRaidPick' && G.pendingChoice.side === side) {
