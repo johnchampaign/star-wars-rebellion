@@ -449,6 +449,19 @@ export function missionRevealIsPointless(
       return !Object.values(G.catalog.systems).some(
         (d) => d.region === region && G.map.systems[d.id]?.loyalty === 'rebel');
     }
+    case 'prepare-for-battle': {
+      // "Return assigned leaders to the pool. Look at the top 4 cards of any
+      // tactic deck ..., or return discarded Rebel advanced tactic cards to
+      // their decks." With cinematic combat there is no ordered tactic deck to
+      // look at, so the whole effect is the second half — and before the
+      // Rebel has spent an advanced tactic card there is nothing to return.
+      // The leader going back to the pool only undoes the assignment. Player
+      // report #851: the AI Rebel played it on turn 2 "when no battle has
+      // taken place so there is not even a bit of gain in this move".
+      if (side !== 'Rebel' || !G.expansion?.cinematicCombat) return false;
+      const elim = new Set(G.rebel.cinematicTacticEliminated ?? []);
+      return !(G.rebel.cinematicTacticDiscard ?? []).some((id) => !elim.has(id));
+    }
     case 'draw-them-out':
       // Empire places a Rebel leader from the pool here — nothing to place when
       // the Rebel pool is empty.
@@ -702,6 +715,7 @@ export function missionPointlessReason(
   };
   switch (missionId) {
     case 'imperial-propaganda': return `no system in ${sName}'s region has Rebel loyalty to remove`;
+    case 'prepare-for-battle': return 'you have no discarded advanced tactic cards to return yet';
     case 'draw-them-out': return 'the Rebel leader pool is empty, so there is no leader to place';
     case 'misdirection': return 'the Imperial leader pool is empty, so there is no one for it to stop';
     case 'single-reactor-ignition': return `there are no Rebel ground units or target markers at ${sName}`;
