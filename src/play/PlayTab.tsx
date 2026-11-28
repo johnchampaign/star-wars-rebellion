@@ -13,6 +13,7 @@ import { buildReadableLog, type LogVisibility, type ExportChatMessage } from './
 import { stampLogFrom } from '../engine/log';
 import { nextReportKind } from './reportQueue';
 import { DeployUndoStack, deployStepKey } from './deployUndoStack';
+import { endsDeployStep } from './deployFinalCheck';
 import { PLANNER_ENABLED, HUNT_OCCUPY_ENABLED } from './empirePlanner';
 import { SABOTAGE_CLEAR_BUMP, MISSION_ODDS_GATE, BUILD_YIELD_TARGETING } from './randomAI';
 import { evalCommandStepDeep } from './boardEval';
@@ -647,6 +648,10 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
   // the full map behind it, then toggle back to make your choice (idea:
   // MightyFaben — softens every "greyed-out map behind a prompt" case at once).
   const [peekBoard, setPeekBoard] = useState<boolean>(false);
+  // The deploy step's LAST action (a placement, or a "leave on build queue")
+  // waits here for a confirmation: it ends the step, and with it the only
+  // place Undo exists (#858). `systemId: null` = leave on the build queue.
+  const [finalDeployConfirm, setFinalDeployConfirm] = useState<{ systemId: string | null } | null>(null);
   // Player-toggleable "images on / images off" switch. When OFF, every
   // <img> and SVG <image> in the play tree is hidden via CSS, letting
   // the text fallbacks (unit abbreviations, dice glyphs, etc.) carry the
@@ -2996,6 +3001,9 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           })()}
           handReference={humanSide}
           onPick={(sid) => {
+            // The last unit ends the step, so ask first (#858). Offline only:
+            // online the board here is a redacted view the server resolves.
+            if (!online && endsDeployStep(G, sid)) { setFinalDeployConfirm({ systemId: sid }); return; }
             pushDeployUndo(G);
             const r = phases.resolveDeployUnitPick(G, sid);
             if (!r.ok) { popDeployUndo(); alert(`Cannot resolve: ${r.reason}`); }
@@ -3003,12 +3011,52 @@ export default function PlayTab({ online }: { online?: PlayTabOnlineMode } = {})
           }}
           cancelLabel="Leave on build queue (slot 1)"
           onCancel={() => {
+            if (!online && endsDeployStep(G, null)) { setFinalDeployConfirm({ systemId: null }); return; }
             pushDeployUndo(G);
             const r = phases.declineDeployUnit(G);
             if (!r.ok) { popDeployUndo(); alert(`Cannot resolve: ${r.reason}`); }
             persist(); refresh();
           }} />
       )}
+      {finalDeployConfirm
+        && G.pendingChoice?.kind === 'DeployUnitPick'
+        && G.pendingChoice.side === humanSide && (() => {
+        const pc = G.pendingChoice;
+        const unitName = G.catalog.unitTypes[pc.typeId]?.name ?? pc.typeId;
+        const sid = finalDeployConfirm.systemId;
+        const where = sid === null
+          ? `Leave your ${unitName} on the build queue (space 1)`
+          : `Deploy your ${unitName} to ${G.catalog.systems[sid]?.name ?? sid}`;
+        const canUndo = deployUndoStackRef.current.depth(deployStepKey(G)) > 0;
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', zIndex: 6000, padding: 12 }}>
+            <div style={{ background: '#15171c', border: `2px solid ${sideColor(pc.side)}`, borderRadius: 6,
+              padding: 16, maxWidth: 380 }}>
+              <div style={{ color: sideColor(pc.side), fontWeight: 700, fontSize: 15, marginBottom: 8 }}>
+                Last unit — finish deploying?
+              </div>
+              <div style={{ color: '#ddd', fontSize: 13, marginBottom: 6 }}>{where}?</div>
+              <div style={{ color: '#aaa', fontSize: 12, marginBottom: 12 }}>
+                This is your last unit, so confirming ends your deployment for this round.
+                After that, placements can no longer be taken back.
+                {canUndo ? ' Go back if you want to change this one or undo an earlier placement.' : ''}
+              </div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="tab-button" style={{ fontWeight: 700 }}
+                  onClick={() => {
+                    setFinalDeployConfirm(null);
+                    pushDeployUndo(G);
+                    const r = sid === null ? phases.declineDeployUnit(G) : phases.resolveDeployUnitPick(G, sid);
+                    if (!r.ok) { popDeployUndo(); alert(`Cannot resolve: ${r.reason}`); }
+                    persist(); refresh();
+                  }}>Confirm — end deployment</button>
+                <button className="tab-button" onClick={() => setFinalDeployConfirm(null)}>↶ Go back</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Mission-context Yoda reroll (combat-context lives in CombatBoardLive). */}
       {G.pendingChoice?.kind === 'YodaReroll'
